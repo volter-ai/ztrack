@@ -29,7 +29,8 @@
     "./tx": "./src/tx.ts",
     "./dsse": "./src/dsse.ts",
     "./world-source-books": "./src/worldSourceBooks.ts",
-    "./world-annotations": "./src/worldAnnotations.ts"
+    "./world-annotations": "./src/worldAnnotations.ts",
+    "./*": "./src/*.ts"
   },
   "bin": {
     "ztrack": "dist/cli.js"
