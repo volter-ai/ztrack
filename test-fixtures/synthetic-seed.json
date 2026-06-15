@@ -1,0 +1,5494 @@
+{
+  "schema": "tracker-snapshot@1",
+  "projectRoot": "/synthetic",
+  "legacyVersions": [],
+  "cases": [
+    {
+      "identifier": "SYN-1",
+      "title": "Clean case",
+      "summary": "Sources",
+      "body": "# Clean case\n\n## Sources\n\n[1] Request:\n> do the thing\n\n## Development Acceptance Criteria\n\n- [ ] dev/01 status: pending Do the thing. [1]",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Clean case",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> do the thing",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [ ] dev/01 status: pending Do the thing. [1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 10,
+            "checkboxRows": [
+              {
+                "checked": false,
+                "body": "dev/01 status: pending Do the thing. [1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "do the thing",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": false,
+            "status": "pending",
+            "body": "dev/01 status: pending Do the thing. [1]",
+            "text": "Do the thing.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [],
+            "proofRefs": [],
+            "storedStatus": "pending",
+            "rawText": "dev/01 status: pending Do the thing. [1]",
+            "commitHashes": [],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": false,
+          "status": "pending",
+          "body": "dev/01 status: pending Do the thing. [1]",
+          "text": "Do the thing.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Evidence.",
+          "section": "Evidence",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        }
+      ],
+      "state": "Backlog",
+      "status": "backlog",
+      "stateType": "backlog",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-1-clean-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "do the thing",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 12,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 11,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 10,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 9,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 8,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 7,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 6,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 5,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 4,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "backlog",
+          "metadata": {}
+        },
+        {
+          "id": 3,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "Backlog",
+          "metadata": {}
+        },
+        {
+          "id": 2,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 1,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-1",
+          "issueIdentifier": "SYN-1",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Clean case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-10",
+      "title": "Video case",
+      "summary": "Sources",
+      "body": "# Video case\n\n## Sources\n\n[1] Request:\n> record it\n\n## Development Acceptance Criteria\n\n- [x] dev/01 status: passed Recorded the flow. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]\n\n## Evidence\n\n[E1] type: video url: https://example.com/v.mp4 status: pass result: passed ac: dev/01 justification: shows the flow",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Video case",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> record it",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [x] dev/01 status: passed Recorded the flow. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 11,
+            "checkboxRows": [
+              {
+                "checked": true,
+                "body": "dev/01 status: passed Recorded the flow. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          },
+          "Evidence": {
+            "body": "[E1] type: video url: https://example.com/v.mp4 status: pass result: passed ac: dev/01 justification: shows the flow",
+            "title": "Evidence",
+            "lineStart": 12,
+            "lineEnd": 14,
+            "checkboxRows": []
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "record it",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": true,
+            "status": "passed",
+            "body": "dev/01 status: passed Recorded the flow. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "text": "Recorded the flow.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [
+              "E1"
+            ],
+            "proofRefs": [],
+            "storedStatus": "passed",
+            "rawText": "dev/01 status: passed Recorded the flow. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "commitHashes": [
+              "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [
+          {
+            "id": "E1",
+            "type": "video",
+            "fields": {
+              "type": "video",
+              "url": "https://example.com/v.mp4",
+              "status": "pass",
+              "result": "passed",
+              "ac": "dev/01",
+              "justification": "shows the flow"
+            },
+            "ac": [
+              "dev/01"
+            ],
+            "lineStart": 12
+          }
+        ],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": true,
+          "status": "passed",
+          "body": "dev/01 status: passed Recorded the flow. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+          "text": "Recorded the flow.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [
+            "E1"
+          ],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-10-video-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "record it",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 120,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 119,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 118,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 117,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 116,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 115,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 114,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 113,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 112,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 111,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 110,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 109,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-10",
+          "issueIdentifier": "SYN-10",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Video case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-11",
+      "title": "Done with gaps",
+      "summary": "Sources",
+      "body": "# Done with gaps\n\n## Sources\n\n[1] Request:\n> finish\n\n## Development Acceptance Criteria\n\n- [ ] dev/01 status: pending Not actually finished. [1]",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Done with gaps",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> finish",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [ ] dev/01 status: pending Not actually finished. [1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 10,
+            "checkboxRows": [
+              {
+                "checked": false,
+                "body": "dev/01 status: pending Not actually finished. [1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "finish",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": false,
+            "status": "pending",
+            "body": "dev/01 status: pending Not actually finished. [1]",
+            "text": "Not actually finished.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [],
+            "proofRefs": [],
+            "storedStatus": "pending",
+            "rawText": "dev/01 status: pending Not actually finished. [1]",
+            "commitHashes": [],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": false,
+          "status": "pending",
+          "body": "dev/01 status: pending Not actually finished. [1]",
+          "text": "Not actually finished.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Evidence.",
+          "section": "Evidence",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        }
+      ],
+      "state": "Done",
+      "status": "completed",
+      "stateType": "completed",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-11-done-with-gaps",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "finish",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 132,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 131,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": "2026-01-01T00:00:00.000000Z",
+          "metadata": {}
+        },
+        {
+          "id": 130,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 129,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 128,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 127,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 126,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 125,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 124,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "completed",
+          "metadata": {}
+        },
+        {
+          "id": 123,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "Done",
+          "metadata": {}
+        },
+        {
+          "id": 122,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 121,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-11",
+          "issueIdentifier": "SYN-11",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Done with gaps",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "open",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-12",
+      "title": "Defective video case",
+      "summary": "Sources",
+      "body": "# Defective video case\n\n## Sources\n\n[1] Request:\n> record it\n\n## Development Acceptance Criteria\n\n- [x] dev/01 status: passed Recorded. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]\n\n## Evidence\n\n[E1] type: video ac: dev/01 justification: missing url/status/result on purpose",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Defective video case",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> record it",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [x] dev/01 status: passed Recorded. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 11,
+            "checkboxRows": [
+              {
+                "checked": true,
+                "body": "dev/01 status: passed Recorded. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          },
+          "Evidence": {
+            "body": "[E1] type: video ac: dev/01 justification: missing url/status/result on purpose",
+            "title": "Evidence",
+            "lineStart": 12,
+            "lineEnd": 14,
+            "checkboxRows": []
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "record it",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": true,
+            "status": "passed",
+            "body": "dev/01 status: passed Recorded. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "text": "Recorded.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [
+              "E1"
+            ],
+            "proofRefs": [],
+            "storedStatus": "passed",
+            "rawText": "dev/01 status: passed Recorded. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "commitHashes": [
+              "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [
+          {
+            "id": "E1",
+            "type": "video",
+            "fields": {
+              "type": "video",
+              "ac": "dev/01",
+              "justification": "missing url/status/result on purpose"
+            },
+            "ac": [
+              "dev/01"
+            ],
+            "lineStart": 12
+          }
+        ],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": true,
+          "status": "passed",
+          "body": "dev/01 status: passed Recorded. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+          "text": "Recorded.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [
+            "E1"
+          ],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-12-defective-video-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "record it",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 144,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 143,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 142,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 141,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 140,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 139,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 138,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 137,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 136,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 135,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 134,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 133,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-12",
+          "issueIdentifier": "SYN-12",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Defective video case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-13",
+      "title": "Template defects",
+      "summary": "preamble text before the title",
+      "body": "preamble text before the title\n\n# Template defects\n\n## Bogus Section\n\nnot a canonical heading\n\n## Sources\n\n[1] Request:\n> x\n\n## Sources\n\n[2] Duplicate sources section:\n> y",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Template defects",
+        "sections": {
+          "Sources": {
+            "body": "[2] Duplicate sources section:\n> y",
+            "title": "Sources",
+            "lineStart": 14,
+            "lineEnd": 17,
+            "checkboxRows": []
+          }
+        },
+        "sources": [
+          {
+            "number": "2",
+            "label": "Duplicate sources section",
+            "content": "y",
+            "lineStart": 14
+          }
+        ],
+        "acceptanceCriteria": [],
+        "evidence": [],
+        "proofs": []
+      },
+      "acceptanceCriteria": [],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_preamble_text",
+          "message": "Issue body has text before the title heading."
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Development Acceptance Criteria.",
+          "section": "Development Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Evidence.",
+          "section": "Evidence",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Bogus Section",
+            "Sources",
+            "Sources"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_unknown_section",
+          "message": "Issue body contains non-canonical section ## Bogus Section.",
+          "section": "Bogus Section",
+          "line": 5,
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_duplicate_section",
+          "message": "Issue body repeats section ## Sources.",
+          "section": "Sources",
+          "actual": [
+            "line 9",
+            "line 14"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Sources"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-13-template-defects",
+      "sources": [
+        {
+          "number": "2",
+          "connection": "raw",
+          "content": "y",
+          "meta": {
+            "speaker": "Duplicate sources section",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 156,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 155,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 154,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 153,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 152,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 151,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 150,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 149,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 148,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 147,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 146,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 145,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-13",
+          "issueIdentifier": "SYN-13",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Template defects",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-2",
+      "title": "Evidenced case",
+      "summary": "Sources",
+      "body": "# Evidenced case\n\n## Sources\n\n[1] Request:\n> render the widget\n\n## Development Acceptance Criteria\n\n- [x] dev/01 status: passed Rendered the widget. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1] [E2]\n\n## Evidence\n\n[E1] type: pr repo: synthetic/repo number: 1 state: open head: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ac: dev/01\n[E2] type: screenshot path: uploads/widget.png ac: dev/01 justification: shows the widget",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Evidenced case",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> render the widget",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [x] dev/01 status: passed Rendered the widget. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1] [E2]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 11,
+            "checkboxRows": [
+              {
+                "checked": true,
+                "body": "dev/01 status: passed Rendered the widget. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1] [E2]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          },
+          "Evidence": {
+            "body": "[E1] type: pr repo: synthetic/repo number: 1 state: open head: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ac: dev/01\n[E2] type: screenshot path: uploads/widget.png ac: dev/01 justification: shows the widget",
+            "title": "Evidence",
+            "lineStart": 12,
+            "lineEnd": 15,
+            "checkboxRows": []
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "render the widget",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": true,
+            "status": "passed",
+            "body": "dev/01 status: passed Rendered the widget. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1] [E2]",
+            "text": "Rendered the widget.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [
+              "E1",
+              "E2"
+            ],
+            "proofRefs": [],
+            "storedStatus": "passed",
+            "rawText": "dev/01 status: passed Rendered the widget. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1] [E2]",
+            "commitHashes": [
+              "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [
+          {
+            "id": "E1",
+            "type": "pr",
+            "fields": {
+              "type": "pr",
+              "repo": "synthetic/repo",
+              "number": "1",
+              "state": "open",
+              "head": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+              "ac": "dev/01"
+            },
+            "ac": [
+              "dev/01"
+            ],
+            "lineStart": 12
+          },
+          {
+            "id": "E2",
+            "type": "screenshot",
+            "fields": {
+              "type": "screenshot",
+              "path": "uploads/widget.png",
+              "ac": "dev/01",
+              "justification": "shows the widget"
+            },
+            "ac": [
+              "dev/01"
+            ],
+            "lineStart": 13
+          }
+        ],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": true,
+          "status": "passed",
+          "body": "dev/01 status: passed Rendered the widget. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1] [E2]",
+          "text": "Rendered the widget.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [
+            "E1",
+            "E2"
+          ],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-2-evidenced-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "render the widget",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 24,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 23,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 22,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 21,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 20,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 19,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 18,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 17,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 16,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 15,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 14,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 13,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-2",
+          "issueIdentifier": "SYN-2",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Evidenced case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-4",
+      "title": "Done case",
+      "summary": "Sources",
+      "body": "# Done case\n\n## Sources\n\n[1] Request:\n> done thing\n\n## Development Acceptance Criteria\n\n- [x] dev/01 status: passed Did it. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]\n\n## Evidence\n\n[E1] type: golden-pr repo: synthetic/repo number: 3 state: open head: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ac: dev/01",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Done case",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> done thing",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [x] dev/01 status: passed Did it. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 11,
+            "checkboxRows": [
+              {
+                "checked": true,
+                "body": "dev/01 status: passed Did it. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          },
+          "Evidence": {
+            "body": "[E1] type: golden-pr repo: synthetic/repo number: 3 state: open head: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ac: dev/01",
+            "title": "Evidence",
+            "lineStart": 12,
+            "lineEnd": 14,
+            "checkboxRows": []
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "done thing",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": true,
+            "status": "passed",
+            "body": "dev/01 status: passed Did it. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "text": "Did it.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [
+              "E1"
+            ],
+            "proofRefs": [],
+            "storedStatus": "passed",
+            "rawText": "dev/01 status: passed Did it. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+            "commitHashes": [
+              "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [
+          {
+            "id": "E1",
+            "type": "golden-pr",
+            "fields": {
+              "type": "golden-pr",
+              "repo": "synthetic/repo",
+              "number": "3",
+              "state": "open",
+              "head": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+              "ac": "dev/01"
+            },
+            "ac": [
+              "dev/01"
+            ],
+            "lineStart": 12
+          }
+        ],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": true,
+          "status": "passed",
+          "body": "dev/01 status: passed Did it. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [E1]",
+          "text": "Did it.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [
+            "E1"
+          ],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        }
+      ],
+      "state": "Done",
+      "status": "completed",
+      "stateType": "completed",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-4-done-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "done thing",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 48,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 47,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": "2026-01-01T00:00:00.000000Z",
+          "metadata": {}
+        },
+        {
+          "id": 46,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 45,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 44,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 43,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 42,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 41,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 40,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "completed",
+          "metadata": {}
+        },
+        {
+          "id": 39,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "Done",
+          "metadata": {}
+        },
+        {
+          "id": 38,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 37,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-4",
+          "issueIdentifier": "SYN-4",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Done case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "open",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-5",
+      "title": "Plain work",
+      "summary": "Development Acceptance Criteria",
+      "body": "# Plain work\n\n## Development Acceptance Criteria\n\n- [x] dev/01 status: passed Did plain work. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef.",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Plain work",
+        "sections": {
+          "Development Acceptance Criteria": {
+            "body": "- [x] dev/01 status: passed Did plain work. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef.",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 3,
+            "lineEnd": 5,
+            "checkboxRows": [
+              {
+                "checked": true,
+                "body": "dev/01 status: passed Did plain work. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef.",
+                "lineStart": 5,
+                "lineEnd": 5
+              }
+            ]
+          }
+        },
+        "sources": [],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": true,
+            "status": "passed",
+            "body": "dev/01 status: passed Did plain work. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef.",
+            "text": "Did plain work.",
+            "sourceRefs": [],
+            "evidenceRefs": [],
+            "proofRefs": [],
+            "storedStatus": "passed",
+            "rawText": "dev/01 status: passed Did plain work. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef.",
+            "commitHashes": [
+              "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 5
+          }
+        ],
+        "evidence": [],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": true,
+          "status": "passed",
+          "body": "dev/01 status: passed Did plain work. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef.",
+          "text": "Did plain work.",
+          "sourceRefs": [],
+          "evidenceRefs": [],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Sources.",
+          "section": "Sources",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Evidence.",
+          "section": "Evidence",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Development Acceptance Criteria"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:feature"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-5-plain-work",
+      "sources": [],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 60,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 59,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 58,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 57,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 56,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 55,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 54,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:feature"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 53,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 52,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 51,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 50,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 49,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-5",
+          "issueIdentifier": "SYN-5",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Plain work",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-6",
+      "title": "World-sourced case",
+      "summary": "Sources",
+      "body": "# World-sourced case\n\n## Sources\n\n[1] SYN-100 - via linear:\n> Render the synthetic widget.\n> Outlink: https://linear.app/synthetic/issue/SYN-100\n> Annotation: linear:annotation:SYN-100\n\n## Development Acceptance Criteria\n\n- [ ] dev/01 status: pending Render the synthetic widget. [1]",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "World-sourced case",
+        "sections": {
+          "Sources": {
+            "body": "[1] SYN-100 - via linear:\n> Render the synthetic widget.\n> Outlink: https://linear.app/synthetic/issue/SYN-100\n> Annotation: linear:annotation:SYN-100",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 9,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [ ] dev/01 status: pending Render the synthetic widget. [1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 10,
+            "lineEnd": 12,
+            "checkboxRows": [
+              {
+                "checked": false,
+                "body": "dev/01 status: pending Render the synthetic widget. [1]",
+                "lineStart": 12,
+                "lineEnd": 12
+              }
+            ]
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "SYN-100 - via linear",
+            "content": "Render the synthetic widget.\nOutlink: https://linear.app/synthetic/issue/SYN-100\nAnnotation: linear:annotation:SYN-100",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": false,
+            "status": "pending",
+            "body": "dev/01 status: pending Render the synthetic widget. [1]",
+            "text": "Render the synthetic widget.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [],
+            "proofRefs": [],
+            "storedStatus": "pending",
+            "rawText": "dev/01 status: pending Render the synthetic widget. [1]",
+            "commitHashes": [],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 12
+          }
+        ],
+        "evidence": [],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": false,
+          "status": "pending",
+          "body": "dev/01 status: pending Render the synthetic widget. [1]",
+          "text": "Render the synthetic widget.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Evidence.",
+          "section": "Evidence",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-6-world-sourced-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "linear",
+          "content": "Render the synthetic widget.\nOutlink: https://linear.app/synthetic/issue/SYN-100\nAnnotation: linear:annotation:SYN-100",
+          "meta": {
+            "speaker": "SYN-100",
+            "provider": "linear",
+            "outlink": "https://linear.app/synthetic/issue/SYN-100",
+            "annotation": "linear:annotation:SYN-100",
+            "annotationStatus": "linked",
+            "annotations": [
+              "linear:annotation:SYN-100"
+            ]
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 72,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 71,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 70,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 69,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 68,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 67,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 66,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 65,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 64,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 63,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 62,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 61,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-6",
+          "issueIdentifier": "SYN-6",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "World-sourced case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-7",
+      "title": "Proof case",
+      "summary": "Sources",
+      "body": "# Proof case\n\n## Sources\n\n[1] Request:\n> prove it\n\n## Development Acceptance Criteria\n\n- [x] dev/01 status: passed Proven. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [P1]\n\n## Evidence\n\n[P1] type: proof sha: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ac-version: dev/01=acv_synthetic justification: synthetic proof entry",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "parent-case",
+        "title": "Proof case",
+        "sections": {
+          "Sources": {
+            "body": "[1] Request:\n> prove it",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Development Acceptance Criteria": {
+            "body": "- [x] dev/01 status: passed Proven. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [P1]",
+            "title": "Development Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 11,
+            "checkboxRows": [
+              {
+                "checked": true,
+                "body": "dev/01 status: passed Proven. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [P1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          },
+          "Evidence": {
+            "body": "[P1] type: proof sha: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef ac-version: dev/01=acv_synthetic justification: synthetic proof entry",
+            "title": "Evidence",
+            "lineStart": 12,
+            "lineEnd": 14,
+            "checkboxRows": []
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Request",
+            "content": "prove it",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "dev/01",
+            "type": "development",
+            "checked": true,
+            "status": "passed",
+            "body": "dev/01 status: passed Proven. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [P1]",
+            "text": "Proven.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [],
+            "proofRefs": [
+              "P1"
+            ],
+            "storedStatus": "passed",
+            "rawText": "dev/01 status: passed Proven. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [P1]",
+            "commitHashes": [
+              "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+            ],
+            "storedAcVersion": "",
+            "visibility": "visible",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [],
+        "proofs": [
+          {
+            "id": "P1",
+            "type": "proof",
+            "fields": {
+              "type": "proof",
+              "sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+              "ac-version": "dev/01=acv_synthetic",
+              "justification": "synthetic proof entry"
+            },
+            "ac": [],
+            "evidence": [],
+            "lineStart": 12
+          }
+        ]
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "dev/01",
+          "type": "development",
+          "checked": true,
+          "status": "passed",
+          "body": "dev/01 status: passed Proven. Commit: deadbeefdeadbeefdeadbeefdeadbeefdeadbeef. [1] [P1]",
+          "text": "Proven.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [],
+          "proofRefs": [
+            "P1"
+          ]
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Peak Lite Case.",
+          "section": "Peak Lite Case",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Summary.",
+          "section": "Summary",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Case Manager Acceptance Criteria.",
+          "section": "Case Manager Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Repo Coverage.",
+          "section": "Repo Coverage",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## External Acceptance Criteria.",
+          "section": "External Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Client Channel.",
+          "section": "Client Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Operator Channel.",
+          "section": "Operator Channel",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Peak Lite Case",
+            "Summary",
+            "Case Manager Acceptance Criteria",
+            "Development Acceptance Criteria",
+            "Repo Coverage",
+            "External Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources",
+            "Evidence",
+            "Client Channel",
+            "Operator Channel"
+          ],
+          "actual": [
+            "Sources",
+            "Development Acceptance Criteria",
+            "Evidence"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-7-proof-case",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "prove it",
+          "meta": {
+            "speaker": "Request",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 84,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 83,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 82,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 81,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 80,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 79,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 78,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 77,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 76,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 75,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 74,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 73,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-7",
+          "issueIdentifier": "SYN-7",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Proof case",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "development",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    },
+    {
+      "identifier": "SYN-9",
+      "title": "Stakeholder subcase",
+      "summary": "Sources",
+      "body": "# Stakeholder subcase\n\n## Sources\n\n[1] Stakeholder:\n> a blocking decision\n\n## Case Manager Acceptance Criteria\n\n- [ ] case/01 status: pending Decide the blocker. [1]",
+      "validatedIssue": {
+        "preset": "peak",
+        "template": "stakeholder-subcase",
+        "title": "Stakeholder subcase",
+        "sections": {
+          "Sources": {
+            "body": "[1] Stakeholder:\n> a blocking decision",
+            "title": "Sources",
+            "lineStart": 3,
+            "lineEnd": 7,
+            "checkboxRows": []
+          },
+          "Case Manager Acceptance Criteria": {
+            "body": "- [ ] case/01 status: pending Decide the blocker. [1]",
+            "title": "Case Manager Acceptance Criteria",
+            "lineStart": 8,
+            "lineEnd": 10,
+            "checkboxRows": [
+              {
+                "checked": false,
+                "body": "case/01 status: pending Decide the blocker. [1]",
+                "lineStart": 10,
+                "lineEnd": 10
+              }
+            ]
+          }
+        },
+        "sources": [
+          {
+            "number": "1",
+            "label": "Stakeholder",
+            "content": "a blocking decision",
+            "lineStart": 3
+          }
+        ],
+        "acceptanceCriteria": [
+          {
+            "id": "case/01",
+            "type": "case-manager",
+            "checked": false,
+            "status": "pending",
+            "body": "case/01 status: pending Decide the blocker. [1]",
+            "text": "Decide the blocker.",
+            "sourceRefs": [
+              "1"
+            ],
+            "evidenceRefs": [],
+            "proofRefs": [],
+            "storedStatus": "pending",
+            "rawText": "case/01 status: pending Decide the blocker. [1]",
+            "commitHashes": [],
+            "storedAcVersion": "",
+            "lineStart": 10
+          }
+        ],
+        "evidence": [],
+        "proofs": []
+      },
+      "acceptanceCriteria": [
+        {
+          "id": "case/01",
+          "type": "case-manager",
+          "checked": false,
+          "status": "pending",
+          "body": "case/01 status: pending Decide the blocker. [1]",
+          "text": "Decide the blocker.",
+          "sourceRefs": [
+            "1"
+          ],
+          "evidenceRefs": [],
+          "proofRefs": []
+        }
+      ],
+      "markdownDiagnostics": [
+        {
+          "level": "error",
+          "code": "issue_markdown_missing_section",
+          "message": "Issue body is missing required section ## Procedural Acceptance Criteria.",
+          "section": "Procedural Acceptance Criteria",
+          "expected": [
+            "Case Manager Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources"
+          ],
+          "actual": [
+            "Sources",
+            "Case Manager Acceptance Criteria"
+          ]
+        },
+        {
+          "level": "error",
+          "code": "issue_markdown_section_order",
+          "message": "Issue body sections are not in canonical order.",
+          "expected": [
+            "Case Manager Acceptance Criteria",
+            "Procedural Acceptance Criteria",
+            "Sources"
+          ],
+          "actual": [
+            "Sources",
+            "Case Manager Acceptance Criteria"
+          ]
+        }
+      ],
+      "state": "In Progress",
+      "status": "open",
+      "stateType": "open",
+      "createdAt": "2026-01-01T00:00:00.000000Z",
+      "stateSince": "2026-01-01T00:00:00.000000Z",
+      "assignee": "",
+      "labels": [
+        "type:case",
+        "owner:stakeholder"
+      ],
+      "project": "",
+      "comments": [],
+      "branchName": "syn-9-stakeholder-subcase",
+      "sources": [
+        {
+          "number": "1",
+          "connection": "raw",
+          "content": "a blocking decision",
+          "meta": {
+            "speaker": "Stakeholder",
+            "provider": "raw"
+          }
+        }
+      ],
+      "linkedIssues": [],
+      "blocks": [],
+      "blockedBy": [],
+      "skillRuns": [],
+      "history": [
+        {
+          "id": 108,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "canceledAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 107,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "completedAt",
+          "oldValue": null,
+          "newValue": null,
+          "metadata": {}
+        },
+        {
+          "id": 106,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "priority",
+          "oldValue": null,
+          "newValue": 0,
+          "metadata": {}
+        },
+        {
+          "id": 105,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "parentId",
+          "oldValue": null,
+          "newValue": "SYN-8",
+          "metadata": {}
+        },
+        {
+          "id": 104,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "projectId",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 103,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "assignee",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 102,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "labels",
+          "oldValue": null,
+          "newValue": [
+            "type:case",
+            "owner:stakeholder"
+          ],
+          "metadata": {}
+        },
+        {
+          "id": 101,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "devProgress",
+          "oldValue": null,
+          "newValue": "",
+          "metadata": {}
+        },
+        {
+          "id": 100,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "stateType",
+          "oldValue": null,
+          "newValue": "open",
+          "metadata": {}
+        },
+        {
+          "id": 99,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "state",
+          "oldValue": null,
+          "newValue": "In Progress",
+          "metadata": {}
+        },
+        {
+          "id": 98,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "body",
+          "oldValue": "[body snapshot omitted]",
+          "newValue": "[body snapshot omitted]",
+          "metadata": {}
+        },
+        {
+          "id": 97,
+          "createdAt": "2026-01-01T00:00:00.000000Z",
+          "actor": "dev-user",
+          "action": "create",
+          "entityType": "issue",
+          "entityId": "SYN-9",
+          "issueIdentifier": "SYN-9",
+          "field": "title",
+          "oldValue": null,
+          "newValue": "Stakeholder subcase",
+          "metadata": {}
+        }
+      ],
+      "legacyExemption": null,
+      "parentCase": "SYN-8",
+      "unmappedCheckedAcCount": 0,
+      "threadRedirects": [],
+      "taskIssues": [],
+      "issueType": "stakeholder-decision",
+      "finalClosureState": "",
+      "stakeholderBlockers": []
+    }
+  ],
+  "noCaseSkillRuns": [],
+  "threadRedirects": [],
+  "messages": [
+    {
+      "message_id": "SYN-100",
+      "team": "",
+      "channel": "SYN-100",
+      "ts": "SYN-100",
+      "thread_ts": "SYN-100",
+      "user": "",
+      "user_name": "",
+      "text": "Render the synthetic widget.",
+      "datetime_utc": "2026-01-01T00:00:00.000000Z",
+      "metadata": {
+        "worldEventId": "linear:issue:SYN-100",
+        "service": "linear",
+        "eventType": "issue.created",
+        "origin": "connector",
+        "provider": "linear"
+      }
+    }
+  ],
+  "annotations": [
+    {
+      "message_id": "SYN-100",
+      "classification": "source",
+      "quote": "Render the synthetic widget.",
+      "target": "",
+      "annotator": "agent",
+      "source": "linear",
+      "world_annotation_id": "linear:annotation:SYN-100",
+      "world_event_id": "linear:issue:SYN-100",
+      "created_at": "2026-01-01T00:00:00.000000Z"
+    }
+  ],
+  "malformed": {
+    "messages": 0,
+    "annotations": 0
+  },
+  "uninspectedDevWork": [
+    {
+      "identifier": "SYN-3",
+      "labels": [
+        "type:case",
+        "owner:operator"
+      ],
+      "checkedDevAcCount": 1
+    }
+  ]
+}

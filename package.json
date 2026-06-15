@@ -1,0 +1,76 @@
+{
+  "name": "ztrack",
+  "version": "0.1.0",
+  "type": "module",
+  "files": [
+    "backend",
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./config": "./src/config.ts",
+    "./sdk": "./src/sdk.ts",
+    "./tracker-snapshot": "./src/snapshotContract.ts",
+    "./check": "./src/check.ts",
+    "./export": "./src/export.ts",
+    "./markdown-model": "./src/markdownModel.ts",
+    "./presets": "./src/presets.ts",
+    "./spine": "./src/spine/index.ts",
+    "./presets/peak": "./src/presets/peak.ts",
+    "./presets/speckit": "./src/presets/speckit.ts",
+    "./presets/openspec": "./src/presets/openspec.ts",
+    "./work-graph": "./src/workGraph.ts",
+    "./mutate": "./src/mutate.ts",
+    "./mcp": "./src/mcp.ts",
+    "./attest": "./src/attest.ts",
+    "./lint": "./src/lint.ts",
+    "./tx": "./src/tx.ts",
+    "./dsse": "./src/dsse.ts",
+    "./world-source-books": "./src/worldSourceBooks.ts",
+    "./world-annotations": "./src/worldAnnotations.ts"
+  },
+  "bin": {
+    "ztrack": "dist/cli.js"
+  },
+  "scripts": {
+    "build:node-cli": "node scripts/build-node-cli.mjs",
+    "cli": "bun run src/cli.ts",
+    "prepack": "npm run build:node-cli",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "mdast-util-to-markdown": "^2.1.2",
+    "micromark-extension-gfm": "^3.0.0",
+    "zod": "^4.4.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.20",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  },
+  "peerDependencies": {
+    "@volter/twin": "*"
+  },
+  "peerDependenciesMeta": {
+    "@volter/twin": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/volter-ai/ztrack.git"
+  },
+  "homepage": "https://ztrack.dev",
+  "bugs": {
+    "url": "https://github.com/volter-ai/ztrack/issues"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/volter-ai/ztrack/security/advisories/new
+    about: Please report vulnerabilities privately.
+  - name: Startup Pilot
+    url: https://ztrack.dev/startup-pilot.html
+    about: Apply for hosted setup and support.
+

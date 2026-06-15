@@ -1,0 +1,57 @@
+name: Bug report
+description: Report something that is broken or confusing in ztrack.
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a concrete failure. Please include the smallest command or repo shape that reproduces it.
+  - type: input
+    id: version
+    attributes:
+      label: ztrack version
+      placeholder: "ztrack --version output, npm package version, or commit SHA"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install path
+      options:
+        - npx ztrack
+        - npm/global install
+        - source checkout
+        - GitHub Action
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include command output, redacted as needed.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Run ...
+        2. Configure ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Environment and context
+      description: OS, Node/Python versions, tracker backend, Linear/Jira/GitHub setup, and any relevant config.
+

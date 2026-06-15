@@ -1,0 +1,207 @@
+// Structured mutations over issue bodies: agents stop rewriting whole bodies
+// and instead state intent — `tracker ac check dev/03 --commit <sha>
+// --evidence E1` — and the mutation engine performs a SCOPED edit: the body
+// is canonicalized (fmt), exactly one checkbox item changes, everything else
+// stays byte-identical. Field semantics mirror the exporter's derivation
+// (status field, Commit:, [EN]/[PN] refs, AC-Version stamp via
+// acVersionForItemBody) so the snapshot reflects the mutation faithfully.
+import { acVersionForItemBody } from './acVersion.ts';
+import { canonicalizeIssueMarkdown, parseMarkdownDocument } from './markdownModel.ts';
+import type { MarkdownCheckboxItem } from './markdownModel.ts';
+
+export type AcStatus = 'pending' | 'passed' | 'failed' | 'stale' | 'blocked' | 'descoped';
+
+export type AcMutation =
+  | { op: 'check'; acId: string; commit?: string; evidence?: string[]; proof?: string[]; anchor?: boolean }
+  | { op: 'uncheck'; acId: string }
+  | { op: 'set-status'; acId: string; status: AcStatus };
+
+export type AcMutationResult = {
+  body: string;
+  changed: boolean;
+  acId: string;
+  itemBefore: string;
+  itemAfter: string;
+};
+
+const AC_ID_IN_BODY_RE = /\b(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
+const STATUS_FIELD_RE = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
+const COMMIT_FIELD_RE = /\bcommit[:\s]+[0-9a-f]{7,40}\b\.?/gi;
+const AC_VERSION_RE = /\s*\bAC-Version:\s*acv_[0-9a-f]{8,64}\b\.?/gi;
+const EVIDENCE_REF_RE = /\s*\[E\d+\]/g;
+const PROOF_REF_RE = /\s*\[P\d+\]/g;
+
+function normalizedAcId(itemBody: string): string | null {
+  const match = AC_ID_IN_BODY_RE.exec(itemBody);
+  if (!match?.groups) return null;
+  const prefix = match.groups.prefix!.toLowerCase().replace(' ', '-');
+  const num = Number(match.groups.num);
+  return prefix.endsWith('/') ? `${prefix}${String(num).padStart(2, '0')}` : `AC-${String(num).padStart(2, '0')}`;
+}
+
+function tidy(text: string): string {
+  return text.replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+([.,;:])/g, '$1').replace(/[ \t]+$/gm, '').trim();
+}
+
+function setStatusField(itemBody: string, acId: string, status: AcStatus): string {
+  if (STATUS_FIELD_RE.test(itemBody)) return itemBody.replace(STATUS_FIELD_RE, `status: ${status}`);
+  // Insert directly after the AC id token (the conventional position).
+  const idMatch = AC_ID_IN_BODY_RE.exec(itemBody);
+  if (idMatch && idMatch.index !== undefined) {
+    const end = idMatch.index + idMatch[0].length;
+    return `${itemBody.slice(0, end)} status: ${status}${itemBody.slice(end)}`;
+  }
+  return `${acId} status: ${status} ${itemBody}`;
+}
+
+function checkItem(itemBody: string, acId: string, mutation: Extract<AcMutation, { op: 'check' }>): string {
+  let body = setStatusField(itemBody, acId, 'passed');
+  if (mutation.commit) {
+    if (/\bcommit[:\s]+[0-9a-f]{7,40}\b/i.test(body)) {
+      body = body.replace(/\b(commit[:\s]+)[0-9a-f]{7,40}\b/i, (_full, label: string) => `${label}${mutation.commit}`);
+    } else {
+      const tidied = tidy(body);
+      // No period after a trailing [N]/[EN] marker — matches corpus
+      // convention "desc. [1] Commit: <sha>."
+      body = `${tidied}${/[.!?\]]$/.test(tidied) ? '' : '.'} Commit: ${mutation.commit}.`;
+    }
+  }
+  for (const ref of mutation.evidence ?? []) {
+    if (!body.includes(`[${ref}]`)) body = `${body} [${ref}]`;
+  }
+  for (const ref of mutation.proof ?? []) {
+    if (!body.includes(`[${ref}]`)) body = `${body} [${ref}]`;
+  }
+  body = tidy(body);
+  if (mutation.anchor !== false) {
+    const stripped = tidy(body.replace(AC_VERSION_RE, ' '));
+    body = `${stripped} AC-Version: ${acVersionForItemBody(acId, stripped)}`;
+  }
+  return tidy(body);
+}
+
+function uncheckItem(itemBody: string, acId: string): string {
+  let body = itemBody.replace(COMMIT_FIELD_RE, ' ');
+  body = body.replace(AC_VERSION_RE, ' ');
+  body = body.replace(EVIDENCE_REF_RE, '');
+  body = body.replace(PROOF_REF_RE, '');
+  body = setStatusField(tidy(body), acId, 'pending');
+  return tidy(body);
+}
+
+export type EvidenceSpec = {
+  type: string;
+  ac?: string;
+  repo?: string;
+  number?: string;
+  head?: string;
+  state?: string;
+  path?: string;
+  url?: string;
+  // Content-addressed evidence ref (`sha256:<hex>`) — bytes live in the tracker
+  // blob store, so existence is checkout-independent. Preferred over `path` for
+  // screenshots/frames; `path` remains for back-compat.
+  blob?: string;
+  status?: string;
+  justification?: string;
+};
+
+export type EvidenceAddResult = { body: string; evidenceId: string };
+
+// Create a resolvable `[En]` entry in the `## Evidence` section (creating the
+// section if absent) and return its id. Agents then reference it from an AC
+// line via `ac check --evidence En` — that two-step split keeps entry creation
+// out of the AC-Version anchoring path. Field order matches the corpus grammar
+// `[En] type: <t> key: value ...` parsed by parseEvidenceSection.
+export function addEvidenceEntry(rawBody: string, spec: EvidenceSpec): EvidenceAddResult {
+  const canonical = canonicalizeIssueMarkdown(rawBody);
+  const existingNums = [...canonical.matchAll(/^\s*\[E(\d+)\]/gm)].map((match) => Number(match[1]));
+  const id = `E${(existingNums.length ? Math.max(...existingNums) : 0) + 1}`;
+
+  const fields: string[] = [`type: ${spec.type}`];
+  const push = (name: string, value?: string): void => { if (value) fields.push(`${name}: ${value}`); };
+  push('repo', spec.repo);
+  push('number', spec.number);
+  push('head', spec.head);
+  push('state', spec.state);
+  push('path', spec.path);
+  push('url', spec.url);
+  push('blob', spec.blob);
+  push('status', spec.status);
+  push('ac', spec.ac);
+  // justification may contain spaces; it is the last field (runs to EOL).
+  push('justification', spec.justification);
+  const entryLine = `[${id}] ${fields.join(' ')}`;
+
+  const lines = canonical.split('\n');
+  const evidenceHeadingIdx = lines.findIndex((line) => /^#{1,6}\s+Evidence\s*$/i.test(line));
+  if (evidenceHeadingIdx === -1) {
+    const trimmed = canonical.replace(/\n+$/, '');
+    return { body: canonicalizeIssueMarkdown(`${trimmed}\n\n## Evidence\n\n${entryLine}\n`), evidenceId: id };
+  }
+  // Insert after the last existing [E..] line in the section, else right after
+  // the heading. The section ends at the next heading or EOF.
+  let sectionEnd = lines.length;
+  for (let i = evidenceHeadingIdx + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s+/.test(lines[i]!)) { sectionEnd = i; break; }
+  }
+  let insertAt = evidenceHeadingIdx + 1;
+  for (let i = evidenceHeadingIdx + 1; i < sectionEnd; i++) {
+    if (/^\s*\[E\d+\]/.test(lines[i]!)) insertAt = i + 1;
+  }
+  lines.splice(insertAt, 0, entryLine);
+  return { body: canonicalizeIssueMarkdown(lines.join('\n')), evidenceId: id };
+}
+
+export function applyAcMutation(rawBody: string, mutation: AcMutation): AcMutationResult {
+  const canonical = canonicalizeIssueMarkdown(rawBody);
+  const document = parseMarkdownDocument(canonical);
+  const targetId = mutation.acId.toLowerCase();
+
+  // Ancestor sections contain their children's text, so the same physical
+  // row surfaces in multiple sections' checkboxItems — dedupe by position.
+  const seenLines = new Set<number>();
+  const matches: Array<{ item: MarkdownCheckboxItem }> = [];
+  for (const section of document.sections) {
+    for (const item of section.checkboxItems) {
+      if (normalizedAcId(item.body)?.toLowerCase() !== targetId) continue;
+      if (seenLines.has(item.lineStart)) continue;
+      seenLines.add(item.lineStart);
+      matches.push({ item });
+    }
+  }
+  if (matches.length === 0) throw new Error(`AC ${mutation.acId} not found in issue body`);
+  if (matches.length > 1) throw new Error(`AC ${mutation.acId} is ambiguous: ${matches.length} checkbox rows carry this id`);
+
+  const item = matches[0]!.item;
+  const lines = canonical.split('\n');
+  const bodyLines = item.body.split('\n');
+
+  let newChecked = item.checked;
+  let newBody = item.body;
+  if (mutation.op === 'check') {
+    newChecked = true;
+    newBody = checkItem(item.body, mutation.acId, mutation);
+  } else if (mutation.op === 'uncheck') {
+    newChecked = false;
+    newBody = uncheckItem(item.body, mutation.acId);
+  } else {
+    newChecked = mutation.status === 'passed' ? true : mutation.status === 'pending' ? false : item.checked;
+    newBody = tidy(setStatusField(item.body, mutation.acId, mutation.status));
+  }
+
+  const indentMatch = /^(\s*)-/.exec(lines[item.lineStart - 1] ?? '');
+  const indent = indentMatch?.[1] ?? '';
+  const newLines = newBody.split('\n');
+  const rendered = [`${indent}- [${newChecked ? 'x' : ' '}] ${newLines[0] ?? ''}`, ...newLines.slice(1)];
+  lines.splice(item.lineStart - 1, bodyLines.length, ...rendered);
+
+  const body = canonicalizeIssueMarkdown(lines.join('\n'));
+  return {
+    body,
+    changed: body !== canonical,
+    acId: mutation.acId,
+    itemBefore: item.body,
+    itemAfter: newBody,
+  };
+}

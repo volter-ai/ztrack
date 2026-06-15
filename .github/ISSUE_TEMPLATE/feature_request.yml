@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a capability or integration for ztrack.
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What verification or workflow problem should ztrack solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior you want, not just the implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - CLI
+        - CI / GitHub Action
+        - MCP / agent workflow
+        - Linear
+        - Jira
+        - GitHub Issues
+        - docs
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or examples
+      description: Links, command output, screenshots, or examples from your tracker workflow.
+
