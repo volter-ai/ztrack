@@ -58,7 +58,7 @@ export async function handleSnapshotCommand(args: string[]): Promise<boolean> {
         projectRoot,
         ...(issuesList ? { issues: issuesList } : {}),
         ...(categories ? { categories } : {}),
-        ...(profileFlag ? { profiles: profileFlag === 'none' ? [] : profileFlag.split(',').map((s) => s.trim()).filter(Boolean) as Array<'lifecycle' | 'delivery'> } : {}),
+        ...(profileFlag ? { profiles: profileFlag === 'none' ? [] : profileFlag.split(',').map((s) => s.trim()).filter(Boolean) } : {}),
         failOnWarning: flagArgs.includes('--fail-on-warning'),
         verifyCommits: flagArgs.includes('--verify-commits'),
       },

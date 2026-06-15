@@ -61,8 +61,8 @@ export interface TrackerConfig {
     check?: {
       /** Per-category depth: { sourced, code, visual, behavioral } 0-3 (0 = off). */
       categories?: Partial<Record<'sourced' | 'code' | 'visual' | 'behavioral' | 'wellformed', number>>;
-      /** Compatibility process profiles. */
-      profiles?: Array<'lifecycle' | 'delivery'>;
+      /** Process profiles a preset's rulebook can gate on (open set; preset-defined). */
+      profiles?: string[];
       /**
        * Per-type verification policy, evaluated in order, last match wins
        * (Renovate packageRules / ESLint overrides shape). Each rule selects
