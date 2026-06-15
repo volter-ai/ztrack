@@ -3,7 +3,7 @@ import { resolveTrackerValidation } from './presetRegistry.ts';
 
 export function commandName(): string {
   const invoked = (process.argv[1] || '').split(/[\\/]/).pop() || '';
-  return invoked && !['cli.js', 'cli.ts', 'node', 'bun'].includes(invoked) ? invoked : 'tracker';
+  return invoked && !['cli.js', 'cli.ts', 'node', 'bun'].includes(invoked) ? invoked : 'ztrack';
 }
 
 export function printHelp(): void {

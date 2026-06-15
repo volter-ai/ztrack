@@ -1,6 +1,6 @@
 # Tracker Preset Guide — build & review
 
-How to add or extend a preset in `packages/tracker` on the core contract, and how to adversarially review it. **An agent working on a preset should read this doc first.** Reference implementations (the bar): `src/presets/default.ts`, `src/presets/speckitCore.ts`, `src/presets/peakCore.ts` (+ loader `src/presets/peakLoad.ts`). Core engine: `src/core/engine.ts`.
+How to add or extend a preset in ztrack on the core contract, and how to adversarially review it. **An agent working on a preset should read this doc first.** Reference implementations (the bar): `src/presets/default.ts`, `src/presets/speckitCore.ts`. Core engine: `src/core/engine.ts`.
 
 Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core model](#2-core-model-enginets) · [3. Source the SDLC](#3-source-the-sdlc-faithfully) · [4. Build order](#4-build-order) · [5. Never](#5-never-anti-patterns) · [6. Review](#6-review)
 
@@ -11,7 +11,7 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 2. **mdast parse straight into the schema.** Document STRUCTURE (headings scope sections; list items / table rows / paragraphs are records; GFM checkboxes) comes from the AST. Regex ONLY to read field content from within a node's text. NEVER line-scan the raw doc/section to discover records or structure. A leading `---` YAML frontmatter block is allowed (metadata not in the body).
 3. **The parse target IS the schema.** `parse(string) -> candidate object`; `check()` runs `schema.safeParse`. No projection / `toIssues` / second model.
 4. **Pure rules.** `Rule.run = (root, ctx) => Finding[]`. No I/O, no filesystem/network, no global mutable state, no `Date.now()`/randomness, no mutation of `root`, no `throw`. Deterministic.
-5. **One impure edge: the loader.** Real data (git, twin world, issue files) enters only through a loader that builds `{markdown/bundle, Context}` — mirror `core/gitWorld.ts` and `presets/peakLoad.ts`. Parse and rules stay pure.
+5. **One impure edge: the loader.** Real data (git, twin world, issue files) enters only through a loader that reads the backend + builds `{markdown/bundle, Context}` — mirror `core/gitWorld.ts`. Parse and rules stay pure.
 6. **Preset shape:** `{ name, schema, parse, rules, primitives }`, registered in `core/registry.ts`.
 
 ## 2. Core model (engine.ts)
@@ -24,7 +24,7 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 > This is where presets go wrong. Derive from the REAL, authoritative source — never a dormant predecessor or memory. Capture as much of the real process as the artifacts formally encode. Verify, don't invent.
 
 - **Premade system (speckit / openspec / …):** `WebFetch` the upstream templates + skill/command definitions; install/inspect the real tool's output. Map its real artifacts to the schema. Do NOT inherit invented fields from an in-repo predecessor — confirm every field against the upstream template.
-- **Bespoke pre-existing (like peak):** the STANDARDS docs are authoritative (e.g. `ROADMAP/ISSUE/CODE/HUMAN-QA-STANDARDS.md`); read them ALL first. Use the legacy implementation only to enumerate completeness (rule codes); the standards win on semantics. Separate in-scope (single-issue/markdown) from a different provider layer (world/snapshot).
+- **Bespoke pre-existing process:** the team's written standards/process docs are authoritative; read them ALL first. Use any legacy implementation only to enumerate completeness (rule codes); the standards win on semantics. Separate in-scope (single-issue/markdown) from a different provider layer (world/snapshot).
 - **Brand-new (fresh repo):** elicit the process from the user and WRITE IT DOWN before coding — the ordered states, the AC type(s), what evidence each completion needs, the per-state entry gates, the roles/concurrency. Confirm before building.
 
 ## 4. Build order

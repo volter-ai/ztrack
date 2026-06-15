@@ -1,9 +1,9 @@
 # ztrack
 
 The verified task tracker for AI agents: a local SQLite-backed tracker whose
-tickets close on evidence, not prose. Agents file claims; `tracker check`
-exports a snapshot of the store (plus `@volter/world` source books) and runs
-the full rulebook — tickets that violate their gates fail the check.
+tickets close on evidence, not prose. Agents file claims; `ztrack check`
+exports a snapshot of the store (plus optional `@volter/twin` world source books)
+and runs the full rulebook — tickets that violate their gates fail the check.
 
 ## Quickstart
 
@@ -53,10 +53,11 @@ acceptance criteria, sources, scenarios, tasks, and evidence.
 - **`ztrack/markdown-model`**: the lenient issue-markdown parser.
 - **`ztrack/presets`**: raw markdown parser and validation preset
   interface.
-- **`ztrack/presets/peak`**: the Peak parser + Zod preset. In
-  internal-monorepo, treat this as the starter/template for repo-local Peak
-  validation boilerplate; the target runtime contract is editable files under
-  `.volter/tracker/validation/`, not a package preset selected on every run.
+- **`ztrack/presets/generic`** / **`ztrack/presets/default`**: the shipped generic
+  preset runtime (the day-one validation) and the conformant `default` core preset.
+  Treat these as the starter/template for a repo-local preset; the target runtime
+  contract is an editable file selected via `validation.entrypoint`, not a package
+  preset chosen on every run.
 - **`ztrack/presets/speckit`**: experimental Spec Kit file-set parser,
   native Zod model, and `ProjectGraph` projection; intended as boilerplate for
   repo-local installed validation files.
@@ -67,8 +68,8 @@ acceptance criteria, sources, scenarios, tasks, and evidence.
 
 - Requires Python 3 at runtime (`backend/tracker-local.py`, the storage
   backend spawned by the SDK) and `bun`.
-- Install `@volter/world` alongside (declared as an optional peer).
-- Config at `<project>/.volter/tracker-config.json` (`tracker init` scaffolds
+- Install `@volter/twin` alongside for world integration (declared as an optional peer).
+- Config at `<project>/.volter/tracker-config.json` (`ztrack init` scaffolds
   it; directory name overridable via `VOLTER_STATE_DIR`). Repo-local validation
   is selected with `validation.entrypoint`; compatibility configs may still use
   `organization.validationPreset` while installed validation migration is in

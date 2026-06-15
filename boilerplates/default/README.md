@@ -4,8 +4,8 @@ The starter bundle of **docs and agents** for the `default` SDLC — what you dr
 into a repo to run that SDLC, on top of the tracker core.
 
 This is **not** the core system. The core is the parse + Zod rules in
-`packages/tracker/src/core/` (the `engine`/`check` entry point) plus the
-`default` preset in `packages/tracker/src/presets/default.ts` (its `parse` /
+`src/core/` (the `engine`/`check` entry point) plus the
+`default` preset in `src/presets/default.ts` (its `parse` /
 `schema` / `rules`). This boilerplate only *consumes* the core: its agents read
 the validated export and call the validator.
 

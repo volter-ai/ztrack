@@ -3,24 +3,19 @@
 // affordance resolve a preset by name through this map; they never import a
 // specific preset directly.
 //
-// Core-contract native: default, spec, speckit (speckitCore), peak (peakCore). The
-// new conformant peak lives beside the sprawling legacy peak.ts (which stays on its
-// own contract and is NOT registered here). The transitional spine contract and its
-// spine-only presets (the old speckit/openspec) were retired — see SPINE-HARVEST.md;
-// openspec was unused and dropped rather than re-ported.
+// Core-contract native presets: default, spec, speckit (speckitCore). Add a new
+// SDLC by writing a Preset against the `engine.ts` contract and registering it here.
 
 import type { CoreRoot, Preset } from './engine.ts';
 import { DefaultPreset } from '../presets/default.ts';
 import { SpecPreset } from '../presets/spec.ts';
 import { SpeckitPreset } from '../presets/speckitCore.ts';
-import { PeakPreset } from '../presets/peakCore.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const PRESETS: Record<string, Preset<any>> = {
   [DefaultPreset.name]: DefaultPreset,
   [SpecPreset.name]: SpecPreset,
   [SpeckitPreset.name]: SpeckitPreset,
-  [PeakPreset.name]: PeakPreset,
 };
 
 export function resolvePreset(name: string): Preset<CoreRoot> {

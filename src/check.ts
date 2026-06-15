@@ -35,10 +35,9 @@ export function checkTrackerSnapshot(
   const config = options.config ?? loadTrackerConfig(projectRoot);
   const preset = resolveTrackerValidation(config, projectRoot);
 
-  // Legacy peakSnapshotCheck is the authoritative gate. (The transitional `spine`
-  // engine — a faithful re-expression of this same rulebook — has been retired; its
-  // lessons are captured in SPINE-HARVEST.md. The next gate is peakCore, wired
-  // separately when the flip lands.)
+  // Validate the snapshot with the active preset's rulebook. The preset is resolved
+  // by name (or by a repo-local `validation.entrypoint`), so the rules are pluggable
+  // per SDLC; this dispatcher only requires that the preset implement snapshot.checkSnapshot.
   const checkSnapshot = preset.snapshot?.checkSnapshot;
   if (!checkSnapshot) throw new Error('Active tracker preset does not implement snapshot.checkSnapshot');
   return checkSnapshot(rawSnapshot, options) as TrackerCheckReport;

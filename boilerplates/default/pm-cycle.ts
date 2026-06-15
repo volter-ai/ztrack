@@ -9,7 +9,8 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { check } from '../../src/core/engine.ts';
 import { DefaultPreset } from '../../src/presets/default.ts';
 import { gitWorld, prBranchesFrom } from '../../src/core/gitWorld.ts';
@@ -19,11 +20,13 @@ const flag = (n: string, d?: string) => { const i = args.indexOf(`--${n}`); retu
 const REPO = flag('repo', process.cwd())!;
 const URL = flag('url', 'http://127.0.0.1:7402')!;
 const MAX_MS = Number(flag('max-min', '15')) * 60_000;
-const TF_CLI = '/Users/dev-user/volter/termfleet/src/cli.ts';
-const TRACKER = '/path/to/monorepo/packages/tracker';
-const BOILER = `${TRACKER}/boilerplates/default`;
-const VALIDATOR = `${TRACKER}/src/core/cli.ts`;
-const MUTATE = `${TRACKER}/src/core/mutate.ts`;
+// Path to your agent launcher CLI (e.g. Termfleet). Override with TERMFLEET_CLI.
+const TF_CLI = process.env.TERMFLEET_CLI ?? 'termfleet';
+// This boilerplate lives at <ztrack>/boilerplates/default/; resolve the package root from it.
+const ZTRACK = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const BOILER = join(ZTRACK, 'boilerplates', 'default');
+const VALIDATOR = join(ZTRACK, 'src', 'core', 'cli.ts');
+const MUTATE = join(ZTRACK, 'src', 'core', 'mutate.ts');
 const TRACKER_DIR = join(REPO, 'tracker');
 
 function log(m: string) { console.log(`[pm ${new Date().toISOString().slice(11, 19)}] ${m}`); }

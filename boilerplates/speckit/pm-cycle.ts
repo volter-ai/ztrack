@@ -26,7 +26,8 @@ const flag = (n: string, d?: string) => { const i = args.indexOf(`--${n}`); retu
 const REPO = flag('repo', process.cwd())!;
 const URL = flag('url', 'http://127.0.0.1:7402')!;
 const MAX_MS = Number(flag('max-min', '20')) * 60_000;
-const TF_CLI = '/Users/dev-user/volter/termfleet/src/cli.ts';
+// Path to your agent launcher CLI (e.g. Termfleet). Override with TERMFLEET_CLI.
+const TF_CLI = process.env.TERMFLEET_CLI ?? 'termfleet';
 
 function log(m: string) { console.log(`[speckit-pm ${new Date().toISOString().slice(11, 19)}] ${m}`); }
 
