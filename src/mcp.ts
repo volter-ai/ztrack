@@ -15,7 +15,7 @@ type JsonRpcRequest = { jsonrpc: '2.0'; id?: number | string | null; method: str
 const TOOLS = [
   {
     name: 'tracker_init',
-    description: 'Initialize the tracker in the current project (writes .volter/tracker-config.json with the Peak validation preset, day-one check defaults, and a managed .gitignore). Call this first in a fresh repo — the server starts without a config so an MCP-only agent can bootstrap. Idempotent.',
+    description: 'Initialize ztrack in the current project (writes .volter/tracker-config.json with the generic validation preset, day-one check defaults, and a managed .gitignore). Call this first in a fresh repo — the server starts without a config so an MCP-only agent can bootstrap. Idempotent.',
     inputSchema: { type: 'object', properties: { team: { type: 'string', description: 'team key, e.g. APP (default LOCAL)' } } },
   },
   {

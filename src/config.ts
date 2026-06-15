@@ -47,7 +47,7 @@ export function initTrackerProject(root: string, teamKey = 'LOCAL'): { configPat
     },
   }, null, 2)}\n`);
   const gitignorePath = resolve(root, '.gitignore');
-  const ignoreMarker = '# Volter Tracker (added by tracker init)';
+  const ignoreMarker = '# ztrack (added by ztrack init)';
   const ignoreBlock = [ignoreMarker, '.volter/tracker/', 'node_modules/', 'bun.lock', ''].join('\n');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
   if (!existingIgnore.includes(ignoreMarker)) {

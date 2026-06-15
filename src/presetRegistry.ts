@@ -6,7 +6,7 @@ import type { TrackerPresetRuntime } from './presets.ts';
 import { GENERIC_PRESET } from './presets/genericRuntime.ts';
 
 export function resolveTrackerPreset(value: string | undefined): TrackerPresetRuntime {
-  if (!value || value === 'generic' || value === 'default' || value === 'peak' || value === 'ztrack/presets/generic') return GENERIC_PRESET;
+  if (!value || value === 'generic' || value === 'default' || value === 'ztrack/presets/generic') return GENERIC_PRESET;
   throw new Error(`Unsupported tracker validation preset '${value}'. Available presets: generic`);
 }
 

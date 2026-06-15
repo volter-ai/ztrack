@@ -5,43 +5,25 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
+        get: () => mod[key],
         enumerable: true
       });
-  if (canCache)
-    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: __exportSetter.bind(all, name)
+      set: (newValue) => all[name] = () => newValue
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -712,7 +694,7 @@ function initTrackerProject2(root, teamKey = "LOCAL") {
   }, null, 2)}
 `);
   const gitignorePath = resolve3(root, ".gitignore");
-  const ignoreMarker = "# Volter Tracker (added by tracker init)";
+  const ignoreMarker = "# ztrack (added by ztrack init)";
   const ignoreBlock = [ignoreMarker, ".volter/tracker/", "node_modules/", "bun.lock", ""].join(`
 `);
   const existingIgnore = existsSync4(gitignorePath) ? readFileSync3(gitignorePath, "utf8") : "";
@@ -799,7 +781,7 @@ function initTrackerProject(root, teamKey = "LOCAL") {
   }, null, 2)}
 `);
   const gitignorePath = resolve(root, ".gitignore");
-  const ignoreMarker = "# Volter Tracker (added by tracker init)";
+  const ignoreMarker = "# ztrack (added by ztrack init)";
   const ignoreBlock = [ignoreMarker, ".volter/tracker/", "node_modules/", "bun.lock", ""].join(`
 `);
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
@@ -15573,7 +15555,7 @@ var GENERIC_PRESET = {
 
 // src/presetRegistry.ts
 function resolveTrackerPreset(value) {
-  if (!value || value === "generic" || value === "default" || value === "peak" || value === "ztrack/presets/generic")
+  if (!value || value === "generic" || value === "default" || value === "ztrack/presets/generic")
     return GENERIC_PRESET;
   throw new Error(`Unsupported tracker validation preset '${value}'. Available presets: generic`);
 }
@@ -26118,7 +26100,7 @@ function exportTrackerSnapshot2(options = {}) {
 var TOOLS = [
   {
     name: "tracker_init",
-    description: "Initialize the tracker in the current project (writes .volter/tracker-config.json with the Peak validation preset, day-one check defaults, and a managed .gitignore). Call this first in a fresh repo — the server starts without a config so an MCP-only agent can bootstrap. Idempotent.",
+    description: "Initialize ztrack in the current project (writes .volter/tracker-config.json with the generic validation preset, day-one check defaults, and a managed .gitignore). Call this first in a fresh repo — the server starts without a config so an MCP-only agent can bootstrap. Idempotent.",
     inputSchema: { type: "object", properties: { team: { type: "string", description: "team key, e.g. APP (default LOCAL)" } } }
   },
   {
