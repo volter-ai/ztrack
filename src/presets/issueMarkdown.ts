@@ -83,7 +83,12 @@ export type ParsedIssueMarkdown = {
   };
 };
 
-export type IssueMarkdownTemplate = 'parent-case' | 'stakeholder-subcase';
+// 'generic' is the default: a permissive grammar with NO required section canon —
+// fmt only normalizes whitespace/heading style and lint only checks the title, so a
+// project's own section names are never flagged. 'parent-case'/'stakeholder-subcase'
+// are example templates that DO enforce a fixed section set (a richer SDLC opts in by
+// passing the template, or a custom GrammarPack / section order).
+export type IssueMarkdownTemplate = 'generic' | 'parent-case' | 'stakeholder-subcase';
 
 export type CanonicalIssueMarkdown = {
   title?: string;
@@ -247,6 +252,7 @@ export function parseMarkdownDocument(text: string): MarkdownDocument {
 }
 
 function canonicalSectionOrder(template: IssueMarkdownTemplate): CanonicalSectionTitle[] {
+  if (template === 'generic') return []; // no required/canonical section set
   return template === 'stakeholder-subcase' ? STAKEHOLDER_SUBCASE_SECTION_ORDER : PARENT_CASE_SECTION_ORDER;
 }
 
@@ -371,6 +377,10 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMar
     });
   }
 
+  // Generic grammar declares no section canon: stop after the title/preamble checks
+  // so a project's own section names are never flagged as missing/unknown/out-of-order.
+  if (canonicalSectionOrder(template).length === 0) return diagnostics;
+
   const expected = canonicalSectionOrder(template);
   const expectedNormalized = new Set(expected.map(normalizeTitle));
   const actualSections = childSectionsForTemplate(document);
@@ -444,7 +454,7 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMar
   return diagnostics;
 }
 
-export function parseIssueMarkdown(text: string, template: IssueMarkdownTemplate = 'parent-case', pack: GrammarPack = MARKDOWN_AC_PACK): ParsedIssueMarkdown {
+export function parseIssueMarkdown(text: string, template: IssueMarkdownTemplate = 'generic', pack: GrammarPack = MARKDOWN_AC_PACK): ParsedIssueMarkdown {
   const document = parseMarkdownDocument(text);
   const slot = (name: GrammarSlot): MarkdownSection | null => slotSection(document, name, pack);
   return {
@@ -467,7 +477,7 @@ export function parseIssueMarkdown(text: string, template: IssueMarkdownTemplate
   };
 }
 
-export function renderCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, template: IssueMarkdownTemplate = 'parent-case'): string {
+export function renderCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, template: IssueMarkdownTemplate = 'generic'): string {
   const parts: string[] = [];
   if (issue.title) parts.push(`# ${issue.title.trim()}`);
   for (const title of canonicalSectionOrder(template)) {
@@ -538,7 +548,7 @@ function canonicalizeBlockText(text: string): string {
 
 type FmtBlock = { headingLevel: number; title: string; content: string[] };
 
-export function canonicalizeIssueMarkdown(text: string, template: IssueMarkdownTemplate = 'parent-case'): string {
+export function canonicalizeIssueMarkdown(text: string, template: IssueMarkdownTemplate = 'generic'): string {
   const lines = text.split('\n');
   // Real ATX heading lines per mdast (CommonMark): a `#` inside a fenced code
   // block is NOT a heading, so fmt must not split a block there (it would

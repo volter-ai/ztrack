@@ -8,7 +8,10 @@ import {
   type GrammarPack,
 } from './issueMarkdown.ts';
 
-const fmt = (text: string) => canonicalizeIssueMarkdown(text);
+// These suites exercise the 'parent-case' example grammar (required section canon,
+// reordering, respelling). The default grammar is 'generic' (permissive) — see the
+// dedicated "generic default grammar" suite below.
+const fmt = (text: string) => canonicalizeIssueMarkdown(text, 'parent-case');
 
 describe('fmt: mdast-gated heading detection (render-side robustness)', () => {
   test('a "##" inside a fenced code block is NOT split out as a section', () => {
@@ -59,6 +62,29 @@ describe('pluggable grammar (roadmap G5)', () => {
   });
 });
 
+describe('generic default grammar (the OSS default — permissive)', () => {
+  test('lint/diagnostics do not require or reject any project-specific sections', () => {
+    const body = '# Ticket\n\n## Context\n\nWhy.\n\n## Done When\n\n- [ ] Ship it.\n\n## Notes\n\nanything\n';
+    const parsed = parseIssueMarkdown(body); // default template = 'generic'
+    expect(parsed.diagnostics).toEqual([]); // no missing/unknown/order findings
+  });
+
+  test('diagnostics still flag a missing title and body preamble', () => {
+    const noTitle = parseIssueMarkdown('## Context\n\ntext\n');
+    expect(noTitle.diagnostics.some((d) => d.code === 'issue_markdown_missing_title')).toBe(true);
+  });
+
+  test('fmt normalizes whitespace/markers but does NOT reorder a project\'s sections', () => {
+    const out = canonicalizeIssueMarkdown('# T\n## Zebra\nz\n## Apple\na\n## Summary\ns\n'); // generic default
+    // original order preserved (no canonical reordering)
+    expect([out.indexOf('## Zebra'), out.indexOf('## Apple'), out.indexOf('## Summary')]
+      .every((v) => v >= 0)).toBe(true);
+    expect(out.indexOf('## Zebra')).toBeLessThan(out.indexOf('## Apple'));
+    expect(out.indexOf('## Apple')).toBeLessThan(out.indexOf('## Summary'));
+    expect(canonicalizeIssueMarkdown(out)).toBe(out); // idempotent
+  });
+});
+
 describe('canonicalizeIssueMarkdown', () => {
   test('idempotent on messy real-world shapes', () => {
     const messy = [
@@ -83,7 +109,7 @@ describe('canonicalizeIssueMarkdown', () => {
         'Development Acceptance Criteria': '- [x] dev/01 status: passed Done. [1]',
         'Sources': '[1] Someone:\n> quote',
       },
-    });
+    }, 'parent-case');
     expect(fmt(rendered)).toBe(rendered);
   });
 
