@@ -5,6 +5,7 @@ import { optionValue } from './cliArgs.ts';
 import { printResourceHelp } from './cliHelp.ts';
 import { projectRootFrom } from './config.ts';
 import { exportTrackerSnapshot } from './export.ts';
+import { renderCheckReport } from './cliStyle.ts';
 
 async function writeOutput(text: string, outPath: string): Promise<void> {
   if (!outPath) {
@@ -68,16 +69,15 @@ export async function handleSnapshotCommand(args: string[]): Promise<boolean> {
   if (flagArgs.includes('--json')) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
-    process.stdout.write(`${JSON.stringify(report.summary, null, 2)}\n`);
     const shown = report.findings
       .filter((item) => !flagArgs.includes('--errors-only') || item.level === 'error')
       .slice()
       .sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1));
     const maxFindings = Number(optionValue(flagArgs, '--max-findings') || '120');
-    for (const item of shown.slice(0, maxFindings)) {
-      process.stdout.write(`${item.level.toUpperCase()} ${item.code}:${item.issue ? ` issue=${item.issue}` : ''} ${item.message}\n`);
-    }
-    if (shown.length > maxFindings) process.stdout.write(`... ${shown.length - maxFindings} more\n`);
+    process.stdout.write(renderCheckReport(
+      { ...report, findings: shown },
+      { errorsOnly: flagArgs.includes('--errors-only'), maxFindings },
+    ));
   }
   process.exitCode = report.valid ? 0 : 1;
   return true;

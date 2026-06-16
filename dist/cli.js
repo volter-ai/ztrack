@@ -5,25 +5,43 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+function __accessProp(key) {
+  return this[key];
+}
+var __toESMCache_node;
+var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
+  var canCache = mod != null && typeof mod === "object";
+  if (canCache) {
+    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
+    var cached = cache.get(mod);
+    if (cached)
+      return cached;
+  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: () => mod[key],
+        get: __accessProp.bind(mod, key),
         enumerable: true
       });
+  if (canCache)
+    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
+var __returnValue = (v) => v;
+function __exportSetter(name, newValue) {
+  this[name] = __returnValue.bind(null, newValue);
+}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: (newValue) => all[name] = () => newValue
+      set: __exportSetter.bind(all, name)
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -24519,32 +24537,6 @@ function gfm(options) {
 // src/presets/issueMarkdown.ts
 var HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 var CHECKBOX_RE2 = /^(\s*)-\s+\[([ xX])\]\s+(.+)$/;
-var PARENT_CASE_SECTION_ORDER = [
-  "Peak Lite Case",
-  "Summary",
-  "Case Manager Acceptance Criteria",
-  "Development Acceptance Criteria",
-  "Repo Coverage",
-  "External Acceptance Criteria",
-  "Procedural Acceptance Criteria",
-  "Sources",
-  "Evidence",
-  "Client Channel",
-  "Operator Channel"
-];
-var STAKEHOLDER_SUBCASE_SECTION_ORDER = [
-  "Case Manager Acceptance Criteria",
-  "Procedural Acceptance Criteria",
-  "Sources"
-];
-var CANONICAL_SECTION_TITLES = new Set(PARENT_CASE_SECTION_ORDER.map(normalizeTitle));
-var LEGACY_SECTION_ALIASES = new Map([
-  ["acceptance criteria", "Development Acceptance Criteria"],
-  ["developer acceptance criteria", "Development Acceptance Criteria"],
-  ["implementation acceptance criteria", "Development Acceptance Criteria"],
-  ["non-development acceptance criteria", "Case Manager Acceptance Criteria"],
-  ["source", "Sources"]
-]);
 function normalizeTitle(title) {
   return title.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -24643,33 +24635,20 @@ function parseMarkdownDocument(text4) {
 `)
   };
 }
-function canonicalSectionOrder(template) {
-  if (template === "generic")
-    return [];
-  return template === "stakeholder-subcase" ? STAKEHOLDER_SUBCASE_SECTION_ORDER : PARENT_CASE_SECTION_ORDER;
-}
-var SLOT_CANONICAL_TITLE = {
-  peakLiteCase: "Peak Lite Case",
-  summary: "Summary",
-  caseManagerAcceptanceCriteria: "Case Manager Acceptance Criteria",
-  developmentAcceptanceCriteria: "Development Acceptance Criteria",
-  repoCoverage: "Repo Coverage",
-  externalAcceptanceCriteria: "External Acceptance Criteria",
-  proceduralAcceptanceCriteria: "Procedural Acceptance Criteria",
-  sources: "Sources",
-  evidence: "Evidence",
-  clientChannel: "Client Channel",
-  operatorChannel: "Operator Channel"
-};
 var MARKDOWN_AC_PACK = {
   name: "markdown-ac",
-  slotTitles: Object.fromEntries(Object.keys(SLOT_CANONICAL_TITLE).map((slot) => [slot, [SLOT_CANONICAL_TITLE[slot]]]))
+  slotTitles: {
+    summary: ["Summary"],
+    acceptanceCriteria: ["Acceptance Criteria"],
+    sources: ["Sources"],
+    evidence: ["Evidence"]
+  }
 };
 var GITHUB_FLAVORED_PACK = {
   name: "github-flavored",
   slotTitles: {
     ...MARKDOWN_AC_PACK.slotTitles,
-    developmentAcceptanceCriteria: ["Development Acceptance Criteria", "Acceptance Criteria", "Done When", "Definition of Done", "Tasks"],
+    acceptanceCriteria: ["Acceptance Criteria", "Done When", "Definition of Done", "Tasks"],
     sources: ["Sources", "Context", "Background", "Motivation"],
     evidence: ["Evidence", "Verification", "Testing"]
   }
@@ -24693,7 +24672,7 @@ function childSectionsForTemplate(document4) {
   const titleIndex = document4.sections.indexOf(titleSection);
   return document4.sections.filter((section) => section.parentIndex === titleIndex && section.level === 2);
 }
-function issueMarkdownDiagnostics(document4, template) {
+function issueMarkdownDiagnostics(document4, sectionOrder) {
   const diagnostics = [];
   const h1Sections = document4.sections.filter((section) => section.level === 1 && section.parentIndex === null);
   if (document4.rawPreamble?.trim()) {
@@ -24717,10 +24696,11 @@ function issueMarkdownDiagnostics(document4, template) {
       actual: h1Sections.map((section) => section.title)
     });
   }
-  if (canonicalSectionOrder(template).length === 0)
+  if (sectionOrder.length === 0)
     return diagnostics;
-  const expected = canonicalSectionOrder(template);
+  const expected = sectionOrder;
   const expectedNormalized = new Set(expected.map(normalizeTitle));
+  const canonicalTitles = new Set(expected.map(normalizeTitle));
   const actualSections = childSectionsForTemplate(document4);
   const actualCanonicalTitles = actualSections.filter((section) => expectedNormalized.has(section.normalizedTitle)).map((section) => section.title);
   const actualNormalized = actualSections.map((section) => section.normalizedTitle);
@@ -24731,31 +24711,20 @@ function issueMarkdownDiagnostics(document4, template) {
         code: "issue_markdown_missing_section",
         message: `Issue body is missing required section ## ${expectedTitle}.`,
         section: expectedTitle,
-        expected,
+        expected: [...expected],
         actual: actualSections.map((section) => section.title)
       });
     }
   }
   for (const section of actualSections) {
-    const aliasTarget = LEGACY_SECTION_ALIASES.get(section.normalizedTitle);
-    if (aliasTarget) {
-      diagnostics.push({
-        level: "error",
-        code: "issue_markdown_legacy_section_alias",
-        message: `Issue body uses legacy section ## ${section.title}; use ## ${aliasTarget}.`,
-        section: section.title,
-        line: section.lineStart
-      });
-      continue;
-    }
-    if (!CANONICAL_SECTION_TITLES.has(section.normalizedTitle)) {
+    if (!canonicalTitles.has(section.normalizedTitle)) {
       diagnostics.push({
         level: "error",
         code: "issue_markdown_unknown_section",
         message: `Issue body contains non-canonical section ## ${section.title}.`,
         section: section.title,
         line: section.lineStart,
-        expected
+        expected: [...expected]
       });
     }
   }
@@ -24779,35 +24748,21 @@ function issueMarkdownDiagnostics(document4, template) {
       level: "error",
       code: "issue_markdown_section_order",
       message: "Issue body sections are not in canonical order.",
-      expected,
+      expected: [...expected],
       actual: actualCanonicalTitles
     });
   }
   return diagnostics;
 }
-function parseIssueMarkdown(text4, template = "generic", pack = MARKDOWN_AC_PACK) {
+function parseIssueMarkdown(text4, sectionOrder = [], pack = MARKDOWN_AC_PACK) {
   const document4 = parseMarkdownDocument(text4);
-  const slot = (name) => slotSection(document4, name, pack);
+  const sections = Object.fromEntries(Object.keys(pack.slotTitles).map((name) => [name, slotSection(document4, name, pack)]));
   return {
     document: document4,
-    template,
-    diagnostics: issueMarkdownDiagnostics(document4, template),
-    sections: {
-      peakLiteCase: slot("peakLiteCase"),
-      summary: slot("summary"),
-      caseManagerAcceptanceCriteria: slot("caseManagerAcceptanceCriteria"),
-      developmentAcceptanceCriteria: slot("developmentAcceptanceCriteria"),
-      repoCoverage: slot("repoCoverage"),
-      externalAcceptanceCriteria: slot("externalAcceptanceCriteria"),
-      proceduralAcceptanceCriteria: slot("proceduralAcceptanceCriteria"),
-      sources: slot("sources"),
-      evidence: slot("evidence"),
-      clientChannel: slot("clientChannel"),
-      operatorChannel: slot("operatorChannel")
-    }
+    diagnostics: issueMarkdownDiagnostics(document4, sectionOrder),
+    sections
   };
 }
-var CANONICAL_SPELLING = new Map(PARENT_CASE_SECTION_ORDER.map((title) => [normalizeTitle(title), title]));
 function canonicalizeBlockText(text4) {
   const lines = text4.split(`
 `).map((line) => {
@@ -24832,7 +24787,8 @@ function canonicalizeBlockText(text4) {
   return collapsed.join(`
 `);
 }
-function canonicalizeIssueMarkdown(text4, template = "generic") {
+function canonicalizeIssueMarkdown(text4, sectionOrder = []) {
+  const canonicalSpelling = new Map(sectionOrder.map((title) => [normalizeTitle(title), title]));
   const lines = text4.split(`
 `);
   const tree = fromMarkdown(text4, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
@@ -24865,7 +24821,7 @@ function canonicalizeIssueMarkdown(text4, template = "generic") {
     const ownContent = canonicalizeBlockText(block.content.join(`
 `));
     if (block.headingLevel <= 2 || !unit) {
-      const spelled = block.headingLevel === 2 ? CANONICAL_SPELLING.get(normalizeTitle(block.title)) : undefined;
+      const spelled = block.headingLevel === 2 ? canonicalSpelling.get(normalizeTitle(block.title)) : undefined;
       unit = {
         kind: block.headingLevel === 1 ? "title" : "section",
         title: spelled ?? block.title,
@@ -24883,7 +24839,7 @@ ${ownContent}` : heading);
   const titleUnit = units.find((candidate) => candidate.kind === "title") ?? null;
   const sectionUnits = units.filter((candidate) => candidate !== titleUnit && candidate.level === 2);
   const otherUnits = units.filter((candidate) => candidate !== titleUnit && candidate.level !== 2);
-  const order = canonicalSectionOrder(template);
+  const order = sectionOrder;
   const orderIndex = new Map(order.map((title, index2) => [normalizeTitle(title), index2]));
   const sorted = sectionUnits.map((candidate, index2) => ({ candidate, index: index2 })).sort((a, b) => {
     const rankA = orderIndex.get(normalizeTitle(a.candidate.title)) ?? order.length + a.index;
@@ -26898,6 +26854,105 @@ ${line}
   return false;
 }
 
+// src/cliStyle.ts
+var wantsColor = (stream) => {
+  if (process.env.NO_COLOR)
+    return false;
+  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0")
+    return true;
+  return Boolean(stream.isTTY);
+};
+var color2 = (open, close = "\x1B[0m") => (text4) => wantsColor(process.stdout) ? `${open}${text4}${close}` : text4;
+var ui = {
+  dim: color2("\x1B[2m"),
+  bold: color2("\x1B[1m"),
+  green: color2("\x1B[32m"),
+  red: color2("\x1B[31m"),
+  yellow: color2("\x1B[33m"),
+  blue: color2("\x1B[34m"),
+  cyan: color2("\x1B[36m"),
+  magenta: color2("\x1B[35m")
+};
+function heading(title, subtitle) {
+  return `${ui.bold(title)}${subtitle ? ` ${ui.dim(subtitle)}` : ""}`;
+}
+function commandLine(command, description) {
+  if (command.length > 48) {
+    return `  ${ui.cyan(command)}
+  ${" ".repeat(48)} ${ui.dim(description)}`;
+  }
+  return `  ${ui.cyan(command.padEnd(48))} ${ui.dim(description)}`;
+}
+function statusMark(kind) {
+  if (kind === "pass")
+    return ui.green("✓");
+  if (kind === "fail")
+    return ui.red("✗");
+  if (kind === "warn")
+    return ui.yellow("!");
+  return ui.blue("•");
+}
+function statusText(report) {
+  if (report.valid)
+    return `${statusMark("pass")} ${ui.green("ztrack check passed")}`;
+  return `${statusMark("fail")} ${ui.red("ztrack check failed")}`;
+}
+function metric(label, value) {
+  return `${ui.dim(label)} ${ui.bold(String(value ?? 0))}`;
+}
+function findingGroupKey(finding) {
+  return finding.issue || "workspace";
+}
+function findingLevel(finding) {
+  return finding.level === "error" ? `${statusMark("fail")} ${ui.red("error")}` : `${statusMark("warn")} ${ui.yellow("warning")}`;
+}
+function codeLabel(code2) {
+  return ui.dim(code2);
+}
+function renderCheckReport(report, options = {}) {
+  const summary = report.summary;
+  const findings = report.findings.filter((finding) => !options.errorsOnly || finding.level === "error").slice().sort((a, b) => {
+    if (a.level !== b.level)
+      return a.level === "error" ? -1 : 1;
+    return findingGroupKey(a).localeCompare(findingGroupKey(b)) || a.code.localeCompare(b.code);
+  });
+  const maxFindings = options.maxFindings ?? 120;
+  const shown = findings.slice(0, maxFindings);
+  const lines = [
+    statusText(report),
+    [
+      metric("cases", summary.cases),
+      metric("open", summary.openCases),
+      metric("errors", summary.errors),
+      metric("warnings", summary.warnings)
+    ].join(ui.dim("  ·  "))
+  ];
+  if (shown.length === 0) {
+    lines.push("", `${statusMark("pass")} ${ui.dim("No findings at the configured rigor level.")}`);
+  } else {
+    lines.push("", ui.bold("Findings"));
+    let currentGroup = "";
+    for (const finding of shown) {
+      const group = findingGroupKey(finding);
+      if (group !== currentGroup) {
+        lines.push(`
+${ui.bold(group)}`);
+        currentGroup = group;
+      }
+      lines.push(`  ${findingLevel(finding)}  ${codeLabel(finding.code)}`);
+      lines.push(`     ${finding.message}`);
+    }
+    if (findings.length > shown.length) {
+      lines.push("", ui.dim(`... ${findings.length - shown.length} more findings hidden by --max-findings`));
+    }
+  }
+  const exitHint = report.valid ? `${statusMark("pass")} ${ui.dim("exit 0")}` : `${statusMark("fail")} ${ui.dim("exit 1: produce evidence or lower the configured rigor")}`;
+  lines.push("", exitHint);
+  return `${lines.join(`
+`)}
+`;
+}
+
 // src/cliHelp.ts
 function commandName() {
   const invoked = (process.argv[1] || "").split(/[\\/]/).pop() || "";
@@ -26905,22 +26960,24 @@ function commandName() {
 }
 function printHelp() {
   const command = commandName();
-  process.stdout.write(`Usage: ${command} <resource> <action> [args...]
+  process.stdout.write(`${heading("ztrack", "typecheck your task management")}
 
-Resources:
-  init, issue, project, milestone, sprint, label, state, user, search, query,
+${ui.bold("Usage")}
+  ${ui.cyan(`${command} <resource> <action> [args...]`)}
+
+${ui.bold("Common commands")}
+${commandLine(`${command} init [--team KEY]`, "create local config and storage")}
+${commandLine(`${command} issue scaffold --title "New work"`, "write a starter issue body")}
+${commandLine(`${command} issue list --state Ready --limit 20`, "scan work in the tracker")}
+${commandLine(`${command} issue view A-1 --json title,body,state`, "inspect one issue")}
+${commandLine(`${command} check [--issues A-1,A-2]`, "verify checked claims have evidence")}
+${commandLine(`${command} check --json`, "machine-readable validation report")}
+
+${ui.bold("Resources")}
+  init, issue, project, milestone, sprint, label, state, user, search, query
   view, api, check, snapshot, fmt, lint, tx, evidence, ac, web, mcp
 
-Common commands:
-  ${command} init [--team KEY]
-  ${command} issue scaffold --title "New work"
-  ${command} issue list --state Ready --limit 20
-  ${command} issue view A-1 --json title,body,state,labels
-  ${command} issue edit A-1 --state "In Progress"
-  ${command} check [--issues A-1,A-2] [--json]
-  ${command} snapshot export [--out snapshot.json]
-
-Use ${command} <resource> --help or ${command} issue <action> --help for focused help.
+${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}
 `);
 }
 function scaffoldCaseBody(title) {
@@ -27109,20 +27166,51 @@ async function handleSnapshotCommand(args) {
     process.stdout.write(`${JSON.stringify(report, null, 2)}
 `);
   } else {
-    process.stdout.write(`${JSON.stringify(report.summary, null, 2)}
-`);
     const shown = report.findings.filter((item) => !flagArgs.includes("--errors-only") || item.level === "error").slice().sort((a, b) => a.level === b.level ? 0 : a.level === "error" ? -1 : 1);
     const maxFindings = Number(optionValue2(flagArgs, "--max-findings") || "120");
-    for (const item of shown.slice(0, maxFindings)) {
-      process.stdout.write(`${item.level.toUpperCase()} ${item.code}:${item.issue ? ` issue=${item.issue}` : ""} ${item.message}
-`);
-    }
-    if (shown.length > maxFindings)
-      process.stdout.write(`... ${shown.length - maxFindings} more
-`);
+    process.stdout.write(renderCheckReport({ ...report, findings: shown }, { errorsOnly: flagArgs.includes("--errors-only"), maxFindings }));
   }
   process.exitCode = report.valid ? 0 : 1;
   return true;
+}
+
+// src/cliStyle.ts
+var wantsColor2 = (stream) => {
+  if (process.env.NO_COLOR)
+    return false;
+  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0")
+    return true;
+  return Boolean(stream.isTTY);
+};
+var color3 = (open, close = "\x1B[0m") => (text4) => wantsColor2(process.stdout) ? `${open}${text4}${close}` : text4;
+var ui2 = {
+  dim: color3("\x1B[2m"),
+  bold: color3("\x1B[1m"),
+  green: color3("\x1B[32m"),
+  red: color3("\x1B[31m"),
+  yellow: color3("\x1B[33m"),
+  blue: color3("\x1B[34m"),
+  cyan: color3("\x1B[36m"),
+  magenta: color3("\x1B[35m")
+};
+function heading2(title, subtitle) {
+  return `${ui2.bold(title)}${subtitle ? ` ${ui2.dim(subtitle)}` : ""}`;
+}
+function commandLine2(command, description) {
+  if (command.length > 48) {
+    return `  ${ui2.cyan(command)}
+  ${" ".repeat(48)} ${ui2.dim(description)}`;
+  }
+  return `  ${ui2.cyan(command.padEnd(48))} ${ui2.dim(description)}`;
+}
+function statusMark2(kind) {
+  if (kind === "pass")
+    return ui2.green("✓");
+  if (kind === "fail")
+    return ui2.red("✗");
+  if (kind === "warn")
+    return ui2.yellow("!");
+  return ui2.blue("•");
 }
 
 // src/cli.ts
@@ -27152,23 +27240,23 @@ async function main() {
     const root = resolve6(optionValue(args, "--root") || process.cwd());
     const result2 = initTrackerProject2(root, optionValue(args, "--team") || "LOCAL");
     if (result2.alreadyInitialized) {
-      process.stdout.write(`Tracker already initialized: ${result2.configPath}
+      process.stdout.write(`${statusMark2("pass")} ${ui2.green("Already initialized")} ${ui2.dim(result2.configPath)}
 `);
       return;
     }
     const configPath = result2.configPath;
     const teamKey = result2.teamKey;
     process.stdout.write([
-      `Initialized tracker at ${configPath} (team key: ${teamKey}).`,
+      `${statusMark2("pass")} ${heading2("Initialized ztrack", ui2.dim(`team ${teamKey}`))}`,
+      `  ${ui2.dim(configPath)}`,
       "",
-      "Next steps:",
-      `  ${command} issue scaffold --title "First case" > body.md   # a starter case body`,
-      `  ${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`,
-      `  ${command} check        # export the snapshot and run the full rulebook`,
+      ui2.bold("Next steps"),
+      commandLine2(`${command} issue scaffold --title "First case" > body.md`, "write a starter case body"),
+      commandLine2(`${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, "create work in the local tracker"),
+      commandLine2(`${command} check`, "verify checked claims before marking done"),
       "",
-      "Verification applies to issues with a recognized type label (type:case,",
-      "type:bug, ...). An issue with checked work but no recognized type warns",
-      "rather than passing silently \u2014 see organization.caseTypeLabels / check.verify.",
+      ui2.dim("Verification applies to issues with a recognized type label such as type:case or type:bug."),
+      ui2.dim("Unrecognized checked work warns instead of passing silently."),
       ""
     ].join(`
 `));
@@ -27376,6 +27464,6 @@ Supply the evidence (e.g. --commit <sha> --evidence E1 --proof P1, or add the re
     process.stderr.write(result.stderr);
 }
 main().catch((error51) => {
-  console.error(error51 instanceof Error ? error51.message : String(error51));
+  console.error(`${statusMark2("fail")} ${ui2.red(error51 instanceof Error ? error51.message : String(error51))}`);
   process.exit(1);
 });

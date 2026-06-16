@@ -18,6 +18,7 @@ import { optionValue } from './cliArgs.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
 import { handleSnapshotCommand } from './cliSnapshot.ts';
+import { commandLine, heading, statusMark, ui } from './cliStyle.ts';
 
 async function readStdinIfPiped(): Promise<string | undefined> {
   if (process.stdin.isTTY) return undefined;
@@ -52,22 +53,22 @@ async function main(): Promise<void> {
     const root = resolve(optionValue(args, '--root') || process.cwd());
     const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL');
     if (result.alreadyInitialized) {
-      process.stdout.write(`Tracker already initialized: ${result.configPath}\n`);
+      process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
       return;
     }
     const configPath = result.configPath;
     const teamKey = result.teamKey;
     process.stdout.write([
-      `Initialized tracker at ${configPath} (team key: ${teamKey}).`,
+      `${statusMark('pass')} ${heading('Initialized ztrack', ui.dim(`team ${teamKey}`))}`,
+      `  ${ui.dim(configPath)}`,
       '',
-      'Next steps:',
-      `  ${command} issue scaffold --title "First case" > body.md   # a starter case body`,
-      `  ${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`,
-      `  ${command} check        # export the snapshot and run the full rulebook`,
+      ui.bold('Next steps'),
+      commandLine(`${command} issue scaffold --title "First case" > body.md`, 'write a starter case body'),
+      commandLine(`${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, 'create work in the local tracker'),
+      commandLine(`${command} check`, 'verify checked claims before marking done'),
       '',
-      'Verification applies to issues with a recognized type label (type:case,',
-      'type:bug, ...). An issue with checked work but no recognized type warns',
-      'rather than passing silently — see organization.caseTypeLabels / check.verify.',
+      ui.dim('Verification applies to issues with a recognized type label such as type:case or type:bug.'),
+      ui.dim('Unrecognized checked work warns instead of passing silently.'),
       '',
     ].join('\n'));
     return;
@@ -284,6 +285,6 @@ GraphQL-shaped query against the local tracker store.
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(`${statusMark('fail')} ${ui.red(error instanceof Error ? error.message : String(error))}`);
   process.exit(1);
 });

@@ -1,5 +1,6 @@
 import { loadTrackerConfig, projectRootFrom } from './config.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
+import { commandLine, heading, ui } from './cliStyle.ts';
 
 export function commandName(): string {
   const invoked = (process.argv[1] || '').split(/[\\/]/).pop() || '';
@@ -8,22 +9,24 @@ export function commandName(): string {
 
 export function printHelp(): void {
   const command = commandName();
-  process.stdout.write(`Usage: ${command} <resource> <action> [args...]
+  process.stdout.write(`${heading('ztrack', 'typecheck your task management')}
 
-Resources:
-  init, issue, project, milestone, sprint, label, state, user, search, query,
+${ui.bold('Usage')}
+  ${ui.cyan(`${command} <resource> <action> [args...]`)}
+
+${ui.bold('Common commands')}
+${commandLine(`${command} init [--team KEY]`, 'create local config and storage')}
+${commandLine(`${command} issue scaffold --title "New work"`, 'write a starter issue body')}
+${commandLine(`${command} issue list --state Ready --limit 20`, 'scan work in the tracker')}
+${commandLine(`${command} issue view A-1 --json title,body,state`, 'inspect one issue')}
+${commandLine(`${command} check [--issues A-1,A-2]`, 'verify checked claims have evidence')}
+${commandLine(`${command} check --json`, 'machine-readable validation report')}
+
+${ui.bold('Resources')}
+  init, issue, project, milestone, sprint, label, state, user, search, query
   view, api, check, snapshot, fmt, lint, tx, evidence, ac, web, mcp
 
-Common commands:
-  ${command} init [--team KEY]
-  ${command} issue scaffold --title "New work"
-  ${command} issue list --state Ready --limit 20
-  ${command} issue view A-1 --json title,body,state,labels
-  ${command} issue edit A-1 --state "In Progress"
-  ${command} check [--issues A-1,A-2] [--json]
-  ${command} snapshot export [--out snapshot.json]
-
-Use ${command} <resource> --help or ${command} issue <action> --help for focused help.
+${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}
 `);
 }
 
