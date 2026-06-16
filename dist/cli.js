@@ -26859,17 +26859,22 @@ var ui = {
   yellow: color2("\x1B[33m"),
   blue: color2("\x1B[34m"),
   cyan: color2("\x1B[36m"),
-  magenta: color2("\x1B[35m")
+  magenta: color2("\x1B[35m"),
+  redBadge: color2("\x1B[41m\x1B[30m\x1B[1m"),
+  yellowBadge: color2("\x1B[43m\x1B[30m\x1B[1m")
 };
 function heading(title, subtitle) {
   return `${ui.bold(title)}${subtitle ? ` ${ui.dim(subtitle)}` : ""}`;
 }
-function commandLine(command, description) {
-  if (command.length > 48) {
-    return `  ${ui.cyan(command)}
-  ${" ".repeat(48)} ${ui.dim(description)}`;
-  }
-  return `  ${ui.cyan(command.padEnd(48))} ${ui.dim(description)}`;
+function helpSection(position2, title, rows) {
+  const width = 66;
+  const commandWidth = 31;
+  const descriptionWidth = width - commandWidth - 6;
+  const headerText = ` ${title} `;
+  const header = `${ui.dim(`╭─${headerText}${"─".repeat(width - headerText.length - 2)}╮`)}`;
+  const body = rows.map(([command, description]) => `${ui.dim("│")}  ${ui.cyan(command.padEnd(commandWidth))} ${ui.dim(description.padEnd(descriptionWidth))} ${ui.dim("│")}`);
+  return [header, ...body, ui.dim(`╰${"─".repeat(width - 2)}╯`)].join(`
+`);
 }
 function statusMark(kind) {
   if (kind === "pass")
@@ -26880,6 +26885,9 @@ function statusMark(kind) {
     return ui.yellow("!");
   return ui.blue("•");
 }
+function numberValue(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
 function statusText(report) {
   if (report.valid)
     return `${statusMark("pass")} ${ui.green("ztrack check passed")}`;
@@ -26888,11 +26896,32 @@ function statusText(report) {
 function metric(label, value) {
   return `${ui.dim(label)} ${ui.bold(String(value ?? 0))}`;
 }
+function metricBox(summary) {
+  const raw = [
+    `cases ${summary.cases ?? 0}`,
+    `open ${summary.openCases ?? 0}`,
+    `errors ${summary.errors ?? 0}`,
+    `warnings ${summary.warnings ?? 0}`
+  ].join("  •  ");
+  const content3 = [
+    metric("cases", summary.cases),
+    metric("open", summary.openCases),
+    numberValue(summary.errors) > 0 ? `${ui.dim("errors")} ${ui.red(String(summary.errors))}` : metric("errors", summary.errors),
+    numberValue(summary.warnings) > 0 ? `${ui.dim("warnings")} ${ui.yellow(String(summary.warnings))}` : metric("warnings", summary.warnings)
+  ].join(ui.dim("  •  "));
+  const width = raw.length + 4;
+  return [
+    ui.dim(`╭${"─".repeat(width)}╮`),
+    `${ui.dim("│")} ${content3} ${ui.dim("│")}`,
+    ui.dim(`╰${"─".repeat(width)}╯`)
+  ].join(`
+`);
+}
 function findingGroupKey(finding) {
   return finding.issue || "workspace";
 }
 function findingLevel(finding) {
-  return finding.level === "error" ? `${statusMark("fail")} ${ui.red("error")}` : `${statusMark("warn")} ${ui.yellow("warning")}`;
+  return finding.level === "error" ? ui.redBadge(" x error ") : ui.yellowBadge(" warn ");
 }
 function codeLabel(code2) {
   return ui.dim(code2);
@@ -26908,27 +26937,34 @@ function renderCheckReport(report, options = {}) {
   const shown = findings.slice(0, maxFindings);
   const lines = [
     statusText(report),
-    [
-      metric("cases", summary.cases),
-      metric("open", summary.openCases),
-      metric("errors", summary.errors),
-      metric("warnings", summary.warnings)
-    ].join(ui.dim("  ·  "))
+    metricBox(summary)
   ];
   if (shown.length === 0) {
     lines.push("", `${statusMark("pass")} ${ui.dim("No findings at the configured rigor level.")}`);
   } else {
     lines.push("", ui.bold("Findings"));
     let currentGroup = "";
+    const groupItems = new Map;
     for (const finding of shown) {
       const group = findingGroupKey(finding);
+      groupItems.set(group, [...groupItems.get(group) ?? [], finding]);
+    }
+    for (const [group, items] of groupItems) {
       if (group !== currentGroup) {
         lines.push(`
 ${ui.bold(group)}`);
         currentGroup = group;
       }
-      lines.push(`  ${findingLevel(finding)}  ${codeLabel(finding.code)}`);
-      lines.push(`     ${finding.message}`);
+      lines.push(ui.dim("│"));
+      items.forEach((finding, index2) => {
+        const last = index2 === items.length - 1;
+        const branch = last ? "╰─" : "├─";
+        const detailPrefix = last ? "   └─" : "│  └─";
+        lines.push(`${ui.dim(branch)} ${findingLevel(finding)} ${codeLabel(finding.code)}`);
+        lines.push(`${ui.dim(detailPrefix)} ${finding.message}`);
+        if (!last)
+          lines.push(ui.dim("│"));
+      });
     }
     if (findings.length > shown.length) {
       lines.push("", ui.dim(`... ${findings.length - shown.length} more findings hidden by --max-findings`));
@@ -26953,13 +26989,23 @@ function printHelp() {
 ${ui.bold("Usage")}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
-${ui.bold("Common commands")}
-${commandLine(`${command} init [--team KEY]`, "create local config and storage")}
-${commandLine(`${command} issue scaffold --title "New work"`, "write a starter issue body")}
-${commandLine(`${command} issue list --state Ready --limit 20`, "scan work in the tracker")}
-${commandLine(`${command} issue view A-1 --json title,body,state`, "inspect one issue")}
-${commandLine(`${command} check [--issues A-1,A-2]`, "verify checked claims have evidence")}
-${commandLine(`${command} check --json`, "machine-readable validation report")}
+${helpSection("top", "Core", [
+    [`${command} init [--team KEY]`, "create local config"],
+    [`${command} check [--issues A-1,A-2]`, "verify checked claims"],
+    [`${command} check --json`, "emit JSON report"]
+  ])}
+
+${helpSection("middle", "Workflow", [
+    [`${command} issue scaffold`, "write starter body"],
+    [`${command} issue create`, "create tracker issue"],
+    [`${command} issue view A-1`, "inspect one issue"]
+  ])}
+
+${helpSection("bottom", "Data", [
+    [`${command} snapshot export`, "export snapshot"],
+    [`${command} lint [--fail-on-warn]`, "flag weak claims"],
+    [`${command} evidence export`, "export attestations"]
+  ])}
 
 ${ui.bold("Resources")}
   init, issue, project, milestone, sprint, label, state, user, search, query
@@ -27179,17 +27225,39 @@ var ui2 = {
   yellow: color3("\x1B[33m"),
   blue: color3("\x1B[34m"),
   cyan: color3("\x1B[36m"),
-  magenta: color3("\x1B[35m")
+  magenta: color3("\x1B[35m"),
+  redBadge: color3("\x1B[41m\x1B[30m\x1B[1m"),
+  yellowBadge: color3("\x1B[43m\x1B[30m\x1B[1m")
 };
 function heading2(title, subtitle) {
   return `${ui2.bold(title)}${subtitle ? ` ${ui2.dim(subtitle)}` : ""}`;
 }
-function commandLine2(command, description) {
-  if (command.length > 48) {
-    return `  ${ui2.cyan(command)}
-  ${" ".repeat(48)} ${ui2.dim(description)}`;
+function stackedCommand(index2, title, command, description) {
+  const commandLines = wrapWords(command, 50);
+  const descriptionLines = wrapWords(description, 56);
+  return [
+    `  ${ui2.dim(`${index2}.`)} ${ui2.cyan(commandLines[0] ?? command)}`,
+    ...commandLines.slice(1).map((line) => `     ${ui2.cyan(line)}`),
+    ...descriptionLines.map((line) => `     ${ui2.dim(line)}`)
+  ].join(`
+`);
+}
+function wrapWords(text4, width) {
+  const words = text4.split(" ");
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > width && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
   }
-  return `  ${ui2.cyan(command.padEnd(48))} ${ui2.dim(description)}`;
+  if (current)
+    lines.push(current);
+  return lines;
 }
 function statusMark2(kind) {
   if (kind === "pass")
@@ -27235,15 +27303,17 @@ async function main() {
     const configPath = result2.configPath;
     const teamKey = result2.teamKey;
     process.stdout.write([
-      `${statusMark2("pass")} ${heading2("Initialized ztrack", ui2.dim(`team ${teamKey}`))}`,
+      `${statusMark2("pass")} ${heading2("Initialized ztrack", `team ${teamKey}`)}`,
       `  ${ui2.dim(configPath)}`,
       "",
       ui2.bold("Next steps"),
-      commandLine2(`${command} issue scaffold --title "First case" > body.md`, "write a starter case body"),
-      commandLine2(`${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, "create work in the local tracker"),
-      commandLine2(`${command} check`, "verify checked claims before marking done"),
+      stackedCommand(1, "Write a starter issue", `${command} issue scaffold --title "First case" > body.md`, "Creates a markdown body with acceptance criteria and evidence sections."),
       "",
-      ui2.dim("Verification applies to issues with a recognized type label such as type:case or type:bug."),
+      stackedCommand(2, "Create work in the local tracker", `${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, "Stores the issue where ztrack can validate it."),
+      "",
+      stackedCommand(3, "Verify checked claims", `${command} check`, "Fails if checked work lacks real evidence."),
+      "",
+      ui2.dim("Recognized labels include type:case and type:bug."),
       ui2.dim("Unrecognized checked work warns instead of passing silently."),
       ""
     ].join(`

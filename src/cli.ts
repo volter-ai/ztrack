@@ -18,7 +18,7 @@ import { optionValue } from './cliArgs.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
 import { handleSnapshotCommand } from './cliSnapshot.ts';
-import { commandLine, heading, statusMark, ui } from './cliStyle.ts';
+import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 
 async function readStdinIfPiped(): Promise<string | undefined> {
   if (process.stdin.isTTY) return undefined;
@@ -59,15 +59,17 @@ async function main(): Promise<void> {
     const configPath = result.configPath;
     const teamKey = result.teamKey;
     process.stdout.write([
-      `${statusMark('pass')} ${heading('Initialized ztrack', ui.dim(`team ${teamKey}`))}`,
+      `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey}`)}`,
       `  ${ui.dim(configPath)}`,
       '',
       ui.bold('Next steps'),
-      commandLine(`${command} issue scaffold --title "First case" > body.md`, 'write a starter case body'),
-      commandLine(`${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, 'create work in the local tracker'),
-      commandLine(`${command} check`, 'verify checked claims before marking done'),
+      stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
       '',
-      ui.dim('Verification applies to issues with a recognized type label such as type:case or type:bug.'),
+      stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
+      '',
+      stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
+      '',
+      ui.dim('Recognized labels include type:case and type:bug.'),
       ui.dim('Unrecognized checked work warns instead of passing silently.'),
       '',
     ].join('\n'));
