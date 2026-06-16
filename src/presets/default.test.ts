@@ -188,4 +188,12 @@ Linked: jira PEAK-12 https://jira/PEAK-12
     const reparsed = DefaultRootSchema.parse(parseDefault(serializeDefault(parsed)));
     expect(reparsed).toEqual(parsed);
   });
+
+  test("a soft-wrapped AC line still parses id + version (first line only)", () => {
+    const md = `# I1: Title\n\nAssignee: alice\nStatus: ready\n\n## Acceptance Criteria\n\n- [ ] AC1 v1 The user can log in\n  and reset later\n`;
+    const ac = (parseDefault(md) as any).issues[0].acceptanceCriteria[0];
+    expect(ac.id).toBe("AC1");
+    expect(ac.version).toBe(1);
+  });
+
 });

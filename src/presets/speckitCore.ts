@@ -116,7 +116,9 @@ function parseMd(content: string): Md {
   return fromMarkdown(content, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as Md;
 }
 function nodeText(n: Md): string { return typeof n.value === 'string' ? n.value : (n.children ?? []).map(nodeText).join(''); }
-function itemText(item: Md): string { const p = (item.children ?? []).find((c) => c.type === 'paragraph'); return p ? nodeText(p).trim() : ''; }
+// First line of the item's paragraph: the single-line task/story regexes can't span a
+// soft-wrapped continuation line, which would otherwise drop the whole item.
+function itemText(item: Md): string { const p = (item.children ?? []).find((c) => c.type === 'paragraph'); return p ? (nodeText(p).trim().split('\n')[0] ?? '') : ''; }
 // list items whose nearest enclosing heading (ancestor chain by depth) matches `re`
 function listItemsUnder(tree: Md, re: RegExp): Md[] {
   const out: Md[] = []; const stack: Array<{ d: number; t: string }> = [];

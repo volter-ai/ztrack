@@ -84,7 +84,10 @@ function nodeText(node: MdNode): string {
 }
 function firstParagraphText(item: MdNode): string {
   const p = (item.children ?? []).find((c) => c.type === 'paragraph');
-  return p ? nodeText(p).trim() : '';
+  // Take the AC's first line only: the single-line `parseAcLine` regexes can't span a
+  // soft-wrapped continuation line, which would otherwise swallow the whole wrapped
+  // text into the id and lose the version (matches spec.ts behavior).
+  return p ? (nodeText(p).trim().split('\n')[0] ?? '') : '';
 }
 function splitIdTitle(headingText: string): { id: string; title: string } {
   const m = /^(\S+):\s*(.+)$/.exec(headingText.trim());

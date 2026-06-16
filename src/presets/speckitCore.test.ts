@@ -242,4 +242,12 @@ describe('speckit core preset (full process capture)', () => {
     expect(r.findings.some((f) => f.code === "speckit_duplicate_ac_id")).toBe(true);
   });
 
+
+  test("a soft-wrapped task line is still parsed (first line only)", () => {
+    const spec = `# Feature Specification: Foo\n\n## User Scenarios\n\n### User Story 1 - A (Priority: P1)\n- Given x When y Then z\n`;
+    const tasks = `# Tasks\n\n- [x] T001 [US1] do the thing\n  and wire it up (commit: abc1234)\n`;
+    const root = SpeckitRootSchema.parse(parseSpeckit(buildSpeckitBundle([{ path: "specs/foo/spec.md", content: spec }, { path: "specs/foo/tasks.md", content: tasks }])));
+    expect(root.issues[0]!.acceptanceCriteria[0]!.tasks.length).toBe(1);
+  });
+
 });

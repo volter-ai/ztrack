@@ -158,6 +158,14 @@ export function check<R extends CoreRoot>(preset: Preset<R>, markdown: string, c
   if (!result.success) return { ok: false, findings: shapeFindings(result.error) };
   const root = result.data;
   const active = ctx.phase === 'gate' ? preset.rules.filter((r) => r.phase !== 'transition') : preset.rules;
-  const findings = active.flatMap((rule) => rule.run(root, ctx));
+  // Rules are contracted to be pure and not throw, but Rule is a public extension point:
+  // a buggy third-party rule must surface as a finding, not crash the whole check.
+  const findings = active.flatMap((rule) => {
+    try {
+      return rule.run(root, ctx);
+    } catch (error) {
+      return [{ code: 'rule_threw', severity: 'error', message: `Rule '${rule.name}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
+    }
+  });
   return { ok: !findings.some((f) => f.severity === 'error'), findings, export: root };
 }
