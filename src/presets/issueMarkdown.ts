@@ -150,6 +150,9 @@ function parseCheckboxItems(body: string, sectionLineStart: number): MarkdownChe
 }
 
 export function parseMarkdownDocument(text: string): MarkdownDocument {
+  // Normalize CRLF/CR to LF so line numbers are correct and section bodies don't
+  // retain trailing \r (the line model below is LF-based).
+  text = text.replace(/\r\n?/g, '\n');
   const offsets = lineOffsets(text);
   const lines = text.split('\n');
   // Heading detection via mdast (CommonMark): a `#` inside a fenced code block
@@ -453,8 +456,14 @@ export function renderMarkdownDocument(document: MarkdownDocument): string {
 // same checkbox semantics); check findings shrink monotonically and only by
 // issue_markdown_* codes.
 
-function canonicalizeBlockText(text: string): string {
-  const lines = text.split('\n').map((line) => {
+// Whitespace/checkbox normalization for a block's content. Lines inside a fenced (or
+// indented) code block are byte-preserved — `protectedAbsLines` holds their absolute
+// 1-based line numbers, and `startLine` is the absolute line of `lines[0]`. fmt must
+// never edit code bytes (significant whitespace, checkbox-like sample lines).
+function canonicalizeBlockText(lines: string[], startLine: number, protectedAbsLines: Set<number>): string {
+  const prot = lines.map((_, i) => protectedAbsLines.has(startLine + i));
+  const rewritten = lines.map((line, i) => {
+    if (prot[i]) return line;
     const checkbox = CHECKBOX_RE.exec(line);
     if (checkbox) {
       const indent = checkbox[1] ?? '';
@@ -463,20 +472,24 @@ function canonicalizeBlockText(text: string): string {
     }
     return line.replace(/\s+$/, '');
   });
-  const collapsed: string[] = [];
-  for (const line of lines) {
-    if (line === '' && collapsed[collapsed.length - 1] === '') continue;
-    collapsed.push(line);
+  // Collapse runs of blank lines, but never collapse/drop a protected (code) line.
+  const collapsed: Array<{ line: string; prot: boolean }> = [];
+  for (let i = 0; i < rewritten.length; i++) {
+    const entry = { line: rewritten[i]!, prot: prot[i]! };
+    const prev = collapsed[collapsed.length - 1];
+    if (entry.line === '' && !entry.prot && prev && prev.line === '' && !prev.prot) continue;
+    collapsed.push(entry);
   }
-  while (collapsed[0] === '') collapsed.shift();
-  while (collapsed[collapsed.length - 1] === '') collapsed.pop();
-  return collapsed.join('\n');
+  while (collapsed.length && collapsed[0]!.line === '' && !collapsed[0]!.prot) collapsed.shift();
+  while (collapsed.length && collapsed[collapsed.length - 1]!.line === '' && !collapsed[collapsed.length - 1]!.prot) collapsed.pop();
+  return collapsed.map((entry) => entry.line).join('\n');
 }
 
-type FmtBlock = { headingLevel: number; title: string; content: string[] };
+type FmtBlock = { headingLevel: number; title: string; content: string[]; contentStart: number };
 
 export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly string[] = []): string {
   assertSectionOrder(sectionOrder);
+  text = text.replace(/\r\n?/g, '\n'); // normalize line endings (LF-based line model)
   // Canonical spelling for the known section titles (from the supplied order):
   // a section differing only in case/whitespace is respelled to the canonical form.
   const canonicalSpelling = new Map<string, string>(sectionOrder.map((title) => [normalizeTitle(title), title] as const));
@@ -488,11 +501,17 @@ export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly s
   // would change the line-array block model; fmt emits ATX regardless.)
   const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
   const headingLines = new Set<number>();
-  const markHeadings = (node: any): void => {
+  // Absolute 1-based line numbers inside fenced/indented code blocks — fmt preserves
+  // these byte-for-byte (significant whitespace, checkbox-like sample lines).
+  const codeLines = new Set<number>();
+  const markNodes = (node: any): void => {
     if (node.type === 'heading' && node.position) headingLines.add(node.position.start.line as number);
-    for (const c of node.children ?? []) markHeadings(c);
+    if (node.type === 'code' && node.position) {
+      for (let line = node.position.start.line as number; line <= (node.position.end.line as number); line++) codeLines.add(line);
+    }
+    for (const c of node.children ?? []) markNodes(c);
   };
-  markHeadings(tree);
+  markNodes(tree);
   // Split into preamble + heading-led blocks (a block owns the lines up to
   // the next heading of ANY level, unlike MarkdownSection.body).
   const blocks: FmtBlock[] = [];
@@ -502,7 +521,8 @@ export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly s
     const line = lines[lineIndex]!;
     const heading = headingLines.has(lineIndex + 1) ? HEADING_RE.exec(line) : null;
     if (heading) {
-      current = { headingLevel: (heading[1] ?? '').length, title: (heading[2] ?? '').trim(), content: [] };
+      // heading is at 1-based line (lineIndex+1); its content begins on the next line.
+      current = { headingLevel: (heading[1] ?? '').length, title: (heading[2] ?? '').trim(), content: [], contentStart: lineIndex + 2 };
       blocks.push(current);
     } else if (current) {
       current.content.push(line);
@@ -517,7 +537,7 @@ export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly s
   const units: Unit[] = [];
   let unit: Unit | null = null;
   for (const block of blocks) {
-    const ownContent = canonicalizeBlockText(block.content.join('\n'));
+    const ownContent = canonicalizeBlockText(block.content, block.contentStart, codeLines);
     if (block.headingLevel <= 2 || !unit) {
       const spelled = block.headingLevel === 2 ? canonicalSpelling.get(normalizeTitle(block.title)) : undefined;
       unit = {
@@ -551,7 +571,7 @@ export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly s
     .map((entry) => entry.candidate);
 
   const rendered: string[] = [];
-  const preambleText = canonicalizeBlockText(preamble.join('\n'));
+  const preambleText = canonicalizeBlockText(preamble, 1, codeLines);
   if (preambleText) rendered.push(preambleText);
   for (const candidate of titleUnit ? [titleUnit, ...sorted, ...otherUnits] : [...sorted, ...otherUnits]) {
     const heading = `${'#'.repeat(candidate.level)} ${candidate.title}`;

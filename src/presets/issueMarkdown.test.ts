@@ -69,6 +69,15 @@ describe('generic default grammar (the OSS default — permissive)', () => {
     expect(parsed.diagnostics).toEqual([]); // no missing/unknown/order findings
   });
 
+  test('CRLF input parses identically to LF (line numbers + no trailing CR in bodies)', () => {
+    const lf = '# T\n\n## Summary\n\nbody\n\n## Sources\n[1] x\n';
+    const a = parseIssueMarkdown(lf);
+    const b = parseIssueMarkdown(lf.replace(/\n/g, '\r\n'));
+    expect(a.document.sections.map((s) => [s.title, s.lineStart]))
+      .toEqual(b.document.sections.map((s) => [s.title, s.lineStart]));
+    expect(b.document.sections.some((s) => s.body.includes('\r'))).toBe(false);
+  });
+
   test('diagnostics still flag a missing title and body preamble', () => {
     const noTitle = parseIssueMarkdown('## Context\n\ntext\n');
     expect(noTitle.diagnostics.some((d) => d.code === 'issue_markdown_missing_title')).toBe(true);
@@ -124,6 +133,15 @@ describe('canonicalizeIssueMarkdown (with a supplied section order)', () => {
     const indexes = ['## Summary', '## Sources', '## Zebra', '## Apple'].map((h) => out.indexOf(h));
     expect(indexes.every((value) => value >= 0)).toBe(true);
     expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
+  });
+
+  test('fmt preserves bytes inside fenced code blocks (no checkbox/whitespace rewriting)', () => {
+    const inp = '# T\n\n## Summary\n\n```\n-   [X]    spaced  code\ntrailing ws   \n\n\nkept blanks\n```\n';
+    const out = fmt(inp);
+    expect(out).toContain('-   [X]    spaced  code'); // checkbox-like code line NOT normalized
+    expect(out).toContain('trailing ws   ');          // trailing whitespace preserved
+    expect(out).toContain('\n\n\nkept blanks');        // blank runs inside the fence preserved
+    expect(fmt(out)).toBe(out);                        // idempotent
   });
 
   test('canonical-spelling normalization for known sections differing only in case', () => {
