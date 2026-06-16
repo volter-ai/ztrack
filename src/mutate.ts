@@ -176,24 +176,29 @@ export function applyAcMutation(rawBody: string, mutation: AcMutation): AcMutati
   const item = matches[0]!.item;
   const lines = canonical.split('\n');
   const bodyLines = item.body.split('\n');
+  // Only the AC's OWN line (the checkbox line's content) is mutated; continuation/
+  // nested lines are preserved byte-for-byte. Mutating the whole multi-line body would
+  // collapse continuation indentation and stamp AC-Version onto prose.
+  const firstLine = bodyLines[0] ?? '';
+  const restLines = bodyLines.slice(1);
 
   let newChecked = item.checked;
-  let newBody = item.body;
+  let newFirst = firstLine;
   if (mutation.op === 'check') {
     newChecked = true;
-    newBody = checkItem(item.body, mutation.acId, mutation);
+    newFirst = checkItem(firstLine, mutation.acId, mutation);
   } else if (mutation.op === 'uncheck') {
     newChecked = false;
-    newBody = uncheckItem(item.body, mutation.acId);
+    newFirst = uncheckItem(firstLine, mutation.acId);
   } else {
     newChecked = mutation.status === 'passed' ? true : mutation.status === 'pending' ? false : item.checked;
-    newBody = tidy(setStatusField(item.body, mutation.acId, mutation.status));
+    newFirst = tidy(setStatusField(firstLine, mutation.acId, mutation.status));
   }
+  const newBody = [newFirst, ...restLines].join('\n');
 
   const indentMatch = /^(\s*)-/.exec(lines[item.lineStart - 1] ?? '');
   const indent = indentMatch?.[1] ?? '';
-  const newLines = newBody.split('\n');
-  const rendered = [`${indent}- [${newChecked ? 'x' : ' '}] ${newLines[0] ?? ''}`, ...newLines.slice(1)];
+  const rendered = [`${indent}- [${newChecked ? 'x' : ' '}] ${newFirst}`, ...restLines];
   lines.splice(item.lineStart - 1, bodyLines.length, ...rendered);
 
   const body = canonicalizeIssueMarkdown(lines.join('\n'));

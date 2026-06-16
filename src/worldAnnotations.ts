@@ -43,7 +43,12 @@ function annotationsPath(service: string, root?: string): string {
 }
 function readJsonl<T>(path: string): T[] {
   if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as T);
+  // Tolerate a corrupt/partial line (skip it) so one bad row in an append-only log
+  // can't break reading annotations (addAnnotation, source books, etc.). Integrity
+  // validation surfaces malformed lines separately (see validateServiceAnnotations).
+  return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).flatMap((l) => {
+    try { return [JSON.parse(l) as T]; } catch { return []; }
+  });
 }
 
 export function createAnnotation(input: Omit<WorldAnnotation, 'createdAt'> & { createdAt?: string }): WorldAnnotation {

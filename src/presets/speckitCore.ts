@@ -358,6 +358,17 @@ const evidenceCommitExists: Rule<SpeckitRoot> = {
 };
 
 // ── structural-existence requirements (the parts Spec Kit's process mandates) ─
+const uniqueAcIds: Rule<SpeckitRoot> = {
+  name: 'speckit_unique_ac_ids',
+  run: (root) => root.issues.flatMap((i) => {
+    const seen = new Set<string>(); const dups: Finding[] = [];
+    for (const ac of i.acceptanceCriteria) {
+      if (seen.has(ac.id)) dups.push({ code: 'speckit_duplicate_ac_id', severity: 'error', message: `Duplicate user-story id ${ac.id} in feature ${i.id}.`, issueId: i.id, acId: ac.id });
+      seen.add(ac.id);
+    }
+    return dups;
+  }),
+};
 const requireUserStories: Rule<SpeckitRoot> = {
   name: 'speckit_require_user_stories',
   run: (root) => root.issues.filter((i) => i.acceptanceCriteria.length === 0).map((i): Finding => ({
@@ -408,7 +419,7 @@ export const SpeckitPreset: Preset<SpeckitRoot> = {
   parse: parseSpeckit,
   rules: [
     needsClarification, foundationalBlocksStories, constitutionCheck, storyHasTasks, storyVerified, evidenceCommitExists,
-    requireUserStories, requireRequirements, requireScenarios, requireSuccessCriteria, requireConstitution, requireConstitutionCheck, requirePlanBeforeTasks,
+    uniqueAcIds, requireUserStories, requireRequirements, requireScenarios, requireSuccessCriteria, requireConstitution, requireConstitutionCheck, requirePlanBeforeTasks,
   ],
   // audit is core/always-on (recorded automatically via change observation), so
   // it is NOT declared here; speckit implements none of the OPT-IN primitives.

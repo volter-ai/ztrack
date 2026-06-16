@@ -50,4 +50,12 @@ describe('markdown backend (de)serialization', () => {
     const c = canonicalize(raw);
     expect(c).toMatchObject({ identifier: 'PH-9', title: 't', body: 'b', state: 'Done', stateType: 'completed', assignees: ['otto'], labels: ['P1'], comments: [{ user: 'local', body: 'c' }] });
   });
+
+  test("a body containing the comments marker round-trips (split at last marker)", () => {
+    const c: CanonicalIssue = { ...tricky, body: "real\n<!--tracker:comments\n[\"fake\"]\n-->\nafter", comments: [{ user: "u", createdAt: "2026-06-15T00:00:00Z", body: "real comment" }] };
+    const back = parseIssue(serializeIssue(c));
+    expect(back.body).toBe(c.body);
+    expect(back.comments).toEqual(c.comments);
+  });
+
 });

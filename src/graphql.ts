@@ -54,9 +54,18 @@ function inputBlock(query: string, name: string): string {
   let depth = 1;
   let i = match.index + match[0].length;
   const start = i;
+  // String-aware brace scan: a '}' inside a quoted value (e.g. a body containing '}')
+  // must not close the input block early and silently drop the remaining fields.
+  let inString = false;
+  let escaped = false;
   while (i < call.length) {
     const ch = call[i]!;
-    if (ch === '{') depth += 1;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '{') depth += 1;
     else if (ch === '}') {
       depth -= 1;
       if (depth === 0) return call.slice(start, i);

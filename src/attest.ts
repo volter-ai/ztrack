@@ -52,8 +52,10 @@ function field(entry: AttestableEntry, name: string): string {
 function versionMap(raw: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const part of raw.split(/[,\s]+/).map((value) => value.trim()).filter(Boolean)) {
-    const match = /^(?<id>dev\/\d{1,3})=(?<version>acv_[0-9a-f]{8,64})$/i.exec(part);
-    if (match?.groups) out[match.groups.id.toLowerCase().replace(/\/(\d)$/, '/0$1')] = match.groups.version;
+    // Accept any AC id prefix (dev/, case/, ext/, proc/, AC-…), not just dev/, so a
+    // non-dev AC's version isn't silently dropped from the attestation.
+    const match = /^(?<id>(?:[a-z]+\/|AC-)\d{1,3})=(?<version>acv_[0-9a-f]{8,64})$/i.exec(part);
+    if (match?.groups) out[match.groups.id.toLowerCase().replace(/([/-])(\d)$/, (_m, sep: string, digit: string) => `${sep}0${digit}`)] = match.groups.version;
   }
   return out;
 }

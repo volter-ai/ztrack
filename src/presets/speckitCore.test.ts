@@ -235,4 +235,11 @@ describe('speckit core preset (full process capture)', () => {
     expect(SpeckitPreset.primitives).toMatchObject({ proof: false, category: false });
     expect(SpeckitRootSchema.safeParse({ issues: [{ id: 'x', extra: 1 }] }).success).toBe(false);
   });
+
+  test("duplicate user-story ids are flagged", () => {
+    const s = `# Feature Specification: Foo\n\n## User Scenarios\n\n### User Story 1 - A (Priority: P1)\n- Given x When y Then z\n\n### User Story 1 - B (Priority: P2)\n- Given a When b Then c\n`;
+    const r = checkSpeckit(buildSpeckitBundle([{ path: "specs/foo/spec.md", content: s }]));
+    expect(r.findings.some((f) => f.code === "speckit_duplicate_ac_id")).toBe(true);
+  });
+
 });
