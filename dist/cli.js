@@ -24632,7 +24632,7 @@ function parseMarkdownDocument(text4) {
     const nextHeading = headings.slice(index2 + 1).find((candidate) => candidate.level <= heading.level);
     const nextOffset = nextHeading?.offset ?? text4.length;
     const body = text4.slice(bodyStart, nextOffset).replace(/\n$/, "");
-    const sectionLineStart = heading.line + 1;
+    const sectionLineStart = heading.line + 1 + (heading.raw.match(/\n/g)?.length ?? 0);
     let parentIndex = null;
     for (let candidateIndex = index2 - 1;candidateIndex >= 0; candidateIndex--) {
       if ((headings[candidateIndex]?.level ?? 0) < heading.level) {
@@ -25119,7 +25119,7 @@ ${entryLine}
 function applyAcMutation(rawBody, mutation) {
   const canonical = canonicalizeIssueMarkdown(rawBody);
   const document4 = parseMarkdownDocument(canonical);
-  const targetId = mutation.acId.toLowerCase();
+  const targetId = (normalizedAcId(mutation.acId) ?? mutation.acId).toLowerCase();
   const seenLines = new Set;
   const matches = [];
   for (const section of document4.sections) {
@@ -25137,27 +25137,30 @@ function applyAcMutation(rawBody, mutation) {
   if (matches.length > 1)
     throw new Error(`AC ${mutation.acId} is ambiguous: ${matches.length} checkbox rows carry this id`);
   const item = matches[0].item;
+  const canonicalId = normalizedAcId(item.body) ?? mutation.acId;
   const lines = canonical.split(`
 `);
   const bodyLines = item.body.split(`
 `);
+  const firstLine = bodyLines[0] ?? "";
+  const restLines = bodyLines.slice(1);
   let newChecked = item.checked;
-  let newBody = item.body;
+  let newFirst = firstLine;
   if (mutation.op === "check") {
     newChecked = true;
-    newBody = checkItem(item.body, mutation.acId, mutation);
+    newFirst = checkItem(firstLine, canonicalId, mutation);
   } else if (mutation.op === "uncheck") {
     newChecked = false;
-    newBody = uncheckItem(item.body, mutation.acId);
+    newFirst = uncheckItem(firstLine, canonicalId);
   } else {
     newChecked = mutation.status === "passed" ? true : mutation.status === "pending" ? false : item.checked;
-    newBody = tidy(setStatusField(item.body, mutation.acId, mutation.status));
+    newFirst = tidy(setStatusField(firstLine, canonicalId, mutation.status));
   }
+  const newBody = [newFirst, ...restLines].join(`
+`);
   const indentMatch = /^(\s*)-/.exec(lines[item.lineStart - 1] ?? "");
   const indent2 = indentMatch?.[1] ?? "";
-  const newLines = newBody.split(`
-`);
-  const rendered = [`${indent2}- [${newChecked ? "x" : " "}] ${newLines[0] ?? ""}`, ...newLines.slice(1)];
+  const rendered = [`${indent2}- [${newChecked ? "x" : " "}] ${newFirst}`, ...restLines];
   lines.splice(item.lineStart - 1, bodyLines.length, ...rendered);
   const body = canonicalizeIssueMarkdown(lines.join(`
 `));
@@ -25614,9 +25617,20 @@ function inputBlock(query, name) {
   let depth = 1;
   let i = match.index + match[0].length;
   const start = i;
+  let inString = false;
+  let escaped = false;
   while (i < call.length) {
     const ch = call[i];
-    if (ch === "{")
+    if (inString) {
+      if (escaped)
+        escaped = false;
+      else if (ch === "\\")
+        escaped = true;
+      else if (ch === '"')
+        inString = false;
+    } else if (ch === '"')
+      inString = true;
+    else if (ch === "{")
       depth += 1;
     else if (ch === "}") {
       depth -= 1;
@@ -25626,6 +25640,16 @@ function inputBlock(query, name) {
     i += 1;
   }
   return call.slice(start);
+}
+function identifierFromCreateOutput(stdout) {
+  const trimmed = stdout.trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && typeof parsed.identifier === "string") {
+      return parsed.identifier;
+    }
+  } catch {}
+  return trimmed.split(/\s+/)[0] ?? "";
 }
 function parseJson(stdout) {
   return JSON.parse(stdout || "null");
@@ -25686,7 +25710,7 @@ async function executeTrackerGraphql(backend, query, _variables = {}) {
     for (const label of labels)
       args.push("--label", label);
     const out = (await backend.command(args)).stdout.trim();
-    const identifier = out.split(/\s+/)[0];
+    const identifier = identifierFromCreateOutput(out);
     const issue2 = normalizeIssue2(await commandJson(backend, ["issue", "view", identifier, "--comments", "--json"]));
     return { data: { issueCreate: { success: Boolean(issue2), issue: issue2 } } };
   }
@@ -25742,6 +25766,16 @@ function parseJsonOrText(stdout) {
   } catch {
     return text4;
   }
+}
+function identifierFromCreateOutput2(stdout) {
+  const trimmed = stdout.trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && typeof parsed.identifier === "string") {
+      return parsed.identifier;
+    }
+  } catch {}
+  return trimmed.split(/\s+/)[0] ?? "";
 }
 function issueCreateArgs(input) {
   const args = ["issue", "create", "--title", input.title];
@@ -25826,8 +25860,7 @@ function createTrackerClient(options = {}) {
       },
       async create(input) {
         const output = (await backend.command(issueCreateArgs(input))).stdout.trim();
-        const identifier = output.split(/\s+/)[0];
-        return this.view(identifier);
+        return this.view(identifierFromCreateOutput2(output));
       },
       async edit(identifier, input) {
         await backend.command(issueEditArgs(identifier, input));
@@ -26026,7 +26059,7 @@ function uncheckItem2(itemBody, acId) {
 function applyAcMutation2(rawBody, mutation) {
   const canonical = canonicalizeIssueMarkdown(rawBody);
   const document4 = parseMarkdownDocument(canonical);
-  const targetId = mutation.acId.toLowerCase();
+  const targetId = (normalizedAcId2(mutation.acId) ?? mutation.acId).toLowerCase();
   const seenLines = new Set;
   const matches = [];
   for (const section of document4.sections) {
@@ -26044,27 +26077,30 @@ function applyAcMutation2(rawBody, mutation) {
   if (matches.length > 1)
     throw new Error(`AC ${mutation.acId} is ambiguous: ${matches.length} checkbox rows carry this id`);
   const item = matches[0].item;
+  const canonicalId = normalizedAcId2(item.body) ?? mutation.acId;
   const lines = canonical.split(`
 `);
   const bodyLines = item.body.split(`
 `);
+  const firstLine = bodyLines[0] ?? "";
+  const restLines = bodyLines.slice(1);
   let newChecked = item.checked;
-  let newBody = item.body;
+  let newFirst = firstLine;
   if (mutation.op === "check") {
     newChecked = true;
-    newBody = checkItem2(item.body, mutation.acId, mutation);
+    newFirst = checkItem2(firstLine, canonicalId, mutation);
   } else if (mutation.op === "uncheck") {
     newChecked = false;
-    newBody = uncheckItem2(item.body, mutation.acId);
+    newFirst = uncheckItem2(firstLine, canonicalId);
   } else {
     newChecked = mutation.status === "passed" ? true : mutation.status === "pending" ? false : item.checked;
-    newBody = tidy2(setStatusField2(item.body, mutation.acId, mutation.status));
+    newFirst = tidy2(setStatusField2(firstLine, canonicalId, mutation.status));
   }
+  const newBody = [newFirst, ...restLines].join(`
+`);
   const indentMatch = /^(\s*)-/.exec(lines[item.lineStart - 1] ?? "");
   const indent2 = indentMatch?.[1] ?? "";
-  const newLines = newBody.split(`
-`);
-  const rendered = [`${indent2}- [${newChecked ? "x" : " "}] ${newLines[0] ?? ""}`, ...newLines.slice(1)];
+  const rendered = [`${indent2}- [${newChecked ? "x" : " "}] ${newFirst}`, ...restLines];
   lines.splice(item.lineStart - 1, bodyLines.length, ...rendered);
   const body = canonicalizeIssueMarkdown(lines.join(`
 `));
@@ -26338,6 +26374,16 @@ function parseJsonOrText2(stdout) {
     return text4;
   }
 }
+function identifierFromCreateOutput3(stdout) {
+  const trimmed = stdout.trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && typeof parsed === "object" && typeof parsed.identifier === "string") {
+      return parsed.identifier;
+    }
+  } catch {}
+  return trimmed.split(/\s+/)[0] ?? "";
+}
 function issueCreateArgs2(input) {
   const args = ["issue", "create", "--title", input.title];
   if (input.body)
@@ -26421,8 +26467,7 @@ function createTrackerClient2(options = {}) {
       },
       async create(input) {
         const output = (await backend.command(issueCreateArgs2(input))).stdout.trim();
-        const identifier = output.split(/\s+/)[0];
-        return this.view(identifier);
+        return this.view(identifierFromCreateOutput3(output));
       },
       async edit(identifier, input) {
         await backend.command(issueEditArgs2(identifier, input));
@@ -26471,8 +26516,14 @@ function createTrackerClient2(options = {}) {
 
 // src/cliArgs.ts
 function optionValue(args, name, fallback = "") {
+  const inline = args.find((a) => a.startsWith(`${name}=`));
+  if (inline !== undefined)
+    return inline.slice(name.length + 1);
   const index2 = args.indexOf(name);
-  return index2 >= 0 && index2 + 1 < args.length ? args[index2 + 1] : fallback;
+  if (index2 < 0 || index2 + 1 >= args.length)
+    return fallback;
+  const next = args[index2 + 1];
+  return next.startsWith("--") ? fallback : next;
 }
 
 // src/cliEvidence.ts
@@ -26498,9 +26549,9 @@ function field(entry, name) {
 function versionMap(raw) {
   const out = {};
   for (const part of raw.split(/[,\s]+/).map((value) => value.trim()).filter(Boolean)) {
-    const match = /^(?<id>dev\/\d{1,3})=(?<version>acv_[0-9a-f]{8,64})$/i.exec(part);
+    const match = /^(?<id>(?:[a-z]+\/|AC-)\d{1,3})=(?<version>acv_[0-9a-f]{8,64})$/i.exec(part);
     if (match?.groups)
-      out[match.groups.id.toLowerCase().replace(/\/(\d)$/, "/0$1")] = match.groups.version;
+      out[match.groups.id.toLowerCase().replace(/([/-])(\d)$/, (_m, sep, digit) => `${sep}0${digit}`)] = match.groups.version;
   }
   return out;
 }
@@ -26702,8 +26753,14 @@ function putBlob(projectRoot, bytes, mediaType) {
 
 // src/cliArgs.ts
 function optionValue2(args, name, fallback = "") {
+  const inline = args.find((a) => a.startsWith(`${name}=`));
+  if (inline !== undefined)
+    return inline.slice(name.length + 1);
   const index2 = args.indexOf(name);
-  return index2 >= 0 && index2 + 1 < args.length ? args[index2 + 1] : fallback;
+  if (index2 < 0 || index2 + 1 >= args.length)
+    return fallback;
+  const next = args[index2 + 1];
+  return next.startsWith("--") ? fallback : next;
 }
 
 // src/dsse.ts
@@ -26814,6 +26871,8 @@ async function handleEvidenceCommand(args, client) {
       throw new Error("usage: tracker evidence verify --bundle envelopes.json --key public.pem");
     const publicKeyPem = readFileSync5(resolve4(process.cwd(), keyPath), "utf8");
     const bundle = JSON.parse(readFileSync5(resolve4(process.cwd(), bundlePath), "utf8"));
+    if (!Array.isArray(bundle.envelopes))
+      throw new Error(`bundle ${bundlePath} is missing an "envelopes" array`);
     const results = bundle.envelopes.map((envelope, index2) => {
       const verdict = verifyEnvelope(envelope, publicKeyPem);
       return verdict.ok ? { index: index2, ok: true, predicateType: verdict.statement.predicateType, subject: verdict.statement.subject[0] } : { index: index2, ok: false, reason: verdict.reason };
@@ -26832,6 +26891,8 @@ async function handleEvidenceCommand(args, client) {
       throw new Error("usage: tracker evidence ingest --bundle envelopes.json --key public.pem --issue A-1 [--ac ac/01]");
     const publicKeyPem = readFileSync5(resolve4(process.cwd(), keyPath), "utf8");
     const bundle = JSON.parse(readFileSync5(resolve4(process.cwd(), bundlePath), "utf8"));
+    if (!Array.isArray(bundle.envelopes))
+      throw new Error(`bundle ${bundlePath} is missing an "envelopes" array`);
     const acId = optionValue2(args, "--ac");
     const issue2 = await client.issue.view(issueId, { json: "body" });
     let body = String(issue2.body ?? "");
@@ -27230,7 +27291,11 @@ async function handleSnapshotCommand(args) {
   const categoriesFlag = optionValue2(flagArgs, "--categories");
   const categories = categoriesFlag ? Object.fromEntries(categoriesFlag.split(",").map((pair) => {
     const [c, d] = pair.split("=");
-    return [c.trim(), Number(d)];
+    const depth = Number(d);
+    if (!c?.trim() || d === undefined || !Number.isInteger(depth) || depth < 0) {
+      throw new Error(`invalid --categories entry '${pair}' (expected name=N where N is a non-negative integer)`);
+    }
+    return [c.trim(), depth];
   })) : undefined;
   const profileFlag = optionValue2(flagArgs, "--profile");
   const report = checkTrackerSnapshot2(inputPath ? JSON.parse(readFileSync6(isAbsolute4(inputPath) ? inputPath : resolve5(projectRoot, inputPath), "utf8")) : exportTrackerSnapshot({ projectRoot, ...issuesList ? { issues: issuesList } : {} }), {
@@ -27250,7 +27315,9 @@ async function handleSnapshotCommand(args) {
 `);
   } else {
     const shown = report.findings.filter((item) => !flagArgs.includes("--errors-only") || item.level === "error").slice().sort((a, b) => a.level === b.level ? 0 : a.level === "error" ? -1 : 1);
-    const maxFindings = Number(optionValue2(flagArgs, "--max-findings") || "120");
+    const rawMax = optionValue2(flagArgs, "--max-findings");
+    const parsedMax = Number(rawMax);
+    const maxFindings = rawMax && Number.isInteger(parsedMax) && parsedMax >= 0 ? parsedMax : 120;
     process.stdout.write(renderCheckReport({ ...report, findings: shown }, { errorsOnly: flagArgs.includes("--errors-only"), maxFindings }));
   }
   process.exitCode = report.valid ? 0 : 1;
