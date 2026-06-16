@@ -11,7 +11,15 @@
   <img src="https://img.shields.io/badge/telemetry-none-brightgreen.svg" alt="no telemetry">
 </p>
 
-<p align="center"><img src="docs/demo.gif" alt="ztrack check: cite a real commit → green; fake SHA → exit 1" width="680"></p>
+<p align="center">
+  <a href="#quickstart-under-a-minute"><strong>Quickstart</strong></a> ·
+  <a href="docs/EXAMPLES.md"><strong>Examples</strong></a> ·
+  <a href="#agent-workflows"><strong>Agent workflows</strong></a> ·
+  <a href="#community-and-support"><strong>Support</strong></a> ·
+  <a href="https://ztrack.dev/startup-pilot.html"><strong>Startup Pilot</strong></a>
+</p>
+
+<p align="center"><img src="docs/demo.gif" alt="ztrack check: cite a real commit -> green; fake SHA -> exit 1" width="680"></p>
 
 AI coding agents close tickets on prose. "All tests pass, feature complete" — and the
 commit it cited never existed. Your tracker stored the claim with perfect fidelity and
@@ -21,6 +29,17 @@ verified nothing.
 cite a commit SHA that exists in git and is an ancestor of the branch head, evidence that
 resolves, screenshots/videos that exist — or it fails with a non-zero exit. The task
 schema is defined in [Zod](https://zod.dev).
+
+## What ztrack catches
+
+| Claim in the tracker | What ztrack verifies |
+|---|---|
+| "Implemented in commit `a1b2c3d`" | the SHA exists in git and is reachable from the branch head |
+| "This acceptance criterion is checked" | it has the evidence required by your configured rigor level |
+| "The screenshot/video proves it" | the referenced proof resolves and stays tied to the checked requirement |
+| "This ticket is ready/done" | required criteria, PR state, assignee, and evidence are internally consistent |
+
+Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
 ## Quickstart (under a minute)
 
@@ -44,18 +63,36 @@ $ ztrack check
 exit 1
 ```
 
-## Works with your tracker — no migration
+## How it works
 
-ztrack is a verification layer, not a replacement. Point it at your **Linear**, **Jira**,
-or **GitHub Issues**; agents work against ztrack, and only validated state syncs back to
-the tool your team already lives in.
+ztrack is a verification layer, not a new tracker.
 
-## Typed with Zod
+1. Read tasks from your existing work system or a committed snapshot.
+2. Parse each task through a Zod schema.
+3. Run deterministic checks against git, PR metadata, and referenced evidence.
+4. Exit non-zero when a checked claim is not backed by real proof.
+5. Let CI, MCP, or an agent stop-hook block the workflow until the evidence exists.
 
-Tasks are Zod schemas. `fmt` canonicalizes them, `lint` flags the valid-but-suspicious,
-and `check` is the typechecker.
+## Works with your tracker
 
-> **Lint errors are fixed by editing text. Type errors are fixed by producing evidence.**
+Keep **Linear**, **Jira**, or **GitHub Issues** as the human surface. ztrack sits next to
+them and only validates the claims agents or humans make there.
+
+| Surface | Role |
+|---|---|
+| Linear / Jira / GitHub Issues | where people plan, review, and discuss work |
+| ztrack CLI | local and CI verification |
+| ztrack MCP | agent-facing task/evidence loop |
+| GitHub Action | repository gate with `uses: volter-ai/ztrack@v0` |
+
+## Agent workflows
+
+- **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
+- **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
+- **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry a typechecker until it passes
+
+See [examples](docs/EXAMPLES.md) for a minimal local check, a committed-snapshot
+CI gate, and an MCP agent loop.
 
 ## Gradual rigor
 
@@ -70,21 +107,16 @@ they're counted honestly: *"valid at this level; 14 claims unverified at higher 
 | **sourced** | every requirement traces to where it came from | none → world mirror |
 | **code** | a checked AC cites a real commit; evidence stays fresh | git + a PR host |
 | **visual** | a checked UI AC carries a resolving image proof | screenshot capability |
-| **behavioral** | a checked AC carries pass/fail (optionally human-verified) video | a deployable scenario |
-
-## For agents
-
-- **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
-- **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
-- **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry a typechecker until it passes
-
-See [examples](docs/EXAMPLES.md) for a minimal local check, a committed-snapshot
-CI gate, and an MCP agent loop.
+| **behavioral** | a checked AC carries pass/fail video or human QA proof | a deployable scenario |
 
 ## Why believe it
 
 ztrack runs our own autonomous agent fleet in production — it's what we use to ship real
 code. Every release re-proves in CI that a fabricated commit SHA fails the check.
+
+Current status: ztrack is pre-beta and has been battle-tested first on our own production
+workflow. The deterministic core is general, but new tracker conventions may expose rough
+edges. Please open issues with the smallest workflow shape that breaks.
 
 ## How it compares
 
@@ -96,7 +128,21 @@ code. Every release re-proves in CI that a fabricated commit SHA fails the check
 | Eval / observability | ephemeral | — | scores outputs |
 | **ztrack** | ✓ | ✓ | ✓ |
 
-## Docs
+## Managed setup
+
+The open-source core is free to self-host and run locally. Teams that want help wiring
+ztrack into an existing tracker, CI, MCP, and agent stop-hook workflow can apply for
+[Startup Pilot](https://ztrack.dev/startup-pilot.html). No payment is collected until we
+confirm there is a good fit.
+
+## Community and support
+
+- Questions and bugs: open a GitHub issue with the matching template.
+- Feature ideas: include the workflow problem and the evidence you want ztrack to verify.
+- Managed setup: use the [Startup Pilot](https://ztrack.dev/startup-pilot.html) form.
+- Security reports: use GitHub Security Advisories; do not open public security issues.
+
+## Documentation
 
 - [Examples](docs/EXAMPLES.md)
 - [Architecture](ARCHITECTURE.md)
