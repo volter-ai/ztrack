@@ -18,6 +18,15 @@ describe('applyAcMutation — multi-line AC items', () => {
     expect(reverted).toContain('\n  more detail on second line');
   });
 
+describe("applyAcMutation — id normalization", () => {
+  test("an unpadded caller id matches a zero-padded body id", () => {
+    const body = "# T\n\n## Acceptance Criteria\n\n- [ ] AC-02 do the thing\n";
+    expect(applyAcMutation(body, { op: "check", acId: "AC-2" }).body).toContain("- [x] AC-02");
+    const b2 = "# T\n\n## Acceptance Criteria\n\n- [ ] dev/03 build\n";
+    expect(applyAcMutation(b2, { op: "check", acId: "dev/3" }).body).toContain("- [x] dev/03");
+  });
+});
+
 describe("applyAcMutation — setext headings", () => {
   test("mutates the correct AC row under a setext (two-line) heading", () => {
     const md = `Title\n=====\n\n## Acceptance Criteria\n\n- [ ] AC-01 first\n- [ ] AC-02 second\n`;

@@ -156,7 +156,9 @@ export function addEvidenceEntry(rawBody: string, spec: EvidenceSpec): EvidenceA
 export function applyAcMutation(rawBody: string, mutation: AcMutation): AcMutationResult {
   const canonical = canonicalizeIssueMarkdown(rawBody);
   const document = parseMarkdownDocument(canonical);
-  const targetId = mutation.acId.toLowerCase();
+  // Normalize the caller's id the SAME way body ids are normalized (zero-pad the number),
+  // so an unpadded query like "AC-2" / "dev/3" matches the body's "AC-02" / "dev/03".
+  const targetId = (normalizedAcId(mutation.acId) ?? mutation.acId).toLowerCase();
 
   // Ancestor sections contain their children's text, so the same physical
   // row surfaces in multiple sections' checkboxItems — dedupe by position.
