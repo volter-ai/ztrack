@@ -60,7 +60,7 @@ const TOOLS = [
     name: 'tracker_evidence_add',
     description: 'Add a resolvable evidence entry ([En]) to the issue\'s Evidence section and return its id. Use this BEFORE tracker_ac_check, then pass the returned id in ac_check\'s `evidence`. type=pr needs repo/number/head; screenshot needs path (a real image committed in the repo) + justification; video needs url + status + justification.',
     inputSchema: { type: 'object', properties: {
-      issue: { type: 'string' }, type: { type: 'string', enum: ['pr', 'screenshot', 'video', 'golden-pr'] },
+      issue: { type: 'string' }, type: { type: 'string', enum: ['pr', 'screenshot', 'video', 'other'] },
       ac: { type: 'string' }, repo: { type: 'string' }, number: { type: 'string' }, head: { type: 'string' },
       state: { type: 'string' }, path: { type: 'string' }, url: { type: 'string' }, status: { type: 'string' }, justification: { type: 'string' },
     }, required: ['issue', 'type'] },

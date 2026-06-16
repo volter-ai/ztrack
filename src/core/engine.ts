@@ -1,5 +1,6 @@
-// Greenfield core — the architecture, done as described, with NOTHING from the
-// legacy peak engine or the spine bridging scaffolding.
+// The core contract: parse → strict Zod schema → pure rules → { findings, export }.
+// A preset plugs an SDLC's schema + rules into this engine; the engine knows nothing
+// about any specific SDLC.
 //
 //   1. ONE hard schema: issues > acceptanceCriteria > evidence (strict Zod).
 //   2. mdast parses markdown straight into that schema.
@@ -82,7 +83,7 @@ export interface Context {
     currentSha?: string;
     existingCommits?: string[];
     prs?: Record<string, { headSha?: string; merged?: boolean }>;
-    // resolvable branch heads (branch name -> head sha). peak anchors evidence to a
+    // resolvable branch heads (branch name -> head sha). a preset can anchor evidence to a
     // tracker branch head; other presets simply leave this unset.
     branches?: Record<string, string>;
   };
@@ -103,7 +104,7 @@ export interface Context {
 
 // A rule is pure: (the typed root + context) -> findings. No I/O, no globals.
 //
-// `phase` mirrors how a real SDLC enforces at two surfaces (see peak's legacy):
+// `phase` mirrors how a real SDLC enforces at two surfaces:
 //   - 'gate'       — always-on invariants + the light ongoing check (data integrity,
 //                    source linking, cross-issue reconciliation). Run on every check.
 //   - 'transition' — heavy readiness/structure/promotion rules a real tracker enforces

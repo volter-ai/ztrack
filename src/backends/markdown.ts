@@ -1,6 +1,6 @@
 // Markdown backend (de)serialization — the core of the `markdown` peer backend to
 // `local` (SQLite). An issue is stored as one `tracker/<id>.md`: YAML-ish frontmatter
-// (flat canonical metadata, JSON-encoded values for lossless round-trip), the peak
+// (flat canonical metadata, JSON-encoded values for lossless round-trip), the issue
 // body verbatim, then comments in a trailing `<!--tracker:comments … -->` HTML block
 // (invisible to the preset parser, machine-readable here). The canonical issue is
 // the SAME shape both backends speak, so a port is read-canonical → write-markdown

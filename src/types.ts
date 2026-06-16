@@ -19,7 +19,7 @@ export interface TrackerConfig {
   validation?: {
     /** Path relative to project root, for example ".volter/tracker/validation/preset.ts". */
     entrypoint?: string;
-    /** Starter/template used to install the entrypoint, e.g. "peak" or "speckit". */
+    /** Starter/template used to install the entrypoint, e.g. "default" or "speckit". */
     installedFrom?: string;
   };
   /** Deployment-specific conventions consumed by organization validation. */
@@ -31,14 +31,14 @@ export interface TrackerConfig {
      * organization.grammar/check during migration.
      */
     validationPreset?: string;
-    /** Regex sources (no flags) for external issue keys cited in client channels and case sources, e.g. "PEAK-\\d+". */
+    /** Regex sources (no flags) for external issue keys cited in issue bodies/sources, e.g. "APP-\\d+". */
     linkedIssuePatterns?: string[];
     /** Per-system browse URL templates with an {id} placeholder, e.g. jira: "https://example.atlassian.net/browse/{id}". */
     externalBrowseUrls?: Record<string, string>;
     /**
      * Which top-level issue types are inspected as cases. Absent = the built-in
-     * default set (type:case/bug/feature/delivery/topic/project +
-     * source:stakeholder/jira). A label here is matched against issue labels
+     * default set (type:case/bug/feature/... plus source:* labels). A label here is
+     * matched against issue labels
      * verbatim; this is how a project teaches the tracker its own type vocabulary.
      */
     caseTypeLabels?: string[];

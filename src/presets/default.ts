@@ -1,12 +1,12 @@
-// The default preset — a minimal, standards-following process, distilled from
-// peak. One AC type (dev), image+commit-anchored evidence, five issue states,
-// every issue assigned. Built exactly on the architecture: ONE strict Zod
-// schema, mdast fills it, rules validate it against the injected git world.
+// The default preset — a minimal, standards-following process. One AC type (dev),
+// image+commit-anchored evidence, five issue states, every issue assigned. Built
+// exactly on the architecture: ONE strict Zod schema, mdast fills it, rules validate
+// it against the injected git world.
 //
-// What was deliberately cut from peak: golden PRs, exports, client-merge, video
-// / human-QA, evidence-approval & external ACs, sources / world-annotations /
-// source markers, the stakeholder case hierarchy, thread redirects, and
-// channel / linked-Jira. See spec.ts for the smaller sibling.
+// Deliberately minimal: no external/approval ACs, no source markers /
+// world-annotations, no multi-channel or linked-issue choreography — a single
+// straightforward dev lifecycle. See spec.ts for the even smaller sibling, and write
+// a custom preset for a richer SDLC.
 //
 // Lifecycle gates (the process):
 //   draft        — nothing required yet

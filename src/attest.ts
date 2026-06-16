@@ -160,7 +160,7 @@ export function exportInTotoStatements(
           predicateType: 'https://volter.ai/attestation/human-qa/v1',
           predicate: { ...base, result: field(entry, 'result') || field(entry, 'status') || '', ...(field(entry, 'url') ? { session: { url: field(entry, 'url') } } : {}), ...(field(entry, 'summary') ? { summary: field(entry, 'summary') } : {}) },
         });
-      } else if (entry.type === 'pr' || entry.type === 'golden-pr') {
+      } else if (entry.type === 'pr') {
         statements.push({
           _type: STATEMENT_TYPE,
           subject: [{ name: subjectName, digest: commitDigest(sha) }],
@@ -173,7 +173,6 @@ export function exportInTotoStatements(
               state: field(entry, 'state'),
               draft: ['true', 'yes', '1'].includes(field(entry, 'draft').toLowerCase()),
               ...(field(entry, 'merge-commit') ? { mergeCommit: field(entry, 'merge-commit') } : {}),
-              golden: entry.type === 'golden-pr',
             },
           },
         });
