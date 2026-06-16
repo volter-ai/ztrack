@@ -101,6 +101,17 @@ function lineOffsets(text: string): number[] {
   return offsets;
 }
 
+// Guard the public order-taking functions: a string is iterable, so passing a template
+// NAME ('parent-case') where a section-order ARRAY is expected would silently iterate
+// character-by-character and corrupt the output. Fail loud instead.
+function assertSectionOrder(sectionOrder: readonly string[]): void {
+  if (!Array.isArray(sectionOrder)) {
+    throw new TypeError(
+      `sectionOrder must be an array of section titles (e.g. ['Summary','Sources']), got ${typeof sectionOrder}`,
+    );
+  }
+}
+
 // Checkbox-item detection via mdast (CommonMark+GFM): robust on real human
 // markdown where the old line-regex + indentation heuristic mis-fired —
 // `- [x]` inside fenced code is no longer a false item, and nested lists parse
@@ -315,7 +326,6 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, sectionOrder: read
 
   const expected = sectionOrder;
   const expectedNormalized = new Set(expected.map(normalizeTitle));
-  const canonicalTitles = new Set(expected.map(normalizeTitle));
   const actualSections = childSectionsForTemplate(document);
   const actualCanonicalTitles = actualSections
     .filter((section) => expectedNormalized.has(section.normalizedTitle))
@@ -336,7 +346,8 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, sectionOrder: read
   }
 
   for (const section of actualSections) {
-    if (!canonicalTitles.has(section.normalizedTitle)) {
+    // "unknown" = a section title not in the supplied canon (the section order).
+    if (!expectedNormalized.has(section.normalizedTitle)) {
       diagnostics.push({
         level: 'error',
         code: 'issue_markdown_unknown_section',
@@ -384,6 +395,7 @@ export function parseIssueMarkdown(
   sectionOrder: readonly string[] = [],
   pack: GrammarPack = MARKDOWN_AC_PACK,
 ): ParsedIssueMarkdown {
+  assertSectionOrder(sectionOrder);
   const document = parseMarkdownDocument(text);
   const sections = Object.fromEntries(
     Object.keys(pack.slotTitles).map((name) => [name, slotSection(document, name, pack)]),
@@ -396,6 +408,7 @@ export function parseIssueMarkdown(
 }
 
 export function renderCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, sectionOrder: readonly string[] = []): string {
+  assertSectionOrder(sectionOrder);
   const parts: string[] = [];
   if (issue.title) parts.push(`# ${issue.title.trim()}`);
   for (const title of sectionOrder) {
@@ -463,6 +476,7 @@ function canonicalizeBlockText(text: string): string {
 type FmtBlock = { headingLevel: number; title: string; content: string[] };
 
 export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly string[] = []): string {
+  assertSectionOrder(sectionOrder);
   // Canonical spelling for the known section titles (from the supplied order):
   // a section differing only in case/whitespace is respelled to the canonical form.
   const canonicalSpelling = new Map<string, string>(sectionOrder.map((title) => [normalizeTitle(title), title] as const));
