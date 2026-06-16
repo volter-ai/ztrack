@@ -59,4 +59,14 @@ describe('greenfield spec preset', () => {
     const bad = { issues: [{ id: 'S-1', title: 't', summary: '', status: 'draft', acceptanceCriteria: [], extra: 1 }] };
     expect(SpecRootSchema.safeParse(bad).success).toBe(false);
   });
+
+  test("evidence accepts an abbreviated commit SHA that prefixes a full repo hash", () => {
+    const full = "abc1234" + "0".repeat(33);
+    const md = `# S1: Spec issue\n\nStatus: in-review\nSummary: s\n\n## Acceptance Criteria\n\n- [x] A1 first ac\n  - commit: abc1234\n`;
+    const errs = checkSpec(md, { git: { existingCommits: [full], prs: {} } }).findings.filter((f) => f.code === "evidence_commit_not_found");
+    expect(errs).toHaveLength(0);
+    // and with no git world, the check is skipped (cannot verify)
+    expect(checkSpec(md, {}).findings.filter((f) => f.code === "evidence_commit_not_found")).toHaveLength(0);
+  });
+
 });

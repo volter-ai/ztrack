@@ -120,9 +120,13 @@ const passedAcNeedsEvidence: Rule<SpecRoot> = {
 const evidenceCommitExists: Rule<SpecRoot> = {
   name: 'evidence_commit_exists',
   run: (root, ctx: Context) => {
-    const existing = new Set(ctx.git?.existingCommits ?? []);
+    const existing = ctx.git?.existingCommits;
+    if (!existing) return []; // git world unavailable -> cannot verify commit existence
+    // Prefix-match both directions so an abbreviated SHA (the schema allows 7-40 hex)
+    // matches a full 40-char hash from `git log`, like the default/speckit presets.
+    const commitExists = (sha: string): boolean => existing.some((c) => c.startsWith(sha) || sha.startsWith(c));
     return root.issues.flatMap((issue) => issue.acceptanceCriteria.flatMap((ac) =>
-      ac.evidence.filter((ev) => !existing.has(ev.commit)).map((ev): Finding => ({
+      ac.evidence.filter((ev) => !commitExists(ev.commit)).map((ev): Finding => ({
         code: 'evidence_commit_not_found', severity: 'error',
         message: `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`, issueId: issue.id, acId: ac.id, evidenceId: ev.id,
       }))));

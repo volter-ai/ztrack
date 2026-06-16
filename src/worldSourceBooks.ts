@@ -144,8 +144,11 @@ function eventText(event: WorldServiceEvent, serviceConfig?: SourceServiceConfig
 
 function splitExternalId(provider: string, id: string): { channel: string; ts: string } {
   if (provider === 'jira') return { channel: 'jira', ts: id.replace(/^jira:/, '') };
-  const [channel, ts] = id.split(':', 2);
-  return { channel: channel || provider, ts: ts || id };
+  // split on the FIRST ':' only — keep the remainder in ts (a third colon segment
+  // is not dropped). `split(':', 2)` would truncate after the second segment.
+  const sep = id.indexOf(':');
+  if (sep < 0) return { channel: provider, ts: id };
+  return { channel: id.slice(0, sep) || provider, ts: id.slice(sep + 1) || id };
 }
 
 function messageIdForEvent(event: WorldServiceEvent): string {
