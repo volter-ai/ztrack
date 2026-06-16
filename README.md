@@ -4,8 +4,11 @@
 
 <p align="center">
   <a href="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml"><img src="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/volter-ai/ztrack/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0"></a>
   <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/v/ztrack.svg" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/dm/ztrack.svg" alt="npm downloads"></a>
+  <a href="https://github.com/volter-ai/ztrack/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0"></a>
+  <img src="https://img.shields.io/badge/TypeScript-5.9-blue.svg" alt="TypeScript">
+  <img src="https://img.shields.io/badge/telemetry-none-brightgreen.svg" alt="no telemetry">
 </p>
 
 <p align="center"><img src="docs/demo.gif" alt="ztrack check: cite a real commit → green; fake SHA → exit 1" width="680"></p>
@@ -100,6 +103,7 @@ code. Every release re-proves in CI that a fabricated commit SHA fails the check
 - [Preset guide](PRESET-GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
+- [Releasing](docs/RELEASING.md)
 - [Roadmap](ROADMAP.md)
 - [Changelog](CHANGELOG.md)
 

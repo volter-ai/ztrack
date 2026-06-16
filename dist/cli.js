@@ -24644,6 +24644,8 @@ function parseMarkdownDocument(text4) {
   };
 }
 function canonicalSectionOrder(template) {
+  if (template === "generic")
+    return [];
   return template === "stakeholder-subcase" ? STAKEHOLDER_SUBCASE_SECTION_ORDER : PARENT_CASE_SECTION_ORDER;
 }
 var SLOT_CANONICAL_TITLE = {
@@ -24715,6 +24717,8 @@ function issueMarkdownDiagnostics(document4, template) {
       actual: h1Sections.map((section) => section.title)
     });
   }
+  if (canonicalSectionOrder(template).length === 0)
+    return diagnostics;
   const expected = canonicalSectionOrder(template);
   const expectedNormalized = new Set(expected.map(normalizeTitle));
   const actualSections = childSectionsForTemplate(document4);
@@ -24781,7 +24785,7 @@ function issueMarkdownDiagnostics(document4, template) {
   }
   return diagnostics;
 }
-function parseIssueMarkdown(text4, template = "parent-case", pack = MARKDOWN_AC_PACK) {
+function parseIssueMarkdown(text4, template = "generic", pack = MARKDOWN_AC_PACK) {
   const document4 = parseMarkdownDocument(text4);
   const slot = (name) => slotSection(document4, name, pack);
   return {
@@ -24828,7 +24832,7 @@ function canonicalizeBlockText(text4) {
   return collapsed.join(`
 `);
 }
-function canonicalizeIssueMarkdown(text4, template = "parent-case") {
+function canonicalizeIssueMarkdown(text4, template = "generic") {
   const lines = text4.split(`
 `);
   const tree = fromMarkdown(text4, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
@@ -26151,7 +26155,7 @@ var TOOLS = [
     description: "Add a resolvable evidence entry ([En]) to the issue's Evidence section and return its id. Use this BEFORE tracker_ac_check, then pass the returned id in ac_check's `evidence`. type=pr needs repo/number/head; screenshot needs path (a real image committed in the repo) + justification; video needs url + status + justification.",
     inputSchema: { type: "object", properties: {
       issue: { type: "string" },
-      type: { type: "string", enum: ["pr", "screenshot", "video", "golden-pr"] },
+      type: { type: "string", enum: ["pr", "screenshot", "video", "other"] },
       ac: { type: "string" },
       repo: { type: "string" },
       number: { type: "string" },
@@ -26599,7 +26603,7 @@ function exportInTotoStatements(snapshot, options = {}) {
           predicateType: "https://volter.ai/attestation/human-qa/v1",
           predicate: { ...base, result: field(entry, "result") || field(entry, "status") || "", ...field(entry, "url") ? { session: { url: field(entry, "url") } } : {}, ...field(entry, "summary") ? { summary: field(entry, "summary") } : {} }
         });
-      } else if (entry.type === "pr" || entry.type === "golden-pr") {
+      } else if (entry.type === "pr") {
         statements.push({
           _type: STATEMENT_TYPE,
           subject: [{ name: subjectName, digest: commitDigest(sha) }],
@@ -26611,8 +26615,7 @@ function exportInTotoStatements(snapshot, options = {}) {
               number: Number(field(entry, "number")) || 0,
               state: field(entry, "state"),
               draft: ["true", "yes", "1"].includes(field(entry, "draft").toLowerCase()),
-              ...field(entry, "merge-commit") ? { mergeCommit: field(entry, "merge-commit") } : {},
-              golden: entry.type === "golden-pr"
+              ...field(entry, "merge-commit") ? { mergeCommit: field(entry, "merge-commit") } : {}
             }
           }
         });

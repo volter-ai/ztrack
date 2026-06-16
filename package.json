@@ -5,7 +5,8 @@
   "files": [
     "backend",
     "dist",
-    "src"
+    "src",
+    "!src/**/*.test.ts"
   ],
   "exports": {
     ".": "./src/index.ts",
