@@ -5,43 +5,25 @@ var __getProtoOf = Object.getPrototypeOf;
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
-function __accessProp(key) {
-  return this[key];
-}
-var __toESMCache_node;
-var __toESMCache_esm;
 var __toESM = (mod, isNodeMode, target) => {
-  var canCache = mod != null && typeof mod === "object";
-  if (canCache) {
-    var cache = isNodeMode ? __toESMCache_node ??= new WeakMap : __toESMCache_esm ??= new WeakMap;
-    var cached = cache.get(mod);
-    if (cached)
-      return cached;
-  }
   target = mod != null ? __create(__getProtoOf(mod)) : {};
   const to = isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target;
   for (let key of __getOwnPropNames(mod))
     if (!__hasOwnProp.call(to, key))
       __defProp(to, key, {
-        get: __accessProp.bind(mod, key),
+        get: () => mod[key],
         enumerable: true
       });
-  if (canCache)
-    cache.set(mod, to);
   return to;
 };
 var __commonJS = (cb, mod) => () => (mod || cb((mod = { exports: {} }).exports, mod), mod.exports);
-var __returnValue = (v) => v;
-function __exportSetter(name, newValue) {
-  this[name] = __returnValue.bind(null, newValue);
-}
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, {
       get: all[name],
       enumerable: true,
       configurable: true,
-      set: __exportSetter.bind(all, name)
+      set: (newValue) => all[name] = () => newValue
     });
 };
 var __esm = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
@@ -24549,6 +24531,11 @@ function lineOffsets(text4) {
   }
   return offsets;
 }
+function assertSectionOrder(sectionOrder) {
+  if (!Array.isArray(sectionOrder)) {
+    throw new TypeError(`sectionOrder must be an array of section titles (e.g. ['Summary','Sources']), got ${typeof sectionOrder}`);
+  }
+}
 function parseCheckboxItems(body, sectionLineStart) {
   const tree = fromMarkdown(body, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
   const items = [];
@@ -24700,7 +24687,6 @@ function issueMarkdownDiagnostics(document4, sectionOrder) {
     return diagnostics;
   const expected = sectionOrder;
   const expectedNormalized = new Set(expected.map(normalizeTitle));
-  const canonicalTitles = new Set(expected.map(normalizeTitle));
   const actualSections = childSectionsForTemplate(document4);
   const actualCanonicalTitles = actualSections.filter((section) => expectedNormalized.has(section.normalizedTitle)).map((section) => section.title);
   const actualNormalized = actualSections.map((section) => section.normalizedTitle);
@@ -24717,7 +24703,7 @@ function issueMarkdownDiagnostics(document4, sectionOrder) {
     }
   }
   for (const section of actualSections) {
-    if (!canonicalTitles.has(section.normalizedTitle)) {
+    if (!expectedNormalized.has(section.normalizedTitle)) {
       diagnostics.push({
         level: "error",
         code: "issue_markdown_unknown_section",
@@ -24755,6 +24741,7 @@ function issueMarkdownDiagnostics(document4, sectionOrder) {
   return diagnostics;
 }
 function parseIssueMarkdown(text4, sectionOrder = [], pack = MARKDOWN_AC_PACK) {
+  assertSectionOrder(sectionOrder);
   const document4 = parseMarkdownDocument(text4);
   const sections = Object.fromEntries(Object.keys(pack.slotTitles).map((name) => [name, slotSection(document4, name, pack)]));
   return {
@@ -24788,6 +24775,7 @@ function canonicalizeBlockText(text4) {
 `);
 }
 function canonicalizeIssueMarkdown(text4, sectionOrder = []) {
+  assertSectionOrder(sectionOrder);
   const canonicalSpelling = new Map(sectionOrder.map((title) => [normalizeTitle(title), title]));
   const lines = text4.split(`
 `);
