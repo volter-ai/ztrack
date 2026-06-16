@@ -723,7 +723,12 @@ function loadTrackerConfig2(projectRoot = projectRootFrom2()) {
   if (!existsSync4(configPath)) {
     throw new Error(`No tracker config found at ${configPath}. Run 'tracker init' to create one.`);
   }
-  const raw = JSON.parse(readFileSync3(configPath, "utf8"));
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync3(configPath, "utf8"));
+  } catch (error51) {
+    throw new Error(`Tracker config at ${configPath} is not valid JSON: ${error51.message}`);
+  }
   return { ...raw, backend: raw.backend === "markdown" ? "markdown" : "local" };
 }
 function trackerDatabasePath(projectRoot = projectRootFrom2()) {
@@ -810,7 +815,12 @@ function loadTrackerConfig(projectRoot = projectRootFrom()) {
   if (!existsSync(configPath)) {
     throw new Error(`No tracker config found at ${configPath}. Run 'tracker init' to create one.`);
   }
-  const raw = JSON.parse(readFileSync(configPath, "utf8"));
+  let raw;
+  try {
+    raw = JSON.parse(readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Tracker config at ${configPath} is not valid JSON: ${error.message}`);
+  }
   return { ...raw, backend: raw.backend === "markdown" ? "markdown" : "local" };
 }
 function loadEnvFiles(projectRoot) {
@@ -15149,6 +15159,7 @@ var TrackerAcceptanceCriterionBasicSchema = exports_external.object({
   sourceRefs: exports_external.array(exports_external.string().min(1)).default([]),
   evidenceRefs: exports_external.array(exports_external.string().min(1)).default([]),
   proofRefs: exports_external.array(exports_external.string().min(1)).default([]),
+  commitHashes: exports_external.array(exports_external.string().min(1)).default([]),
   extensions: ExtensionSchema.optional()
 }).passthrough();
 var TrackerSkillRunSchema = exports_external.object({
@@ -15344,11 +15355,14 @@ var TrackerValidationReportSchema = exports_external.object({
 
 // src/presets/genericRuntime.ts
 var CHECKBOX_RE = /^\s*-\s+\[(?<checked>[ xX])\]\s+(?<body>.+)$/gm;
-var AC_ID_RE = /\b(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
+var AC_ID_RE = /^\s*(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
 var COMMIT_RE = /\bcommit[:\s]+(?<sha>[0-9a-f]{7,40})\b/i;
+var COMMIT_RE_G = /\bcommit[:\s]+(?<sha>[0-9a-f]{7,40})\b/gi;
+var FIELD_RE = /\b([a-z][a-z0-9-]*)\s*:\s*(.+?)(?=\s+[a-z][a-z0-9-]*\s*:|$)/gi;
 var EVIDENCE_RE = /\[E(?<num>\d+)\]/g;
 var SOURCE_RE = /(?<![A-Za-z])\[(?:source\s*)?(?<num>\d+)\]/gi;
-var STATUS_RE = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
+var STATUS_FIELD_RE = /^\s*(?:\S+\s+){0,2}status:\s*(?<status>pending|passed|failed|stale|blocked|descoped)\b/i;
+var STATUS_STRIP_RE = /\bstatus:\s*(?:pending|passed|failed|stale|blocked|descoped)\b/i;
 function stringValue(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -15366,9 +15380,18 @@ function runTracker(args, projectRoot) {
       CONFIG_FILE: trackerConfigPath(projectRoot)
     }
   });
+  if (result.error) {
+    const code = result.error.code;
+    throw new Error(`tracker backend could not be launched (${code ?? result.error.message}); is python3 installed and on PATH?`);
+  }
   if (result.status !== 0)
-    throw new Error(result.stderr.trim() || result.stdout.trim() || `tracker backend failed: ${args.join(" ")}`);
-  return JSON.parse(result.stdout || "null");
+    throw new Error(result.stderr?.trim() || result.stdout?.trim() || `tracker backend failed: ${args.join(" ")}`);
+  const stdout = result.stdout ?? "";
+  try {
+    return JSON.parse(stdout || "null");
+  } catch {
+    throw new Error(`tracker backend returned non-JSON output for '${args.join(" ")}': ${stdout.slice(0, 200)}`);
+  }
 }
 function issueIdentifier(issue2) {
   return stringValue(issue2.identifier) || stringValue(issue2.id) || stringValue(issue2.number);
@@ -15390,41 +15413,52 @@ function stateType(issue2) {
 function titleFromBody(body) {
   return /^#\s+(.+)$/m.exec(body)?.[1]?.trim() ?? "";
 }
-function normalizedAcId(body) {
+function parseAcId(body) {
   const match = AC_ID_RE.exec(body);
-  if (!match?.groups)
-    return body.split(/\s+/, 1)[0] ?? "AC";
-  const prefix = match.groups.prefix.toLowerCase().replace(" ", "-");
+  if (!match?.groups) {
+    const token = body.trim().split(/\s+/, 1)[0] ?? "";
+    return { id: token || "AC", type: "ac" };
+  }
+  const prefix = match.groups.prefix.toLowerCase();
   const num = String(Number(match.groups.num)).padStart(2, "0");
-  return prefix.endsWith("/") ? `${prefix}${num}` : `AC-${num}`;
+  if (prefix.endsWith("/")) {
+    const slug = prefix.slice(0, -1);
+    return { id: `${slug}/${num}`, type: slug };
+  }
+  return { id: `AC-${num}`, type: "ac" };
 }
 function acText(body) {
-  return body.replace(AC_ID_RE, "").replace(STATUS_RE, "").replace(COMMIT_RE, "").replace(EVIDENCE_RE, "").replace(SOURCE_RE, "").replace(/\bAC-Version:\s*acv_[0-9a-f]{8,64}\b/gi, "").replace(/\s{2,}/g, " ").trim();
+  return body.replace(AC_ID_RE, "").replace(STATUS_STRIP_RE, "").replace(COMMIT_RE, "").replace(EVIDENCE_RE, "").replace(SOURCE_RE, "").replace(/\bAC-Version:\s*acv_[0-9a-f]{8,64}\b/gi, "").replace(/\s{2,}/g, " ").trim();
 }
 function acceptanceCriteria(body) {
   return [...body.matchAll(CHECKBOX_RE)].map((match) => {
     const row = match.groups?.body ?? "";
-    const status = STATUS_RE.exec(row)?.[1]?.toLowerCase() ?? (match.groups?.checked?.toLowerCase() === "x" ? "passed" : "pending");
+    const checked = match.groups?.checked?.toLowerCase() === "x";
+    const status = STATUS_FIELD_RE.exec(row)?.groups?.status?.toLowerCase() ?? (checked ? "passed" : "pending");
+    const { id, type } = parseAcId(row);
     return {
-      id: normalizedAcId(row),
-      type: normalizedAcId(row).split("/")[0].toLowerCase(),
-      checked: match.groups?.checked?.toLowerCase() === "x",
+      id,
+      type,
+      checked,
       status,
       body: row,
       text: acText(row),
       sourceRefs: [...new Set([...row.matchAll(SOURCE_RE)].flatMap((m) => m.groups?.num ? [m.groups.num] : []))].sort(),
       evidenceRefs: [...new Set([...row.matchAll(EVIDENCE_RE)].flatMap((m) => m.groups?.num ? [`E${m.groups.num}`] : []))].sort(),
-      commitHashes: COMMIT_RE.exec(row)?.groups?.sha ? [COMMIT_RE.exec(row).groups.sha.toLowerCase()] : []
+      commitHashes: [...new Set([...row.matchAll(COMMIT_RE_G)].flatMap((m) => m.groups?.sha ? [m.groups.sha.toLowerCase()] : []))]
     };
   });
 }
 function evidenceEntries(body) {
-  return [...body.matchAll(/^\s*\[(E\d+)\]\s+(.+)$/gm)].map((match) => ({
-    id: match[1],
-    type: /\btype:\s*([^\s]+)/i.exec(match[2])?.[1] ?? "evidence",
-    fields: Object.fromEntries([...match[2].matchAll(/\b([a-z][a-z0-9-]*)\s*:\s*([^\s]+)/gi)].map((m) => [m[1], m[2]])),
-    ac: [...match[2].matchAll(/\bac:\s*([^\s]+)/gi)].flatMap((m) => m[1].split(","))
-  }));
+  return [...body.matchAll(/^\s*\[(E\d+)\]\s+(.+)$/gm)].map((match) => {
+    const fields = Object.fromEntries([...match[2].matchAll(FIELD_RE)].map((m) => [m[1].toLowerCase(), m[2].trim()]));
+    return {
+      id: match[1],
+      type: fields.type ?? "evidence",
+      fields,
+      ac: (fields.ac ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+    };
+  });
 }
 function normalizeIssue(issue2) {
   const body = stringValue(issue2.body) || stringValue(issue2.description);
@@ -15490,6 +15524,7 @@ function checkGenericSnapshot(rawSnapshot, options) {
   const snapshot = TrackerSnapshotSchema.parse(rawSnapshot);
   const opts = isObject2(options) ? options : {};
   const projectRoot = stringValue(opts.projectRoot) || snapshot.projectRoot || process.cwd();
+  const gitAvailable = spawnSync("git", ["rev-parse", "--git-dir"], { cwd: projectRoot }).status === 0;
   const findings = [];
   for (const currentCase of snapshot.cases) {
     if (currentCase.stateType !== "canceled" && !stringValue(currentCase.assignee)) {
@@ -15499,14 +15534,16 @@ function checkGenericSnapshot(rawSnapshot, options) {
     for (const ac of currentCase.acceptanceCriteria) {
       if (!ac.checked && ac.status !== "passed")
         continue;
-      const commits = Array.isArray(ac.commitHashes) ? ac.commitHashes : [];
+      const commits = ac.commitHashes ?? [];
       if (commits.length === 0) {
         findings.push({ level: "error", code: "checked_ac_missing_commit_hash", issue: currentCase.identifier, message: `Checked AC ${ac.id} does not cite a commit hash.` });
       }
-      for (const sha of commits) {
-        const exists = spawnSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: projectRoot }).status === 0;
-        if (!exists)
-          findings.push({ level: "error", code: "checked_ac_commit_hash_missing", issue: currentCase.identifier, message: `Checked AC ${ac.id} cites missing commit ${sha}.` });
+      if (gitAvailable) {
+        for (const sha of commits) {
+          const exists = spawnSync("git", ["cat-file", "-e", `${sha}^{commit}`], { cwd: projectRoot }).status === 0;
+          if (!exists)
+            findings.push({ level: "error", code: "checked_ac_commit_hash_missing", issue: currentCase.identifier, message: `Checked AC ${ac.id} cites missing commit ${sha}.` });
+        }
       }
       if (ac.evidenceRefs.length === 0) {
         findings.push({ level: "error", code: "checked_ac_missing_evidence", issue: currentCase.identifier, message: `Checked AC ${ac.id} does not cite evidence.` });
@@ -24562,6 +24599,8 @@ function parseCheckboxItems(body, sectionLineStart) {
   return items;
 }
 function parseMarkdownDocument(text4) {
+  text4 = text4.replace(/\r\n?/g, `
+`);
   const offsets = lineOffsets(text4);
   const lines = text4.split(`
 `);
@@ -24750,9 +24789,11 @@ function parseIssueMarkdown(text4, sectionOrder = [], pack = MARKDOWN_AC_PACK) {
     sections
   };
 }
-function canonicalizeBlockText(text4) {
-  const lines = text4.split(`
-`).map((line) => {
+function canonicalizeBlockText(lines, startLine, protectedAbsLines) {
+  const prot = lines.map((_, i) => protectedAbsLines.has(startLine + i));
+  const rewritten = lines.map((line, i) => {
+    if (prot[i])
+      return line;
     const checkbox = CHECKBOX_RE2.exec(line);
     if (checkbox) {
       const indent2 = checkbox[1] ?? "";
@@ -24762,32 +24803,41 @@ function canonicalizeBlockText(text4) {
     return line.replace(/\s+$/, "");
   });
   const collapsed = [];
-  for (const line of lines) {
-    if (line === "" && collapsed[collapsed.length - 1] === "")
+  for (let i = 0;i < rewritten.length; i++) {
+    const entry = { line: rewritten[i], prot: prot[i] };
+    const prev = collapsed[collapsed.length - 1];
+    if (entry.line === "" && !entry.prot && prev && prev.line === "" && !prev.prot)
       continue;
-    collapsed.push(line);
+    collapsed.push(entry);
   }
-  while (collapsed[0] === "")
+  while (collapsed.length && collapsed[0].line === "" && !collapsed[0].prot)
     collapsed.shift();
-  while (collapsed[collapsed.length - 1] === "")
+  while (collapsed.length && collapsed[collapsed.length - 1].line === "" && !collapsed[collapsed.length - 1].prot)
     collapsed.pop();
-  return collapsed.join(`
+  return collapsed.map((entry) => entry.line).join(`
 `);
 }
 function canonicalizeIssueMarkdown(text4, sectionOrder = []) {
   assertSectionOrder(sectionOrder);
+  text4 = text4.replace(/\r\n?/g, `
+`);
   const canonicalSpelling = new Map(sectionOrder.map((title) => [normalizeTitle(title), title]));
   const lines = text4.split(`
 `);
   const tree = fromMarkdown(text4, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
   const headingLines = new Set;
-  const markHeadings = (node2) => {
+  const codeLines = new Set;
+  const markNodes = (node2) => {
     if (node2.type === "heading" && node2.position)
       headingLines.add(node2.position.start.line);
+    if (node2.type === "code" && node2.position) {
+      for (let line = node2.position.start.line;line <= node2.position.end.line; line++)
+        codeLines.add(line);
+    }
     for (const c of node2.children ?? [])
-      markHeadings(c);
+      markNodes(c);
   };
-  markHeadings(tree);
+  markNodes(tree);
   const blocks = [];
   const preamble = [];
   let current = null;
@@ -24795,7 +24845,7 @@ function canonicalizeIssueMarkdown(text4, sectionOrder = []) {
     const line = lines[lineIndex];
     const heading = headingLines.has(lineIndex + 1) ? HEADING_RE.exec(line) : null;
     if (heading) {
-      current = { headingLevel: (heading[1] ?? "").length, title: (heading[2] ?? "").trim(), content: [] };
+      current = { headingLevel: (heading[1] ?? "").length, title: (heading[2] ?? "").trim(), content: [], contentStart: lineIndex + 2 };
       blocks.push(current);
     } else if (current) {
       current.content.push(line);
@@ -24806,8 +24856,7 @@ function canonicalizeIssueMarkdown(text4, sectionOrder = []) {
   const units = [];
   let unit = null;
   for (const block of blocks) {
-    const ownContent = canonicalizeBlockText(block.content.join(`
-`));
+    const ownContent = canonicalizeBlockText(block.content, block.contentStart, codeLines);
     if (block.headingLevel <= 2 || !unit) {
       const spelled = block.headingLevel === 2 ? canonicalSpelling.get(normalizeTitle(block.title)) : undefined;
       unit = {
@@ -24835,8 +24884,7 @@ ${ownContent}` : heading);
     return rankA - rankB || a.index - b.index;
   }).map((entry) => entry.candidate);
   const rendered = [];
-  const preambleText = canonicalizeBlockText(preamble.join(`
-`));
+  const preambleText = canonicalizeBlockText(preamble, 1, codeLines);
   if (preambleText)
     rendered.push(preambleText);
   for (const candidate of titleUnit ? [titleUnit, ...sorted, ...otherUnits] : [...sorted, ...otherUnits]) {
@@ -24961,12 +25009,12 @@ function exportTrackerSnapshot(options = {}) {
 
 // src/mutate.ts
 var AC_ID_IN_BODY_RE = /\b(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
-var STATUS_FIELD_RE = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
+var STATUS_FIELD_RE2 = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
 var COMMIT_FIELD_RE2 = /\bcommit[:\s]+[0-9a-f]{7,40}\b\.?/gi;
 var AC_VERSION_RE = /\s*\bAC-Version:\s*acv_[0-9a-f]{8,64}\b\.?/gi;
 var EVIDENCE_REF_RE2 = /\s*\[E\d+\]/g;
 var PROOF_REF_RE2 = /\s*\[P\d+\]/g;
-function normalizedAcId2(itemBody) {
+function normalizedAcId(itemBody) {
   const match = AC_ID_IN_BODY_RE.exec(itemBody);
   if (!match?.groups)
     return null;
@@ -24978,8 +25026,8 @@ function tidy(text4) {
   return text4.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+([.,;:])/g, "$1").replace(/[ \t]+$/gm, "").trim();
 }
 function setStatusField(itemBody, acId, status) {
-  if (STATUS_FIELD_RE.test(itemBody))
-    return itemBody.replace(STATUS_FIELD_RE, `status: ${status}`);
+  if (STATUS_FIELD_RE2.test(itemBody))
+    return itemBody.replace(STATUS_FIELD_RE2, `status: ${status}`);
   const idMatch = AC_ID_IN_BODY_RE.exec(itemBody);
   if (idMatch && idMatch.index !== undefined) {
     const end = idMatch.index + idMatch[0].length;
@@ -25076,7 +25124,7 @@ function applyAcMutation(rawBody, mutation) {
   const matches = [];
   for (const section of document4.sections) {
     for (const item2 of section.checkboxItems) {
-      if (normalizedAcId2(item2.body)?.toLowerCase() !== targetId)
+      if (normalizedAcId(item2.body)?.toLowerCase() !== targetId)
         continue;
       if (seenLines.has(item2.lineStart))
         continue;
@@ -25235,7 +25283,7 @@ function parseIssue(md) {
       }
     }
   const rest = fmM ? md.slice(fmM[0].length) : md;
-  const cIdx = rest.indexOf(`
+  const cIdx = rest.lastIndexOf(`
 ${COMMENTS_MARKER}`);
   const body = cIdx >= 0 ? rest.slice(0, cIdx) : rest.replace(/\n$/, "");
   let comments = [];
@@ -25383,8 +25431,9 @@ class MarkdownBackend {
         rows = rows.filter((c) => `${c.title}
 ${c.body}`.toLowerCase().includes(search2.toLowerCase()));
       const limit = flagVal(args, "limit");
-      if (limit)
-        rows = rows.slice(0, Number(limit));
+      const limitN = Number(limit);
+      if (limit && Number.isFinite(limitN) && limitN >= 0)
+        rows = rows.slice(0, limitN);
       return ok3(JSON.stringify(rows.map((c) => listRow(c, fields)), null, 2));
     }
     if (verb === "issue" && sub === "view") {
@@ -25915,12 +25964,12 @@ async function applyTx(edits, options) {
 
 // src/mutate.ts
 var AC_ID_IN_BODY_RE2 = /\b(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
-var STATUS_FIELD_RE2 = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
+var STATUS_FIELD_RE3 = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
 var COMMIT_FIELD_RE3 = /\bcommit[:\s]+[0-9a-f]{7,40}\b\.?/gi;
 var AC_VERSION_RE2 = /\s*\bAC-Version:\s*acv_[0-9a-f]{8,64}\b\.?/gi;
 var EVIDENCE_REF_RE3 = /\s*\[E\d+\]/g;
 var PROOF_REF_RE3 = /\s*\[P\d+\]/g;
-function normalizedAcId3(itemBody) {
+function normalizedAcId2(itemBody) {
   const match = AC_ID_IN_BODY_RE2.exec(itemBody);
   if (!match?.groups)
     return null;
@@ -25932,8 +25981,8 @@ function tidy2(text4) {
   return text4.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+([.,;:])/g, "$1").replace(/[ \t]+$/gm, "").trim();
 }
 function setStatusField2(itemBody, acId, status) {
-  if (STATUS_FIELD_RE2.test(itemBody))
-    return itemBody.replace(STATUS_FIELD_RE2, `status: ${status}`);
+  if (STATUS_FIELD_RE3.test(itemBody))
+    return itemBody.replace(STATUS_FIELD_RE3, `status: ${status}`);
   const idMatch = AC_ID_IN_BODY_RE2.exec(itemBody);
   if (idMatch && idMatch.index !== undefined) {
     const end = idMatch.index + idMatch[0].length;
@@ -25982,7 +26031,7 @@ function applyAcMutation2(rawBody, mutation) {
   const matches = [];
   for (const section of document4.sections) {
     for (const item2 of section.checkboxItems) {
-      if (normalizedAcId3(item2.body)?.toLowerCase() !== targetId)
+      if (normalizedAcId2(item2.body)?.toLowerCase() !== targetId)
         continue;
       if (seenLines.has(item2.lineStart))
         continue;
