@@ -17,4 +17,14 @@ describe('applyAcMutation — multi-line AC items', () => {
     expect(reverted).toContain('- [ ] dev/03');
     expect(reverted).toContain('\n  more detail on second line');
   });
+
+describe("applyAcMutation — setext headings", () => {
+  test("mutates the correct AC row under a setext (two-line) heading", () => {
+    const md = `Title\n=====\n\n## Acceptance Criteria\n\n- [ ] AC-01 first\n- [ ] AC-02 second\n`;
+    const out = applyAcMutation(md, { op: "check", acId: "AC-02" }).body;
+    expect(out).toMatch(/- \[ \] AC-01 first/);
+    expect(out).toMatch(/- \[x\] AC-02/);
+  });
+});
+
 });

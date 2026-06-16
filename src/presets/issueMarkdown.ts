@@ -186,7 +186,10 @@ export function parseMarkdownDocument(text: string): MarkdownDocument {
     const nextHeading = headings.slice(index + 1).find((candidate) => candidate.level <= heading.level);
     const nextOffset = nextHeading?.offset ?? text.length;
     const body = text.slice(bodyStart, nextOffset).replace(/\n$/, '');
-    const sectionLineStart = heading.line + 1;
+    // A setext heading spans two source lines (`Title\n====`), so the body starts one
+    // line further down than for a single-line ATX heading. Derive the span from raw so
+    // checkbox lineStart/lineEnd (used by mutation splicing) point at the right rows.
+    const sectionLineStart = heading.line + 1 + (heading.raw.match(/\n/g)?.length ?? 0);
     let parentIndex: number | null = null;
     for (let candidateIndex = index - 1; candidateIndex >= 0; candidateIndex--) {
       if ((headings[candidateIndex]?.level ?? 0) < heading.level) {

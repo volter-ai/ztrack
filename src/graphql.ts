@@ -75,6 +75,18 @@ function inputBlock(query: string, name: string): string {
   return call.slice(start);
 }
 
+// `issue create` stdout differs by backend (local: "<id>\t<title>"; markdown: JSON).
+function identifierFromCreateOutput(stdout: string): string {
+  const trimmed = stdout.trim();
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && typeof (parsed as { identifier?: unknown }).identifier === 'string') {
+      return (parsed as { identifier: string }).identifier;
+    }
+  } catch { /* not JSON — fall through */ }
+  return trimmed.split(/\s+/)[0] ?? '';
+}
+
 function parseJson(stdout: string): unknown {
   return JSON.parse(stdout || 'null');
 }
@@ -144,7 +156,7 @@ export async function executeTrackerGraphql(
     if (project) args.push('--project', project);
     for (const label of labels) args.push('--label', label);
     const out = (await backend.command(args)).stdout.trim();
-    const identifier = out.split(/\s+/)[0]!;
+    const identifier = identifierFromCreateOutput(out);
     const issue = normalizeIssue(await commandJson(backend, ['issue', 'view', identifier, '--comments', '--json']));
     return { data: { issueCreate: { success: Boolean(issue), issue } } };
   }

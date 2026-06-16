@@ -14,6 +14,19 @@ function parseJsonOrText(stdout: string): unknown {
   }
 }
 
+// `issue create` stdout differs by backend: the local backend prints "<id>\t<title>",
+// the markdown backend prints the created issue as JSON. Accept either.
+export function identifierFromCreateOutput(stdout: string): string {
+  const trimmed = stdout.trim();
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (parsed && typeof parsed === 'object' && typeof (parsed as { identifier?: unknown }).identifier === 'string') {
+      return (parsed as { identifier: string }).identifier;
+    }
+  } catch { /* not JSON — fall through to the tab/space-delimited form */ }
+  return trimmed.split(/\s+/)[0] ?? '';
+}
+
 function issueCreateArgs(input: TrackerIssueInput): string[] {
   const args = ['issue', 'create', '--title', input.title];
   if (input.body) args.push('--body', input.body);
@@ -76,8 +89,7 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
       },
       async create(input) {
         const output = (await backend.command(issueCreateArgs(input))).stdout.trim();
-        const identifier = output.split(/\s+/)[0]!;
-        return this.view(identifier);
+        return this.view(identifierFromCreateOutput(output));
       },
       async edit(identifier, input) {
         await backend.command(issueEditArgs(identifier, input));
