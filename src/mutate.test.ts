@@ -25,6 +25,15 @@ describe("applyAcMutation — id normalization", () => {
     const b2 = "# T\n\n## Acceptance Criteria\n\n- [ ] dev/03 build\n";
     expect(applyAcMutation(b2, { op: "check", acId: "dev/3" }).body).toContain("- [x] dev/03");
   });
+
+  test("an unpadded caller id stamps the SAME AC-Version as the padded id (canonical)", () => {
+    const body = "## Acceptance Criteria\n\n- [ ] AC-02 type: ac The user can log in. [1]\n";
+    const version = (md: string) => md.match(/AC-Version: (acv_\w+)/)?.[1];
+    const padded = version(applyAcMutation(body, { op: "check", acId: "AC-02", commit: "abc1234" }).body);
+    const unpadded = version(applyAcMutation(body, { op: "check", acId: "AC-2", commit: "abc1234" }).body);
+    expect(unpadded).toBe(padded);
+    expect(padded).toBeTruthy();
+  });
 });
 
 describe("applyAcMutation — setext headings", () => {

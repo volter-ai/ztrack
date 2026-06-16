@@ -176,6 +176,11 @@ export function applyAcMutation(rawBody: string, mutation: AcMutation): AcMutati
   if (matches.length > 1) throw new Error(`AC ${mutation.acId} is ambiguous: ${matches.length} checkbox rows carry this id`);
 
   const item = matches[0]!.item;
+  // Use the matched row's OWN canonical id for every mutation (status field, AC-Version
+  // stamp), not the caller's raw id — otherwise an unpadded "AC-2" would strip/hash
+  // against the wrong token and produce an AC-Version that diverges from the canonical
+  // derivation the exporter treats as authoritative.
+  const canonicalId = normalizedAcId(item.body) ?? mutation.acId;
   const lines = canonical.split('\n');
   const bodyLines = item.body.split('\n');
   // Only the AC's OWN line (the checkbox line's content) is mutated; continuation/
@@ -188,13 +193,13 @@ export function applyAcMutation(rawBody: string, mutation: AcMutation): AcMutati
   let newFirst = firstLine;
   if (mutation.op === 'check') {
     newChecked = true;
-    newFirst = checkItem(firstLine, mutation.acId, mutation);
+    newFirst = checkItem(firstLine, canonicalId, mutation);
   } else if (mutation.op === 'uncheck') {
     newChecked = false;
-    newFirst = uncheckItem(firstLine, mutation.acId);
+    newFirst = uncheckItem(firstLine, canonicalId);
   } else {
     newChecked = mutation.status === 'passed' ? true : mutation.status === 'pending' ? false : item.checked;
-    newFirst = tidy(setStatusField(firstLine, mutation.acId, mutation.status));
+    newFirst = tidy(setStatusField(firstLine, canonicalId, mutation.status));
   }
   const newBody = [newFirst, ...restLines].join('\n');
 
