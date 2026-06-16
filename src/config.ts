@@ -72,7 +72,12 @@ export function loadTrackerConfig(projectRoot = projectRootFrom()): TrackerConfi
   if (!existsSync(configPath)) {
     throw new Error(`No tracker config found at ${configPath}. Run 'tracker init' to create one.`);
   }
-  const raw = JSON.parse(readFileSync(configPath, 'utf8')) as Partial<TrackerConfig>;
+  let raw: Partial<TrackerConfig>;
+  try {
+    raw = JSON.parse(readFileSync(configPath, 'utf8')) as Partial<TrackerConfig>;
+  } catch (error) {
+    throw new Error(`Tracker config at ${configPath} is not valid JSON: ${(error as Error).message}`);
+  }
   return { ...raw, backend: raw.backend === 'markdown' ? 'markdown' : 'local' };
 }
 

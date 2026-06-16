@@ -70,7 +70,7 @@ export class MarkdownBackend implements TrackerBackend {
       const label = flagVal(args, 'label'); if (label) rows = rows.filter((c) => c.labels.includes(label));
       const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((c) => c.parent === parent);
       const search = flagVal(args, 'search'); if (search) rows = rows.filter((c) => `${c.title}\n${c.body}`.toLowerCase().includes(search.toLowerCase()));
-      const limit = flagVal(args, 'limit'); if (limit) rows = rows.slice(0, Number(limit));
+      const limit = flagVal(args, 'limit'); const limitN = Number(limit); if (limit && Number.isFinite(limitN) && limitN >= 0) rows = rows.slice(0, limitN);
       return ok(JSON.stringify(rows.map((c) => listRow(c, fields)), null, 2));
     }
     if (verb === 'issue' && sub === 'view') {

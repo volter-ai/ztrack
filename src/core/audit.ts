@@ -74,7 +74,11 @@ export function appendAudit(repo: string, entry: AuditEntry): void {
 export function readAudit(repo: string, issueId?: string): AuditEntry[] {
   const p = auditPath(repo);
   if (!existsSync(p)) return [];
-  const all = readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as AuditEntry);
+  // Append-only log: tolerate a corrupt/partial line (crash mid-append, manual edit)
+  // by skipping it rather than making the whole history unreadable.
+  const all = readFileSync(p, 'utf8').split('\n').filter(Boolean).flatMap((l) => {
+    try { return [JSON.parse(l) as AuditEntry]; } catch { return []; }
+  });
   return issueId ? all.filter((e) => e.issueId === issueId) : all;
 }
 
