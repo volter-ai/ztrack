@@ -74,5 +74,16 @@
   "bugs": {
     "url": "https://github.com/volter-ai/ztrack/issues"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "keywords": [
+    "ai-agents",
+    "cli",
+    "developer-tools",
+    "task-management",
+    "issue-tracker",
+    "mcp",
+    "zod",
+    "verification",
+    "ci"
+  ]
 }

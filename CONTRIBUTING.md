@@ -12,8 +12,10 @@ Thanks for your interest. ztrack is Apache-2.0.
 ## Dev setup
 ```bash
 git clone https://github.com/volter-ai/ztrack
-cd ztrack && <package-manager> install
-npx ztrack --help
+cd ztrack
+bun install --frozen-lockfile
+bun run typecheck
+bun test
 ```
 
 ## PRs

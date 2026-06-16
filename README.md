@@ -75,6 +75,9 @@ they're counted honestly: *"valid at this level; 14 claims unverified at higher 
 - **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
 - **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry a typechecker until it passes
 
+See [examples](docs/EXAMPLES.md) for a minimal local check, a committed-snapshot
+CI gate, and an MCP agent loop.
+
 ## Why believe it
 
 ztrack runs our own autonomous agent fleet in production — it's what we use to ship real
@@ -89,6 +92,16 @@ code. Every release re-proves in CI that a fabricated commit SHA fails the check
 | spec-kit / OpenSpec | ✓ | ✓ (prose shape) | — |
 | Eval / observability | ephemeral | — | scores outputs |
 | **ztrack** | ✓ | ✓ | ✓ |
+
+## Docs
+
+- [Examples](docs/EXAMPLES.md)
+- [Architecture](ARCHITECTURE.md)
+- [Preset guide](PRESET-GUIDE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Roadmap](ROADMAP.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
