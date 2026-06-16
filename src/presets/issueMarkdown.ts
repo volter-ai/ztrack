@@ -66,77 +66,28 @@ export type MarkdownDocument = {
 
 export type ParsedIssueMarkdown = {
   document: MarkdownDocument;
-  template: IssueMarkdownTemplate;
   diagnostics: MarkdownDiagnostic[];
-  sections: {
-    peakLiteCase: MarkdownSection | null;
-    summary: MarkdownSection | null;
-    caseManagerAcceptanceCriteria: MarkdownSection | null;
-    developmentAcceptanceCriteria: MarkdownSection | null;
-    repoCoverage: MarkdownSection | null;
-    externalAcceptanceCriteria: MarkdownSection | null;
-    proceduralAcceptanceCriteria: MarkdownSection | null;
-    sources: MarkdownSection | null;
-    evidence: MarkdownSection | null;
-    clientChannel: MarkdownSection | null;
-    operatorChannel: MarkdownSection | null;
-  };
+  // slot name (from the active GrammarPack) -> the section that filled it, or null.
+  sections: Record<string, MarkdownSection | null>;
 };
 
-// 'generic' is the default: a permissive grammar with NO required section canon —
-// fmt only normalizes whitespace/heading style and lint only checks the title, so a
-// project's own section names are never flagged. 'parent-case'/'stakeholder-subcase'
-// are example templates that DO enforce a fixed section set (a richer SDLC opts in by
-// passing the template, or a custom GrammarPack / section order).
-export type IssueMarkdownTemplate = 'generic' | 'parent-case' | 'stakeholder-subcase';
+// A section title is just a string. A grammar (GrammarPack + section order) is
+// supplied by the caller; the generic default enforces no section canon.
+export type CanonicalSectionTitle = string;
+
+// A preset's template/variant selector (e.g. a preset may have multiple issue
+// shapes). Just a name; the actual section vocabulary is supplied as a GrammarPack
+// + section order, not derived from this string.
+export type IssueMarkdownTemplate = string;
 
 export type CanonicalIssueMarkdown = {
   title?: string;
-  sections: Partial<Record<CanonicalSectionTitle, string>>;
+  sections: Partial<Record<string, string>>;
   trailingNewline?: boolean;
 };
 
-export type CanonicalSectionTitle =
-  | 'Peak Lite Case'
-  | 'Summary'
-  | 'Case Manager Acceptance Criteria'
-  | 'Development Acceptance Criteria'
-  | 'Repo Coverage'
-  | 'External Acceptance Criteria'
-  | 'Procedural Acceptance Criteria'
-  | 'Sources'
-  | 'Evidence'
-  | 'Client Channel'
-  | 'Operator Channel';
-
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 const CHECKBOX_RE = /^(\s*)-\s+\[([ xX])\]\s+(.+)$/;
-const PARENT_CASE_SECTION_ORDER: CanonicalSectionTitle[] = [
-  'Peak Lite Case',
-  'Summary',
-  'Case Manager Acceptance Criteria',
-  'Development Acceptance Criteria',
-  'Repo Coverage',
-  'External Acceptance Criteria',
-  'Procedural Acceptance Criteria',
-  'Sources',
-  'Evidence',
-  'Client Channel',
-  'Operator Channel',
-];
-const STAKEHOLDER_SUBCASE_SECTION_ORDER: CanonicalSectionTitle[] = [
-  'Case Manager Acceptance Criteria',
-  'Procedural Acceptance Criteria',
-  'Sources',
-];
-const CANONICAL_SECTION_TITLES = new Set<string>(PARENT_CASE_SECTION_ORDER.map(normalizeTitle));
-const LEGACY_SECTION_ALIASES = new Map<string, string>([
-  ['acceptance criteria', 'Development Acceptance Criteria'],
-  ['developer acceptance criteria', 'Development Acceptance Criteria'],
-  ['implementation acceptance criteria', 'Development Acceptance Criteria'],
-  ['non-development acceptance criteria', 'Case Manager Acceptance Criteria'],
-  ['source', 'Sources'],
-]);
 
 function normalizeTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ');
@@ -251,46 +202,26 @@ export function parseMarkdownDocument(text: string): MarkdownDocument {
   };
 }
 
-function canonicalSectionOrder(template: IssueMarkdownTemplate): CanonicalSectionTitle[] {
-  if (template === 'generic') return []; // no required/canonical section set
-  return template === 'stakeholder-subcase' ? STAKEHOLDER_SUBCASE_SECTION_ORDER : PARENT_CASE_SECTION_ORDER;
-}
-
-function exactSection(document: MarkdownDocument, title: CanonicalSectionTitle): MarkdownSection | null {
-  const normalized = normalizeTitle(title);
-  return document.sections.find((section) => section.normalizedTitle === normalized) ?? null;
-}
-
-// --- Pluggable grammar (roadmap G5) ---------------------------------------
-// The normalized-model SLOTS the exporter reads (developmentAcceptanceCriteria,
-// sources, evidence, …) are fixed; how an issue's HEADINGS map to them is
-// pluggable. A GrammarPack declares, per slot, the accepted heading titles
-// (canonical first, then aliases). The default `markdown-ac` pack accepts only
-// each slot's canonical title — byte-identical to the prior exact-match
-// behavior — so a team can keep our format or teach the tracker its own
-// (e.g. map "Done When" → the developmentAcceptanceCriteria slot) as DATA.
-export type GrammarSlot =
-  | 'peakLiteCase' | 'summary' | 'caseManagerAcceptanceCriteria' | 'developmentAcceptanceCriteria'
-  | 'repoCoverage' | 'externalAcceptanceCriteria' | 'proceduralAcceptanceCriteria'
-  | 'sources' | 'evidence' | 'clientChannel' | 'operatorChannel';
+// --- Pluggable grammar -----------------------------------------------------
+// A tracker issue's normalized model has SLOTS (acceptanceCriteria, evidence,
+// sources, …); how an issue's HEADINGS map to them is pluggable. A GrammarPack
+// declares, per slot, the accepted heading titles (canonical first, then
+// aliases). A preset supplies its own pack to teach the tracker its section
+// vocabulary as DATA (e.g. map "Done When" → the acceptanceCriteria slot).
+export type GrammarSlot = string;
 
 export type GrammarPack = { name: string; slotTitles: Record<GrammarSlot, string[]> };
 
-const SLOT_CANONICAL_TITLE: Record<GrammarSlot, CanonicalSectionTitle> = {
-  peakLiteCase: 'Peak Lite Case', summary: 'Summary',
-  caseManagerAcceptanceCriteria: 'Case Manager Acceptance Criteria',
-  developmentAcceptanceCriteria: 'Development Acceptance Criteria',
-  repoCoverage: 'Repo Coverage', externalAcceptanceCriteria: 'External Acceptance Criteria',
-  proceduralAcceptanceCriteria: 'Procedural Acceptance Criteria',
-  sources: 'Sources', evidence: 'Evidence', clientChannel: 'Client Channel', operatorChannel: 'Operator Channel',
-};
-
-// Default pack: each slot accepts exactly its canonical title (current behavior).
+// Default generic pack: the minimal section vocabulary a plain issue uses, each
+// slot accepting only its canonical title. Presets extend or replace it.
 export const MARKDOWN_AC_PACK: GrammarPack = {
   name: 'markdown-ac',
-  slotTitles: Object.fromEntries(
-    (Object.keys(SLOT_CANONICAL_TITLE) as GrammarSlot[]).map((slot) => [slot, [SLOT_CANONICAL_TITLE[slot]]]),
-  ) as Record<GrammarSlot, string[]>,
+  slotTitles: {
+    summary: ['Summary'],
+    acceptanceCriteria: ['Acceptance Criteria'],
+    sources: ['Sources'],
+    evidence: ['Evidence'],
+  },
 };
 
 // A premade pack for teams whose issues use GitHub-style section names — built
@@ -300,7 +231,7 @@ const GITHUB_FLAVORED_PACK: GrammarPack = {
   name: 'github-flavored',
   slotTitles: {
     ...MARKDOWN_AC_PACK.slotTitles,
-    developmentAcceptanceCriteria: ['Development Acceptance Criteria', 'Acceptance Criteria', 'Done When', 'Definition of Done', 'Tasks'],
+    acceptanceCriteria: ['Acceptance Criteria', 'Done When', 'Definition of Done', 'Tasks'],
     sources: ['Sources', 'Context', 'Background', 'Motivation'],
     evidence: ['Evidence', 'Verification', 'Testing'],
   },
@@ -324,7 +255,7 @@ export function resolveGrammarPack(opts?: { extends?: string; slotAliases?: Reco
     name: `${base.name}+config`,
     slotTitles: Object.fromEntries(
       (Object.keys(base.slotTitles) as GrammarSlot[]).map((slot) => [
-        slot, [...base.slotTitles[slot], ...((opts.slotAliases as Record<string, string[]>)[slot] ?? [])],
+        slot, [...base.slotTitles[slot]!, ...((opts.slotAliases as Record<string, string[]>)[slot] ?? [])],
       ]),
     ) as Record<GrammarSlot, string[]>,
   };
@@ -352,7 +283,7 @@ function childSectionsForTemplate(document: MarkdownDocument): MarkdownSection[]
   return document.sections.filter((section) => section.parentIndex === titleIndex && section.level === 2);
 }
 
-function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMarkdownTemplate): MarkdownDiagnostic[] {
+function issueMarkdownDiagnostics(document: MarkdownDocument, sectionOrder: readonly string[]): MarkdownDiagnostic[] {
   const diagnostics: MarkdownDiagnostic[] = [];
   const h1Sections = document.sections.filter((section) => section.level === 1 && section.parentIndex === null);
   if (document.rawPreamble?.trim()) {
@@ -377,12 +308,14 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMar
     });
   }
 
-  // Generic grammar declares no section canon: stop after the title/preamble checks
+  // No section order supplied (generic default): stop after the title/preamble checks
   // so a project's own section names are never flagged as missing/unknown/out-of-order.
-  if (canonicalSectionOrder(template).length === 0) return diagnostics;
+  // A preset enforces its section canon by passing its section order.
+  if (sectionOrder.length === 0) return diagnostics;
 
-  const expected = canonicalSectionOrder(template);
+  const expected = sectionOrder;
   const expectedNormalized = new Set(expected.map(normalizeTitle));
+  const canonicalTitles = new Set(expected.map(normalizeTitle));
   const actualSections = childSectionsForTemplate(document);
   const actualCanonicalTitles = actualSections
     .filter((section) => expectedNormalized.has(section.normalizedTitle))
@@ -396,32 +329,21 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMar
         code: 'issue_markdown_missing_section',
         message: `Issue body is missing required section ## ${expectedTitle}.`,
         section: expectedTitle,
-        expected,
+        expected: [...expected],
         actual: actualSections.map((section) => section.title),
       });
     }
   }
 
   for (const section of actualSections) {
-    const aliasTarget = LEGACY_SECTION_ALIASES.get(section.normalizedTitle);
-    if (aliasTarget) {
-      diagnostics.push({
-        level: 'error',
-        code: 'issue_markdown_legacy_section_alias',
-        message: `Issue body uses legacy section ## ${section.title}; use ## ${aliasTarget}.`,
-        section: section.title,
-        line: section.lineStart,
-      });
-      continue;
-    }
-    if (!CANONICAL_SECTION_TITLES.has(section.normalizedTitle)) {
+    if (!canonicalTitles.has(section.normalizedTitle)) {
       diagnostics.push({
         level: 'error',
         code: 'issue_markdown_unknown_section',
         message: `Issue body contains non-canonical section ## ${section.title}.`,
         section: section.title,
         line: section.lineStart,
-        expected,
+        expected: [...expected],
       });
     }
   }
@@ -446,7 +368,7 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMar
       level: 'error',
       code: 'issue_markdown_section_order',
       message: 'Issue body sections are not in canonical order.',
-      expected,
+      expected: [...expected],
       actual: actualCanonicalTitles,
     });
   }
@@ -454,33 +376,29 @@ function issueMarkdownDiagnostics(document: MarkdownDocument, template: IssueMar
   return diagnostics;
 }
 
-export function parseIssueMarkdown(text: string, template: IssueMarkdownTemplate = 'generic', pack: GrammarPack = MARKDOWN_AC_PACK): ParsedIssueMarkdown {
+// Parse an issue body into the generic document model plus per-slot resolution
+// driven by the supplied GrammarPack. `sectionOrder` (empty by default = generic,
+// permissive) drives section-canon diagnostics; a preset passes its order to enforce.
+export function parseIssueMarkdown(
+  text: string,
+  sectionOrder: readonly string[] = [],
+  pack: GrammarPack = MARKDOWN_AC_PACK,
+): ParsedIssueMarkdown {
   const document = parseMarkdownDocument(text);
-  const slot = (name: GrammarSlot): MarkdownSection | null => slotSection(document, name, pack);
+  const sections = Object.fromEntries(
+    Object.keys(pack.slotTitles).map((name) => [name, slotSection(document, name, pack)]),
+  );
   return {
     document,
-    template,
-    diagnostics: issueMarkdownDiagnostics(document, template),
-    sections: {
-      peakLiteCase: slot('peakLiteCase'),
-      summary: slot('summary'),
-      caseManagerAcceptanceCriteria: slot('caseManagerAcceptanceCriteria'),
-      developmentAcceptanceCriteria: slot('developmentAcceptanceCriteria'),
-      repoCoverage: slot('repoCoverage'),
-      externalAcceptanceCriteria: slot('externalAcceptanceCriteria'),
-      proceduralAcceptanceCriteria: slot('proceduralAcceptanceCriteria'),
-      sources: slot('sources'),
-      evidence: slot('evidence'),
-      clientChannel: slot('clientChannel'),
-      operatorChannel: slot('operatorChannel'),
-    },
+    diagnostics: issueMarkdownDiagnostics(document, sectionOrder),
+    sections,
   };
 }
 
-export function renderCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, template: IssueMarkdownTemplate = 'generic'): string {
+export function renderCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, sectionOrder: readonly string[] = []): string {
   const parts: string[] = [];
   if (issue.title) parts.push(`# ${issue.title.trim()}`);
-  for (const title of canonicalSectionOrder(template)) {
+  for (const title of sectionOrder) {
     const body = issue.sections[title]?.replace(/\s+$/, '') ?? '';
     parts.push(body ? `## ${title}\n\n${body}` : `## ${title}`);
   }
@@ -522,10 +440,6 @@ export function renderMarkdownDocument(document: MarkdownDocument): string {
 // same checkbox semantics); check findings shrink monotonically and only by
 // issue_markdown_* codes.
 
-const CANONICAL_SPELLING = new Map<string, CanonicalSectionTitle>(
-  PARENT_CASE_SECTION_ORDER.map((title) => [normalizeTitle(title), title] as const),
-);
-
 function canonicalizeBlockText(text: string): string {
   const lines = text.split('\n').map((line) => {
     const checkbox = CHECKBOX_RE.exec(line);
@@ -548,7 +462,10 @@ function canonicalizeBlockText(text: string): string {
 
 type FmtBlock = { headingLevel: number; title: string; content: string[] };
 
-export function canonicalizeIssueMarkdown(text: string, template: IssueMarkdownTemplate = 'generic'): string {
+export function canonicalizeIssueMarkdown(text: string, sectionOrder: readonly string[] = []): string {
+  // Canonical spelling for the known section titles (from the supplied order):
+  // a section differing only in case/whitespace is respelled to the canonical form.
+  const canonicalSpelling = new Map<string, string>(sectionOrder.map((title) => [normalizeTitle(title), title] as const));
   const lines = text.split('\n');
   // Real ATX heading lines per mdast (CommonMark): a `#` inside a fenced code
   // block is NOT a heading, so fmt must not split a block there (it would
@@ -588,7 +505,7 @@ export function canonicalizeIssueMarkdown(text: string, template: IssueMarkdownT
   for (const block of blocks) {
     const ownContent = canonicalizeBlockText(block.content.join('\n'));
     if (block.headingLevel <= 2 || !unit) {
-      const spelled = block.headingLevel === 2 ? CANONICAL_SPELLING.get(normalizeTitle(block.title)) : undefined;
+      const spelled = block.headingLevel === 2 ? canonicalSpelling.get(normalizeTitle(block.title)) : undefined;
       unit = {
         kind: block.headingLevel === 1 ? 'title' : 'section',
         title: spelled ?? block.title,
@@ -606,7 +523,7 @@ export function canonicalizeIssueMarkdown(text: string, template: IssueMarkdownT
   const sectionUnits = units.filter((candidate) => candidate !== titleUnit && candidate.level === 2);
   const otherUnits = units.filter((candidate) => candidate !== titleUnit && candidate.level !== 2);
 
-  const order = canonicalSectionOrder(template);
+  const order = sectionOrder;
   const orderIndex = new Map(order.map((title, index) => [normalizeTitle(title), index]));
   // Stable sort: canonical sections into canonical order; unknown sections
   // after them, preserving their original relative order.

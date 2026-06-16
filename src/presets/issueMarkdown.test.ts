@@ -8,21 +8,21 @@ import {
   type GrammarPack,
 } from './issueMarkdown.ts';
 
-// These suites exercise the 'parent-case' example grammar (required section canon,
-// reordering, respelling). The default grammar is 'generic' (permissive) — see the
-// dedicated "generic default grammar" suite below.
-const fmt = (text: string) => canonicalizeIssueMarkdown(text, 'parent-case');
+// An example section canon a preset might supply (the generic default is permissive —
+// no canon — so these suites pass an explicit order to exercise reorder/respell/diagnostics).
+const ORDER = ['Summary', 'Acceptance Criteria', 'Sources', 'Evidence'];
+const fmt = (text: string) => canonicalizeIssueMarkdown(text, ORDER);
 
 describe('fmt: mdast-gated heading detection (render-side robustness)', () => {
   test('a "##" inside a fenced code block is NOT split out as a section', () => {
     const body = [
-      '# Ticket', '', '## Development Acceptance Criteria', '',
+      '# Ticket', '', '## Acceptance Criteria', '',
       '- [ ] dev/01 status: pending Document it. [1]', '',
       '```bash', '## not a heading — a comment in code', 'echo hi', '```', '',
       '## Sources', '', '[1] Req:', '> x', '',
     ].join('\n');
     const out = fmt(body);
-    // the code-fence line stays inside the fence (under Dev ACs), not hoisted
+    // the code-fence line stays inside the fence (under Acceptance Criteria), not hoisted
     // into a reordered top-level section
     expect(out).toContain('```bash\n## not a heading — a comment in code\necho hi\n```');
     // and it did not become its own section before Sources
@@ -31,29 +31,29 @@ describe('fmt: mdast-gated heading detection (render-side robustness)', () => {
   });
 });
 
-describe('pluggable grammar (roadmap G5)', () => {
+describe('pluggable grammar', () => {
   const body = '# Ticket\n\n## Done When\n\n- [ ] dev/01 status: pending Ship it. [1]\n\n## Sources\n\n[1] Req:\n> ship\n';
 
-  test('default markdown-ac pack: a non-canonical heading is NOT mapped to the dev slot', () => {
+  test('default markdown-ac pack: a non-canonical heading is NOT mapped to a slot', () => {
     const parsed = parseIssueMarkdown(body);
-    expect(parsed.sections.developmentAcceptanceCriteria).toBeNull(); // "Done When" is not our canonical title
+    expect(parsed.sections.acceptanceCriteria).toBeNull(); // "Done When" is not the canonical title
   });
 
-  test('a second pack aliasing "Done When" → dev slot maps it, from data alone', () => {
+  test('a pack aliasing "Done When" → the acceptanceCriteria slot maps it, from data alone', () => {
     const pack: GrammarPack = {
       name: 'my-team',
-      slotTitles: { ...MARKDOWN_AC_PACK.slotTitles, developmentAcceptanceCriteria: ['Development Acceptance Criteria', 'Done When'] },
+      slotTitles: { ...MARKDOWN_AC_PACK.slotTitles, acceptanceCriteria: ['Acceptance Criteria', 'Done When'] },
     };
-    const parsed = parseIssueMarkdown(body, 'parent-case', pack);
-    expect(parsed.sections.developmentAcceptanceCriteria).not.toBeNull();
-    expect(parsed.sections.developmentAcceptanceCriteria!.checkboxItems.length).toBe(1);
-    expect(parsed.sections.developmentAcceptanceCriteria!.checkboxItems[0]!.body).toContain('Ship it.');
+    const parsed = parseIssueMarkdown(body, ORDER, pack);
+    expect(parsed.sections.acceptanceCriteria).not.toBeNull();
+    expect(parsed.sections.acceptanceCriteria!.checkboxItems.length).toBe(1);
+    expect(parsed.sections.acceptanceCriteria!.checkboxItems[0]!.body).toContain('Ship it.');
   });
 
   test('registry: extends a named pack; unknown pack errors (no silent fallback)', () => {
     expect(resolveGrammarPack().name).toBe('markdown-ac'); // default selection
     const gh = resolveGrammarPack({ extends: 'github-flavored' });
-    expect(gh.slotTitles.developmentAcceptanceCriteria).toContain('Done When');
+    expect(gh.slotTitles.acceptanceCriteria).toContain('Done When');
     // extends + slotAliases compose
     const composed = resolveGrammarPack({ extends: 'github-flavored', slotAliases: { sources: ['Why'] } });
     expect(composed.slotTitles.sources).toContain('Why');
@@ -65,7 +65,7 @@ describe('pluggable grammar (roadmap G5)', () => {
 describe('generic default grammar (the OSS default — permissive)', () => {
   test('lint/diagnostics do not require or reject any project-specific sections', () => {
     const body = '# Ticket\n\n## Context\n\nWhy.\n\n## Done When\n\n- [ ] Ship it.\n\n## Notes\n\nanything\n';
-    const parsed = parseIssueMarkdown(body); // default template = 'generic'
+    const parsed = parseIssueMarkdown(body); // default = generic (no section order)
     expect(parsed.diagnostics).toEqual([]); // no missing/unknown/order findings
   });
 
@@ -85,7 +85,7 @@ describe('generic default grammar (the OSS default — permissive)', () => {
   });
 });
 
-describe('canonicalizeIssueMarkdown', () => {
+describe('canonicalizeIssueMarkdown (with a supplied section order)', () => {
   test('idempotent on messy real-world shapes', () => {
     const messy = [
       '# Title\n\n\n## Summary   \nText with trailing spaces   \n\n\n\n## Sources\n[1] A:\n> q\n',
@@ -106,10 +106,10 @@ describe('canonicalizeIssueMarkdown', () => {
       title: 'Sample',
       sections: {
         'Summary': 'One line.',
-        'Development Acceptance Criteria': '- [x] dev/01 status: passed Done. [1]',
+        'Acceptance Criteria': '- [x] dev/01 status: passed Done. [1]',
         'Sources': '[1] Someone:\n> quote',
       },
-    }, 'parent-case');
+    }, ORDER);
     expect(fmt(rendered)).toBe(rendered);
   });
 
@@ -126,12 +126,6 @@ describe('canonicalizeIssueMarkdown', () => {
     expect([...indexes].sort((a, b) => a - b)).toEqual(indexes);
   });
 
-  test('does NOT rename legacy alias sections (lint --fix territory, not fmt)', () => {
-    const out = fmt('# T\n## Acceptance Criteria\n- [ ] thing\n## Development Acceptance Criteria\n- [x] dev/01 status: passed x. [1]\n');
-    expect(out).toContain('## Acceptance Criteria');
-    expect(out).toContain('## Development Acceptance Criteria');
-  });
-
   test('canonical-spelling normalization for known sections differing only in case', () => {
     const out = fmt('# T\n## SOURCES\n[1] s\n');
     expect(out).toContain('## Sources');
@@ -144,11 +138,11 @@ describe('canonicalizeIssueMarkdown', () => {
   });
 
   test('parse semantics survive fmt (sections + checkbox state)', () => {
-    const input = '# T\n## Development Acceptance Criteria\n- [X] dev/01 status: passed A. [1]\n- [ ] dev/02 status: pending B. [1]\n## Summary\ns\n';
+    const input = '# T\n## Acceptance Criteria\n- [X] dev/01 status: passed A. [1]\n- [ ] dev/02 status: pending B. [1]\n## Summary\ns\n';
     const before = parseIssueMarkdown(input);
     const after = parseIssueMarkdown(fmt(input));
-    expect(after.sections.developmentAcceptanceCriteria?.checkboxItems.map((item) => item.checked))
-      .toEqual(before.sections.developmentAcceptanceCriteria?.checkboxItems.map((item) => item.checked));
+    expect(after.sections.acceptanceCriteria?.checkboxItems.map((item) => item.checked))
+      .toEqual(before.sections.acceptanceCriteria?.checkboxItems.map((item) => item.checked));
     expect(after.sections.summary?.body.trim()).toBe('s');
   });
 });

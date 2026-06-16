@@ -140,14 +140,16 @@ export type TrackerPresetExportHooks = {
     ): string;
   }): ValidationContext;
   linkedIssues?(input: {
-    clientChannel: string;
+    channel: string;
     sources: Array<{ number: string; content: string }>;
     evidence: Array<Record<string, unknown>>;
     comments: Array<Record<string, unknown>>;
   }): Array<Record<string, unknown>>;
   gateType?(issue: TrackerPresetExportIssue): string | undefined;
   excludePrimaryIssue?(issue: TrackerPresetExportIssue): boolean;
-  isStakeholderBlocker?(issue: TrackerPresetExportIssue, parentCase: string): boolean;
+  // True if this sub-issue is a blocker that should be excluded from its parent's
+  // primary export (preset-defined notion of a blocking sub-issue).
+  isExcludedBlocker?(issue: TrackerPresetExportIssue, parentIssue: string): boolean;
   excludeImplementationPullRequestEvidence?(evidence: Record<string, unknown>): boolean;
 };
 
@@ -227,6 +229,6 @@ export function parseRawIssueMarkdown(body: string): RawIssueMarkdown {
   });
 }
 
-export function renderPresetCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, template: IssueMarkdownTemplate = 'parent-case'): string {
-  return renderCanonicalIssueMarkdown(issue, template);
+export function renderPresetCanonicalIssueMarkdown(issue: CanonicalIssueMarkdown, sectionOrder: readonly string[] = []): string {
+  return renderCanonicalIssueMarkdown(issue, sectionOrder);
 }
