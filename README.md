@@ -3,9 +3,9 @@
 <p align="center"><strong>Typecheck and lint your task management.</strong> Done is earned, not declared.</p>
 
 <p align="center">
+  <a href="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml"><img src="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
   <a href="https://github.com/volter-ai/ztrack/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0"></a>
   <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/v/ztrack.svg" alt="npm"></a>
-  <a href="https://github.com/volter-ai/ztrack/actions"><img src="https://img.shields.io/badge/CI-fabricated--SHA--fails-brightgreen.svg" alt="CI"></a>
 </p>
 
 <p align="center"><img src="docs/demo.gif" alt="ztrack check: cite a real commit → green; fake SHA → exit 1" width="680"></p>
@@ -23,7 +23,7 @@ schema is defined in [Zod](https://zod.dev).
 
 ```bash
 npx ztrack init      # writes a config: green with just git + a PR host
-ztrack check         # typecheck your tasks
+npx ztrack check     # typecheck your tasks
 ```
 
 Cite a real commit and a matching PR → pass. Cite a fake SHA → exit 1.
@@ -71,8 +71,8 @@ they're counted honestly: *"valid at this level; 14 claims unverified at higher 
 
 ## For agents
 
-- **MCP:** `claude mcp add ztrack -- ztrack mcp start`
-- **CI gate:** run `ztrack check` in your pipeline
+- **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
+- **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
 - **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry a typechecker until it passes
 
 ## Why believe it

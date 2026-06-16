@@ -1,0 +1,45 @@
+# Consumers:
+#   - uses: volter-ai/ztrack@v0      (moving major tag; or pin an exact vX.Y.Z)
+# Runs `ztrack check` as a PR gate: checked ACs must cite evidence that verifies,
+# or the job fails.
+name: ztrack-check
+description: Run ztrack as a CI gate
+inputs:
+  working-directory:
+    description: Directory containing the .volter tracker config
+    default: .
+  categories:
+    description: Per-category depth override, e.g. "sourced=1,code=3"; default uses repo config
+    default: ''
+  profiles:
+    description: Profile override, comma-separated or "none"
+    default: ''
+  snapshot:
+    description: >
+      Path to a committed exported snapshot to gate. When set, ztrack validates
+      this snapshot with --verify-commits instead of exporting a live tracker.
+      This is recommended for CI because a fresh checkout does not preserve the
+      local tracker store.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        ARGS=()
+        [ -n "${{ inputs.categories }}" ] && ARGS+=(--categories "${{ inputs.categories }}")
+        [ -n "${{ inputs.profiles }}" ] && ARGS+=(--profile "${{ inputs.profiles }}")
+        if [ -n "${{ inputs.snapshot }}" ]; then
+          npx --yes ztrack check --input "${{ inputs.snapshot }}" --verify-commits "${ARGS[@]}"
+        else
+          if [ ! -f .volter/tracker-config.json ]; then npx --yes ztrack init --team CI; fi
+          npx --yes ztrack check "${ARGS[@]}"
+        fi

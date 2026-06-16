@@ -5,5 +5,4 @@ contact_links:
     about: Please report vulnerabilities privately.
   - name: Startup Pilot
     url: https://ztrack.dev/startup-pilot.html
-    about: Apply for hosted setup and support.
-
+    about: Apply for managed setup and support.
