@@ -60,7 +60,8 @@ export async function handleEvidenceCommand(args: string[], client: TrackerClien
     const keyPath = optionValue(args, '--key');
     if (!bundlePath || !keyPath) throw new Error('usage: tracker evidence verify --bundle envelopes.json --key public.pem');
     const publicKeyPem = readFileSync(resolve(process.cwd(), keyPath), 'utf8');
-    const bundle = JSON.parse(readFileSync(resolve(process.cwd(), bundlePath), 'utf8')) as { envelopes: DsseEnvelope[] };
+    const bundle = JSON.parse(readFileSync(resolve(process.cwd(), bundlePath), 'utf8')) as { envelopes?: DsseEnvelope[] };
+    if (!Array.isArray(bundle.envelopes)) throw new Error(`bundle ${bundlePath} is missing an "envelopes" array`);
     const results = bundle.envelopes.map((envelope, index) => {
       const verdict = verifyEnvelope(envelope, publicKeyPem);
       return verdict.ok
@@ -78,7 +79,8 @@ export async function handleEvidenceCommand(args: string[], client: TrackerClien
     const issueId = optionValue(args, '--issue');
     if (!bundlePath || !keyPath || !issueId) throw new Error('usage: tracker evidence ingest --bundle envelopes.json --key public.pem --issue A-1 [--ac ac/01]');
     const publicKeyPem = readFileSync(resolve(process.cwd(), keyPath), 'utf8');
-    const bundle = JSON.parse(readFileSync(resolve(process.cwd(), bundlePath), 'utf8')) as { envelopes: DsseEnvelope[] };
+    const bundle = JSON.parse(readFileSync(resolve(process.cwd(), bundlePath), 'utf8')) as { envelopes?: DsseEnvelope[] };
+    if (!Array.isArray(bundle.envelopes)) throw new Error(`bundle ${bundlePath} is missing an "envelopes" array`);
     const acId = optionValue(args, '--ac');
     const issue = await client.issue.view(issueId, { json: 'body' });
     let body = String((issue as Record<string, unknown>).body ?? '');

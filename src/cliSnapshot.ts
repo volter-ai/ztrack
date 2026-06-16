@@ -48,7 +48,14 @@ export async function handleSnapshotCommand(args: string[]): Promise<boolean> {
   const issuesList = issuesFilter ? issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
   const categoriesFlag = optionValue(flagArgs, '--categories');
   const categories = categoriesFlag
-    ? Object.fromEntries(categoriesFlag.split(',').map((pair) => { const [c, d] = pair.split('='); return [c!.trim(), Number(d)]; })) as Partial<Record<'wellformed' | 'sourced' | 'code' | 'visual' | 'behavioral', number>>
+    ? Object.fromEntries(categoriesFlag.split(',').map((pair) => {
+        const [c, d] = pair.split('=');
+        const depth = Number(d);
+        if (!c?.trim() || d === undefined || !Number.isInteger(depth) || depth < 0) {
+          throw new Error(`invalid --categories entry '${pair}' (expected name=N where N is a non-negative integer)`);
+        }
+        return [c.trim(), depth];
+      })) as Partial<Record<'wellformed' | 'sourced' | 'code' | 'visual' | 'behavioral', number>>
     : undefined;
   const profileFlag = optionValue(flagArgs, '--profile');
   const report = checkTrackerSnapshot(
@@ -73,7 +80,10 @@ export async function handleSnapshotCommand(args: string[]): Promise<boolean> {
       .filter((item) => !flagArgs.includes('--errors-only') || item.level === 'error')
       .slice()
       .sort((a, b) => (a.level === b.level ? 0 : a.level === 'error' ? -1 : 1));
-    const maxFindings = Number(optionValue(flagArgs, '--max-findings') || '120');
+    const rawMax = optionValue(flagArgs, '--max-findings');
+    const parsedMax = Number(rawMax);
+    // A bad value must not silently hide findings (slice(0, NaN) -> []). Fall back to default.
+    const maxFindings = rawMax && Number.isInteger(parsedMax) && parsedMax >= 0 ? parsedMax : 120;
     process.stdout.write(renderCheckReport(
       { ...report, findings: shown },
       { errorsOnly: flagArgs.includes('--errors-only'), maxFindings },
