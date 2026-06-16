@@ -13,6 +13,10 @@ const CHECKBOX_RE = /^\s*-\s+\[(?<checked>[ xX])\]\s+(?<body>.+)$/gm;
 // not mistaken for this AC's id.
 const AC_ID_RE = /^\s*(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
 const COMMIT_RE = /\bcommit[:\s]+(?<sha>[0-9a-f]{7,40})\b/i;
+const COMMIT_RE_G = /\bcommit[:\s]+(?<sha>[0-9a-f]{7,40})\b/gi;
+// A field value runs until the next ` key:` token or end of line, so multi-word values
+// (justification, note, summary) are not truncated at the first space.
+const FIELD_RE = /\b([a-z][a-z0-9-]*)\s*:\s*(.+?)(?=\s+[a-z][a-z0-9-]*\s*:|$)/gi;
 const EVIDENCE_RE = /\[E(?<num>\d+)\]/g;
 const SOURCE_RE = /(?<![A-Za-z])\[(?:source\s*)?(?<num>\d+)\]/gi;
 // status is a FIELD near the start of the AC (after the optional id), not arbitrary
@@ -118,18 +122,21 @@ function acceptanceCriteria(body: string) {
       text: acText(row),
       sourceRefs: [...new Set([...row.matchAll(SOURCE_RE)].flatMap((m) => m.groups?.num ? [m.groups.num] : []))].sort(),
       evidenceRefs: [...new Set([...row.matchAll(EVIDENCE_RE)].flatMap((m) => m.groups?.num ? [`E${m.groups.num}`] : []))].sort(),
-      commitHashes: COMMIT_RE.exec(row)?.groups?.sha ? [COMMIT_RE.exec(row)!.groups!.sha!.toLowerCase()] : [],
+      commitHashes: [...new Set([...row.matchAll(COMMIT_RE_G)].flatMap((m) => m.groups?.sha ? [m.groups.sha.toLowerCase()] : []))],
     };
   });
 }
 
 function evidenceEntries(body: string) {
-  return [...body.matchAll(/^\s*\[(E\d+)\]\s+(.+)$/gm)].map((match) => ({
-    id: match[1]!,
-    type: /\btype:\s*([^\s]+)/i.exec(match[2]!)?.[1] ?? 'evidence',
-    fields: Object.fromEntries([...match[2]!.matchAll(/\b([a-z][a-z0-9-]*)\s*:\s*([^\s]+)/gi)].map((m) => [m[1]!, m[2]!])),
-    ac: [...match[2]!.matchAll(/\bac:\s*([^\s]+)/gi)].flatMap((m) => m[1]!.split(',')),
-  }));
+  return [...body.matchAll(/^\s*\[(E\d+)\]\s+(.+)$/gm)].map((match) => {
+    const fields = Object.fromEntries([...match[2]!.matchAll(FIELD_RE)].map((m) => [m[1]!.toLowerCase(), m[2]!.trim()]));
+    return {
+      id: match[1]!,
+      type: fields.type ?? 'evidence',
+      fields,
+      ac: (fields.ac ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+    };
+  });
 }
 
 function normalizeIssue(issue: JsonObject) {

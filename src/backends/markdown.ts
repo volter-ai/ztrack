@@ -91,7 +91,9 @@ export function parseIssue(md: string): CanonicalIssue {
   const fm: Record<string, unknown> = {};
   if (fmM) for (const raw of fmM[1]!.split('\n')) { const m = /^([A-Za-z][\w-]*):\s*(.*)$/.exec(raw); if (m) { try { fm[m[1]!] = JSON.parse(m[2]!); } catch { fm[m[1]!] = m[2]!; } } }
   const rest = fmM ? md.slice(fmM[0].length) : md;
-  const cIdx = rest.indexOf(`\n${COMMENTS_MARKER}`);
+  // The serializer always appends the comments block LAST, so split at the last marker
+  // — a body that itself contains "<!--tracker:comments" then round-trips intact.
+  const cIdx = rest.lastIndexOf(`\n${COMMENTS_MARKER}`);
   const body = cIdx >= 0 ? rest.slice(0, cIdx) : rest.replace(/\n$/, '');
   let comments: CanonicalComment[] = [];
   if (cIdx >= 0) { const cm = /<!--tracker:comments\r?\n([\s\S]*?)\r?\n-->/.exec(rest.slice(cIdx)); if (cm) { try { comments = JSON.parse(cm[1]!); } catch { comments = []; } } }

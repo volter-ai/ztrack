@@ -46,6 +46,10 @@ describe('GENERIC_PRESET.parseIssueMarkdown', () => {
     expect(evidence).toHaveLength(1);
     expect(evidence[0]!.id).toBe('E1');
     expect(evidence[0]!.type).toBe('screenshot');
+    // multi-word field values are not truncated at the first space
+    const e2 = (GENERIC_PRESET.parseIssueMarkdown('# T\n\n[E1] type: pr ac: dev/01,dev/02 note: needs a careful look', 'parent-case').evidence ?? [])[0]!;
+    expect((e2.fields ?? {}).note).toBe('needs a careful look');
+    expect(e2.ac).toEqual(['dev/01', 'dev/02']);
     expect(evidence[0]!.ac).toContain('dev/01');
   });
 });
