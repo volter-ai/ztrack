@@ -41,6 +41,7 @@ export const TrackerAcceptanceCriterionBasicSchema = z.object({
   sourceRefs: z.array(z.string().min(1)).default([]),
   evidenceRefs: z.array(z.string().min(1)).default([]),
   proofRefs: z.array(z.string().min(1)).default([]),
+  commitHashes: z.array(z.string().min(1)).default([]),
   extensions: ExtensionSchema.optional(),
 }).passthrough();
 

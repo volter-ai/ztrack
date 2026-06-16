@@ -9,11 +9,17 @@ import type { TrackerPresetRuntime } from '../presets.ts';
 type JsonObject = Record<string, any>;
 
 const CHECKBOX_RE = /^\s*-\s+\[(?<checked>[ xX])\]\s+(?<body>.+)$/gm;
-const AC_ID_RE = /\b(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
+// AC id is the AC's LEADING token (anchored), so a prose mention like "see AC 3" is
+// not mistaken for this AC's id.
+const AC_ID_RE = /^\s*(?<prefix>AC[- ]?|case\/|dev\/|ext\/|proc\/)(?<num>\d{1,3})\b/i;
 const COMMIT_RE = /\bcommit[:\s]+(?<sha>[0-9a-f]{7,40})\b/i;
 const EVIDENCE_RE = /\[E(?<num>\d+)\]/g;
 const SOURCE_RE = /(?<![A-Za-z])\[(?:source\s*)?(?<num>\d+)\]/gi;
-const STATUS_RE = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/i;
+// status is a FIELD near the start of the AC (after the optional id), not arbitrary
+// prose — so "verify the status: passed banner" does not flip an unchecked AC to passed.
+const STATUS_FIELD_RE = /^\s*(?:\S+\s+){0,2}status:\s*(?<status>pending|passed|failed|stale|blocked|descoped)\b/i;
+// cosmetic strip used by acText (safe to strip any status token from the rendered text).
+const STATUS_STRIP_RE = /\bstatus:\s*(?:pending|passed|failed|stale|blocked|descoped)\b/i;
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -34,8 +40,17 @@ function runTracker(args: string[], projectRoot: string): unknown {
       CONFIG_FILE: trackerConfigPath(projectRoot),
     },
   });
-  if (result.status !== 0) throw new Error(result.stderr.trim() || result.stdout.trim() || `tracker backend failed: ${args.join(' ')}`);
-  return JSON.parse(result.stdout || 'null');
+  if (result.error) {
+    const code = (result.error as NodeJS.ErrnoException).code;
+    throw new Error(`tracker backend could not be launched (${code ?? result.error.message}); is python3 installed and on PATH?`);
+  }
+  if (result.status !== 0) throw new Error(result.stderr?.trim() || result.stdout?.trim() || `tracker backend failed: ${args.join(' ')}`);
+  const stdout = result.stdout ?? '';
+  try {
+    return JSON.parse(stdout || 'null');
+  } catch {
+    throw new Error(`tracker backend returned non-JSON output for '${args.join(' ')}': ${stdout.slice(0, 200)}`);
+  }
 }
 
 function issueIdentifier(issue: JsonObject): string {
@@ -61,18 +76,25 @@ function titleFromBody(body: string): string {
   return /^#\s+(.+)$/m.exec(body)?.[1]?.trim() ?? '';
 }
 
-function normalizedAcId(body: string): string {
+function parseAcId(body: string): { id: string; type: string } {
   const match = AC_ID_RE.exec(body);
-  if (!match?.groups) return body.split(/\s+/, 1)[0] ?? 'AC';
-  const prefix = match.groups.prefix.toLowerCase().replace(' ', '-');
+  if (!match?.groups) {
+    const token = body.trim().split(/\s+/, 1)[0] ?? '';
+    return { id: token || 'AC', type: 'ac' };
+  }
+  const prefix = match.groups.prefix.toLowerCase();
   const num = String(Number(match.groups.num)).padStart(2, '0');
-  return prefix.endsWith('/') ? `${prefix}${num}` : `AC-${num}`;
+  if (prefix.endsWith('/')) {
+    const slug = prefix.slice(0, -1);
+    return { id: `${slug}/${num}`, type: slug };
+  }
+  return { id: `AC-${num}`, type: 'ac' }; // "AC-1" / "AC 1"
 }
 
 function acText(body: string): string {
   return body
     .replace(AC_ID_RE, '')
-    .replace(STATUS_RE, '')
+    .replace(STATUS_STRIP_RE, '')
     .replace(COMMIT_RE, '')
     .replace(EVIDENCE_RE, '')
     .replace(SOURCE_RE, '')
@@ -84,11 +106,13 @@ function acText(body: string): string {
 function acceptanceCriteria(body: string) {
   return [...body.matchAll(CHECKBOX_RE)].map((match) => {
     const row = match.groups?.body ?? '';
-    const status = STATUS_RE.exec(row)?.[1]?.toLowerCase() ?? (match.groups?.checked?.toLowerCase() === 'x' ? 'passed' : 'pending');
+    const checked = match.groups?.checked?.toLowerCase() === 'x';
+    const status = STATUS_FIELD_RE.exec(row)?.groups?.status?.toLowerCase() ?? (checked ? 'passed' : 'pending');
+    const { id, type } = parseAcId(row);
     return {
-      id: normalizedAcId(row),
-      type: normalizedAcId(row).split('/')[0].toLowerCase(),
-      checked: match.groups?.checked?.toLowerCase() === 'x',
+      id,
+      type,
+      checked,
       status,
       body: row,
       text: acText(row),
@@ -176,6 +200,10 @@ function checkGenericSnapshot(rawSnapshot: unknown, options: unknown) {
   const snapshot = TrackerSnapshotSchema.parse(rawSnapshot);
   const opts = isObject(options) ? options : {};
   const projectRoot = stringValue(opts.projectRoot) || snapshot.projectRoot || process.cwd();
+  // Probe the git world once: without a git repo (or git) we can verify that an AC
+  // CITES a commit, but not that the commit EXISTS — so skip existence checks rather
+  // than report every cited commit as missing.
+  const gitAvailable = spawnSync('git', ['rev-parse', '--git-dir'], { cwd: projectRoot }).status === 0;
   const findings: TrackerFinding[] = [];
   for (const currentCase of snapshot.cases) {
     if (currentCase.stateType !== 'canceled' && !stringValue(currentCase.assignee)) {
@@ -184,13 +212,15 @@ function checkGenericSnapshot(rawSnapshot: unknown, options: unknown) {
     const evidenceIds = new Set((currentCase.validatedIssue.evidence ?? []).map((entry) => entry.id));
     for (const ac of currentCase.acceptanceCriteria) {
       if (!ac.checked && ac.status !== 'passed') continue;
-      const commits = Array.isArray((ac as any).commitHashes) ? (ac as any).commitHashes as string[] : [];
+      const commits = ac.commitHashes ?? [];
       if (commits.length === 0) {
         findings.push({ level: 'error', code: 'checked_ac_missing_commit_hash', issue: currentCase.identifier, message: `Checked AC ${ac.id} does not cite a commit hash.` });
       }
-      for (const sha of commits) {
-        const exists = spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: projectRoot }).status === 0;
-        if (!exists) findings.push({ level: 'error', code: 'checked_ac_commit_hash_missing', issue: currentCase.identifier, message: `Checked AC ${ac.id} cites missing commit ${sha}.` });
+      if (gitAvailable) {
+        for (const sha of commits) {
+          const exists = spawnSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: projectRoot }).status === 0;
+          if (!exists) findings.push({ level: 'error', code: 'checked_ac_commit_hash_missing', issue: currentCase.identifier, message: `Checked AC ${ac.id} cites missing commit ${sha}.` });
+        }
       }
       if (ac.evidenceRefs.length === 0) {
         findings.push({ level: 'error', code: 'checked_ac_missing_evidence', issue: currentCase.identifier, message: `Checked AC ${ac.id} does not cite evidence.` });

@@ -26,6 +26,19 @@ describe('GENERIC_PRESET.parseIssueMarkdown', () => {
     expect(second!.status).toBe('pending');
   });
 
+  test('prose mentioning a status/id does NOT mislead parsing (anchored to the leading token)', () => {
+    const body = [
+      '# APP-9: edge cases',
+      '',
+      '- [ ] dev/01 verify the status: passed banner appears in AC 3 above',
+    ].join('\n');
+    const ac = (GENERIC_PRESET.parseIssueMarkdown(body, 'parent-case').acceptanceCriteria ?? [])[0]!;
+    expect(ac.checked).toBe(false);
+    expect(ac.status).toBe('pending');      // not flipped to "passed" by prose
+    expect(ac.id).toBe('dev/01');           // not "AC-03" from the "AC 3" mention
+    expect(ac.type).toBe('dev');            // type from the real prefix, not "ac-03"
+  });
+
   test('extracts evidence entries with typed fields', () => {
     const body = ['# APP-2: B', '', '[E1] type: screenshot path: uploads/a.png ac: dev/01'].join('\n');
     const parsed = GENERIC_PRESET.parseIssueMarkdown(body, 'parent-case');
