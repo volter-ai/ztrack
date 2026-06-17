@@ -66,7 +66,7 @@ export class MarkdownBackend implements TrackerBackend {
     if (verb === 'issue' && sub === 'list') {
       const fields = (flagVal(args, 'json') ?? 'identifier').split(',').map((s) => s.trim()).filter(Boolean);
       let rows = loadAll(this.dir);
-      const state = flagVal(args, 'state'); if (state) rows = rows.filter((c) => c.state === state);
+      const state = flagVal(args, 'state'); if (state && state !== 'all') rows = rows.filter((c) => c.state === state);
       const label = flagVal(args, 'label'); if (label) rows = rows.filter((c) => c.labels.includes(label));
       const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((c) => c.parent === parent);
       const search = flagVal(args, 'search'); if (search) rows = rows.filter((c) => `${c.title}\n${c.body}`.toLowerCase().includes(search.toLowerCase()));
