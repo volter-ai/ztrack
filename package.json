@@ -1,44 +1,112 @@
 {
   "name": "ztrack",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "type": "module",
   "files": [
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "PRESET-GUIDE.md",
+    "ROADMAP.md",
+    "profiles",
+    "scripts/build-node-cli.mjs",
+    "scripts/setup-ztrack-repo.mjs",
+    "SECURITY.md",
+    "SUPPORT.md",
     "backend",
+    "boilerplates/README.md",
+    "boilerplates/presets",
+    "docs",
+    "!docs/demo.gif",
     "dist",
-    "src",
-    "!src/**/*.test.ts"
+    "!dist/src/core",
+    "!dist/src/presets/default.*",
+    "!dist/src/presets/genericRuntime.*",
+    "!dist/src/presets/spec.*",
+    "!dist/src/presets/speckitCore.*",
+    "!dist/src/worldAnnotations.*",
+    "!dist/src/worldSourceBooks.*",
+    "hooks",
+    "visualizer",
+    "!visualizer/node_modules",
+    "!dist/src/**/*.test.*"
   ],
   "exports": {
-    ".": "./src/index.ts",
-    "./config": "./src/config.ts",
-    "./sdk": "./src/sdk.ts",
-    "./tracker-snapshot": "./src/snapshotContract.ts",
-    "./check": "./src/check.ts",
-    "./export": "./src/export.ts",
-    "./markdown-model": "./src/markdownModel.ts",
-    "./ac-version": "./src/acVersion.ts",
-    "./presets": "./src/presets.ts",
-    "./presets/generic": "./src/presets/genericRuntime.ts",
-    "./presets/default": "./src/presets/default.ts",
-    "./presets/spec": "./src/presets/spec.ts",
-    "./presets/speckit": "./src/presets/speckitCore.ts",
-    "./work-graph": "./src/workGraph.ts",
-    "./mutate": "./src/mutate.ts",
-    "./mcp": "./src/mcp.ts",
-    "./attest": "./src/attest.ts",
-    "./lint": "./src/lint.ts",
-    "./tx": "./src/tx.ts",
-    "./dsse": "./src/dsse.ts",
-    "./world-source-books": "./src/worldSourceBooks.ts",
-    "./world-annotations": "./src/worldAnnotations.ts",
-    "./*": "./src/*.ts"
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    },
+    "./config": {
+      "types": "./dist/src/config.d.ts",
+      "default": "./dist/src/config.js"
+    },
+    "./sdk": {
+      "types": "./dist/src/sdk.d.ts",
+      "default": "./dist/src/sdk.js"
+    },
+    "./tracker-snapshot": {
+      "types": "./dist/src/snapshotContract.d.ts",
+      "default": "./dist/src/snapshotContract.js"
+    },
+    "./check": {
+      "types": "./dist/src/check.d.ts",
+      "default": "./dist/src/check.js"
+    },
+    "./export": {
+      "types": "./dist/src/export.d.ts",
+      "default": "./dist/src/export.js"
+    },
+    "./markdown-model": {
+      "types": "./dist/src/markdownModel.d.ts",
+      "default": "./dist/src/markdownModel.js"
+    },
+    "./ac-version": {
+      "types": "./dist/src/acVersion.d.ts",
+      "default": "./dist/src/acVersion.js"
+    },
+    "./presets": {
+      "types": "./dist/src/presets.d.ts",
+      "default": "./dist/src/presets.js"
+    },
+    "./work-graph": {
+      "types": "./dist/src/workGraph.d.ts",
+      "default": "./dist/src/workGraph.js"
+    },
+    "./mutate": {
+      "types": "./dist/src/mutate.d.ts",
+      "default": "./dist/src/mutate.js"
+    },
+    "./mcp": {
+      "types": "./dist/src/mcp.d.ts",
+      "default": "./dist/src/mcp.js"
+    },
+    "./attest": {
+      "types": "./dist/src/attest.d.ts",
+      "default": "./dist/src/attest.js"
+    },
+    "./lint": {
+      "types": "./dist/src/lint.d.ts",
+      "default": "./dist/src/lint.js"
+    },
+    "./tx": {
+      "types": "./dist/src/tx.d.ts",
+      "default": "./dist/src/tx.js"
+    },
+    "./dsse": {
+      "types": "./dist/src/dsse.d.ts",
+      "default": "./dist/src/dsse.js"
+    }
   },
   "bin": {
-    "ztrack": "dist/cli.js"
+    "ztrack": "dist/cli.js",
+    "ztrack-setup": "scripts/setup-ztrack-repo.mjs"
   },
   "scripts": {
+    "build": "npm run build:node-cli",
     "build:node-cli": "node scripts/build-node-cli.mjs",
     "cli": "bun run src/cli.ts",
+    "visualizer": "bun run visualizer/server.ts",
     "prepack": "npm run build:node-cli",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

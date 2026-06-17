@@ -4,23 +4,25 @@
 
 ```bash
 npx ztrack init --team APP
-npx ztrack issue scaffold --title "Protect API endpoint"
+npx ztrack issue scaffold --title "Protect API endpoint" > body.md
+npx ztrack issue create --title "Protect API endpoint" --label type:case --state "In Progress" --assignee "$USER" --body-file body.md
 npx ztrack issue list
 npx ztrack check
 ```
 
-At the default rigor, a checked acceptance criterion needs evidence that can be
-verified against git and your configured PR host. A fake commit SHA is a hard
-type error, not a warning.
+With the `basic` preset, a checked acceptance criterion needs evidence that can be
+verified against git and an evidence row in the issue. A fake commit SHA is a
+hard type error, not a warning.
 
 ## CI Snapshot Gate
 
 For CI, prefer a committed snapshot. A fresh CI checkout does not preserve your
-local tracker store.
+local tracker store. Commit the config and installed validation with the
+snapshot.
 
 ```bash
 npx ztrack snapshot export --out .volter/snapshot.json
-git add .volter/snapshot.json
+git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json
 ```
 
 Then gate the snapshot in GitHub Actions:
@@ -35,7 +37,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: volter-ai/ztrack@v0
         with:
           snapshot: .volter/snapshot.json

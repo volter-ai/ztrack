@@ -1,0 +1,19 @@
+{
+  "name": "ztrack-visualizer",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Preset-agnostic web view over the ztrack core export.",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun run --watch server.ts"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18"
+  }
+}

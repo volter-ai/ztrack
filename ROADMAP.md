@@ -8,7 +8,7 @@ keeps the core local-first and deterministic.
 - More copy-pasteable examples for GitHub Issues, Linear, and Jira workflows.
 - Public CI examples for committed snapshot gates.
 - Clearer docs for MCP and stop-hook agent integration.
-- More preset templates for teams that already use Spec Kit, OpenSpec,
+- More install presets for teams that already use Spec Kit, OpenSpec,
   Backlog.md, or similar file-based planning systems.
 
 ## Later

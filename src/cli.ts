@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { checkTrackerSnapshot } from './check.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { lintIssueBody } from './lint.ts';
@@ -9,7 +11,7 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { initTrackerProject, projectRootFrom, trackerConfigPath } from './config.ts';
+import { initTrackerPresets, initTrackerProject, projectRootFrom, trackerConfigPath } from './config.ts';
 import { exportTrackerSnapshot } from './export.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
@@ -51,7 +53,11 @@ async function main(): Promise<void> {
 
   if (args[0] === 'init') {
     const root = resolve(optionValue(args, '--root') || process.cwd());
-    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL');
+    const preset = optionValue(args, '--preset', 'basic');
+    if (!initTrackerPresets().includes(preset as any)) {
+      throw new Error(`ztrack init: --preset must be one of ${initTrackerPresets().join(', ')}`);
+    }
+    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset: preset as any });
     if (result.alreadyInitialized) {
       process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
       return;
@@ -61,6 +67,7 @@ async function main(): Promise<void> {
     process.stdout.write([
       `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey}`)}`,
       `  ${ui.dim(configPath)}`,
+      ...(result.validationEntrypoint ? [`  ${ui.dim(`validation ${result.validationEntrypoint}`)}`] : []),
       '',
       ui.bold('Next steps'),
       stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
@@ -71,6 +78,7 @@ async function main(): Promise<void> {
       '',
       ui.dim('Recognized labels include type:case and type:bug.'),
       ui.dim('Unrecognized checked work warns instead of passing silently.'),
+      ui.dim('Edit the installed validation preset to encode your project rules.'),
       '',
     ].join('\n'));
     return;
@@ -122,6 +130,45 @@ async function main(): Promise<void> {
 
   if (args[0] === 'mcp' && args[1] === 'serve') {
     await serveMcp();
+    return;
+  }
+
+  if (args[0] === 'visualizer' || args[0] === 'viz') {
+    // The visualizer is a standalone Bun app shipped alongside the CLI. Resolve
+    // it relative to the package root, which holds for both the source checkout
+    // (src/cli.ts) and the published bundle (dist/cli.js).
+    const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const visualizerDir = join(packageRoot, 'visualizer');
+    const serverEntry = join(visualizerDir, 'server.ts');
+    if (!existsSync(serverEntry)) {
+      throw new Error(`ztrack visualizer: visualizer not found at ${serverEntry}`);
+    }
+    if (spawnSync('bun', ['--version'], { stdio: 'ignore' }).status !== 0) {
+      throw new Error('ztrack visualizer requires Bun (https://bun.sh) — the visualizer is a Bun app.');
+    }
+    // One-time install of the visualizer's client deps (react) if missing.
+    if (!existsSync(join(visualizerDir, 'node_modules', 'react'))) {
+      process.stderr.write(`${ui.dim('Installing visualizer dependencies (one-time)…')}\n`);
+      const install = spawnSync('bun', ['install'], { cwd: visualizerDir, stdio: 'inherit' });
+      if (install.status !== 0) throw new Error('ztrack visualizer: failed to install visualizer dependencies');
+    }
+    const project = optionValue(args, '--project') || (() => { try { return projectRootFrom(); } catch { return process.cwd(); } })();
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      PROJECT_DIR: resolve(project),
+      PRESET: optionValue(args, '--preset') || process.env.PRESET || 'default',
+    };
+    const port = optionValue(args, '--port');
+    if (port) env.PORT = port;
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const child = spawn('bun', ['run', serverEntry], { stdio: 'inherit', env });
+      child.on('error', (error) => rejectPromise(
+        (error as NodeJS.ErrnoException).code === 'ENOENT'
+          ? new Error('ztrack visualizer requires Bun (https://bun.sh) — the visualizer is a Bun app.')
+          : error,
+      ));
+      child.on('exit', (code) => { process.exitCode = code ?? 0; resolvePromise(); });
+    });
     return;
   }
 
@@ -190,7 +237,7 @@ GraphQL-shaped query against the local tracker store.
   }
 
   if (args[0] === 'annotations') {
-    throw new Error('tracker annotations requires @volter/twin; this command is not included in the public ztrack core package yet.');
+    throw new Error('ztrack annotations requires the optional @volter/twin peer dependency and a mirrored world store.');
   }
 
   if (await handleEvidenceCommand(args, client)) return;

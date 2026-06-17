@@ -15,7 +15,7 @@ ${ui.bold('Usage')}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
 ${helpSection('top', 'Core', [
-    [`${command} init [--team KEY]`, 'create local config'],
+    [`${command} init [--team KEY] [--preset basic|simple-sdlc|simple-spec|speckit]`, 'create local config'],
     [`${command} check [--issues A-1,A-2]`, 'verify checked claims'],
     [`${command} check --json`, 'emit JSON report'],
   ])}
@@ -29,12 +29,12 @@ ${helpSection('middle', 'Workflow', [
 ${helpSection('bottom', 'Data', [
     [`${command} snapshot export`, 'export snapshot'],
     [`${command} lint [--fail-on-warn]`, 'flag weak claims'],
-    [`${command} evidence export`, 'export attestations'],
+    [`${command} visualizer [--preset p] [--port n]`, 'open the web visualizer'],
   ])}
 
 ${ui.bold('Resources')}
   init, issue, project, milestone, sprint, label, state, user, search, query
-  view, api, check, snapshot, fmt, lint, tx, evidence, ac, web, mcp
+  view, api, check, snapshot, fmt, lint, tx, evidence, ac, mcp, visualizer
 
 ${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}
 `);
@@ -48,7 +48,7 @@ export function scaffoldCaseBody(title: string): string {
     const body = preset.scaffoldIssueBody?.(title);
     if (body) return body;
   } catch {
-    // Keep scaffold usable before tracker init; presets can replace this.
+    // Keep scaffold usable before ztrack init; presets can replace this.
   }
   return `# ${title}
 
@@ -117,6 +117,14 @@ history, relate, relations, unrelate.
   if (resource === 'organization' || resource === 'check' || resource === 'snapshot') {
     process.stdout.write(`Usage: ${command} check [--input file] [--issues A-1,A-2] [--json]
        ${command} snapshot <export|validate> [args...]
+`);
+    return true;
+  }
+  if (resource === 'visualizer' || resource === 'viz') {
+    process.stdout.write(`Usage: ${command} visualizer [--preset default|speckit] [--port n] [--project dir]
+
+Starts the web visualizer (a Bun app) over the local tracker. Defaults: preset
+default, port 3300, project = current tracker root. Requires Bun (bun.sh).
 `);
     return true;
   }

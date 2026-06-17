@@ -1,8 +1,6 @@
-// Tracker-side adapter: maps world events/annotations → tracker "source books"
-// (the event→requirement-source view the tracker presets consume). This lived in
-// `@volter/twin` and was its last tracker coupling; moved here so the world stays
-// a pure twin runtime (strategy/world-twins-architecture.md → decouple sourceBooks).
-// It reads world data through `@volter/twin`'s generic surface only.
+// Tracker-side adapter: maps world events/annotations to tracker "source books",
+// the event-to-requirement-source view installed validation can consume. The
+// optional world runtime stays separate; ztrack reads only its public event API.
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { listEvents, loadWorldConfig, worldStateRoot } from '@volter/twin';

@@ -6,7 +6,7 @@
 // Deliberately minimal: no external/approval ACs, no source markers /
 // world-annotations, no multi-channel or linked-issue choreography — a single
 // straightforward dev lifecycle. See spec.ts for the even smaller sibling, and write
-// a custom preset for a richer SDLC.
+// a richer SDLC preset.
 //
 // Lifecycle gates (the process):
 //   draft        — nothing required yet

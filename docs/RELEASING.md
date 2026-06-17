@@ -17,6 +17,8 @@ until all three surfaces point at the intended code.
    bun install --frozen-lockfile
    bun run typecheck
    bun test
+   bash demos/real-project-cycle.sh
+   bash demos/full-dev-cycle.sh
    npm pack --dry-run
    ```
 

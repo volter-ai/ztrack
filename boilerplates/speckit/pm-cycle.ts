@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // The speckit PM cycle — the manager loop for the Spec Kit SDLC, analogous to
-// boilerplates/default/pm-cycle.ts. It reads each feature's derived stage (from
-// the speckit preset) and dispatches the matching Spec Kit SKILL on Termfleet to
+// boilerplates/core-sdlc/pm-cycle.ts. It reads each feature's derived stage (from
+// the speckit preset) and dispatches the matching Spec Kit skill through your
+// agent runner to
 // push it forward, then waits for the stage to advance and repeats. You only add
 // feature requests to .specify/backlog.json; the cycle drives the rest:
 //
@@ -13,7 +14,7 @@
 //   in-progress -> /speckit-implement   (+ our verification: cite commits)
 //   done        -> nothing
 //
-//   bun pm-cycle.ts --repo <speckitProject> [--url <termfleet>] [--max-min 20]
+//   AGENT_LAUNCHER_CLI=<launcher> bun pm-cycle.ts --repo <speckitProject> [--launcher-url <url>] [--max-min 20]
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -24,10 +25,12 @@ import { gitWorld } from '../../src/core/gitWorld.ts';
 const args = process.argv.slice(2);
 const flag = (n: string, d?: string) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1]! : d; };
 const REPO = flag('repo', process.cwd())!;
-const URL = flag('url', 'http://127.0.0.1:7402')!;
+const URL = flag('launcher-url', flag('url', ''))!;
 const MAX_MS = Number(flag('max-min', '20')) * 60_000;
-// Path to your agent launcher CLI (e.g. Termfleet). Override with TERMFLEET_CLI.
-const TF_CLI = process.env.TERMFLEET_CLI ?? 'termfleet';
+// Path to your agent launcher CLI. It must support:
+//   <launcher> claude new -y --name <name> --cwd <repo> --prompt-file <file> [--url <url>]
+const AGENT_LAUNCHER_CLI = process.env.AGENT_LAUNCHER_CLI;
+if (!AGENT_LAUNCHER_CLI) throw new Error('Set AGENT_LAUNCHER_CLI to your agent launcher command before running this boilerplate.');
 
 function log(m: string) { console.log(`[speckit-pm ${new Date().toISOString().slice(11, 19)}] ${m}`); }
 
@@ -66,20 +69,20 @@ function readBacklog(): Array<{ description: string }> {
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return []; }
 }
 
-// ── dispatch a Spec Kit skill on Termfleet ───────────────────────────────────
-function tf(...a: string[]): string {
-  return execFileSync('npx', ['tsx', TF_CLI, ...a, '--url', URL], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+// ── dispatch a Spec Kit skill through the configured agent launcher ──────────
+function launch(...a: string[]): string {
+  return execFileSync(AGENT_LAUNCHER_CLI!, [...a, ...(URL ? ['--url', URL] : [])], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 function dispatch(label: string, prompt: string): string {
   const f = `/tmp/speckit-pm-${label}.prompt.md`; writeFileSync(f, prompt);
   // The launch can return a "ready" timeout while the session is actually created
-  // (Termfleet is busy). That's fine — we poll for the stage to advance, not for
+  // (the launcher is busy). That's fine - we poll for the stage to advance, not for
   // the launch's return — so never let a launch-timeout kill the loop.
   try {
-    const out = tf('claude', 'new', '-y', '--create-timeout-ms', '180000', '--name', label, '--cwd', REPO, '--prompt-file', f);
-    return /"terminalSession":\s*"([^"]+)"/.exec(out)?.[1] ?? '(launched)';
+    const out = launch('claude', 'new', '-y', '--create-timeout-ms', '180000', '--name', label, '--cwd', REPO, '--prompt-file', f);
+    return /"terminalId":\s*"([^"]+)"/.exec(out)?.[1] ?? '(launched)';
   } catch (e) {
-    log(`  (launch returned an error: ${String((e as Error)?.message ?? e).split('\n')[0]!.slice(0, 70)} — session likely created; polling)`);
+    log(`  (launch returned an error: ${String((e as Error)?.message ?? e).split('\n')[0]!.slice(0, 70)} — terminal likely created; polling)`);
     return '(launch-timeout)';
   }
 }
@@ -105,7 +108,7 @@ function skillPrompt(skill: string, slug: string): string {
 }
 
 async function main() {
-  log(`speckit PM cycle on ${REPO} via ${URL}`);
+  log(`speckit PM cycle on ${REPO}${URL ? ` via ${URL}` : ''}`);
   let n = 0;
   while (true) {
     n += 1;

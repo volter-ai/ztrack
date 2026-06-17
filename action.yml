@@ -8,12 +8,6 @@ inputs:
   working-directory:
     description: Directory containing the .volter tracker config
     default: .
-  categories:
-    description: Per-category depth override, e.g. "sourced=1,code=3"; default uses repo config
-    default: ''
-  profiles:
-    description: Profile override, comma-separated or "none"
-    default: ''
   snapshot:
     description: >
       Path to a committed exported snapshot to gate. When set, ztrack validates
@@ -34,12 +28,13 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        ARGS=()
-        [ -n "${{ inputs.categories }}" ] && ARGS+=(--categories "${{ inputs.categories }}")
-        [ -n "${{ inputs.profiles }}" ] && ARGS+=(--profile "${{ inputs.profiles }}")
+        ZTRACK=(node "$GITHUB_ACTION_PATH/dist/cli.js")
         if [ -n "${{ inputs.snapshot }}" ]; then
-          npx --yes ztrack check --input "${{ inputs.snapshot }}" --verify-commits "${ARGS[@]}"
+          "${ZTRACK[@]}" check --input "${{ inputs.snapshot }}" --verify-commits
         else
-          if [ ! -f .volter/tracker-config.json ]; then npx --yes ztrack init --team CI; fi
-          npx --yes ztrack check "${ARGS[@]}"
+          if [ ! -f .volter/tracker-config.json ]; then
+            echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed snapshot for CI." >&2
+            exit 2
+          fi
+          "${ZTRACK[@]}" check
         fi

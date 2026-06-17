@@ -3,7 +3,7 @@
 // delimited JSON-RPC 2.0; no SDK dependency. Tools mirror the CLI surface:
 // issue read/write, scoped AC mutations, fmt, and the rulebook check.
 import { checkTrackerSnapshot } from './check.ts';
-import { initTrackerProject, projectRootFrom } from './config.ts';
+import { initTrackerPresets, initTrackerProject, projectRootFrom } from './config.ts';
 import { exportTrackerSnapshot } from './export.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { applyAcMutation, addEvidenceEntry } from './mutate.ts';
@@ -15,15 +15,18 @@ type JsonRpcRequest = { jsonrpc: '2.0'; id?: number | string | null; method: str
 const TOOLS = [
   {
     name: 'tracker_init',
-    description: 'Initialize ztrack in the current project (writes .volter/tracker-config.json with the generic validation preset, day-one check defaults, and a managed .gitignore). Call this first in a fresh repo — the server starts without a config so an MCP-only agent can bootstrap. Idempotent.',
-    inputSchema: { type: 'object', properties: { team: { type: 'string', description: 'team key, e.g. APP (default LOCAL)' } } },
+    description: 'Initialize ztrack in the current project (writes .volter/tracker-config.json with the selected validation preset, day-one check defaults, and a managed .gitignore). Call this first in a fresh repo — the server starts without a config so an MCP-only agent can bootstrap. Idempotent.',
+    inputSchema: { type: 'object', properties: {
+      team: { type: 'string', description: 'team key, e.g. APP (default LOCAL)' },
+      preset: { type: 'string', enum: [...initTrackerPresets()], description: 'starter preset to install as editable repo-local validation' },
+    } },
   },
   {
     name: 'tracker_check',
     description: 'Export the tracker snapshot and run the full verification rulebook (state gates, evidence/SHA anchoring). Returns the report; valid=false means findings must be resolved with evidence.',
     inputSchema: { type: 'object', properties: {
       issues: { type: 'string', description: 'Comma-separated case identifiers to restrict to' },
-      categories: { type: 'object', description: 'Per-category depth override, e.g. {"code":3} (default: config)' },
+      categories: { type: 'object', description: 'Advanced preset-specific category override, if the installed validation supports it' },
     } },
   },
   {
@@ -58,7 +61,7 @@ const TOOLS = [
   },
   {
     name: 'tracker_evidence_add',
-    description: 'Add a resolvable evidence entry ([En]) to the issue\'s Evidence section and return its id. Use this BEFORE tracker_ac_check, then pass the returned id in ac_check\'s `evidence`. type=pr needs repo/number/head; screenshot needs path (a real image committed in the repo) + justification; video needs url + status + justification.',
+    description: 'Add an evidence entry ([En]) to the issue Evidence section and return its id. Use this BEFORE tracker_ac_check, then pass the returned id in ac_check evidence. Installed presets verify that the row exists; project presets may add stricter PR/screenshot/video checks.',
     inputSchema: { type: 'object', properties: {
       issue: { type: 'string' }, type: { type: 'string', enum: ['pr', 'screenshot', 'video', 'other'] },
       ac: { type: 'string' }, repo: { type: 'string' }, number: { type: 'string' }, head: { type: 'string' },
@@ -86,8 +89,15 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
   // tracker_init runs before client creation: in a fresh repo there is no
   // config yet, and creating the client loads config (which would throw).
   if (name === 'tracker_init') {
-    const result = initTrackerProject(process.cwd(), args.team ? String(args.team) : 'LOCAL');
-    return { configPath: result.configPath, alreadyInitialized: result.alreadyInitialized, teamKey: result.teamKey };
+    const preset = initTrackerPresets().includes(args.preset) ? args.preset : 'basic';
+    const result = initTrackerProject(process.cwd(), args.team ? String(args.team) : 'LOCAL', { preset });
+    return {
+      configPath: result.configPath,
+      alreadyInitialized: result.alreadyInitialized,
+      teamKey: result.teamKey,
+      preset: result.preset,
+      ...(result.validationEntrypoint ? { validationEntrypoint: result.validationEntrypoint } : {}),
+    };
   }
   const projectRoot = projectRootFrom();
   const client = createTrackerClient();

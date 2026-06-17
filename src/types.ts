@@ -12,23 +12,23 @@ export interface TrackerConfig {
     store?: string;
   };
   /**
-   * Target validation architecture: tracker loads one repo-local validation
+   * Preferred validation architecture: ztrack loads one repo-local validation
    * entrypoint after init. The entrypoint owns parser/schema/render semantics.
-   * `organization.validationPreset` remains supported during migration.
+   * Legacy configs that only set `organization.validationPreset` must be
+   * migrated with `ztrack init --preset <starter>`.
    */
   validation?: {
-    /** Path relative to project root, for example ".volter/tracker/validation/preset.ts". */
+    /** Path relative to project root, for example ".volter/tracker/validation/preset.cjs". */
     entrypoint?: string;
-    /** Starter/template used to install the entrypoint, e.g. "default" or "speckit". */
+    /** Starter/template used to install the entrypoint, e.g. "basic" or "speckit". */
     installedFrom?: string;
   };
-  /** Deployment-specific conventions consumed by organization validation. */
+  /** Project conventions consumed by installed validation and compatibility paths. */
   organization?: {
     /**
-     * Compatibility validation selector. New repos should prefer validation.entrypoint,
-     * installed by `tracker init --preset <name>`.
-     * The current tracker-snapshot rulebook still honors
-     * organization.grammar/check during migration.
+     * @deprecated Legacy named selector. New repos must use validation.entrypoint
+     * installed by `ztrack init --preset <starter>`.
+     * The current tracker-snapshot rulebook also honors organization.grammar/check.
      */
     validationPreset?: string;
     /** Regex sources (no flags) for external issue keys cited in issue bodies/sources, e.g. "APP-\\d+". */
@@ -49,12 +49,12 @@ export interface TrackerConfig {
      * e.g. { slotAliases: { acceptanceCriteria: ["Done When"] } } lets a
      * team write "## Done When" and have its ACs picked up.
      *
-     * Target architecture: new teams should prefer a preset-owned parser + Zod
-     * schema (`strategy/tracker-architecture.md`) instead of growing this DSL.
+     * For deeper project-specific semantics, prefer a repo-local preset-owned
+     * parser + Zod schema instead of growing this DSL.
      */
     grammar?: { extends?: string; slotAliases?: Record<string, string[]> };
     /**
-     * Compatibility check selector for the current tracker-snapshot rulebook.
+     * Check selector for the current tracker-snapshot rulebook.
      * Absent = full strictness (all categories at max depth, all profiles).
      * New validation semantics belong in preset Zod schemas, not here.
      */

@@ -9,7 +9,7 @@ Labels: `good first issue`, `docs`, `examples`
 Body:
 
 ```md
-Create a tiny example project under `examples/github-issues-basic/` that shows the smallest ztrack workflow against GitHub Issues.
+Create a tiny example project under `demos/github-issues-basic/` that shows the smallest ztrack workflow against GitHub Issues.
 
 Acceptance:
 
@@ -51,4 +51,3 @@ Acceptance:
 - If it exists, documents install commands for zsh and bash.
 - If it does not exist, proposes the smallest implementation approach without adding it yet.
 ```
-

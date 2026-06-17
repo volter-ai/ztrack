@@ -9,7 +9,11 @@ import type { TrackerConfig } from './types.ts';
  * reflection) must resolve it through here, never via a repo-relative path.
  */
 export function trackerBackendScriptPath(): string {
-  return fileURLToPath(new URL('../backend/tracker-local.py', import.meta.url));
+  const candidates = [
+    fileURLToPath(new URL('../backend/tracker-local.py', import.meta.url)),
+    fileURLToPath(new URL('../../backend/tracker-local.py', import.meta.url)),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
 }
 
 /**
@@ -27,34 +31,97 @@ export function trackerConfigPath(projectRoot: string): string {
   return join(projectRoot, stateDirName(), 'tracker-config.json');
 }
 
+export type InitTrackerPreset = 'basic' | 'simple-sdlc' | 'simple-spec' | 'speckit';
+
+const INIT_TRACKER_PRESETS = ['basic', 'simple-sdlc', 'simple-spec', 'speckit'] as const;
+
+export function initTrackerPresets(): readonly InitTrackerPreset[] {
+  return INIT_TRACKER_PRESETS;
+}
+
+export type InitTrackerProjectOptions = {
+  preset?: InitTrackerPreset;
+};
+
+function presetTemplate(): string {
+  return readFileSync(fileURLToPath(new URL('../boilerplates/presets/preset.cjs', import.meta.url)), 'utf8');
+}
+
+export function trackerValidationEntrypointPath(projectRoot: string): string {
+  return join(projectRoot, stateDirName(), 'tracker', 'validation', 'preset.cjs');
+}
+
+function presetBooleans(preset: InitTrackerPreset): Record<string, string> {
+  return {
+    __ZTRACK_PRESET_NAME__: preset,
+    __ZTRACK_REQUIRE_SOURCE_MARKER__: preset === 'basic' ? 'false' : 'true',
+    __ZTRACK_REQUIRE_SDLC_GATES__: preset === 'simple-sdlc' ? 'true' : 'false',
+    __ZTRACK_REQUIRE_SPEC_SECTIONS__: preset === 'simple-spec' ? 'true' : 'false',
+    __ZTRACK_REQUIRE_SPECKIT_SECTIONS__: preset === 'speckit' ? 'true' : 'false',
+  };
+}
+
+function installedPresetTemplate(preset: InitTrackerPreset): string {
+  let text = presetTemplate();
+  for (const [token, value] of Object.entries(presetBooleans(preset))) {
+    text = text.replaceAll(token, value);
+  }
+  return text;
+}
+
+function installPreset(projectRoot: string, preset: InitTrackerPreset): string {
+  const entrypoint = trackerValidationEntrypointPath(projectRoot);
+  mkdirSync(dirname(entrypoint), { recursive: true });
+  if (!existsSync(entrypoint)) writeFileSync(entrypoint, `${installedPresetTemplate(preset)}\n`);
+  return entrypoint;
+}
+
 /**
- * Initialize a tracker project: write the local backend config, install the
- * generic validation preset, and add a managed .gitignore block. Idempotent and
- * shared by `tracker init` and the tracker_init MCP tool so an MCP-only agent
+ * Initialize a tracker project: write the local backend config, install a
+ * repo-local validation preset, and add a managed .gitignore block. Idempotent and
+ * shared by `ztrack init` and the tracker_init MCP tool so an MCP-only agent
  * can bootstrap a fresh repo without the CLI.
  */
-export function initTrackerProject(root: string, teamKey = 'LOCAL'): { configPath: string; alreadyInitialized: boolean; teamKey: string } {
+export function initTrackerProject(
+  root: string,
+  teamKey = 'LOCAL',
+  options: InitTrackerProjectOptions = {},
+): { configPath: string; alreadyInitialized: boolean; teamKey: string; preset: InitTrackerPreset; validationEntrypoint?: string } {
   const configPath = trackerConfigPath(root);
-  if (existsSync(configPath)) return { configPath, alreadyInitialized: true, teamKey };
+  const preset = options.preset ?? 'basic';
+  if (existsSync(configPath)) return { configPath, alreadyInitialized: true, teamKey, preset };
   const key = teamKey.toUpperCase();
   mkdirSync(dirname(configPath), { recursive: true });
-  writeFileSync(configPath, `${JSON.stringify({
+  const validationEntrypoint = installPreset(root, preset);
+  const config: TrackerConfig = {
     backend: 'local',
     local: { teamKey: key },
-    organization: {
-      validationPreset: 'generic',
-      check: { categories: { sourced: 1, code: 2 } },
+    validation: {
+      entrypoint: `${stateDirName()}/tracker/validation/preset.cjs`,
+      installedFrom: preset,
     },
-  }, null, 2)}\n`);
+    organization: { check: { categories: { sourced: 1, code: 2 } } },
+  };
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   const gitignorePath = resolve(root, '.gitignore');
   const ignoreMarker = '# ztrack (added by ztrack init)';
-  const ignoreBlock = [ignoreMarker, '.volter/tracker/', 'node_modules/', 'bun.lock', ''].join('\n');
+  const stateDir = stateDirName();
+  const ignoreBlock = [
+    ignoreMarker,
+    `${stateDir}/tracker/tracker.sqlite`,
+    `${stateDir}/tracker/tracker.sqlite-*`,
+    `${stateDir}/tracker/tracker.sqlite.lock`,
+    `${stateDir}/tracker/local-store.json`,
+    `${stateDir}/tracker/markdown/`,
+    `${stateDir}/agent-dispatch/`,
+    '',
+  ].join('\n');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
   if (!existingIgnore.includes(ignoreMarker)) {
     const prefix = existingIgnore && !existingIgnore.endsWith('\n') ? '\n' : '';
     writeFileSync(gitignorePath, `${existingIgnore}${prefix}${existingIgnore ? '\n' : ''}${ignoreBlock}`);
   }
-  return { configPath, alreadyInitialized: false, teamKey: key };
+  return { configPath, alreadyInitialized: false, teamKey: key, preset, ...(validationEntrypoint ? { validationEntrypoint } : {}) };
 }
 
 export function projectRootFrom(start = process.cwd()): string {
@@ -70,7 +137,7 @@ export function projectRootFrom(start = process.cwd()): string {
 export function loadTrackerConfig(projectRoot = projectRootFrom()): TrackerConfig {
   const configPath = trackerConfigPath(projectRoot);
   if (!existsSync(configPath)) {
-    throw new Error(`No tracker config found at ${configPath}. Run 'tracker init' to create one.`);
+    throw new Error(`No tracker config found at ${configPath}. Run 'ztrack init' to create one.`);
   }
   let raw: Partial<TrackerConfig>;
   try {

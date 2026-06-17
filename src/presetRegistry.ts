@@ -3,11 +3,11 @@ import { createRequire } from 'node:module';
 import { isAbsolute, resolve } from 'node:path';
 import type { TrackerConfig } from './types.ts';
 import type { TrackerPresetRuntime } from './presets.ts';
-import { GENERIC_PRESET } from './presets/genericRuntime.ts';
 
 export function resolveTrackerPreset(value: string | undefined): TrackerPresetRuntime {
-  if (!value || value === 'generic' || value === 'default' || value === 'ztrack/presets/generic') return GENERIC_PRESET;
-  throw new Error(`Unsupported tracker validation preset '${value}'. Available presets: generic`);
+  throw new Error(value
+    ? `Unsupported legacy organization.validationPreset '${value}'. Run 'ztrack init --preset basic' to install repo-local validation.`
+    : "No tracker validation entrypoint configured. Run 'ztrack init --preset basic' to install .volter/tracker/validation/preset.cjs.");
 }
 
 function assertTrackerPresetRuntime(value: unknown, source: string): TrackerPresetRuntime {

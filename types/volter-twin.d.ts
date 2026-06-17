@@ -3,13 +3,9 @@
 // ztrack's world-integration adapters (`src/worldAnnotations.ts`,
 // `src/worldSourceBooks.ts`, and the `annotations` CLI command) read a mirrored
 // world through `@volter/twin`'s generic event surface. `@volter/twin` is a separate
-// volter-ai project; when it is installed, its real types apply. This loose
-// declaration only exists so ztrack typechecks standalone when twin is absent — it is
+// external project; when it is installed, its real types apply. This loose
+// declaration only exists so ztrack typechecks standalone when twin is absent - it is
 // intentionally permissive, not authoritative.
-//
-// NOTE: this file is stripped from the vendored copy by `scripts/ztrack-sync-in.sh`
-// in consumers that already have a real `@volter/twin`, so it never shadows the real
-// package's types.
 declare module '@volter/twin' {
   export interface WorldServiceEvent {
     id: string;

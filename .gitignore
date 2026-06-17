@@ -1,5 +1,14 @@
 node_modules/
 *.tgz
+.volter/tracker/tracker.sqlite
+.volter/tracker/tracker.sqlite-*
+.volter/tracker/tracker.sqlite.lock
+.volter/tracker/local-store.json
+.volter/tracker/markdown/
+.volter/agent-dispatch/
+.volter/keys/
 .env
 .env.*
 .DS_Store
+visualizer/core.js
+dist/src/

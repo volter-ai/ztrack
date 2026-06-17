@@ -5,8 +5,8 @@ agent files claims, and `ztrack check` runs the rulebook — tickets that violat
 gates fail. This doc maps the pieces, the two validation surfaces, and how data flows.
 
 > **TL;DR**
-> - **Core contract** — `parse(markdown) → ONE strict Zod schema → pure rules(root, ctx) → { findings, export: root }`, reading issues through the universal `TrackerBackend` interface (sqlite or markdown, pluggable). The validated `root` **is** the export — there is no separate assembly step. Presets `default`, `spec`, `speckit` run on it.
-> - **Snapshot validator** — what the `ztrack check` CLI runs today: the active preset (resolved by name, or by a repo-local `validation.entrypoint`) **exports a snapshot** of the store + world, then validates it with the preset's rulebook. The shipped `generic` preset (`presets/genericRuntime.ts`) implements this over the `backend/tracker-local.py` store.
+> - **Installed preset runtime** — what `ztrack check` runs in normal repos. `ztrack init --preset basic|simple-sdlc|simple-spec|speckit` copies an editable runtime to `.volter/tracker/validation/preset.cjs`; the config points at that local file through `validation.entrypoint`.
+> - **Core contract** — the internal/reference shape for richer SDLC engines: `parse(markdown) → ONE strict Zod schema → pure rules(root, ctx) → { findings, export: root }`, reading issues through the universal `TrackerBackend` interface (sqlite or markdown, pluggable). The validated `root` **is** the export — there is no separate assembly step.
 
 ---
 
@@ -33,11 +33,11 @@ through the worlds pipeline (see §5), never as live backends.
 | file | role |
 |---|---|
 | `core/engine.ts` | the contract: `Preset { name, schema, parse, rules, primitives }`, `Context` (git + world), `check()` returning `{ findings, export: root }` |
-| `core/registry.ts` | preset catalog (`default`, `spec`, `speckit`) resolved by name |
+| `core/registry.ts` | internal reference catalog resolved by name |
 | `core/mutate.ts` | mutation affordances: parse → change one item → serialize → write + append audit |
 | `core/audit.ts` | append-only audit log (`.audit.jsonl`); timestamps derived; `observeChanges` catches external edits |
 | `core/gitWorld.ts` | builds `ctx.git` (commits, PR/branch heads) |
-| `presets/default.ts`, `spec.ts`, `speckitCore.ts` | the strict schemas + mdast parsers + pure rules per SDLC |
+| `presets/default.ts`, `spec.ts`, `speckitCore.ts` | internal/reference strict schemas + mdast parsers + pure rules per SDLC |
 | `backends/markdown.ts` | canonical-issue ⇄ markdown (de)serializer |
 | `backends/markdownBackend.ts` | the `markdown` peer `TrackerBackend` (issue verbs over the `.md` store) |
 | `backends/markdownPort.ts` | lossless SQLite→markdown port + round-trip proof |
@@ -70,17 +70,17 @@ See `PRESET-GUIDE.md` for how to build or review a core preset.
 
 ---
 
-## 3. Snapshot validator — what `ztrack check` runs
+## 3. Installed preset runtime — what `ztrack check` runs
 
 The CLI does not parse the store in-process; it resolves the active **preset runtime**
-and asks it to export a snapshot and validate it. This keeps the rulebook pluggable per
-deployment (swap the preset, keep the CLI).
+and asks it to export a snapshot and validate it. In new repos this runtime is the
+installed `.volter/tracker/validation/preset.cjs` file created by init.
 
 | file | role |
 |---|---|
 | `presets.ts` | the `TrackerPresetRuntime` interface (parse/schema/diagnostics + `snapshot.{exportSnapshot, checkSnapshot}`) and shared helpers |
-| `presets/genericRuntime.ts` | **`GENERIC_PRESET`** — the shipped runtime: reads the store via `backend/tracker-local.py`, builds a `TrackerSnapshot`, and checks acceptance criteria / evidence / sources |
-| `presetRegistry.ts` | `resolveTrackerValidation(config)` → the named preset **or** a repo-local `validation.entrypoint` file |
+| `boilerplates/presets/preset.cjs` | template copied by `ztrack init --preset basic|simple-sdlc|simple-spec|speckit` |
+| `presetRegistry.ts` | `resolveTrackerValidation(config)` → the repo-local `validation.entrypoint` file; missing or legacy-only configs fail with init guidance |
 | `snapshotContract.ts` | the `TrackerSnapshot` + report Zod schemas (`tracker-snapshot`) |
 | `export.ts` | `exportTrackerSnapshot()` → active preset's `snapshot.exportSnapshot` |
 | `check.ts` | `checkTrackerSnapshot()` → active preset's `snapshot.checkSnapshot` |
@@ -98,9 +98,11 @@ cli.ts → cliSnapshot.handleSnapshotCommand(['check'])
   → exit 0/1
 ```
 
-A repo selects its rulebook with `validation.entrypoint` (a local file exporting a
-`TrackerPresetRuntime`) or `organization.validationPreset` (a built-in name). The
-`generic` preset is the day-one default.
+A repo selects its rulebook with `validation.entrypoint`, a local file exporting
+a `TrackerPresetRuntime`. Legacy configs that only set
+`organization.validationPreset` are rejected with migration guidance. The public
+init presets are `basic`, `simple-sdlc`, `simple-spec`, and `speckit`; all four
+become editable repo-local runtimes after installation.
 
 ---
 
@@ -108,33 +110,37 @@ A repo selects its rulebook with `validation.entrypoint` (a local file exporting
 
 | entry | path |
 |---|---|
-| `ztrack` / `cli.ts` `check` | snapshot validator (export → check); `annotations validate` uses `worldAnnotations` |
+| `ztrack` / `cli.ts` `check` | snapshot validator (export → check) |
 | `mcp.ts` (`tracker_check`, …) | snapshot validator over MCP |
 | `sdk.ts` `createTrackerClient` | backend-agnostic CRUD (`local` or `markdown`); writes via the backend; `tx.ts` re-checks |
 | `server.ts` / `graphql.ts` | GraphQL over the backend (CRUD) |
 | `core/cli.ts` | the core-contract `check` over a single issue file (engine demo / preset dev) |
+| `visualizer/` (`ztrack visualizer`) | standalone Bun web app over the core export; runs every `tracker/*.md` through its preset and renders issues, ACs, findings, and timestamps (read-only) |
 
 ---
 
 ## 5. World integration (optional)
 
 ztrack can use a **mirrored world** of the SaaS systems your code talks to
-(GitHub/Jira/Slack/…) as an evidence substrate, via the optional `@volter/twin` peer.
+(GitHub/Jira/Slack/...) as an evidence substrate, via the optional external
+`@volter/twin` peer.
 
 | file | role |
 |---|---|
 | `worldAnnotations.ts` | tracker annotations over twin events (`source`/`noise`/`duplicate`), quote-resolved into the event; stored at `.volter/world/<svc>/annotations.jsonl` |
 | `worldSourceBooks.ts` | adapter: twin events → "source books" the snapshot consumes |
 
-`@volter/twin` is an **optional** peer dependency. Without it installed, the core and
-snapshot validators work over the store + git; the `annotations` command and world
-source books are unavailable.
+`@volter/twin` is an **optional** peer dependency distributed through GitHub
+Packages under `volter-ai`. Without it installed, the core and snapshot
+validators work over the store + git. The world files are source-level adapter
+code, not default npm exports; see `docs/WORLD-INTEGRATION.md` for registry
+setup before building a world-backed installed preset.
 
 ---
 
 ## 6. Do-not-confuse cheat sheet
 
 - **The store is SQLite (`local`) or a markdown folder — never a SaaS.** GitHub/Jira/Slack are world sync spokes, not backends.
-- **Two validation models:** the **core contract** (`core/engine.ts` + `default`/`spec`/`speckit`) has no snapshot — the "export" is just `check().export` (the validated Root). The **snapshot validator** (`check.ts` → preset `snapshot.checkSnapshot`) is what the CLI runs; it exports a monolithic snapshot, then checks it.
+- **Two validation models:** the **installed runtime path** (`check.ts` → preset `snapshot.checkSnapshot`) is what users get from `ztrack init`; it exports a monolithic snapshot, then checks it. The **core contract** (`core/engine.ts` plus internal reference presets) has no snapshot — the "export" is just `check().export` (the validated Root).
 - **Two `mutate.ts`:** `mutate.ts` (snapshot-era AC mutation) ≠ `core/mutate.ts` (core affordances writing the store + audit).
 - **`markdownModel.ts` re-exports `presets/issueMarkdown.ts`** — the same lenient issue-markdown model under both names.

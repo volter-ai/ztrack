@@ -1,6 +1,13 @@
 # Tracker Preset Guide — build & review
 
-How to add or extend a preset in ztrack on the core contract, and how to adversarially review it. **An agent working on a preset should read this doc first.** Reference implementations (the bar): `src/presets/default.ts`, `src/presets/speckitCore.ts`. Core engine: `src/core/engine.ts`.
+How to add or extend a core-contract preset in ztrack, and how to
+adversarially review it. Most projects should start by installing `basic`,
+`simple-sdlc`, `simple-spec`, or `speckit` and editing
+`.volter/tracker/validation/preset.cjs`; read [docs/PRESETS.md](docs/PRESETS.md)
+for that normal path. **An agent changing the internal core preset system should
+read this doc first.** Reference implementations (the bar):
+`src/presets/default.ts`, `src/presets/speckitCore.ts`. Core engine:
+`src/core/engine.ts`.
 
 Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core model](#2-core-model-enginets) · [3. Source the SDLC](#3-source-the-sdlc-faithfully) · [4. Build order](#4-build-order) · [5. Never](#5-never-anti-patterns) · [6. Review](#6-review)
 

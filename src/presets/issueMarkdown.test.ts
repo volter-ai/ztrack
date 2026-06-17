@@ -62,7 +62,7 @@ describe('pluggable grammar', () => {
   });
 });
 
-describe('generic default grammar (the OSS default — permissive)', () => {
+describe('generic grammar fallback (permissive)', () => {
   test('lint/diagnostics do not require or reject any project-specific sections', () => {
     const body = '# Ticket\n\n## Context\n\nWhy.\n\n## Done When\n\n- [ ] Ship it.\n\n## Notes\n\nanything\n';
     const parsed = parseIssueMarkdown(body); // default = generic (no section order)

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { GENERIC_PRESET } from './genericRuntime.ts';
 
-// The generic preset runtime is what `ztrack check` runs by default. These tests
+// The generic preset runtime is the legacy fallback runtime. These tests
 // cover the pure surface: markdown parsing (acceptance criteria + evidence) and the
 // snapshot checker's gates (no git/python needed — ACs cite no commits here).
 

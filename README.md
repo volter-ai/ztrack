@@ -13,50 +13,55 @@
 
 <p align="center">
   <a href="#quickstart-under-a-minute"><strong>Quickstart</strong></a> ·
+  <a href="docs/ADOPTING.md"><strong>Adopt</strong></a> ·
   <a href="docs/EXAMPLES.md"><strong>Examples</strong></a> ·
+  <a href="docs/COOKBOOKS.md"><strong>Cookbooks</strong></a> ·
   <a href="#agent-workflows"><strong>Agent workflows</strong></a> ·
   <a href="#community-and-support"><strong>Support</strong></a> ·
   <a href="https://ztrack.dev/startup-pilot.html"><strong>Startup Pilot</strong></a>
 </p>
 
-<p align="center"><img src="docs/demo.gif" alt="ztrack check: cite a real commit -> green; fake SHA -> exit 1" width="680"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/volter-ai/ztrack/main/docs/demo.gif" alt="ztrack check: cite a real commit -> green; fake SHA -> exit 1" width="680"></p>
 
 AI coding agents close tickets on prose. "All tests pass, feature complete" — and the
 commit it cited never existed. Your tracker stored the claim with perfect fidelity and
 verified nothing.
 
-**ztrack is a typechecker for your issue tracker.** A checked acceptance criterion must
-cite a commit SHA that exists in git and is an ancestor of the branch head, evidence that
-resolves, screenshots/videos that exist — or it fails with a non-zero exit. The task
-schema is defined in [Zod](https://zod.dev).
+**ztrack is a typechecker for your issue tracker.** With the installed presets,
+a checked acceptance criterion must cite a commit SHA that exists in git plus an
+evidence row in the issue. Teams can extend the installed preset to validate PRs,
+screenshots, videos, approvals, and source systems.
 
 ## What ztrack catches
 
 | Claim in the tracker | What ztrack verifies |
 |---|---|
-| "Implemented in commit `a1b2c3d`" | the SHA exists in git and is reachable from the branch head |
-| "This acceptance criterion is checked" | it has the evidence required by your configured rigor level |
-| "The screenshot/video proves it" | the referenced proof resolves and stays tied to the checked requirement |
-| "This ticket is ready/done" | required criteria, PR state, assignee, and evidence are internally consistent |
+| "Implemented in commit `a1b2c3d`" | the SHA exists in the local git object database |
+| "This acceptance criterion is checked" | it cites a commit and an `[E...]` evidence row |
+| "This evidence proves it" | the evidence row exists and is linked from the checked AC |
+| "This ticket is ready/done" | the installed preset's required criteria and sections are internally consistent |
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
 ## Quickstart (under a minute)
 
 ```bash
-npx ztrack init      # writes a config: green with just git + a PR host
-npx ztrack check     # typecheck your tasks
+npx ztrack init --preset basic
+npx ztrack issue scaffold --title "First verified task" > body.md
+npx ztrack issue create --title "First verified task" --label type:case --state "In Progress" --assignee "$USER" --body-file body.md
+npx ztrack check
 ```
 
-Cite a real commit and a matching PR → pass. Cite a fake SHA → exit 1.
+Cite a fake SHA in a checked AC → exit 1. Replace it with a real commit and an
+evidence row → pass.
 
 ```text
 $ ztrack check
 
-  ✓ DEMO-2  auth middleware           2 ACs, evidence ok
-  ✓ DEMO-3  rate limiter              1 AC, evidence ok
+  ✓ DEMO-2  auth middleware           2 ACs, evidence rows ok
+  ✓ DEMO-3  rate limiter              1 AC, evidence rows ok
   ✗ DEMO-1  "API returns 200"
-      checked_dev_ac_commit_hash_missing
+      basic_checked_ac_commit_hash_missing
       cites a1b2c3d — not found in git
 
 ✗ 1 error  — the agent said done. the commit doesn't exist.
@@ -69,7 +74,7 @@ ztrack is a verification layer, not a new tracker.
 
 1. Read tasks from your existing work system or a committed snapshot.
 2. Parse each task through a Zod schema.
-3. Run deterministic checks against git, PR metadata, and referenced evidence.
+3. Run deterministic checks against git and referenced evidence rows.
 4. Exit non-zero when a checked claim is not backed by real proof.
 5. Let CI, MCP, or an agent stop-hook block the workflow until the evidence exists.
 
@@ -83,6 +88,7 @@ them and only validates the claims agents or humans make there.
 | Linear / Jira / GitHub Issues | where people plan, review, and discuss work |
 | ztrack CLI | local and CI verification |
 | ztrack MCP | agent-facing task/evidence loop |
+| ztrack visualizer | local web view of issues, acceptance criteria, and findings |
 | GitHub Action | repository gate with `uses: volter-ai/ztrack@v0` |
 
 ## Agent workflows
@@ -94,20 +100,51 @@ them and only validates the claims agents or humans make there.
 See [examples](docs/EXAMPLES.md) for a minimal local check, a committed-snapshot
 CI gate, and an MCP agent loop.
 
-## Gradual rigor
+## Visualize
 
-Rules are organized into categories — well-formed, sourced, code, visual, behavioral —
-each with a depth dial, like turning up strictness in a typechecker. Start where your team
-is (git + a PR host) and ratchet up. Claims above your configured rigor aren't dropped —
-they're counted honestly: *"valid at this level; 14 claims unverified at higher rigor."*
+For a read-only web view of the tracker — issues, acceptance-criteria progress,
+findings, and audit-derived timestamps — run the visualizer (requires
+[Bun](https://bun.sh)):
 
-| Category | What it checks | Instrumentation |
-|---|---|---|
-| **well-formed** | the record parses and refers to things that exist | the tracker alone |
-| **sourced** | every requirement traces to where it came from | none → world mirror |
-| **code** | a checked AC cites a real commit; evidence stays fresh | git + a PR host |
-| **visual** | a checked UI AC carries a resolving image proof | screenshot capability |
-| **behavioral** | a checked AC carries pass/fail video or human QA proof | a deployable scenario |
+```bash
+ztrack visualizer                 # default preset, http://localhost:3300
+ztrack viz --preset speckit --port 4000
+```
+
+It validates the live tracker on each request through the same core as `check`,
+so the board never drifts from what CI enforces.
+
+If you are adding ztrack to an existing repository, start with
+[Adopting ztrack](docs/ADOPTING.md). If an AI agent is doing the setup, give it
+[the agent playbook](docs/AGENT-PLAYBOOK.md).
+
+To install validation plus an operating profile in one shot:
+
+```bash
+npx -p ztrack ztrack-setup --repo /path/to/repo --team APP --preset simple-sdlc --profile simple-sdlc
+```
+
+## Install presets
+
+`ztrack init` installs one editable validation file into the target repo:
+`.volter/tracker/validation/preset.cjs`.
+
+| Preset | Use When |
+|---|---|
+| `basic` | first adoption or unknown workflow |
+| `simple-sdlc` | source-grounded work items with lifecycle gates |
+| `simple-spec` | issue bodies are specs with requirements and ACs |
+| `speckit` | GitHub Spec Kit style feature records |
+
+See [Preset reference](docs/PRESETS.md) for the exact gates.
+
+## Project-specific rigor
+
+The installed preset is intentionally editable. Start with commit plus evidence
+row checks, then encode project-specific rules in
+`.volter/tracker/validation/preset.cjs`: source grounding, section gates,
+approval requirements, PR metadata, screenshot files, video evidence, or external
+world/source checks.
 
 ## Why believe it
 
@@ -144,9 +181,17 @@ confirm there is a good fit.
 
 ## Documentation
 
+- [Docs index](docs/README.md)
 - [Examples](docs/EXAMPLES.md)
+- [Adopting ztrack](docs/ADOPTING.md)
+- [Cookbooks](docs/COOKBOOKS.md)
+- [Visualizer](visualizer/README.md) — local web view of tracker state
+- [Preset reference](docs/PRESETS.md)
+- [Agent profiles](profiles/README.md)
+- [AI agent playbook](docs/AGENT-PLAYBOOK.md)
+- [World integration](docs/WORLD-INTEGRATION.md) — advanced source-backed validation boundary
 - [Architecture](ARCHITECTURE.md)
-- [Preset guide](PRESET-GUIDE.md)
+- [Maintainer preset guide](PRESET-GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Releasing](docs/RELEASING.md)
