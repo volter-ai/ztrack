@@ -27,26 +27,41 @@ until all three surfaces point at the intended code.
 
 ## Publish
 
-1. Commit the version and changelog update.
-2. Publish the package from that exact commit:
+Publishing is automated. Pushing an exact version tag (`vX.Y.Z`) triggers the
+`Publish` workflow (`.github/workflows/publish.yml`), which verifies the tag
+matches `package.json`, runs typecheck + tests, then `npm publish` with
+provenance using the repo secret `NPM_TOKEN`. **No local npm token is needed** —
+do not run `npm publish` by hand.
 
-   ```bash
-   npm publish
-   ```
-
-3. Create the exact version tag on the same commit:
+1. Commit the version and changelog update, and push `main`.
+2. Create and push the exact version tag on that commit — this publishes:
 
    ```bash
    git tag v0.1.2
    git push origin v0.1.2
    ```
 
+3. Watch it: `gh run watch` (or the Actions tab). On success the version is live on npm.
 4. Move the major action tag only after the exact version tag exists:
 
    ```bash
    git tag -f v0 v0.1.2
    git push origin v0 --force
    ```
+
+## Credentials (one-time / rotation)
+
+The `Publish` workflow authenticates with the repo secret `NPM_TOKEN`
+(Settings → Secrets and variables → Actions). It must be an npm token with
+publish access and 2FA bypass (Granular or Automation token). Rotate it on
+npmjs.com → Access Tokens before it expires and update the secret:
+
+```bash
+gh secret set NPM_TOKEN --repo volter-ai/ztrack   # paste the new token when prompted
+```
+
+Prefer a Granular token scoped to just the `ztrack` package over a broad
+account-wide token.
 
 ## Rules
 
