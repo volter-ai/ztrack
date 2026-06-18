@@ -5,6 +5,6 @@ const pmIdle = Number(process.env.ZTRACK_PM_IDLE_CLOSE_SECONDS || 180), workerId
 const list = spawnSync(`${cli} list --url '${url}'`, { shell: true, encoding: 'utf8' });
 if (list.status || !list.stdout.trim()) process.exit(0);
 for (const p of JSON.parse(list.stdout)) {
-  const limit = p.name === 'ztrack-pm' ? pmIdle : p.name?.startsWith('ztrack-') ? workerIdle : Infinity;
+  const limit = p.name === 'pm' ? pmIdle : p.name === 'develop' || p.name === 'review' ? workerIdle : Infinity;
   if (p.id && Number.isFinite(p.activity?.idleSeconds) && p.activity.idleSeconds >= limit) spawnSync(`${cli} close --url '${url}' --id ${p.id}`, { shell: true, stdio: 'inherit' });
 }
