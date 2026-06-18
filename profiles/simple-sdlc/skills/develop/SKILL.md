@@ -8,11 +8,14 @@ description: Implement one ztrack simple-sdlc issue and produce real evidence; u
 Read:
 
 - `profiles/simple-sdlc/standards/issue-and-evidence.md`
+- `profiles/simple-sdlc/standards/risk-and-review.md`
 
 ## Procedure
 
-1. Read `ZTRACK_ISSUE`; stop if it is missing.
+1. Read the environment variable with `echo "$ZTRACK_ISSUE"`; stop if it is missing. `ZTRACK_ISSUE` is not a file.
 2. View only that assigned issue and implement only its ACs.
+   Stop with `OUTCOME: blocked human-required` if the issue requires a
+   human-required path or topic from `risk-and-review.md`.
 3. Run project tests/checks. If a relevant check exits 0, accept it as passing;
    do not rerun only to get prettier reporter output.
 4. Commit implementation.

@@ -1,12 +1,17 @@
 # Tracker Preset Guide — build & review
 
 How to add or extend a core-contract preset in ztrack, and how to
-adversarially review it. Most projects should start by installing `basic`,
-`simple-sdlc`, `simple-spec`, or `speckit` and editing
-`.volter/tracker/validation/preset.cjs`; read [docs/PRESETS.md](docs/PRESETS.md)
-for that normal path. **An agent changing the internal core preset system should
-read this doc first.** Reference implementations (the bar):
-`src/presets/default.ts`, `src/presets/speckitCore.ts`. Core engine:
+adversarially review it. `ztrack init` writes `.volter/tracker/validation/preset.cjs`
+= `module.exports = require('ztrack/preset-kit').createGenericPreset({ name,
+requireSourceMarker, requireSdlcGates, requireSpecSections, requireSpeckitSections })`.
+`createGenericPreset` (`src/presetKit.ts`, exported as the `ztrack/preset-kit`
+entry) returns a real core `Preset` (mdast + strict Zod + pure rules). Most
+projects start by installing `basic`, `simple-sdlc`, `simple-spec`, or `speckit`
+and editing that file; read [docs/PRESETS.md](docs/PRESETS.md) for that normal
+path. To author a custom preset, a repo replaces `preset.cjs` to export its own
+core `Preset` `{ name, schema, parse, rules }`. **An agent changing the internal
+core preset system should read this doc first.** Reference implementations (the
+bar): `src/presets/{default,spec,speckitCore}.ts`. Core engine:
 `src/core/engine.ts`.
 
 Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core model](#2-core-model-enginets) · [3. Source the SDLC](#3-source-the-sdlc-faithfully) · [4. Build order](#4-build-order) · [5. Never](#5-never-anti-patterns) · [6. Review](#6-review)
@@ -14,24 +19,25 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 ---
 
 ## 1. Architecture contract — NON-NEGOTIABLE
-1. **ONE strict Zod master schema.** Core fields + preset-specific fields, every object `.strict()`. NEVER `.passthrough()`, `z.any()`, `z.unknown()` (except an intentionally-opaque external payload inside `Context`), a raw `body` field, or a `sections: Record<>` map.
+1. **ONE strict top-level schema.** `ValidationInputSchema = z.object({ context, root }).strict()` (composed by `makeValidationInputSchema(rootSchema, contextSchema?)`). Core fields + preset-specific fields, every nested object `.strict()`. NEVER `.passthrough()`, `z.any()`, `z.unknown()` (except an intentionally-opaque external payload inside `Context`), a raw `body` field, or a `sections: Record<>` map.
 2. **mdast parse straight into the schema.** Document STRUCTURE (headings scope sections; list items / table rows / paragraphs are records; GFM checkboxes) comes from the AST. Regex ONLY to read field content from within a node's text. NEVER line-scan the raw doc/section to discover records or structure. A leading `---` YAML frontmatter block is allowed (metadata not in the body).
-3. **The parse target IS the schema.** `parse(string) -> candidate object`; `check()` runs `schema.safeParse`. No projection / `toIssues` / second model.
-4. **Pure rules.** `Rule.run = (root, ctx) => Finding[]`. No I/O, no filesystem/network, no global mutable state, no `Date.now()`/randomness, no mutation of `root`, no `throw`. Deterministic.
-5. **One impure edge: the loader.** Real data (git, twin world, issue files) enters only through a loader that reads the backend + builds `{markdown/bundle, Context}` — mirror `core/gitWorld.ts`. Parse and rules stay pure.
-6. **Preset shape:** `{ name, schema, parse, rules, primitives }`, registered in `core/registry.ts`.
+3. **The parse target IS the schema; the validated root IS the export.** `parse(string) -> candidate root`; `check()` runs `ValidationInputSchema.parse({ context, root })`; the validated `root` is what every other surface reads (`{ ok, findings, export: root }`). No projection / `toIssues` / second model.
+4. **Pure rules.** `Rule.run = (input: ValidationInput) => Finding[]` — reads only `input.root` / `input.context`. No I/O, no filesystem/network/time/raw-markdown, no global mutable state, no `Date.now()`/randomness, no mutation of `root`, no `throw`. Deterministic. A rule may declare `category`/`depth` for the `ztrack check --categories` selector.
+5. **One impure edge: the loader, but context is preset-owned.** Real data (git, twin world, issue files) enters only through `core/loader.ts`, which reads the backend and frames each issue into one bundle — then calls the **active preset's `loadContext`** to gather exactly the observed facts THAT preset's rules read (git/world/services), and overlays the universal run selectors (`now`/`phase`/`categories`). Context is preset-owned, just like the schema: the loader does not assume git/world for everyone, and a preset that needs no observed facts omits `loadContext`. Parse and rules stay pure.
+6. **Preset shape:** `{ name, schema, parse, rules, loadContext?, contextSchema?, primitives?, scaffold? }`, registered in `core/registry.ts`. `loadContext(input) => Context` is the preset's half of the impure loader — the one place its preset-specific facts are gathered; declare a `contextSchema` (extending `CoreContextSchema`) when it adds facts beyond the core git/world.
 
 ## 2. Core model (engine.ts)
-- `CoreRoot { issues: CoreIssue[] }` — the root is ALWAYS multi-issue (the "snapshot"). Cross-issue rules range over `root.issues`.
-- `CoreIssue { id, title, summary, status, acceptanceCriteria, +opt primitives }`, `CoreAC { id, status, evidence, +category?, proof? }`, `CoreEvidence { id }`.
-- `Context`: injected local facts — `git` (commits, PR heads, branches) and `world` (twin events + annotations). A rule reading `ctx.*` MUST early-return when it is absent.
+- `ValidationInput { context: Context, root: Root }` — the one validated thing; `check(preset, markdown, ctx)` / `checkRoot(preset, root, ctx)` build it via `ValidationInputSchema.parse({ context, root })` and return `{ ok, findings, export: root }`.
+- `Root { issues: Issue[] }` — ALWAYS multi-issue. Cross-issue rules range over `root.issues`: duplicate ids, dependency/relation consistency, blocker rollups, global readiness.
+- `Issue { id, title, summary, status, acceptanceCriteria, +opt primitives (labels?, relations?, linkedIssues?, children?, sources?) }`, `AcceptanceCriterion { id, status, evidence, +category?, proof? }`, `Evidence { id }`. The preserved core shape is `root.issues[].acceptanceCriteria[].evidence[]`.
+- `Context` (the `CoreContextSchema`, typed AND validated): `{ now?, phase?: 'all'|'gate', git?: { currentSha?, existingCommits?, prs?, branches? }, world?: { events?, annotations? }, categories? }`. `phase` selects which rule surface runs ('all' = full write/promote validation; 'gate' = skip `transition` rules); `categories` drives the `ztrack check --categories` selector. A preset adds its own observed facts by passing an extended `contextSchema` AND gathering them in `loadContext` (the loader overlays `now`/`phase`/`categories`). A rule reading `ctx.*` MUST early-return when it is absent.
 - Primitives (`labels, relations, linkedIssues, children, sources, category, proof`) are opt-in; declare which the SDLC uses in `primitives`. `audit` is core/always-on (do not declare).
 
 ## 3. Source the SDLC faithfully
 > This is where presets go wrong. Derive from the REAL, authoritative source — never a dormant predecessor or memory. Capture as much of the real process as the artifacts formally encode. Verify, don't invent.
 
 - **Premade system (speckit / openspec / …):** `WebFetch` the upstream templates + skill/command definitions; install/inspect the real tool's output. Map its real artifacts to the schema. Do NOT inherit invented fields from an in-repo predecessor — confirm every field against the upstream template.
-- **Bespoke pre-existing process:** the team's written standards/process docs are authoritative; read them ALL first. Use any legacy implementation only to enumerate completeness (rule codes); the standards win on semantics. Separate in-scope (single-issue/markdown) from a different provider layer (world/snapshot).
+- **Bespoke pre-existing process:** the team's written standards/process docs are authoritative; read them ALL first. Use any legacy implementation only to enumerate completeness (rule codes); the standards win on semantics. Separate in-scope (per-issue markdown structure) from a different provider layer (the world/`Context`).
 - **Brand-new (fresh repo):** elicit the process from the user and WRITE IT DOWN before coding — the ordered states, the AC type(s), what evidence each completion needs, the per-state entry gates, the roles/concurrency. Confirm before building.
 
 ## 4. Build order
@@ -47,7 +53,7 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 10. **Prove on real data** via the loader; if porting, cross-check findings against the legacy/world validator (they should agree where scope overlaps).
 
 ## 5. Never (anti-patterns that caused real bugs)
-- A two-layer snapshot/projection model — the multi-issue root IS the snapshot.
+- A two-layer projection model — the multi-issue validated root IS the export.
 - `.passthrough()` / `any` / raw-body / metadata mined from body prose when frontmatter or structured fields exist.
 - Line-scanning a section to find records (use mdast node boundaries).
 - Parser-side semantic INFERENCE (keyword heuristics that invent a fact the artifact never states). If the standard requires the fact, require it explicitly.
@@ -75,7 +81,7 @@ Run after building or changing a preset. **Launch the three adversarial passes b
 > Output: prioritized must-fix / should-fix / low with file:line + failing input; what the tests do NOT cover; minimal fix direction per must-fix (recommend, don't implement).
 
 ### Lens C — Realistic-run simulation (dispatch this)
-> Dynamic. Role-play the SDLC's actors and drive MANY realistic end-to-end runs by hand; read-only. Per run: author a realistic artifact for a lifecycle point, run check/loader, record EXPECTED vs ACTUAL findings, advance state as the next actor would, re-check. Cover: happy path start→done; each state-gate violated; evidence going stale (sha/version drift); a multi-issue snapshot with cross-issue relations + partial corpus; world/sources grounding (a true reflection passes, a short-quote/unrelated one does NOT, an unreflected source surfaces at the right severity); malformed/adversarial input (missing/duplicate/reordered/no-id) — never crash, never silent-clean on a bad artifact. Drive it as the PM/manager loop: does derived state advance correctly, or get STUCK / LOOP / FALSELY ADVANCE?
+> Dynamic. Role-play the SDLC's actors and drive MANY realistic end-to-end runs by hand; read-only. Per run: author a realistic artifact for a lifecycle point, run check/loader, record EXPECTED vs ACTUAL findings, advance state as the next actor would, re-check. Cover: happy path start→done; each state-gate violated; evidence going stale (sha/version drift); a multi-issue root with cross-issue relations + partial corpus; world/sources grounding (a true reflection passes, a short-quote/unrelated one does NOT, an unreflected source surfaces at the right severity); malformed/adversarial input (missing/duplicate/reordered/no-id) — never crash, never silent-clean on a bad artifact. Drive it as the PM/manager loop: does derived state advance correctly, or get STUCK / LOOP / FALSELY ADVANCE?
 > Output: a numbered run log (scenario · authored/changed · expected · actual · verdict); ranked DIVERGENCES with **false-pass before false-fail** + triggering input + suspected file:line; one-line "would this survive a real autonomous run end-to-end?" with the reason.
 
 ### Synthesize + "ready"

@@ -2,7 +2,6 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRequire } from 'node:module';
 import { initTrackerProject, loadTrackerConfig, trackerValidationEntrypointPath } from './config.ts';
 
 function tempProject(): string {
@@ -44,37 +43,30 @@ describe('initTrackerProject', () => {
           installedFrom: 'simple-sdlc',
         },
       });
+      // The installed entrypoint configures the shared createGenericPreset factory
+      // (a core preset) — it does not reimplement validation. Its runtime behavior
+      // is covered by presetKit.test.ts; here we assert the install wiring.
       const text = readFileSync(entrypoint, 'utf8');
       expect(text).toContain('Repo-local ztrack validation preset');
-
-      const require = createRequire(import.meta.url);
-      const preset = require(entrypoint) as {
-        name: string;
-        parseIssueMarkdown(body: string): Record<string, unknown>;
-        snapshot: { checkSnapshot(snapshot: unknown, options?: unknown): { valid: boolean; findings: Array<{ code: string }> } };
-      };
-      expect(preset.name).toBe('simple-sdlc');
-      expect(preset.snapshot.checkSnapshot({ cases: [{ identifier: 'APP-1', body: '# Missing source', assignee: 'agent' }] }).findings[0]?.code)
-        .toBe('simple-sdlc_case_missing_source_marker');
-      const validBody = '# Has source [1]\n\n- [ ] dev/01 status: pending Do it. [1]';
-      expect(preset.snapshot.checkSnapshot({ cases: [{ identifier: 'APP-2', body: validBody, assignee: 'agent', ...preset.parseIssueMarkdown(validBody) }] }).valid)
-        .toBe(true);
+      expect(text).toContain("require('ztrack/preset-kit')");
+      expect(text).toContain("createGenericPreset");
+      expect(text).toContain("name: 'simple-sdlc'");
+      expect(text).toContain("requireSdlcGates: 'true' === 'true'");
+      expect(text).toContain("requireSourceMarker: 'true' === 'true'");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  test('simple-spec and speckit stamp their section gates', () => {
+  test('simple-spec and speckit stamp their section-gate flags into the entrypoint', () => {
+    const flag = { 'simple-spec': 'requireSpecSections', speckit: 'requireSpeckitSections' } as const;
     for (const presetName of ['simple-spec', 'speckit'] as const) {
       const root = tempProject();
       try {
         initTrackerProject(root, 'app', { preset: presetName });
-        const require = createRequire(import.meta.url);
-        const preset = require(trackerValidationEntrypointPath(root)) as {
-          snapshot: { checkSnapshot(snapshot: unknown, options?: unknown): { findings: Array<{ code: string }> } };
-        };
-        const codes = preset.snapshot.checkSnapshot({ cases: [{ identifier: 'APP-1', body: '# Missing sections [1]', assignee: 'agent' }] }).findings.map((finding) => finding.code);
-        expect(codes.some((code) => code.startsWith(`${presetName}_missing_`))).toBe(true);
+        const text = readFileSync(trackerValidationEntrypointPath(root), 'utf8');
+        expect(text).toContain(`name: '${presetName}'`);
+        expect(text).toContain(`${flag[presetName]}: 'true' === 'true'`);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

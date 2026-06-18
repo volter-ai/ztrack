@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { checkDefault, DefaultPreset, DefaultRootSchema, parseDefault, serializeDefault } from './default.ts';
+import { buildIssueBundle } from '../core/bundle.ts';
 
 const HEAD = 'cafe1234beef';
 const PR = 'https://github.com/volter-ai/x/pull/5';
@@ -158,7 +159,7 @@ Linked: jira PEAK-12 https://jira/PEAK-12
   });
 
   test('the preset declares which primitives it implements', () => {
-    expect(DefaultPreset.primitives).toMatchObject({ proof: true, labels: true, relations: true, linkedIssues: true, children: true, sources: false, category: false });
+    expect(DefaultPreset.primitives).toMatchObject({ proof: true, labels: true, relations: true, linkedIssues: true, children: true, blocking: true, sources: false, category: false });
   });
 
   test('serialize is the inverse of parse (structured round-trip)', () => {
@@ -194,6 +195,58 @@ Linked: jira PEAK-12 https://jira/PEAK-12
     const ac = (parseDefault(md) as any).issues[0].acceptanceCriteria[0];
     expect(ac.id).toBe("AC1");
     expect(ac.version).toBe(1);
+  });
+
+  test('multi-issue: a bundle parses into a multi-issue root', () => {
+    const a = `# A-1: Alpha\n\nAssignee: otto\nStatus: draft\n\n## Acceptance Criteria\n`;
+    const b = `# B-2: Beta\n\nAssignee: ana\nStatus: draft\n\n## Acceptance Criteria\n`;
+    const root = DefaultRootSchema.parse(parseDefault(buildIssueBundle([{ id: 'A-1', body: a }, { id: 'B-2', body: b }])));
+    expect(root.issues.map((i) => i.id)).toEqual(['A-1', 'B-2']);
+  });
+
+  test('cross-issue: duplicate issue ids across the tracker fail', () => {
+    const a = `# DUP: one\n\nAssignee: otto\nStatus: draft\n\n## Acceptance Criteria\n`;
+    const r = checkDefault(buildIssueBundle([{ id: 'DUP', body: a }, { id: 'DUP', body: a }]), ctx);
+    expect(r.findings.some((f) => f.code === 'duplicate_issue_id')).toBe(true);
+    expect(r.ok).toBe(false);
+  });
+
+  test('cross-issue: a relation to a missing issue fails; reciprocal blocks pass', () => {
+    const dangling = `# A-1: a\n\nAssignee: otto\nStatus: draft\nBlocks: GHOST\n\n## Acceptance Criteria\n`;
+    expect(checkDefault(buildIssueBundle([{ id: 'A-1', body: dangling }]), ctx).findings.some((f) => f.code === 'relation_target_missing')).toBe(true);
+    const a = `# A-1: a\n\nAssignee: otto\nStatus: draft\nBlocks: B-1\n\n## Acceptance Criteria\n`;
+    const b = `# B-1: b\n\nAssignee: ana\nStatus: draft\nBlocked by: A-1\n\n## Acceptance Criteria\n`;
+    const r = checkDefault(buildIssueBundle([{ id: 'A-1', body: a }, { id: 'B-1', body: b }]), ctx);
+    expect(r.findings.some((f) => f.code === 'relation_target_missing' || f.code === 'relation_not_reciprocal')).toBe(false);
+  });
+
+  describe('AC-level blocking', () => {
+    test('parses blocked-by/blocks sub-lines, resolving bare and cross-issue refs', () => {
+      const md = `# A-1: a\n\nAssignee: otto\nStatus: ready\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 second\n  - status: pending\n  - blocked-by: AC-2, B-1:AC-9\n  - blocks: AC-3\n- [ ] AC-2 v1 first\n  - status: pending\n- [ ] AC-3 v1 third\n  - status: pending\n`;
+      const ac = DefaultRootSchema.parse(parseDefault(md)).issues[0]!.acceptanceCriteria[0]!;
+      expect(ac.blockedBy).toEqual([{ issue: 'A-1', ac: 'AC-2' }, { issue: 'B-1', ac: 'AC-9' }]);
+      expect(ac.blocks).toEqual([{ issue: 'A-1', ac: 'AC-3' }]);
+    });
+
+    test('round-trips through serialize (bare stays bare, cross-issue stays qualified)', () => {
+      const md = `# A-1: a\n\nAssignee: otto\nStatus: ready\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 first\n  - status: pending\n  - blocked-by: AC-2, B-1:AC-9\n- [ ] AC-2 v1 second\n  - status: pending\n`;
+      const parsed = DefaultRootSchema.parse(parseDefault(md));
+      const reparsed = DefaultRootSchema.parse(parseDefault(serializeDefault(parsed)));
+      expect(reparsed).toEqual(parsed);
+    });
+
+    test('a blocker to a missing AC fails; a self-block fails', () => {
+      const missing = `# A-1: a\n\nAssignee: otto\nStatus: ready\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 x\n  - status: pending\n  - blocked-by: AC-9\n`;
+      expect(checkDefault(buildIssueBundle([{ id: 'A-1', body: missing }]), ctx).findings.some((f) => f.code === 'ac_blocker_missing')).toBe(true);
+      const self = `# A-1: a\n\nAssignee: otto\nStatus: ready\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 x\n  - status: pending\n  - blocked-by: AC-1\n`;
+      expect(checkDefault(buildIssueBundle([{ id: 'A-1', body: self }]), ctx).findings.some((f) => f.code === 'ac_self_block')).toBe(true);
+    });
+
+    test('a passed AC blocked by an unpassed AC fails', () => {
+      const md = `# A-1: a\n\nAssignee: otto\nStatus: ready\n\n## Acceptance Criteria\n\n- [x] AC-1 v1 done\n  - status: passed\n  - evidence ev1: image=a.png commit=${HEAD} acv=1\n  - proof: "ev1 proves it" -> ev1\n  - blocked-by: AC-2\n- [ ] AC-2 v1 not done\n  - status: pending\n`;
+      const r = checkDefault(buildIssueBundle([{ id: 'A-1', body: md }]), ctx);
+      expect(r.findings.some((f) => f.code === 'ac_blocked_by_unpassed')).toBe(true);
+    });
   });
 
 });

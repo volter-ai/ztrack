@@ -2,15 +2,22 @@
 // over the `.volter/tracker/markdown/*.md` store (the markdown.ts (de)serializer is
 // its core), emitting JSON in the SAME shapes the local (Python/SQLite) backend does,
 // so the SDK/CLI work against either backend identically. Selected by config
-// `backend: "markdown"`. Snapshot assembly is built on top of `issue list/view` and
-// is not reimplemented here (a follow-on once the snapshot path reads via the backend).
+// `backend: "markdown"`. Validation reads this store through `issue list/view`
+// (the loader frames those rows into the validation bundle); the project-manager
+// `snapshot` report verb is the one backend command not yet implemented here.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
 import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
 
 function storeDir(projectRoot: string): string { return join(projectRoot, '.volter', 'tracker', 'markdown'); }
-function issueFile(dir: string, id: string): string { return join(dir, `${id}.md`); }
+// Issue ids name files in the store; reject anything that isn't a plain id so a
+// crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+function issueFile(dir: string, id: string): string {
+  if (!SAFE_ID.test(id)) throw new Error(`invalid issue id: ${JSON.stringify(id)}`);
+  return join(dir, `${id}.md`);
+}
 
 function loadAll(dir: string): CanonicalIssue[] {
   if (!existsSync(dir)) return [];
@@ -81,7 +88,7 @@ export class MarkdownBackend implements TrackerBackend {
       const fullView = (issue: CanonicalIssue): Record<string, unknown> => {
         const v = viewJson(issue);
         v.children = { nodes: issue.children.map((cid) => {
-          if (seen.has(cid)) return { id: cid, identifier: cid, number: cid };
+          if (seen.has(cid) || !SAFE_ID.test(cid)) return { id: cid, identifier: cid, number: cid };
           seen.add(cid); const ch = loadOne(this.dir, cid);
           return ch ? fullView(ch) : { id: cid, identifier: cid, number: cid };
         }) };
@@ -132,7 +139,7 @@ export class MarkdownBackend implements TrackerBackend {
       return ok('');
     }
     if (verb === 'project' && sub === 'list') return ok('[]');
-    if (verb === 'snapshot') return { stdout: '', stderr: 'snapshot is not yet implemented for the markdown backend (build the snapshot on issue list/view)' };
+    if (verb === 'snapshot') return { stdout: '', stderr: 'the project-manager snapshot report is not yet implemented for the markdown backend' };
     return { stdout: '', stderr: `markdown backend: unsupported command "${args.join(' ')}"` };
   }
 }

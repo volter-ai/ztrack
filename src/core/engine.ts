@@ -14,6 +14,7 @@
 // target IS the schema.
 
 import { z } from 'zod';
+import type { RuleCategory, RuleDepth } from '../checkRules.ts';
 
 // ── optional task-management primitives ─────────────────────────────────────
 // Standard shapes every task system has. They are NOT required: a preset opts
@@ -26,16 +27,25 @@ export interface Source { id: string; kind: string; ref?: string; content?: stri
 // Proof: evidence without an explanation of how it demonstrates the criterion is
 // incomplete. A proof ties an AC's claim to the evidence that backs it.
 export interface Proof { explanation: string; evidenceRefs: string[] }
+// A reference, from one node, to another node it blocks on. The target is either a
+// whole issue (`ac` omitted) or a specific acceptance criterion (`ac` set). Authored
+// relatively (a bare id means "an AC in this issue") but stored resolved, so the
+// validated root only ever holds fully-qualified addresses. See core/ref.ts for the
+// universal-id grammar (`<issue>` / `<issue>:<ac>`) and core/blocking.ts for the
+// unified dependency graph these feed.
+export interface BlockRef { issue: string; ac?: string }
 
-export const PRIMITIVES = ['labels', 'relations', 'linkedIssues', 'children', 'sources', 'category', 'proof', 'audit'] as const;
+export const PRIMITIVES = ['labels', 'relations', 'linkedIssues', 'children', 'sources', 'category', 'proof', 'blocking', 'audit'] as const;
 export type PrimitiveName = (typeof PRIMITIVES)[number];
 
 // ── system-required core (the CLI hooks into exactly these fields) ──────────
 export interface CoreEvidence { id: string }
 export interface CoreAC {
   id: string; status: string; evidence: CoreEvidence[];
-  category?: string; // primitive
-  proof?: Proof;     // primitive
+  category?: string;        // primitive
+  proof?: Proof;            // primitive
+  blockedBy?: BlockRef[];   // primitive: nodes that must land before this one
+  blocks?: BlockRef[];      // primitive: nodes this one must land before
 }
 export interface CoreIssue {
   id: string; title: string; summary: string; status: string; acceptanceCriteria: CoreAC[];
@@ -100,6 +110,44 @@ export interface Context {
       classification: 'source' | 'noise' | 'duplicate'; quote?: string;
     }[];
   };
+  // requested rule categories → max depth. When set, only rules whose
+  // category/depth fall within the request run (wellformed/invariant rules always
+  // run). Absent = run every rule. This is the typed replacement for the old
+  // `--categories` / organization.check.categories selector.
+  categories?: Partial<Record<RuleCategory, number>>;
+}
+
+// The Context schema — the contract requires context to be typed AND validated as
+// part of the single ValidationInput. Strict: a fact a rule reads must be declared
+// here (a preset adds its own observed facts by passing an extended contextSchema).
+const GitContextSchema = z.object({
+  currentSha: z.string().optional(),
+  existingCommits: z.array(z.string()).optional(),
+  prs: z.record(z.string(), z.object({ headSha: z.string().optional(), merged: z.boolean().optional() }).strict()).optional(),
+  branches: z.record(z.string(), z.string()).optional(),
+}).strict();
+const WorldEventSchema = z.object({
+  id: z.string(), service: z.string(), type: z.string().optional(), text: z.string().optional(), annotationRequired: z.boolean().optional(),
+}).strict();
+const WorldAnnotationSchema = z.object({
+  id: z.string(), service: z.string().optional(), eventId: z.string(),
+  classification: z.enum(['source', 'noise', 'duplicate']), quote: z.string().optional(),
+}).strict();
+export const CoreContextSchema = z.object({
+  now: z.string().optional(),
+  phase: z.enum(['all', 'gate']).optional(),
+  git: GitContextSchema.optional(),
+  world: z.object({ events: z.array(WorldEventSchema).optional(), annotations: z.array(WorldAnnotationSchema).optional() }).strict().optional(),
+  categories: z.record(z.string(), z.number()).optional(),
+}).strict();
+
+/** The ONE top-level schema: ValidationInput = { context, root }, both strict. A
+ *  preset may pass an extended contextSchema for its own observed facts. */
+export function makeValidationInputSchema<R extends CoreRoot>(
+  rootSchema: z.ZodType<R>,
+  contextSchema: z.ZodTypeAny = CoreContextSchema,
+): z.ZodType<ValidationInput<R>> {
+  return z.object({ context: contextSchema, root: rootSchema }).strict() as unknown as z.ZodType<ValidationInput<R>>;
 }
 
 // A rule is pure: (the typed root + context) -> findings. No I/O, no globals.
@@ -112,10 +160,33 @@ export interface Context {
 //                    evidence anchoring, state→AC gates). Skipped in 'gate' phase so an
 //                    ongoing check doesn't re-litigate already-landed issues.
 // Absent = 'gate' (an unmarked rule is a true invariant that should always hold).
+// The whole typed thing being validated: observed facts (context) + the parsed
+// tracker state (root). This is what `ValidationInputSchema.parse({context, root})`
+// produces and what every rule receives.
+export interface ValidationInput<R extends CoreRoot> {
+  context: Context;
+  root: R;
+}
+
+// A rule is pure: (the validated ValidationInput) -> findings. No I/O, no globals.
+// `category`/`depth` classify the rule for the categories selector (see Context.categories).
 export interface Rule<R extends CoreRoot> {
   name: string;
   phase?: 'gate' | 'transition';
-  run: (root: R, ctx: Context) => Finding[];
+  category?: RuleCategory;
+  depth?: RuleDepth;
+  run: (input: ValidationInput<R>) => Finding[];
+}
+
+// The input to a preset's context provider. The loader supplies the project root
+// and (depending on which surface called) the framed bundle or the already-parsed
+// root, so a preset can derive facts like PR branches without the loader assuming
+// anything about its shape.
+export interface PresetContextInput {
+  projectRoot: string;
+  verifyCommits?: boolean;
+  bundle?: string;   // present when validating the live tracker
+  root?: CoreRoot;   // present when validating an already-exported root
 }
 
 // A preset: a hard schema (core + its own strict fields), an mdast parse that
@@ -124,11 +195,25 @@ export interface Rule<R extends CoreRoot> {
 export interface Preset<R extends CoreRoot> {
   name: string;
   schema: z.ZodType<R>;
+  // optional strict schema for preset-specific observed context facts; defaults to
+  // CoreContextSchema. Composed with `schema` into the one ValidationInputSchema.
+  // A preset adding facts should extend CoreContextSchema so now/phase/categories
+  // (the universal run selectors the loader overlays) stay valid.
+  contextSchema?: z.ZodTypeAny;
+  // The preset's HALF of the impure loader: gather exactly the observed Context
+  // facts THIS preset's rules read (git, world, services). Like the schema, context
+  // is preset-owned — the loader does not assume git/world for everyone. The loader
+  // overlays the universal run selectors (now/phase/categories) over the result.
+  // Omit when the preset's rules need no observed facts.
+  loadContext?: (input: PresetContextInput) => Context | Promise<Context>;
   parse: (markdown: string) => unknown; // mdast -> candidate object (validated by `schema`)
   rules: Rule<R>[];
   // which standard primitives this SDLC implements; absent/false = "not
   // implemented" (tooling shows it as such rather than as empty).
   primitives?: Partial<Record<PrimitiveName, boolean>>;
+  // optional authoring affordance (NOT validation): a starter issue body for
+  // `ztrack issue scaffold`. Presets may omit it (tooling falls back to a generic body).
+  scaffold?: (title: string) => string;
 }
 
 export interface CheckResult<R extends CoreRoot> {
@@ -145,8 +230,36 @@ function shapeFindings(error: z.ZodError): Finding[] {
   }));
 }
 
-/** The one entry point: parse -> hard-validate -> rules. The validated Root is
- *  the export; nothing downstream re-parses or re-derives. */
+// A rule runs unless the request narrows it out: an absent/`wellformed` category is
+// a true invariant and always runs; a categorized rule runs only when the request
+// asks for that category at or beyond the rule's depth.
+function ruleEnabled<R extends CoreRoot>(rule: Rule<R>, categories?: Partial<Record<RuleCategory, number>>): boolean {
+  if (!categories) return true;
+  if (!rule.category || rule.category === 'wellformed') return true;
+  const max = categories[rule.category];
+  return max !== undefined && (rule.depth ?? 1) <= max;
+}
+
+function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<R>): CheckResult<R> {
+  const ctx = input.context;
+  const active = preset.rules
+    .filter((r) => (ctx.phase === 'gate' ? r.phase !== 'transition' : true))
+    .filter((r) => ruleEnabled(r, ctx.categories));
+  // Rules are contracted to be pure and not throw, but Rule is a public extension point:
+  // a buggy third-party rule must surface as a finding, not crash the whole check.
+  const findings = active.flatMap((rule) => {
+    try {
+      return rule.run(input);
+    } catch (error) {
+      return [{ code: 'rule_threw', severity: 'error', message: `Rule '${rule.name}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
+    }
+  });
+  return { ok: !findings.some((f) => f.severity === 'error'), findings, export: input.root };
+}
+
+/** The one entry point: parse -> ValidationInputSchema.parse({context, root}) ->
+ *  pure rules. The validated Root is the export; nothing downstream re-parses or
+ *  re-derives. */
 export function check<R extends CoreRoot>(preset: Preset<R>, markdown: string, ctx: Context = {}): CheckResult<R> {
   let candidate: unknown;
   try {
@@ -154,18 +267,31 @@ export function check<R extends CoreRoot>(preset: Preset<R>, markdown: string, c
   } catch (error) {
     return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error) }] };
   }
-  const result = preset.schema.safeParse(candidate);
-  if (!result.success) return { ok: false, findings: shapeFindings(result.error) };
-  const root = result.data;
-  const active = ctx.phase === 'gate' ? preset.rules.filter((r) => r.phase !== 'transition') : preset.rules;
-  // Rules are contracted to be pure and not throw, but Rule is a public extension point:
-  // a buggy third-party rule must surface as a finding, not crash the whole check.
-  const findings = active.flatMap((rule) => {
-    try {
-      return rule.run(root, ctx);
-    } catch (error) {
-      return [{ code: 'rule_threw', severity: 'error', message: `Rule '${rule.name}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
-    }
-  });
-  return { ok: !findings.some((f) => f.severity === 'error'), findings, export: root };
+  return validateAndRun(preset, ctx, candidate, false);
+}
+
+/** Validate an already-parsed Root (the exported, validated model) against the same
+ *  schema + rules — the entry point for `check --input <root.json>` and CI. */
+export function checkRoot<R extends CoreRoot>(preset: Preset<R>, root: unknown, ctx: Context = {}): CheckResult<R> {
+  return validateAndRun(preset, ctx, root, true);
+}
+
+// Compose the strict ValidationInputSchema, validate {context, root}, run rules.
+// safeParse is wrapped: composing/validating across a mismatched zod instance (a
+// repo-local preset built against a different zod major) must surface as a finding,
+// not a raw crash of `ztrack check`.
+function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, root: unknown, isExportedRoot: boolean): CheckResult<R> {
+  let result: ReturnType<z.ZodType<ValidationInput<R>>['safeParse']>;
+  try {
+    const inputSchema = makeValidationInputSchema(preset.schema, preset.contextSchema);
+    result = inputSchema.safeParse({ context: ctx, root });
+  } catch (error) {
+    return { ok: false, findings: [{ code: 'schema_error', severity: 'error', message: `Could not validate against the preset schema (a preset/zod version mismatch?): ${String((error as Error)?.message ?? error)}` }] };
+  }
+  if (!result.success) {
+    return isExportedRoot
+      ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error)] }
+      : { ok: false, findings: shapeFindings(result.error) };
+  }
+  return runRules(preset, result.data);
 }

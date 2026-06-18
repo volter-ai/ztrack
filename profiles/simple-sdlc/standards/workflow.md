@@ -10,6 +10,8 @@ Read this from PM and Review skills.
 - Develop and Review agents handle one issue and stop.
 - `ztrack:reviewing` means a review worker already claimed an `In Review` issue.
 - If no review worker exists, scheduled recovery may clear stale `ztrack:reviewing`.
+- If no develop worker exists and the git worktree is clean, scheduled recovery
+  may move stale `In Progress` work back to `Ready`.
 
 ## States
 

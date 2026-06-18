@@ -10,8 +10,7 @@
 // therefore net-zero at the record level; the audit log retains the
 // attempt+revert pair by design (an attempted tx is auditable history).
 import { createHash } from 'node:crypto';
-import { checkTrackerSnapshot } from './check.ts';
-import { exportTrackerSnapshot } from './export.ts';
+import { checkTracker } from './check.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcMutation } from './mutate.ts';
 import { createTrackerClient } from './sdk.ts';
@@ -35,9 +34,9 @@ export type TxResult = {
   reverted: boolean;
 };
 
-type IssueSnapshot = { body: string; state: string };
+type IssueState = { body: string; state: string };
 
-function baseHash(issue: IssueSnapshot): string {
+function baseHash(issue: IssueState): string {
   return createHash('sha256').update(`${issue.body}\0${issue.state}`).digest('hex').slice(0, 16);
 }
 
@@ -49,7 +48,7 @@ function editDetail(edit: TxEdit): string {
   return `ac ${edit.acId} -> status ${edit.status}`;
 }
 
-async function readIssue(client: ReturnType<typeof createTrackerClient>, issue: string): Promise<IssueSnapshot> {
+async function readIssue(client: ReturnType<typeof createTrackerClient>, issue: string): Promise<IssueState> {
   const view = await client.issue.view(issue, { json: 'body,state' }) as Record<string, unknown>;
   return { body: String(view.body ?? ''), state: String(view.state ?? '') };
 }
@@ -80,19 +79,16 @@ export async function applyTx(
     }
   }
 
-  const before = checkTrackerSnapshot(
-    exportTrackerSnapshot({ projectRoot: options.projectRoot }),
-    { projectRoot: options.projectRoot },
-  );
+  const before = await checkTracker({ projectRoot: options.projectRoot, verifyCommits: true });
   const beforeKeys = new Map<string, number>();
   for (const finding of before.findings) {
-    if (finding.level !== 'error') continue;
-    const key = `${finding.code}|${finding.issue ?? ''}`;
+    if (finding.severity !== 'error') continue;
+    const key = `${finding.code}|${finding.issueId ?? ''}`;
     beforeKeys.set(key, (beforeKeys.get(key) ?? 0) + 1);
   }
 
   // Capture pre-state for compensation, then apply all edits in order.
-  const pre = new Map<string, IssueSnapshot>();
+  const pre = new Map<string, IssueState>();
   for (const edit of edits) {
     if (!pre.has(edit.issue)) pre.set(edit.issue, await readIssue(client, edit.issue));
   }
@@ -110,28 +106,25 @@ export async function applyTx(
     touched.add(edit.issue);
   }
 
-  const after = checkTrackerSnapshot(
-    exportTrackerSnapshot({ projectRoot: options.projectRoot }),
-    { projectRoot: options.projectRoot },
-  );
+  const after = await checkTracker({ projectRoot: options.projectRoot, verifyCommits: true });
   const newFindings: TxResult['newFindings'] = [];
   const afterKeys = new Map<string, number>();
   for (const finding of after.findings) {
-    if (finding.level !== 'error') continue;
-    const key = `${finding.code}|${finding.issue ?? ''}`;
+    if (finding.severity !== 'error') continue;
+    const key = `${finding.code}|${finding.issueId ?? ''}`;
     afterKeys.set(key, (afterKeys.get(key) ?? 0) + 1);
     if ((afterKeys.get(key) ?? 0) > (beforeKeys.get(key) ?? 0)) {
-      newFindings.push({ code: finding.code, ...(finding.issue ? { issue: finding.issue } : {}), message: finding.message });
+      newFindings.push({ code: finding.code, ...(finding.issueId ? { issue: finding.issueId } : {}), message: finding.message });
     }
   }
 
-  const errorsBefore = before.findings.filter((finding) => finding.level === 'error').length;
-  const errorsAfter = after.findings.filter((finding) => finding.level === 'error').length;
+  const errorsBefore = before.findings.filter((finding) => finding.severity === 'error').length;
+  const errorsAfter = after.findings.filter((finding) => finding.severity === 'error').length;
   if (newFindings.length > 0) {
     // Revert by compensation, newest-first.
     for (const issue of [...touched].reverse()) {
-      const snapshot = pre.get(issue)!;
-      await client.issue.edit(issue, { body: snapshot.body, state: snapshot.state });
+      const prior = pre.get(issue)!;
+      await client.issue.edit(issue, { body: prior.body, state: prior.state });
     }
     return { committed: false, plan, errorsBefore, errorsAfter, newFindings, reverted: true };
   }

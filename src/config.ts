@@ -150,7 +150,7 @@ export function loadTrackerConfig(projectRoot = projectRootFrom()): TrackerConfi
 
 /**
  * Canonical resolution of the local tracker SQLite path. Every reader
- * (tracker snapshot exporter, sync relay, drift audit) must use this — copies
+ * (tracker loader/exporter, sync relay, drift audit) must use this — copies
  * with diverging defaults read an empty store and silently stall instead of
  * failing.
  */

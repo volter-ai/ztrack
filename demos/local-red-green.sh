@@ -40,7 +40,7 @@ text = text.replace(
 text = text.replace(
     "## Evidence\n",
     "## Evidence\n\n"
-    "[E1] type: pr ac: dev/01 repo: demo/ztrack number: 1 head: main justification: Demo proof.\n",
+    "- [E1] type: pr ac: dev/01 repo: demo/ztrack number: 1 head: main justification: Demo proof.\n",
 )
 path.write_text(text)
 PY

@@ -5,8 +5,8 @@
 // returns the validated export + findings. The client renders the generic core
 // model and defers preset-specific fields to a per-preset extension.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, normalize } from 'node:path';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { dirname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Resolve the ztrack core. In a repo checkout (src/*.ts present) import the
@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const useSource = existsSync(join(here, '..', 'src', 'core', 'engine.ts'));
 const core = useSource ? await import('./serverCore.ts') : await import('./core.js');
-const { check, resolvePreset, gitWorld, prBranchesFrom, observeChanges, readAudit, timestampsFor, buildSpeckitBundle } = core;
+const { check, resolvePreset, observeChanges, readAudit, timestampsFor, buildSpeckitBundle } = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
 const PROJECT_DIR = (process.env.PROJECT_DIR ?? process.cwd()).replace(/\/$/, '');
@@ -24,14 +24,6 @@ const PRESET = process.env.PRESET ?? 'default';
 const TRACKER_DIR = join(PROJECT_DIR, 'tracker');
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
 let clientBundle: Promise<string> | null = null;
-
-// Per-preset local context provider. `default` reads the git world (commits +
-// PR head/merged); `speckit` needs commit existence; others get empty context.
-function contextFor(preset: string, doc: string) {
-  if (preset === 'default') return gitWorld(PROJECT_DIR, prBranchesFrom(doc));
-  if (preset === 'speckit') return gitWorld(PROJECT_DIR, []);
-  return {};
-}
 
 // Per-preset document discovery. default/spec: each tracker/*.md is one doc.
 // speckit: each specs/<slug>/ feature dir is bundled into one doc.
@@ -63,12 +55,15 @@ function documents(preset: string): string[] {
   return existsSync(TRACKER_DIR) ? readdirSync(TRACKER_DIR).filter((f) => f.endsWith('.md')).sort().map((f) => readFileSync(join(TRACKER_DIR, f), 'utf8')) : [];
 }
 
-function board() {
+async function board() {
   const preset = resolvePreset(PRESET);
   const issues: unknown[] = [];
   const findings: unknown[] = [];
   for (const doc of documents(PRESET)) {
-    const r = check(preset, doc, contextFor(PRESET, doc));
+    // Context is preset-owned: each preset's loadContext gathers exactly the facts
+    // its rules read (git/world/services). The visualizer assumes nothing.
+    const ctx = (await preset.loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
+    const r = check(preset, doc, ctx);
     if (r.export) issues.push(...r.export.issues);
     findings.push(...r.findings);
   }
@@ -104,7 +99,13 @@ function board() {
 function projectFile(pathname: string): string | null {
   const rel = normalize(decodeURIComponent(pathname.replace(/^\/project\//, ''))).replace(/^\/+/, '');
   if (rel.startsWith('..') || rel.includes('/../')) return null;
-  return join(PROJECT_DIR, rel);
+  // Never serve dotfiles or sensitive stores (.git, .env, .volter signing keys,
+  // the tracker DB). The visualizer only needs tracker markdown + evidence images.
+  if (rel.split('/').some((seg) => seg.startsWith('.')) || /\.(sqlite|pem|key)$/i.test(rel)) return null;
+  const abs = join(PROJECT_DIR, rel);
+  // resolve symlinks and re-check containment
+  try { if (!realpathSync(abs).startsWith(realpathSync(PROJECT_DIR) + sep)) return null; } catch { /* not yet existing — join check below */ }
+  return abs;
 }
 
 function contentType(p: string): string {
@@ -139,6 +140,7 @@ const SHELL = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 const server = Bun.serve({
   port: PORT,
+  hostname: '127.0.0.1', // local dev tool: never bind to all interfaces (it serves repo files)
   idleTimeout: 120,
   async fetch(req) {
     const url = new URL(req.url);
@@ -155,7 +157,7 @@ const server = Bun.serve({
       return new Response(Bun.file(p), { headers: { 'Content-Type': contentType(p) } });
     }
     if (url.pathname === '/api/board') {
-      try { return Response.json(board()); }
+      try { return Response.json(await board()); }
       catch (e) { return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }), { status: 500, headers: { 'Content-Type': 'application/json' } }); }
     }
     if (!url.pathname.includes('.')) return new Response(SHELL, { headers: { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE } });

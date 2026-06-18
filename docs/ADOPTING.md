@@ -79,7 +79,7 @@ bad claim:
 2. Edit one acceptance criterion from unchecked to checked.
 3. Cite a fake commit such as `commit: deadbee` and an evidence id such as
    `[E1]`.
-4. Add an `[E1]` row in `## Evidence`.
+4. Add a `- [E1]` list item in `## Evidence`.
 5. Run `npx ztrack check`.
 
 Expected with `basic`: `basic_checked_ac_commit_hash_missing` and exit code `1`.
@@ -90,7 +90,7 @@ Expected: exit code `0`.
 The temporary files used during this proof, such as `body.md`, `red.json`, and
 `green.json`, do not need to be committed unless your project wants to keep them
 as fixtures. Commit the ztrack config, installed validation preset, and CI
-snapshot instead.
+validated root instead.
 
 From this repository, the same loop is executable:
 
@@ -118,13 +118,13 @@ approval chains, evolve the installed entrypoint into the project's rulebook.
 
 ## 4. Add CI
 
-For CI, prefer a committed snapshot because a fresh CI checkout does not contain
-your local SQLite store. Commit the config and installed validation too; the
-snapshot points at that rulebook.
+For CI, prefer a committed validated root because a fresh CI checkout does not
+contain your local SQLite store. Commit the config and installed validation too;
+the validated root is checked against that rulebook.
 
 ```bash
-npx ztrack snapshot export --out .volter/snapshot.json
-git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json
+npx ztrack export --out .volter/root.json
+git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json
 ```
 
 Then use the action:
@@ -144,7 +144,7 @@ jobs:
           fetch-depth: 0
       - uses: volter-ai/ztrack@v0
         with:
-          snapshot: .volter/snapshot.json
+          root: .volter/root.json
 ```
 
 ## 5. Add Agent Enforcement
@@ -186,7 +186,7 @@ Read [Preset Reference](PRESETS.md) before changing the rulebook.
 - [ ] Create one issue from `ztrack issue scaffold`.
 - [ ] Run `ztrack check` before changing workflow rules.
 - [ ] Demonstrate one fake-SHA failure and one real-SHA pass.
-- [ ] Add a CI snapshot gate.
+- [ ] Add a CI validated-root gate.
 - [ ] Add MCP or a stop-hook instruction requiring `tracker_check`.
 - [ ] Edit `.volter/tracker/validation/preset.cjs` only after writing the workflow contract.
 - [ ] Add clean and failing fixtures for every project-specific rule.

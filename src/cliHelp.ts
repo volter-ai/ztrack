@@ -27,14 +27,14 @@ ${helpSection('middle', 'Workflow', [
   ])}
 
 ${helpSection('bottom', 'Data', [
-    [`${command} snapshot export`, 'export snapshot'],
+    [`${command} export [--out f.json]`, 'write the validated root'],
     [`${command} lint [--fail-on-warn]`, 'flag weak claims'],
     [`${command} visualizer [--preset p] [--port n]`, 'open the web visualizer'],
   ])}
 
 ${ui.bold('Resources')}
   init, issue, project, milestone, sprint, label, state, user, search, query
-  view, api, check, snapshot, fmt, lint, tx, evidence, ac, mcp, visualizer
+  view, api, check, export, fmt, lint, tx, evidence, ac, mcp, visualizer
 
 ${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}
 `);
@@ -45,7 +45,7 @@ export function scaffoldCaseBody(title: string): string {
     const projectRoot = projectRootFrom();
     const config = loadTrackerConfig(projectRoot);
     const preset = resolveTrackerValidation(config, projectRoot);
-    const body = preset.scaffoldIssueBody?.(title);
+    const body = preset.scaffold?.(title);
     if (body) return body;
   } catch {
     // Keep scaffold usable before ztrack init; presets can replace this.
@@ -114,9 +114,11 @@ history, relate, relations, unrelate.
     process.stdout.write(`Usage: ${command} ${resource} <text-or-name> [args...]\n`);
     return true;
   }
-  if (resource === 'organization' || resource === 'check' || resource === 'snapshot') {
-    process.stdout.write(`Usage: ${command} check [--input file] [--issues A-1,A-2] [--json]
-       ${command} snapshot <export|validate> [args...]
+  if (resource === 'check' || resource === 'export') {
+    process.stdout.write(`Usage: ${command} check [--input root.json] [--issues A-1,A-2] [--categories name=N,...] [--verify-commits] [--fail-on-warning] [--json]
+       ${command} export [--out root.json] [--issues A-1,A-2]
+
+check validates the tracker (or a committed validated root via --input); export writes the validated root.
 `);
     return true;
   }
@@ -126,6 +128,20 @@ history, relate, relations, unrelate.
 Starts the web visualizer (a Bun app) over the local tracker. Defaults: preset
 default, port 3300, project = current tracker root. Requires Bun (bun.sh).
 `);
+    return true;
+  }
+  if (resource === 'evidence') {
+    process.stdout.write(`Usage: ${command} evidence <add|keygen|verify|ingest|export> [args...]
+
+Examples:
+  ${command} evidence add A-1 --type test --ac dev/01 --head <commit> --justification "npm test passed"
+  ${command} evidence keygen --out-dir .volter/keys
+  ${command} evidence export --format in-toto --out evidence.json
+`);
+    return true;
+  }
+  if (resource === 'ac') {
+    process.stdout.write(`Usage: ${command} ac <check|uncheck|set-status> <issue> <acId> [--commit sha] [--evidence E1,E2] [--proof P1] [--status s] [--dry-run]\n`);
     return true;
   }
   return false;

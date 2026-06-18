@@ -15,6 +15,12 @@ Use the setup script when adopting a repo:
 npx -p ztrack ztrack-setup --repo /path/to/repo --team APP --preset simple-sdlc --profile simple-sdlc
 ```
 
+Then verify the installed profile:
+
+```bash
+npx ztrack-profile-check --repo /path/to/repo --profile simple-sdlc
+```
+
 For a new demo repo:
 
 ```bash

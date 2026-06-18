@@ -250,4 +250,11 @@ describe('speckit core preset (full process capture)', () => {
     expect(root.issues[0]!.acceptanceCriteria[0]!.tasks.length).toBe(1);
   });
 
+  test('cross-issue (root) rule: duplicate feature ids fail (root is multi-issue)', () => {
+    const rule = SpeckitPreset.rules.find((r) => r.name === 'speckit_unique_feature_ids')!;
+    // the rule only reads issue.id; a minimal two-feature root exercises the root layer
+    const findings = rule.run({ context: {}, root: { issues: [{ id: 'F-1' }, { id: 'F-1' }] } as never });
+    expect(findings.some((f) => f.code === 'speckit_duplicate_feature_id')).toBe(true);
+  });
+
 });

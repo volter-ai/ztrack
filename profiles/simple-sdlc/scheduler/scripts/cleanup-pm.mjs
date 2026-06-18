@@ -6,5 +6,5 @@ const list = spawnSync(`${cli} list --url '${url}'`, { shell: true, encoding: 'u
 if (list.status || !list.stdout.trim()) process.exit(0);
 for (const p of JSON.parse(list.stdout)) {
   const limit = p.name === 'ztrack-pm' ? pmIdle : p.name?.startsWith('ztrack-') ? workerIdle : Infinity;
-  if (p.id && ((p.activity?.idleSeconds ?? limit) >= limit)) spawnSync(`${cli} close --url '${url}' --id ${p.id}`, { shell: true, stdio: 'inherit' });
+  if (p.id && Number.isFinite(p.activity?.idleSeconds) && p.activity.idleSeconds >= limit) spawnSync(`${cli} close --url '${url}' --id ${p.id}`, { shell: true, stdio: 'inherit' });
 }

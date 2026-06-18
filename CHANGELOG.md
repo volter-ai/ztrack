@@ -2,6 +2,52 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.3.0
+
+- **New: universal ids + unified blocking.** Every node has a derived colon-delimited
+  universal id (`issue` / `issue:ac` / `issue:ac:evidence` / `issue:ac:proof`).
+  Acceptance criteria declare `blocked-by:` / `blocks:` references whose target is
+  another AC (bare `dev/02`, or qualified `APP-2:dev/01`) **or a whole issue**
+  (`APP-4`) — so blocking crosses levels (AC↔AC, AC↔issue, issue↔issue). All
+  directions and levels — including issue-level `relations` — fold into ONE derived
+  dependency graph (`core/blocking.ts`), validated cross-tree: `ac_blocker_missing`,
+  `ac_self_block`, `ac_block_cycle` (the graph must be acyclic, including cross-level
+  deadlocks), and `ac_blocked_by_unpassed` (a done node can't depend on an unfinished
+  one). The same graph powers a transitive blocked/actionable view (`blockStatuses`).
+  Implemented by the installed presets and the default reference preset.
+- **Hardening:** the repo-local validation entrypoint is confined to the project
+  directory; the markdown backend rejects path-traversal issue ids; `ztrack check
+  --input` reports malformed JSON cleanly; the visualizer binds to `127.0.0.1` and
+  refuses to serve dotfiles / signing keys / the tracker DB; a missing `python3`
+  yields an actionable message.
+- **Breaking: removed the `ztrack/work-graph` export** and its `WorkGraph*` /
+  `ProjectGraph` / `ValidatedPresetModel` types. It was a dead second/dual model
+  (`{ graph, native }`) with no validation-pipeline consumer; the validated root
+  is the single export every surface reads.
+- **Evidence entries are now GFM list items** (`- [En] type: …` under `## Evidence`)
+  so each entry is its own node and the parser discovers one record per node (no
+  line-scanning). `ztrack evidence add` / `evidence ingest` write list items; a
+  single legacy bare `[En]` paragraph is still read, but multi-entry bare-line
+  blocks should be rewritten as list items.
+- **Breaking: collapsed onto a single validation pipeline.** Validation now reads
+  issues from the tracker and git/world facts into one typed, strict multi-issue
+  root; pure deterministic rules validate that root, and the validated root is
+  what `export` writes.
+- **Breaking: `ztrack snapshot export` is replaced by `ztrack export`**, which
+  writes the validated root (shape `{ "issues": [ ... ] }`). The committed CI
+  artifact is now the validated root; recommended path `.volter/root.json`
+  (previously `.volter/snapshot.json`). Validate it with
+  `ztrack check --input .volter/root.json`.
+- **Breaking: `ztrack check --json` output shape changed** to
+  `{ ok, summary, findings }`, where `summary` is `{ issues, errors, warnings,
+  status }`. `valid` is now `ok`; `summary.status` (pass/warn/fail) still exists.
+- **Breaking: removed the public `checkTrackerSnapshot` / `exportTrackerSnapshot`
+  / `TrackerSnapshot` API and the `./tracker-snapshot` package export.** Use
+  `checkTracker` / `exportTrackerRoot` / `createGenericPreset` and the
+  `ztrack/preset-kit` export instead.
+- The installed validation preset is now `createGenericPreset({...})` from
+  `ztrack/preset-kit`, living at `.volter/tracker/validation/preset.cjs`.
+
 ## 0.2.0
 
 - Added the `ztrack visualizer` (alias `ztrack viz`) command: a standalone Bun

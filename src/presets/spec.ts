@@ -11,7 +11,9 @@ import { z } from 'zod';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, type Context, type CoreRoot, type Finding, type Preset, type Rule } from '../core/engine.ts';
+import { check as runCheck, type Context, type Finding, type Preset, type Rule } from '../core/engine.ts';
+import { splitIssueBundle } from '../core/bundle.ts';
+import { gitWorld } from '../core/gitWorld.ts';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const SpecEvidenceSchema = z.object({
@@ -63,7 +65,7 @@ function splitAcIdText(line: string): { id: string; text: string } {
   return m ? { id: m[1]!, text: m[2]!.trim() } : { id: line, text: line };
 }
 
-export function parseSpec(markdown: string): unknown {
+function parseSpecIssue(markdown: string): Record<string, unknown> | null {
   const tree = fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as MdNode;
   const nodes = tree.children ?? [];
   const issue: Record<string, unknown> = { id: '', title: '', summary: '', status: 'draft', acceptanceCriteria: [] };
@@ -71,8 +73,8 @@ export function parseSpec(markdown: string): unknown {
 
   for (const node of nodes) {
     if (node.type === 'heading' && node.depth === 1) {
-      const { id, title } = splitIdTitle(nodeText(node));
-      issue.id = id; issue.title = title; inAc = false;
+      if (!issue.id) { const { id, title } = splitIdTitle(nodeText(node)); issue.id = id; issue.title = title; }
+      inAc = false;
       continue;
     }
     if (node.type === 'heading') {
@@ -104,13 +106,19 @@ export function parseSpec(markdown: string): unknown {
       issue.acceptanceCriteria = acs;
     }
   }
-  return { issues: issue.id ? [issue] : [] };
+  return issue.id ? issue : null;
+}
+
+// The multi-issue root: one bundle of every tracker issue (a single-issue document
+// with no envelope still parses to a one-issue root).
+export function parseSpec(markdown: string): unknown {
+  return { issues: splitIssueBundle(markdown).map((s) => parseSpecIssue(s.body)).filter((i): i is Record<string, unknown> => i !== null) };
 }
 
 // ── rules: pure, over the typed root + context ──────────────────────────────
 const passedAcNeedsEvidence: Rule<SpecRoot> = {
   name: 'passed_ac_needs_evidence',
-  run: (root) => root.issues.flatMap((issue) =>
+  run: ({ root }) => root.issues.flatMap((issue) =>
     issue.acceptanceCriteria.filter((ac) => ac.status === 'passed' && ac.evidence.length === 0).map((ac): Finding => ({
       code: 'passed_ac_missing_evidence', severity: 'error',
       message: `AC ${ac.id} is passed but cites no commit-backed evidence.`, issueId: issue.id, acId: ac.id,
@@ -119,7 +127,7 @@ const passedAcNeedsEvidence: Rule<SpecRoot> = {
 
 const evidenceCommitExists: Rule<SpecRoot> = {
   name: 'evidence_commit_exists',
-  run: (root, ctx: Context) => {
+  run: ({ root, context: ctx }) => {
     const existing = ctx.git?.existingCommits;
     if (!existing) return []; // git world unavailable -> cannot verify commit existence
     // Prefix-match both directions so an abbreviated SHA (the schema allows 7-40 hex)
@@ -135,7 +143,7 @@ const evidenceCommitExists: Rule<SpecRoot> = {
 
 const uniqueAcIds: Rule<SpecRoot> = {
   name: 'unique_ac_ids',
-  run: (root) => root.issues.flatMap((issue) => {
+  run: ({ root }) => root.issues.flatMap((issue) => {
     const seen = new Set<string>(); const dups: Finding[] = [];
     for (const ac of issue.acceptanceCriteria) {
       if (seen.has(ac.id)) dups.push({ code: 'duplicate_ac_id', severity: 'error', message: `Duplicate AC id ${ac.id}.`, issueId: issue.id, acId: ac.id });
@@ -145,11 +153,26 @@ const uniqueAcIds: Rule<SpecRoot> = {
   }),
 };
 
+// cross-issue: issue ids unique across the whole tracker root
+const uniqueIssueIds: Rule<SpecRoot> = {
+  name: 'unique_issue_ids',
+  run: ({ root }) => {
+    const seen = new Set<string>(); const dups: Finding[] = [];
+    for (const i of root.issues) {
+      if (seen.has(i.id)) dups.push({ code: 'duplicate_issue_id', severity: 'error', message: `Duplicate issue id ${i.id}.`, issueId: i.id });
+      seen.add(i.id);
+    }
+    return dups;
+  },
+};
+
 export const SpecPreset: Preset<SpecRoot> = {
   name: 'spec',
   schema: SpecRootSchema,
+  // observed facts: commit existence (no PR model in this preset).
+  loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpec,
-  rules: [passedAcNeedsEvidence, evidenceCommitExists, uniqueAcIds],
+  rules: [passedAcNeedsEvidence, evidenceCommitExists, uniqueAcIds, uniqueIssueIds],
 };
 
 export function checkSpec(markdown: string, ctx?: Context) {

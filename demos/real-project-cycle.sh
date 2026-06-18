@@ -78,7 +78,7 @@ body = body.replace(
     f"- [ ] {ac} status: pending {text} [1]",
     f"- [x] {ac} status: passed {text} commit: {sha} [{evidence}]",
 )
-body += f"\n[{evidence}] type: pr ac: {ac} repo: northwind/ops number: {evidence[1:]} head: main justification: Verified by tests, code review, and release notes.\n"
+body += f"\n- [{evidence}] type: pr ac: {ac} repo: northwind/ops number: {evidence[1:]} head: main justification: Verified by tests, code review, and release notes.\n"
 p.write_text(body)
 PY
 }
@@ -118,7 +118,7 @@ cat > package.json <<'EOF'
     "test": "node --test test/*.test.js",
     "lint": "node scripts/lint-docs.mjs",
     "release:check": "npm test && npm run lint && ztrack check",
-    "snapshot": "ztrack snapshot export --out .volter/snapshot.json"
+    "export": "ztrack export --out .volter/root.json"
   },
   "dependencies": {},
   "devDependencies": {}
@@ -128,8 +128,8 @@ cat > README.md <<'EOF'
 # Northwind Ops
 
 Inventory reservation workspace used to exercise a realistic ztrack adoption
-cycle: planning, implementation, review, rework, release evidence, CI snapshot,
-SDK, MCP, and fresh-clone validation.
+cycle: planning, implementation, review, rework, release evidence, CI validated
+root, SDK, MCP, and fresh-clone validation.
 EOF
 cat > packages/inventory/src/store.js <<'EOF'
 export function createInventoryStore(seed = []) {
@@ -277,35 +277,22 @@ npm install -D "$tarball" >/dev/null
 npx ztrack init --team INV --preset simple-sdlc >/dev/null
 
 # Project-specific policy: completed API cases must include a Rollout Plan.
+# Push a rule onto the installed preset over the validated root.
 cat >> .volter/tracker/validation/preset.cjs <<'EOF'
 
-const __ztrackBaseCheckSnapshot = module.exports.snapshot.checkSnapshot;
-module.exports.snapshot.checkSnapshot = function projectCheckSnapshot(snapshot, options) {
-  const report = __ztrackBaseCheckSnapshot(snapshot, options);
-  for (const issue of Array.isArray(snapshot && snapshot.cases) ? snapshot.cases : []) {
-    const labels = Array.isArray(issue.labels) ? issue.labels.map(String) : [];
-    const isDone = ['completed', 'done'].includes(String(issue.stateType || issue.state || '').toLowerCase());
-    if (labels.includes('area:api') && isDone && !/^##\s+Rollout Plan\s*$/im.test(String(issue.body || ''))) {
-      report.findings.push({
-        level: 'error',
-        code: 'northwind_api_done_missing_rollout_plan',
-        issue: String(issue.identifier || 'unknown'),
-        message: 'Done API cases must include ## Rollout Plan.',
-      });
-    }
-  }
-  const errors = report.findings.filter((finding) => finding.level === 'error').length;
-  const warnings = report.findings.length - errors;
-  report.valid = errors === 0;
-  report.summary = {
-    ...report.summary,
-    errors,
-    warnings,
-    status: errors > 0 ? 'fail' : warnings > 0 ? 'warn' : 'pass',
-    findingCounts: Object.fromEntries([...new Set(report.findings.map((finding) => finding.code))].map((code) => [code, report.findings.filter((finding) => finding.code === code).length])),
-  };
-  return report;
-};
+module.exports.rules.push({
+  name: 'northwind_api_done_missing_rollout_plan',
+  run: ({ root }) => root.issues
+    .filter((i) => (i.labels || []).includes('area:api')
+      && ['completed', 'done'].includes(String(i.stateType || i.status || '').toLowerCase())
+      && !i.sections.includes('Rollout Plan'))
+    .map((i) => ({
+      code: 'northwind_api_done_missing_rollout_plan',
+      severity: 'error',
+      issueId: i.id,
+      message: 'Done API cases must include ## Rollout Plan.',
+    })),
+});
 EOF
 
 write_issue inventory.md "Reserve inventory units" \
@@ -393,11 +380,11 @@ pass_ac docs.md proc/01 "Release notes link to the runbook." "$docs_sha" E3
 npx ztrack issue edit INV-4 --body-file docs.md --state Done >/dev/null
 npx ztrack check --json > final-check.json
 test "$(json_field final-check.json summary.status)" = "pass"
-test "$(json_field final-check.json summary.cases)" -eq 4
+test "$(json_field final-check.json summary.issues)" -eq 4
 
-npx ztrack snapshot export --out .volter/snapshot.json >/dev/null
-npx ztrack check --input .volter/snapshot.json --verify-commits --json > snapshot-check.json
-test "$(json_field snapshot-check.json summary.status)" = "pass"
+npx ztrack export --out .volter/root.json >/dev/null
+npx ztrack check --input .volter/root.json --verify-commits --json > root-check.json
+test "$(json_field root-check.json summary.status)" = "pass"
 
 mkdir -p .github/workflows
 cat > .github/workflows/ztrack.yml <<'EOF'
@@ -415,7 +402,7 @@ jobs:
           fetch-depth: 0
       - uses: volter-ai/ztrack@v0
         with:
-          snapshot: .volter/snapshot.json
+          root: .volter/root.json
 EOF
 
 cat > sdk-cycle.mjs <<'EOF'
@@ -451,7 +438,7 @@ if report["summary"]["status"] != "pass":
     raise SystemExit(report)
 PY
 
-git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json package.json package-lock.json packages apps test docs scripts README.md
+git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json packages apps test docs scripts README.md
 git commit -q -m "adopt ztrack for inventory release lifecycle"
 
 status="$(git status --short --ignored=no)"
@@ -465,7 +452,7 @@ cd "$clone"
 npm ci >/dev/null
 npm test >/dev/null
 npm run lint >/dev/null
-npx ztrack check --input .volter/snapshot.json --verify-commits --json > clone-check.json
+npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json
 test "$(json_field clone-check.json summary.status)" = "pass"
 
 printf 'real project cycle ok\n'

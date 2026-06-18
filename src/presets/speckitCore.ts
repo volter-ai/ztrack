@@ -31,6 +31,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { check as runCheck, type Context, type Finding, type Preset, type Rule } from '../core/engine.ts';
+import { gitWorld } from '../core/gitWorld.ts';
 
 // ── hard schema (core + speckit-specific, all strict) ───────────────────────
 export const SpeckitEvidenceSchema = z.object({
@@ -311,7 +312,7 @@ export function parseSpeckit(bundle: string): unknown {
 // ── rules ────────────────────────────────────────────────────────────────────
 const needsClarification: Rule<SpeckitRoot> = {
   name: 'speckit_needs_clarification',
-  run: (root) => root.issues.flatMap((i): Finding[] => [
+  run: ({ root }) => root.issues.flatMap((i): Finding[] => [
     ...i.requirements.filter((r) => r.needsClarification).map((r): Finding => ({ code: 'speckit_needs_clarification', severity: 'error', message: `${r.id} still has an unresolved [NEEDS CLARIFICATION] marker.`, issueId: i.id })),
     ...i.successCriteria.filter((c) => c.needsClarification).map((c): Finding => ({ code: 'speckit_needs_clarification', severity: 'error', message: `${c.id} still has an unresolved [NEEDS CLARIFICATION] marker.`, issueId: i.id })),
     ...i.acceptanceCriteria.filter((a) => a.needsClarification).map((a): Finding => ({ code: 'speckit_needs_clarification', severity: 'error', message: `User story ${a.id} has a scenario with an unresolved [NEEDS CLARIFICATION] marker.`, issueId: i.id, acId: a.id })),
@@ -320,7 +321,7 @@ const needsClarification: Rule<SpeckitRoot> = {
 // foundational phase blocks user stories (Spec Kit: no story work until foundational is complete)
 const foundationalBlocksStories: Rule<SpeckitRoot> = {
   name: 'speckit_foundational_blocks_stories',
-  run: (root) => root.issues.flatMap((i) => {
+  run: ({ root }) => root.issues.flatMap((i) => {
     const foundationalPending = i.phases.filter((p) => p.kind === 'foundational').flatMap((p) => p.tasks).some((t) => t.status !== 'done');
     if (!foundationalPending) return [];
     return i.acceptanceCriteria.filter((a) => a.status === 'done').map((a): Finding => ({
@@ -331,26 +332,26 @@ const foundationalBlocksStories: Rule<SpeckitRoot> = {
 // Constitution Check gate (from plan.md) must pass
 const constitutionCheck: Rule<SpeckitRoot> = {
   name: 'speckit_constitution_check',
-  run: (root) => root.issues.flatMap((i) => i.plan.constitutionGates.filter((g) => g.passed === false).map((g): Finding => ({
+  run: ({ root }) => root.issues.flatMap((i) => i.plan.constitutionGates.filter((g) => g.passed === false).map((g): Finding => ({
     code: 'speckit_constitution_gate_failed', severity: 'error', message: `Constitution Check gate failed: ${g.text}`, issueId: i.id,
   }))),
 };
 // only meaningful once the feature has reached /tasks (tasks.md exists)
 const storyHasTasks: Rule<SpeckitRoot> = {
   name: 'speckit_story_has_tasks',
-  run: (root) => root.issues.filter((i) => i.files.tasks).flatMap((i) => i.acceptanceCriteria.filter((a) => a.tasks.length === 0).map((a): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.files.tasks).flatMap((i) => i.acceptanceCriteria.filter((a) => a.tasks.length === 0).map((a): Finding => ({
     code: 'speckit_story_no_tasks', severity: 'warning', message: `User story ${a.id} has no tasks in tasks.md.`, issueId: i.id, acId: a.id,
   }))),
 };
 const storyVerified: Rule<SpeckitRoot> = {
   name: 'speckit_story_verified',
-  run: (root) => root.issues.flatMap((i) => i.acceptanceCriteria.filter((a) => a.status === 'done' && a.evidence.every((e) => !e.commit)).map((a): Finding => ({
+  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria.filter((a) => a.status === 'done' && a.evidence.every((e) => !e.commit)).map((a): Finding => ({
     code: 'speckit_story_unverified', severity: 'warning', message: `User story ${a.id} is done but none of its tasks cite a commit (unverified).`, issueId: i.id, acId: a.id,
   }))),
 };
 const evidenceCommitExists: Rule<SpeckitRoot> = {
   name: 'speckit_evidence_commit_exists',
-  run: (root, ctx) => {
+  run: ({ root, context: ctx }) => {
     const commits = ctx.git?.existingCommits; if (!commits) return [];
     const ok = (sha: string) => commits.some((c) => c.startsWith(sha) || sha.startsWith(c));
     return root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((a) => a.evidence.filter((e) => e.commit && !ok(e.commit)).map((e): Finding => ({
@@ -359,10 +360,25 @@ const evidenceCommitExists: Rule<SpeckitRoot> = {
   },
 };
 
+// cross-issue (root) rule: the root is multi-issue, so feature ids must be unique
+// across it — a check only expressible at the root layer (a caller may validate a
+// root holding more than one feature).
+const uniqueFeatureIds: Rule<SpeckitRoot> = {
+  name: 'speckit_unique_feature_ids',
+  run: ({ root }) => {
+    const seen = new Set<string>(); const dups: Finding[] = [];
+    for (const i of root.issues) {
+      if (seen.has(i.id)) dups.push({ code: 'speckit_duplicate_feature_id', severity: 'error', message: `Duplicate feature id ${i.id} in the root.`, issueId: i.id });
+      seen.add(i.id);
+    }
+    return dups;
+  },
+};
+
 // ── structural-existence requirements (the parts Spec Kit's process mandates) ─
 const uniqueAcIds: Rule<SpeckitRoot> = {
   name: 'speckit_unique_ac_ids',
-  run: (root) => root.issues.flatMap((i) => {
+  run: ({ root }) => root.issues.flatMap((i) => {
     const seen = new Set<string>(); const dups: Finding[] = [];
     for (const ac of i.acceptanceCriteria) {
       if (seen.has(ac.id)) dups.push({ code: 'speckit_duplicate_ac_id', severity: 'error', message: `Duplicate user-story id ${ac.id} in feature ${i.id}.`, issueId: i.id, acId: ac.id });
@@ -373,44 +389,44 @@ const uniqueAcIds: Rule<SpeckitRoot> = {
 };
 const requireUserStories: Rule<SpeckitRoot> = {
   name: 'speckit_require_user_stories',
-  run: (root) => root.issues.filter((i) => i.acceptanceCriteria.length === 0).map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.acceptanceCriteria.length === 0).map((i): Finding => ({
     code: 'speckit_no_user_stories', severity: 'error', message: `Feature ${i.id} has no user stories — the spec's testable deliverable unit.`, issueId: i.id,
   })),
 };
 const requireRequirements: Rule<SpeckitRoot> = {
   name: 'speckit_require_requirements',
-  run: (root) => root.issues.filter((i) => i.requirements.length === 0).map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.requirements.length === 0).map((i): Finding => ({
     code: 'speckit_no_functional_requirements', severity: 'error', message: `Feature ${i.id} states no functional requirements.`, issueId: i.id,
   })),
 };
 const requireScenarios: Rule<SpeckitRoot> = {
   name: 'speckit_require_scenarios',
-  run: (root) => root.issues.flatMap((i) => i.acceptanceCriteria.filter((a) => a.scenarios.length === 0).map((a): Finding => ({
+  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria.filter((a) => a.scenarios.length === 0).map((a): Finding => ({
     code: 'speckit_story_no_scenarios', severity: 'warning', message: `User story ${a.id} has no acceptance scenarios (not independently testable).`, issueId: i.id, acId: a.id,
   }))),
 };
 const requireSuccessCriteria: Rule<SpeckitRoot> = {
   name: 'speckit_require_success_criteria',
-  run: (root) => root.issues.filter((i) => i.successCriteria.length === 0).map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.successCriteria.length === 0).map((i): Finding => ({
     code: 'speckit_no_success_criteria', severity: 'warning', message: `Feature ${i.id} has no measurable success criteria.`, issueId: i.id,
   })),
 };
 const requireConstitution: Rule<SpeckitRoot> = {
   name: 'speckit_require_constitution',
-  run: (root) => root.issues.filter((i) => !i.constitution.present).map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => !i.constitution.present).map((i): Finding => ({
     code: 'speckit_no_constitution', severity: 'warning', message: `No constitution (.specify/memory/constitution.md) — the /constitution step is missing.`, issueId: i.id,
   })),
 };
 const requireConstitutionCheck: Rule<SpeckitRoot> = {
   name: 'speckit_require_constitution_check',
-  run: (root) => root.issues.filter((i) => i.plan.present && i.plan.constitutionGates.length === 0).map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.plan.present && i.plan.constitutionGates.length === 0).map((i): Finding => ({
     code: 'speckit_plan_no_constitution_check', severity: 'warning', message: `plan.md has no Constitution Check gate (mandatory in the plan template).`, issueId: i.id,
   })),
 };
 // once implementing (tasks exist), a plan must exist (Spec Kit: /plan precedes /tasks)
 const requirePlanBeforeTasks: Rule<SpeckitRoot> = {
   name: 'speckit_require_plan_before_tasks',
-  run: (root) => root.issues.filter((i) => i.files.tasks && !i.plan.present).map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.files.tasks && !i.plan.present).map((i): Finding => ({
     code: 'speckit_tasks_without_plan', severity: 'error', message: `Feature ${i.id} has tasks.md but no plan.md — /plan must precede /tasks.`, issueId: i.id,
   })),
 };
@@ -418,10 +434,12 @@ const requirePlanBeforeTasks: Rule<SpeckitRoot> = {
 export const SpeckitPreset: Preset<SpeckitRoot> = {
   name: 'speckit',
   schema: SpeckitRootSchema,
+  // observed facts: commit existence for task verification (no PR model).
+  loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpeckit,
   rules: [
     needsClarification, foundationalBlocksStories, constitutionCheck, storyHasTasks, storyVerified, evidenceCommitExists,
-    uniqueAcIds, requireUserStories, requireRequirements, requireScenarios, requireSuccessCriteria, requireConstitution, requireConstitutionCheck, requirePlanBeforeTasks,
+    uniqueFeatureIds, uniqueAcIds, requireUserStories, requireRequirements, requireScenarios, requireSuccessCriteria, requireConstitution, requireConstitutionCheck, requirePlanBeforeTasks,
   ],
   // audit is core/always-on (recorded automatically via change observation), so
   // it is NOT declared here; speckit implements none of the OPT-IN primitives.

@@ -36,11 +36,14 @@ assert setup["preset"] == "simple-sdlc", setup
 assert setup["profile"] == "simple-sdlc", setup
 
 required = [
+    "profiles/simple-sdlc/profile.json",
     "profiles/simple-sdlc/README.md",
     "profiles/simple-sdlc/scheduler/schedule.json",
     "profiles/simple-sdlc/scheduler/scripts/run.mjs",
     "profiles/simple-sdlc/scheduler/scripts/pm-tick.mjs",
     "profiles/simple-sdlc/scheduler/scripts/cleanup-pm.mjs",
+    "profiles/simple-sdlc/scheduler/scripts/recover-develop.mjs",
+    "profiles/simple-sdlc/scheduler/scripts/recover-review.mjs",
     "profiles/simple-sdlc/scripts/run-agent.mjs",
     ".agents/skills/ztrack-simple-sdlc-pm/SKILL.md",
     ".agents/skills/ztrack-simple-sdlc-draft/SKILL.md",
@@ -56,6 +59,7 @@ required = [
     "profiles/simple-sdlc/skills/review/SKILL.md",
     "profiles/simple-sdlc/standards/workflow.md",
     "profiles/simple-sdlc/standards/issue-and-evidence.md",
+    "profiles/simple-sdlc/standards/risk-and-review.md",
 ]
 for relative in required:
     assert (target / relative).exists(), relative
@@ -63,6 +67,7 @@ for relative in required:
 PY
 
 cd "$target"
+npx ztrack-profile-check --repo . --profile simple-sdlc > "$tmp_root/profile-check.json"
 npx ztrack check --json > "$tmp_root/check.json"
 python3 - "$tmp_root/check.json" <<'PY'
 import json

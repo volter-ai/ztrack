@@ -50,8 +50,8 @@ function acceptanceCriterionText(body: string, id: string): string {
     .trim();
 }
 
-// Structured mutations must stamp AC-Version exactly the way the snapshot
-// exporter computes it; this is the shared derivation.
+// Structured mutations must stamp AC-Version exactly the way the preset parser
+// derives it; this is the shared derivation.
 export function acVersionForItemBody(id: string, itemBody: string): string {
   return acVersionFor(id, acceptanceCriterionText(itemBody, id), sourceRefs(itemBody), developmentVisibility(itemBody));
 }

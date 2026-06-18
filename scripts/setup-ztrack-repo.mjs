@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -145,6 +145,22 @@ function installSchedule(repo, profile, schedule) {
   return join(repo, 'profiles', profile, 'scheduler', 'schedule.json');
 }
 
+function installValidationPreset(repo, preset, force) {
+  const entrypoint = join(repo, '.volter', 'tracker', 'validation', 'preset.cjs');
+  if (existsSync(entrypoint) && !force) return;
+  const flags = {
+    __ZTRACK_PRESET_NAME__: preset,
+    __ZTRACK_REQUIRE_SOURCE_MARKER__: preset === 'basic' ? 'false' : 'true',
+    __ZTRACK_REQUIRE_SDLC_GATES__: preset === 'simple-sdlc' ? 'true' : 'false',
+    __ZTRACK_REQUIRE_SPEC_SECTIONS__: preset === 'simple-spec' ? 'true' : 'false',
+    __ZTRACK_REQUIRE_SPECKIT_SECTIONS__: preset === 'speckit' ? 'true' : 'false',
+  };
+  let text = readFileSync(join(packageRoot, 'boilerplates', 'presets', 'preset.cjs'), 'utf8');
+  for (const [token, value] of Object.entries(flags)) text = text.replaceAll(token, value);
+  mkdirSync(dirname(entrypoint), { recursive: true });
+  writeFileSync(entrypoint, `${text}\n`);
+}
+
 function installAgentSkills(repo, profileSource) {
   const skills = join(profileSource, 'skills');
   if (!existsSync(skills)) return;
@@ -186,11 +202,13 @@ function main() {
 
   installPackage(repo, installSpec);
   run(repo, 'npx', ['ztrack', 'init', '--team', team, '--preset', preset]);
+  installValidationPreset(repo, preset, force);
 
   const profileDest = join(repo, 'profiles', profile);
   copyDir(profileSource, profileDest, force);
   installAgentSkills(repo, profileSource);
   const installedSchedule = installSchedule(repo, profile, schedule);
+  run(repo, 'node', [join(packageRoot, 'scripts', 'check-ztrack-profile.mjs'), '--repo', repo, '--profile', profile]);
   if (seed) seedDemoIssues(repo);
 
   let setupTick = null;

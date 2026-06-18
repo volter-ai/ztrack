@@ -45,6 +45,10 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 
 ## Quickstart (under a minute)
 
+> **Prerequisites:** Node ≥ 20, `git`, and `python3` on PATH (the default local
+> backend is a small Python/SQLite program; or set `backend: "markdown"` to avoid
+> Python). The `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+
 ```bash
 npx ztrack init --preset basic
 npx ztrack issue scaffold --title "First verified task" > body.md
@@ -72,9 +76,9 @@ exit 1
 
 ztrack is a verification layer, not a new tracker.
 
-1. Read tasks from your existing work system or a committed snapshot.
-2. Parse each task through a Zod schema.
-3. Run deterministic checks against git and referenced evidence rows.
+1. Read tasks from your existing work system or a committed validated root.
+2. Parse the tracker into one strict, multi-issue root through a Zod schema.
+3. The loader gathers git/world facts into a typed context; pure rules validate the typed root.
 4. Exit non-zero when a checked claim is not backed by real proof.
 5. Let CI, MCP, or an agent stop-hook block the workflow until the evidence exists.
 
@@ -97,7 +101,7 @@ them and only validates the claims agents or humans make there.
 - **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
 - **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry a typechecker until it passes
 
-See [examples](docs/EXAMPLES.md) for a minimal local check, a committed-snapshot
+See [examples](docs/EXAMPLES.md) for a minimal local check, a committed validated-root
 CI gate, and an MCP agent loop.
 
 ## Visualize

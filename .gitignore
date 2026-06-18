@@ -10,5 +10,7 @@ node_modules/
 .env
 .env.*
 .DS_Store
+# Build artifacts — produced by `npm run build` (and by `prepack` for npm publish);
+# not committed. The GitHub Action runs ztrack from source via Bun.
 visualizer/core.js
-dist/src/
+dist/

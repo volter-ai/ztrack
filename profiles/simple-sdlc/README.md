@@ -10,6 +10,7 @@ This profile contains only the operational pieces needed to run a small SDLC wit
 agents:
 
 ```text
+profile.json        manifest for verifier/setup
 scheduler/         schedule config
 scheduler/scripts/ scheduled runner, PM tick, recovery, cleanup
 scripts/           agent runner
@@ -34,6 +35,11 @@ decides whether to dispatch draft, develop, or review work. Nested dispatch also
 goes through `scripts/run-agent.mjs`; the PM skill does not know about agent
 backend details.
 
+Recovery scripts are conservative. Review recovery clears only stale
+`ztrack:reviewing` labels when no review worker exists. Develop recovery
+requeues `In Progress` only when no develop worker exists and the git worktree
+is clean.
+
 For Termfleet-backed agents:
 
 ```bash
@@ -52,3 +58,15 @@ node profiles/simple-sdlc/scheduler/scripts/run.mjs
 
 Each skill names the standards it reads. Do not add extra standards unless a
 skill explicitly references them.
+
+## Preflight
+
+Run this after installing or editing the profile:
+
+```bash
+npx ztrack-profile-check --repo . --profile simple-sdlc
+```
+
+The checker verifies the manifest, scheduler targets, installed Codex/Claude
+skill copies, skill names, and that every listed standard is read by at least
+one skill.

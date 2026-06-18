@@ -6,7 +6,7 @@ keeps the core local-first and deterministic.
 ## Near Term
 
 - More copy-pasteable examples for GitHub Issues, Linear, and Jira workflows.
-- Public CI examples for committed snapshot gates.
+- Public CI examples for committed validated-root gates.
 - Clearer docs for MCP and stop-hook agent integration.
 - More install presets for teams that already use Spec Kit, OpenSpec,
   Backlog.md, or similar file-based planning systems.

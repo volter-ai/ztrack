@@ -22,6 +22,8 @@ jobs:
         run: npm run build:node-cli
       - name: Pack smoke
         run: npm pack --dry-run
+      - name: Fresh project dry run
+        run: bash demos/fresh-project-dry-run.sh
       - name: Export smoke
         run: |
           node --input-type=module -e "const paths=['ztrack','ztrack/config','ztrack/sdk','ztrack/check','ztrack/export','ztrack/markdown-model','ztrack/ac-version','ztrack/presets','ztrack/work-graph','ztrack/mutate','ztrack/mcp','ztrack/attest','ztrack/lint','ztrack/tx','ztrack/dsse']; for (const p of paths) await import(p);"

@@ -45,7 +45,7 @@ has that workflow shape. After init, project-specific rules are added by editing
 
 1. Create a real git commit or use the current repository HEAD.
 2. Edit one AC to cite `commit: deadbee [E1]`.
-3. Add `[E1]` under `## Evidence`.
+3. Add `- [E1]` under `## Evidence`.
 4. Run `npx ztrack check --json`.
 5. Confirm the finding code is preset-prefixed, for example
    `basic_checked_ac_commit_hash_missing`.

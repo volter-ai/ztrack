@@ -1,5 +1,16 @@
 import { describe, expect, test } from 'bun:test';
-import { applyAcMutation } from './mutate.ts';
+import { applyAcMutation, addEvidenceEntry } from './mutate.ts';
+
+describe('addEvidenceEntry — node-structural list items', () => {
+  test('writes each evidence entry as a `- [En]` GFM list item, ids increment', () => {
+    const r1 = addEvidenceEntry('# T\n\n## Evidence\n', { type: 'pr', repo: 'x/y' });
+    expect(r1.evidenceId).toBe('E1');
+    expect(r1.body).toContain('- [E1] type: pr repo: x/y');
+    const r2 = addEvidenceEntry(r1.body, { type: 'screenshot', path: 'a.png' });
+    expect(r2.evidenceId).toBe('E2'); // existing `- [E1]` list item is detected
+    expect(r2.body).toContain('- [E2] type: screenshot path: a.png');
+  });
+});
 
 describe('applyAcMutation — multi-line AC items', () => {
   const body = '## Acceptance Criteria\n\n- [ ] dev/03 first line\n  more detail on second line\n';

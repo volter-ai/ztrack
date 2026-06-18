@@ -12,8 +12,8 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { check } from '../../src/core/engine.ts';
-import { DefaultPreset } from '../../src/presets/default.ts';
-import { gitWorld, prBranchesFrom } from '../../src/core/gitWorld.ts';
+import { DefaultPreset, prBranchesFrom } from '../../src/presets/default.ts';
+import { gitWorld } from '../../src/core/gitWorld.ts';
 
 const args = process.argv.slice(2);
 const flag = (n: string, d?: string) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1]! : d; };

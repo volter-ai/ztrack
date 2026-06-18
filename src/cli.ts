@@ -4,22 +4,21 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkTrackerSnapshot } from './check.ts';
+import { checkTracker } from './check.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { lintIssueBody } from './lint.ts';
 import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { initTrackerPresets, initTrackerProject, projectRootFrom, trackerConfigPath } from './config.ts';
-import { exportTrackerSnapshot } from './export.ts';
+import { initTrackerPresets, initTrackerProject, projectRootFrom } from './config.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
-import { handleSnapshotCommand } from './cliSnapshot.ts';
+import { handleCheckCommand } from './cliCheck.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 
 async function readStdinIfPiped(): Promise<string | undefined> {
@@ -222,14 +221,15 @@ GraphQL-shaped query against the local tracker store.
 
   if (args[0] === 'lint') {
     const projectRoot = projectRootFrom();
-    const snapshot = exportTrackerSnapshot({ projectRoot });
     const issuesFilter = optionValue(args, '--issues');
     const issueSet = issuesFilter ? new Set(issuesFilter.split(',').map((s) => s.trim()).filter(Boolean)) : null;
     const { loadTrackerConfig } = await import('./config.ts');
     const config = loadTrackerConfig(projectRoot);
-    const findings = snapshot.cases
-      .filter((c) => !issueSet || issueSet.has(c.identifier))
-      .flatMap((c) => lintIssueBody(String((c as Record<string, unknown>).body ?? ''), c.identifier, config));
+    const rows = await client.issue.list({ state: 'all', limit: 5000, json: 'identifier,body' });
+    const cases = (Array.isArray(rows) ? rows : []) as Array<{ identifier?: string; body?: string }>;
+    const findings = cases
+      .filter((c) => !issueSet || issueSet.has(String(c.identifier ?? '')))
+      .flatMap((c) => lintIssueBody(String(c.body ?? ''), String(c.identifier ?? ''), config));
     if (args.includes('--json')) process.stdout.write(`${JSON.stringify({ findings }, null, 2)}\n`);
     else for (const f of findings) process.stdout.write(`${f.severity.toUpperCase()} ${f.rule}: issue=${f.issue} ${f.message} | ${f.excerpt ?? ''}\n`);
     process.exitCode = findings.some((f) => f.severity === 'error') || (args.includes('--fail-on-warn') && findings.length > 0) ? 1 : 0;
@@ -269,22 +269,17 @@ GraphQL-shaped query against the local tracker store.
     if (!args.includes('--dry-run')) {
       const gate = willBePassed && result.changed;
       const gateRoot = gate ? projectRootFrom() : '';
-      const errorSig = (f: { code: string; message: string; details?: unknown }): string =>
-        `${f.code}|${f.message}|${JSON.stringify(f.details ?? {})}`;
+      const errorSig = (f: { code: string; issueId?: string; acId?: string }): string =>
+        `${f.code}|${f.issueId ?? ''}|${f.acId ?? ''}`;
       const errorsBefore = gate
-        ? new Set((checkTrackerSnapshot(
-            exportTrackerSnapshot({ projectRoot: gateRoot, issues: [issueId] }),
-            { issues: [issueId] },
-          ).findings ?? []).filter((f) => f.level === 'error').map(errorSig))
+        ? new Set((await checkTracker({ projectRoot: gateRoot, issues: [issueId], verifyCommits: true }))
+            .findings.filter((f) => f.severity === 'error').map(errorSig))
         : new Set<string>();
       await client.issue.edit(issueId, { body: result.body });
       if (gate) {
-        const after = checkTrackerSnapshot(
-          exportTrackerSnapshot({ projectRoot: gateRoot, issues: [issueId] }),
-          { issues: [issueId] },
-        );
-        const introduced = (after.findings ?? [])
-          .filter((f) => f.level === 'error' && !errorsBefore.has(errorSig(f)));
+        const after = await checkTracker({ projectRoot: gateRoot, issues: [issueId], verifyCommits: true });
+        const introduced = after.findings
+          .filter((f) => f.severity === 'error' && !errorsBefore.has(errorSig(f)));
         if (introduced.length > 0) {
           await client.issue.edit(issueId, { body }); // revert — the bad state must not persist
           throw new Error(
@@ -299,7 +294,7 @@ GraphQL-shaped query against the local tracker store.
     return;
   }
 
-  if (await handleSnapshotCommand(args)) return;
+  if (await handleCheckCommand(args)) return;
 
   let forwardArgs = args;
   if (args[0] === 'issue' && args[1] === 'edit') {

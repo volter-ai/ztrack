@@ -9,15 +9,20 @@ Read:
 
 - `profiles/simple-sdlc/standards/workflow.md`
 - `profiles/simple-sdlc/standards/issue-and-evidence.md`
+- `profiles/simple-sdlc/standards/risk-and-review.md`
 
 ## Procedure
 
-1. Read `ZTRACK_ISSUE`; stop if it is missing.
+1. Read the environment variable with `echo "$ZTRACK_ISSUE"`; stop if it is missing. `ZTRACK_ISSUE` is not a file.
 2. Run `ztrack check --json`; stop if red.
 3. Inspect the assigned issue's cited commits and evidence for each passed AC.
    If a cited test/check exits 0, accept the command as passing; do not rerun
    only to get prettier reporter output.
-4. If any claim does not hold, move the issue back with `ztrack issue edit <issue> --remove-label ztrack:reviewing --state "In Progress"` and leave requested changes.
-5. If all claims hold, approve with `ztrack issue edit <issue> --remove-label ztrack:reviewing --state Done`, then run `ztrack check` again.
+4. Apply `risk-and-review.md`. If the change touches a human-required path or
+   topic without explicit approval, move the issue back with
+   `ztrack issue edit <issue> --remove-label ztrack:reviewing --state "In Progress"`
+   and leave `OUTCOME: changes-requested human-required`.
+5. If any claim does not hold, move the issue back with `ztrack issue edit <issue> --remove-label ztrack:reviewing --state "In Progress"` and leave requested changes.
+6. If all claims hold, approve with `ztrack issue edit <issue> --remove-label ztrack:reviewing --state Done`, then run `ztrack check` again.
 
 End with `OUTCOME: merged` or `OUTCOME: changes-requested`.

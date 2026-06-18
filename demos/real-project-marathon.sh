@@ -84,7 +84,7 @@ body = body.replace(
     f"- [ ] {ac} status: pending {text} [1]",
     f"- [x] {ac} status: passed {text} commit: {sha} [{evidence}]",
 )
-body += f"\n[{evidence}] type: pr ac: {ac} repo: atlas/commerce number: {evidence[1:]} head: main justification: Verified in marathon cycle.\n"
+body += f"\n- [{evidence}] type: pr ac: {ac} repo: atlas/commerce number: {evidence[1:]} head: main justification: Verified in marathon cycle.\n"
 p.write_text(body)
 PY
 }
@@ -108,7 +108,7 @@ cat > package.json <<'EOF'
     "test": "node --test test/*.test.js",
     "lint": "node scripts/lint-workspace.mjs",
     "release:check": "npm test && npm run lint && ztrack check",
-    "snapshot": "ztrack snapshot export --out .volter/snapshot.json"
+    "export": "ztrack export --out .volter/root.json"
   },
   "dependencies": {},
   "devDependencies": {}
@@ -212,36 +212,23 @@ git commit -q -m "bootstrap atlas commerce workspace"
 npm install -D "$tarball" >/dev/null
 npx ztrack init --team AC --preset simple-sdlc >/dev/null
 
+# Project-specific policy: completed API cases must include a Rollout Plan.
+# Push a rule onto the installed preset over the validated root.
 cat >> .volter/tracker/validation/preset.cjs <<'EOF'
 
-const __atlasBaseCheckSnapshot = module.exports.snapshot.checkSnapshot;
-module.exports.snapshot.checkSnapshot = function atlasProjectCheckSnapshot(snapshot, options) {
-  const report = __atlasBaseCheckSnapshot(snapshot, options);
-  for (const issue of Array.isArray(snapshot && snapshot.cases) ? snapshot.cases : []) {
-    const labels = Array.isArray(issue.labels) ? issue.labels.map(String) : [];
-    const body = String(issue.body || '');
-    const isDone = ['done', 'completed'].includes(String(issue.stateType || issue.state || '').toLowerCase());
-    if (labels.includes('area:api') && isDone && !/^##\s+Rollout Plan\s*$/im.test(body)) {
-      report.findings.push({
-        level: 'error',
-        code: 'atlas_api_done_missing_rollout_plan',
-        issue: String(issue.identifier || 'unknown'),
-        message: 'Completed API cases must include ## Rollout Plan.',
-      });
-    }
-  }
-  const errors = report.findings.filter((finding) => finding.level === 'error').length;
-  const warnings = report.findings.length - errors;
-  report.valid = errors === 0;
-  report.summary = {
-    ...report.summary,
-    errors,
-    warnings,
-    status: errors > 0 ? 'fail' : warnings > 0 ? 'warn' : 'pass',
-    findingCounts: Object.fromEntries([...new Set(report.findings.map((finding) => finding.code))].map((code) => [code, report.findings.filter((finding) => finding.code === code).length])),
-  };
-  return report;
-};
+module.exports.rules.push({
+  name: 'atlas_api_done_missing_rollout_plan',
+  run: ({ root }) => root.issues
+    .filter((i) => (i.labels || []).includes('area:api')
+      && ['done', 'completed'].includes(String(i.stateType || i.status || '').toLowerCase())
+      && !i.sections.includes('Rollout Plan'))
+    .map((i) => ({
+      code: 'atlas_api_done_missing_rollout_plan',
+      severity: 'error',
+      issueId: i.id,
+      message: 'Completed API cases must include ## Rollout Plan.',
+    })),
+});
 EOF
 
 cat > .github/workflows/ztrack.yml <<'EOF'
@@ -259,7 +246,7 @@ jobs:
           fetch-depth: 0
       - uses: volter-ai/ztrack@v0
         with:
-          snapshot: .volter/snapshot.json
+          root: .volter/root.json
 EOF
 
 note "marathon workspace ready: $app"
@@ -390,9 +377,9 @@ PY
   test "$(json_field "green-$cycle.json" summary.status)" = "pass"
 
   if (( cycle % 4 == 0 )); then
-    npx ztrack snapshot export --out .volter/snapshot.json >/dev/null
-    npx ztrack check --input .volter/snapshot.json --verify-commits --json > "snapshot-$cycle.json"
-    test "$(json_field "snapshot-$cycle.json" summary.status)" = "pass"
+    npx ztrack export --out .volter/root.json >/dev/null
+    npx ztrack check --input .volter/root.json --verify-commits --json > "root-$cycle.json"
+    test "$(json_field "root-$cycle.json" summary.status)" = "pass"
   fi
 
   if (( cycle % 6 == 0 )); then
@@ -424,20 +411,20 @@ PY
 
   if (( cycle % 10 == 0 )); then
     rm -rf "$clone"
-    npx ztrack snapshot export --out .volter/snapshot.json >/dev/null
-    git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json package.json package-lock.json packages test docs scripts README.md
+    npx ztrack export --out .volter/root.json >/dev/null
+    git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json packages test docs scripts README.md
     git diff --cached --quiet || git commit -q -m "cycle $cycle adopt verified $capability"
     git clone -q "$app" "$clone"
-    (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx ztrack check --input .volter/snapshot.json --verify-commits --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
+    (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
   fi
 
   note "cycle $cycle complete area=$area issue=$issue_id"
 done
 
-npx ztrack snapshot export --out .volter/snapshot.json >/dev/null
-npx ztrack check --input .volter/snapshot.json --verify-commits --json > final-snapshot.json
-test "$(json_field final-snapshot.json summary.status)" = "pass"
-git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json package.json package-lock.json packages test docs scripts README.md
+npx ztrack export --out .volter/root.json >/dev/null
+npx ztrack check --input .volter/root.json --verify-commits --json > final-root.json
+test "$(json_field final-root.json summary.status)" = "pass"
+git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json packages test docs scripts README.md
 git diff --cached --quiet || git commit -q -m "complete marathon verified lifecycle"
 
 note "marathon complete cycles=$cycle app=$app"

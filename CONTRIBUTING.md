@@ -16,7 +16,13 @@ cd ztrack
 bun install --frozen-lockfile
 bun run typecheck
 bun test
+bun run src/cli.ts --help   # run the CLI from source (no build needed)
 ```
+
+Build artifacts (`dist/`, `visualizer/core.js`) are **not committed** — they're
+produced by `npm run build` and, for npm publish, by the `prepack` script. Run the
+CLI from source with `bun run src/cli.ts …`; build only when you need the bundled
+`dist/cli.js` (e.g. to test the packaged artifact).
 
 ## PRs
 - Keep them focused and small.

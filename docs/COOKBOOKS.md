@@ -13,8 +13,8 @@ copy-pasteable, deterministic, and honest about what ztrack can verify locally.
 | Autonomous profile setup | Agent-run projects | one script creates/adopts a repo, installs preset + profile, installs scheduler config, seeds issues, dispatches first agent | Ready in `demos/autonomous-profile-setup.sh` |
 | Existing repo adoption | Maintainers and agents | install, first issue, first gate, CI/MCP | Ready in `docs/ADOPTING.md` |
 | Preset selection | Maintainers and agents | choosing `basic`, `simple-sdlc`, `simple-spec`, or `speckit` | Ready in `docs/PRESETS.md` |
-| Installed preset shape | Teams with their own SDLC | runtime entrypoint shape + repo-local edit path | Starter in `demos/installed-preset/` |
-| CI snapshot gate | OSS maintainers | committed `.volter/snapshot.json` + GitHub Action | Ready in `docs/EXAMPLES.md` |
+| Installed preset shape | Teams with their own SDLC | `createGenericPreset` single-pipeline shape + repo-local edit path | Starter in `demos/installed-preset/` |
+| CI validated-root gate | OSS maintainers | committed `.volter/root.json` + GitHub Action | Ready in `docs/EXAMPLES.md` |
 | MCP agent loop | Agent users | `tracker_check`, evidence-first AC mutation | Ready in `docs/EXAMPLES.md` |
 | SDK/API integration | Tool builders | `createTrackerClient` issue CRUD | Ready in `demos/sdk-api/` |
 | Visualize the tracker | Anyone reviewing state | `ztrack visualizer` web view of issues, ACs, findings | Ready (`ztrack visualizer`) |
@@ -56,7 +56,7 @@ It packs the current checkout, installs that tarball into new temporary
 projects, and proves:
 
 - all four public presets produce a fake-SHA failure and real-SHA pass;
-- the committed snapshot CI gate works with `--verify-commits`;
+- the committed validated-root CI gate works with `--verify-commits`;
 - the MCP server can initialize, create an issue, add evidence, check an AC, and
   return a passing `tracker_check` report;
 - the SDK can create, view, and list issues through `createTrackerClient`.
@@ -72,9 +72,9 @@ bash demos/full-dev-cycle.sh
 It builds a realistic temporary library project, creates several implementation
 commits, installs ztrack from the packed tarball, adopts `simple-sdlc`, creates
 four issues with source markers and evidence, blocks a premature Done transition,
-proves one fake-SHA failure, fixes it, exports a CI snapshot, exercises SDK and
-MCP access, commits the intended adoption files, clones the project fresh, and
-validates the committed snapshot from that clone.
+proves one fake-SHA failure, fixes it, exports a CI validated root, exercises SDK
+and MCP access, commits the intended adoption files, clones the project fresh,
+and validates the committed root from that clone.
 
 ## Real Project Cycle
 
@@ -89,7 +89,7 @@ admin, docs, runbooks, ADRs, and Node tests. It installs ztrack from the packed
 tarball, adopts `simple-sdlc`, edits the installed preset to add a
 project-specific API rollout rule, creates four issues, exercises planning,
 implementation, review, rework, custom-rule failure, fake-SHA failure, release
-snapshot, SDK, MCP, committed workflow files, and a fresh clone validation.
+validated root, SDK, MCP, committed workflow files, and a fresh clone validation.
 
 ## Autonomous Profile Setup
 

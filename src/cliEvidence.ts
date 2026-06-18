@@ -4,7 +4,7 @@ import { exportInTotoStatements } from './attest.ts';
 import { putBlob } from './blobStore.ts';
 import { optionValue } from './cliArgs.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
-import { exportTrackerSnapshot } from './export.ts';
+import { exportTrackerRoot } from './export.ts';
 import { generateSigningKey, signStatement, verifyEnvelope, type DsseEnvelope } from './dsse.ts';
 import { addEvidenceEntry, type EvidenceSpec } from './mutate.ts';
 import { projectRootFrom } from './config.ts';
@@ -84,7 +84,7 @@ export async function handleEvidenceCommand(args: string[], client: TrackerClien
     const acId = optionValue(args, '--ac');
     const issue = await client.issue.view(issueId, { json: 'body' });
     let body = String((issue as Record<string, unknown>).body ?? '');
-    let nextId = Math.max(0, ...[...body.matchAll(/^\s*\[E(\d+)\]/gm)].map((match) => Number(match[1]))) + 1;
+    let nextId = Math.max(0, ...[...body.matchAll(/^\s*(?:-\s+)?\[E(\d+)\]/gm)].map((match) => Number(match[1]))) + 1;
     const ingested: Array<Record<string, unknown>> = [];
     const rejected: Array<Record<string, unknown>> = [];
     for (const envelope of bundle.envelopes) {
@@ -97,7 +97,7 @@ export async function handleEvidenceCommand(args: string[], client: TrackerClien
       const summary = String(predicate.summary ?? statement.predicateType.split('/').slice(-2, -1)[0] ?? 'attested evidence');
       const entryId = `E${nextId++}`;
       const acField = acId || (predicate.claims?.[0]?.acId ?? '');
-      const line = `[${entryId}] type: other sha: ${sha}${acField ? ` ac: ${acField}` : ''} justification: ${summary} (signed attestation ${statement.predicateType}, verified keyid ${verdict.keyid}${result ? `, result: ${result}` : ''})`;
+      const line = `- [${entryId}] type: other sha: ${sha}${acField ? ` ac: ${acField}` : ''} justification: ${summary} (signed attestation ${statement.predicateType}, verified keyid ${verdict.keyid}${result ? `, result: ${result}` : ''})`;
       body = /## Evidence/.test(body) ? body.replace(/## Evidence\n/, `## Evidence\n\n${line}\n`) : `${body.replace(/\n+$/, '')}\n\n## Evidence\n\n${line}\n`;
       ingested.push({ entryId, sha, predicateType: statement.predicateType, keyid: verdict.keyid });
     }
@@ -109,9 +109,9 @@ export async function handleEvidenceCommand(args: string[], client: TrackerClien
   if (args[1] === 'export') {
     if (optionValue(args, '--format') !== 'in-toto') throw new Error('tracker evidence export: only --format in-toto is supported');
     const projectRoot = projectRootFrom();
-    const snapshot = exportTrackerSnapshot({ projectRoot });
+    const root = await exportTrackerRoot({ projectRoot });
     const issuesFilter = optionValue(args, '--issues');
-    const result = exportInTotoStatements(snapshot, issuesFilter ? { issues: issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) } : {});
+    const result = exportInTotoStatements(root, issuesFilter ? { issues: issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) } : {});
     const keyPath = optionValue(args, '--sign-key');
     const text = keyPath
       ? `${JSON.stringify({ envelopes: result.statements.map((statement) => signStatement(statement, readFileSync(resolve(process.cwd(), keyPath), 'utf8'), readFileSync(resolve(process.cwd(), keyPath.replace(/\.pem$/, '.pub.pem')), 'utf8'))), skipped: result.skipped }, null, 2)}\n`

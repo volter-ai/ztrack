@@ -8,19 +8,19 @@ inputs:
   working-directory:
     description: Directory containing the .volter tracker config
     default: .
-  snapshot:
+  root:
     description: >
-      Path to a committed exported snapshot to gate. When set, ztrack validates
-      this snapshot with --verify-commits instead of exporting a live tracker.
-      This is recommended for CI because a fresh checkout does not preserve the
-      local tracker store.
+      Path to a committed validated root (the JSON written by `ztrack export`,
+      shape { "issues": [ ... ] }). When set, ztrack validates this root with
+      --verify-commits instead of reading a live tracker. Recommended for CI
+      because a fresh checkout does not preserve the local tracker store. (If you
+      have an old `.volter/snapshot.json` from a previous ztrack version, re-run
+      `ztrack export` to regenerate it as a validated root.)
     default: ''
 runs:
   using: composite
   steps:
-    - uses: actions/setup-node@v6
-      with:
-        node-version: '22'
+    - uses: oven-sh/setup-bun@v2
     - uses: actions/setup-python@v6
       with:
         python-version: '3.12'
@@ -28,13 +28,26 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
-        ZTRACK=(node "$GITHUB_ACTION_PATH/dist/cli.js")
-        if [ -n "${{ inputs.snapshot }}" ]; then
-          "${ZTRACK[@]}" check --input "${{ inputs.snapshot }}" --verify-commits
+        AP="$GITHUB_ACTION_PATH"
+        # The bundled CLI is not committed; run ztrack from source via Bun.
+        # (A pinned tag that still ships dist/cli.js is used directly.)
+        if [ -f "$AP/dist/cli.js" ]; then
+          ZTRACK=(bun "$AP/dist/cli.js")
+        else
+          [ -d "$AP/node_modules" ] || (cd "$AP" && bun install --frozen-lockfile >/dev/null)
+          ZTRACK=(bun "$AP/src/cli.ts")
+        fi
+        if [ -n "${{ inputs.root }}" ]; then
+          # Safe path: validate a committed root; the repo's preset.cjs is NOT executed.
+          "${ZTRACK[@]}" check --input "${{ inputs.root }}" --verify-commits
         else
           if [ ! -f .volter/tracker-config.json ]; then
-            echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed snapshot for CI." >&2
+            echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2
             exit 2
           fi
+          # SECURITY: this path executes the repo's .volter/tracker/validation/preset.cjs.
+          # On fork-PR events that is untrusted code on your runner — prefer the `root`
+          # input (a committed validated root) for pull_request_target / fork PRs.
+          echo "::warning title=ztrack::Live 'ztrack check' executes this repo's validation preset (preset.cjs). For untrusted/fork PRs, pass the 'root' input (a committed validated root) instead."
           "${ZTRACK[@]}" check
         fi

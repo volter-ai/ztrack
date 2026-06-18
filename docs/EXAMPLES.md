@@ -14,18 +14,18 @@ With the `basic` preset, a checked acceptance criterion needs evidence that can 
 verified against git and an evidence row in the issue. A fake commit SHA is a
 hard type error, not a warning.
 
-## CI Snapshot Gate
+## CI Validated-Root Gate
 
-For CI, prefer a committed snapshot. A fresh CI checkout does not preserve your
-local tracker store. Commit the config and installed validation with the
-snapshot.
+For CI, prefer a committed validated root. A fresh CI checkout does not preserve
+your local tracker store. Commit the config and installed validation with the
+validated root.
 
 ```bash
-npx ztrack snapshot export --out .volter/snapshot.json
-git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json
+npx ztrack export --out .volter/root.json
+git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json
 ```
 
-Then gate the snapshot in GitHub Actions:
+Then gate the validated root in GitHub Actions:
 
 ```yaml
 name: ztrack
@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 0
       - uses: volter-ai/ztrack@v0
         with:
-          snapshot: .volter/snapshot.json
+          root: .volter/root.json
 ```
 
 ## MCP Agent Loop

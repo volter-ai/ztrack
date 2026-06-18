@@ -1,0 +1,98 @@
+{
+  "displayBounds": {
+    "left": 0,
+    "top": 0,
+    "right": 1920,
+    "bottom": 1415,
+    "width": 1920,
+    "height": 1415
+  },
+  "nextWindowId": 7,
+  "terminalThemeProfile": "termfleet-dark",
+  "windows": [
+    {
+      "bounds": {
+        "bottom": 475,
+        "height": 425,
+        "left": 40,
+        "right": 844,
+        "top": 50,
+        "width": 804
+      },
+      "id": 1,
+      "kind": "terminal",
+      "name": "pm",
+      "session": "proof1-1"
+    },
+    {
+      "bounds": {
+        "bottom": 475,
+        "height": 425,
+        "left": 870,
+        "right": 1674,
+        "top": 50,
+        "width": 804
+      },
+      "id": 2,
+      "kind": "terminal",
+      "name": "develop",
+      "session": "proof1-2"
+    },
+    {
+      "bounds": {
+        "left": 40,
+        "top": 500,
+        "right": 844,
+        "bottom": 925,
+        "width": 804,
+        "height": 425
+      },
+      "id": 3,
+      "kind": "terminal",
+      "name": "pm",
+      "session": "proof1-3"
+    },
+    {
+      "bounds": {
+        "left": 872,
+        "top": 540,
+        "right": 1676,
+        "bottom": 965,
+        "width": 804,
+        "height": 425
+      },
+      "id": 4,
+      "kind": "terminal",
+      "name": "develop",
+      "session": "proof1-4"
+    },
+    {
+      "bounds": {
+        "left": 40,
+        "top": 950,
+        "right": 844,
+        "bottom": 1375,
+        "width": 804,
+        "height": 425
+      },
+      "id": 5,
+      "kind": "terminal",
+      "name": "pm",
+      "session": "proof1-5"
+    },
+    {
+      "bounds": {
+        "left": 870,
+        "top": 950,
+        "right": 1674,
+        "bottom": 1375,
+        "width": 804,
+        "height": 425
+      },
+      "id": 6,
+      "kind": "terminal",
+      "name": "review",
+      "session": "proof1-6"
+    }
+  ]
+}

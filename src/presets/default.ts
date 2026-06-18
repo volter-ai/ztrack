@@ -19,7 +19,11 @@ import { z } from 'zod';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, type Context, type Finding, type Preset, type Rule } from '../core/engine.ts';
+import { check as runCheck, type BlockRef, type Context, type Finding, type Preset, type PresetContextInput, type Rule } from '../core/engine.ts';
+import { splitIssueBundle } from '../core/bundle.ts';
+import { gitWorld } from '../core/gitWorld.ts';
+import { BlockRefSchema, formatRef } from '../core/ref.ts';
+import { blockCycles, blockerRefProblems, completionViolations, nodeIndex, normalizeBlockRefs, parseBlockToken, type RawBlockRef } from '../core/blocking.ts';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
@@ -44,6 +48,8 @@ export const DefaultAcSchema = z.object({
   version: z.number().int().min(1),                   // preset: bumps when AC text changes
   evidence: z.array(DefaultEvidenceSchema),           // core
   proof: DefaultProofSchema.optional(),               // primitive (rule requires it for passed)
+  blockedBy: z.array(BlockRefSchema).optional(),      // primitive: nodes that gate this one
+  blocks: z.array(BlockRefSchema).optional(),         // primitive: nodes this one gates
 }).strict();
 
 // primitives the default SDLC implements (issue-level)
@@ -105,15 +111,16 @@ function parseAcLine(line: string): { id: string; version?: number; text: string
   return noV ? { id: noV[1]!, text: noV[2]!.trim() } : { id: line, text: line };
 }
 
-export function parseDefault(markdown: string): unknown {
+function parseDefaultIssue(markdown: string): Record<string, unknown> | null {
   const tree = fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as MdNode;
   const issue: Record<string, unknown> = { id: '', title: '', summary: '', status: 'draft', assignee: '', acceptanceCriteria: [] };
   let inAc = false;
 
   for (const node of tree.children ?? []) {
     if (node.type === 'heading' && node.depth === 1) {
-      const { id, title } = splitIdTitle(nodeText(node));
-      issue.id = id; issue.title = title; inAc = false;
+      // first H1 is the issue id/title; a later H1 in the body is just content
+      if (!issue.id) { const { id, title } = splitIdTitle(nodeText(node)); issue.id = id; issue.title = title; }
+      inAc = false;
       continue;
     }
     if (node.type === 'heading') { inAc = /acceptance criteria/i.test(nodeText(node)); continue; }
@@ -151,6 +158,10 @@ export function parseDefault(markdown: string): unknown {
         let status: string | undefined;
         let proof: unknown;
         const evidence: unknown[] = [];
+        const blockedBy: RawBlockRef[] = [];
+        const blocks: RawBlockRef[] = [];
+        const rawList = (raw: string): RawBlockRef[] =>
+          splitList(raw).map((t) => parseBlockToken(t, issue.id as string)).filter((r): r is RawBlockRef => r !== null);
         const nested = (item.children ?? []).find((c) => c.type === 'list');
         for (const sub of nested?.children ?? []) {
           const line = firstParagraphText(sub);
@@ -160,19 +171,34 @@ export function parseDefault(markdown: string): unknown {
           if (ev) { evidence.push({ id: ev[1], image: ev[2], commit: ev[3]!.toLowerCase(), acVersion: Number(ev[4]) }); continue; }
           // proof: "<explanation>" -> ev1, ev2
           const pf = /^proof:\s*(.+?)\s*->\s*(.+)$/i.exec(line);
-          if (pf) proof = { explanation: pf[1]!.trim().replace(/^"|"$/g, ''), evidenceRefs: splitList(pf[2]!) };
+          if (pf) { proof = { explanation: pf[1]!.trim().replace(/^"|"$/g, ''), evidenceRefs: splitList(pf[2]!) }; continue; }
+          // blocking: bare id (this issue's AC, or an issue) or `issue:ac`, comma-listed
+          const bb = /^blocked-by:\s*(.+)$/i.exec(line);
+          if (bb) { blockedBy.push(...rawList(bb[1]!)); continue; }
+          const bk = /^blocks:\s*(.+)$/i.exec(line);
+          if (bk) { blocks.push(...rawList(bk[1]!)); continue; }
         }
         // status defaults from the checkbox; an explicit line can override (and is then guarded by a rule)
         if (!status) status = checked ? 'passed' : 'pending';
         const ac: Record<string, unknown> = { id, status, checked, text, evidence };
         if (version !== undefined) ac.version = version;
         if (proof !== undefined) ac.proof = proof;
+        if (blockedBy.length) ac.blockedBy = blockedBy;
+        if (blocks.length) ac.blocks = blocks;
         acs.push(ac);
       }
       issue.acceptanceCriteria = acs;
     }
   }
-  return { issues: issue.id ? [issue] : [] };
+  return issue.id ? issue : null;
+}
+
+// The multi-issue root: the loader frames every tracker issue into one bundle;
+// a single-issue document (no envelope) still parses to a one-issue root.
+export function parseDefault(markdown: string): unknown {
+  const issues = splitIssueBundle(markdown).map((s) => parseDefaultIssue(s.body)).filter((i): i is Record<string, unknown> => i !== null);
+  normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]); // classify bare refs now the whole tracker is known
+  return { issues };
 }
 
 // ── serialize: the schema shape -> canonical markdown (inverse of parse) ─────
@@ -197,6 +223,11 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): string {
     out.push(`  - status: ${ac.status}`);
     for (const ev of ac.evidence) out.push(`  - evidence ${ev.id}: image=${ev.image} commit=${ev.commit} acv=${ev.acVersion}`);
     if (ac.proof) out.push(`  - proof: "${ac.proof.explanation}" -> ${ac.proof.evidenceRefs.join(', ')}`);
+    // render refs relatively (bare) when they target this issue's own AC, absolutely
+    // otherwise; an issue-level ref (no `ac`) is just the issue id.
+    const renderRef = (r: BlockRef) => (r.ac !== undefined && r.issue === issue.id ? r.ac : formatRef(r));
+    if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
+    if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
   }
   return out.join('\n') + '\n';
 }
@@ -211,14 +242,14 @@ const STATE_RANK: Record<DefaultRoot['issues'][number]['status'], number> = {
 
 const issueMustBeAssigned: Rule<DefaultRoot> = {
   name: 'issue_must_be_assigned',
-  run: (root) => root.issues.filter((i) => i.assignee.trim() === '').map((i): Finding => ({
+  run: ({ root }) => root.issues.filter((i) => i.assignee.trim() === '').map((i): Finding => ({
     code: 'issue_missing_assignee', severity: 'error', message: `Issue ${i.id} has no assignee.`, issueId: i.id,
   })),
 };
 
 const acCheckboxMatchesStatus: Rule<DefaultRoot> = {
   name: 'ac_checkbox_matches_status',
-  run: (root) => root.issues.flatMap((i) => i.acceptanceCriteria
+  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria
     .filter((ac) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'))
     .map((ac): Finding => ({
       code: 'ac_checkbox_status_mismatch', severity: 'error',
@@ -229,7 +260,7 @@ const acCheckboxMatchesStatus: Rule<DefaultRoot> = {
 
 const uniqueAcIds: Rule<DefaultRoot> = {
   name: 'unique_ac_ids',
-  run: (root) => root.issues.flatMap((i) => {
+  run: ({ root }) => root.issues.flatMap((i) => {
     const seen = new Set<string>(); const dups: Finding[] = [];
     for (const ac of i.acceptanceCriteria) {
       if (seen.has(ac.id)) dups.push({ code: 'duplicate_ac_id', severity: 'error', message: `Duplicate AC id ${ac.id}.`, issueId: i.id, acId: ac.id });
@@ -241,7 +272,7 @@ const uniqueAcIds: Rule<DefaultRoot> = {
 
 const passedAcNeedsEvidence: Rule<DefaultRoot> = {
   name: 'passed_ac_needs_evidence',
-  run: (root) => root.issues.flatMap((i) => i.acceptanceCriteria
+  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria
     .filter((ac) => ac.status === 'passed' && ac.evidence.length === 0)
     .map((ac): Finding => ({
       code: 'passed_ac_missing_evidence', severity: 'error',
@@ -253,7 +284,7 @@ const passedAcNeedsEvidence: Rule<DefaultRoot> = {
 // how its evidence demonstrates the criterion, and the proof must cite real evidence.
 const passedAcNeedsProof: Rule<DefaultRoot> = {
   name: 'passed_ac_needs_proof',
-  run: (root) => root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac): Finding[] => {
+  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac): Finding[] => {
     if (ac.status !== 'passed') return [];
     if (!ac.proof || ac.proof.explanation.trim() === '') {
       return [{ code: 'passed_ac_missing_proof', severity: 'error', message: `AC ${ac.id} is passed but has no proof explaining how its evidence demonstrates it.`, issueId: i.id, acId: ac.id }];
@@ -272,7 +303,7 @@ const shaMatches = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
 
 const evidenceCommitExists: Rule<DefaultRoot> = {
   name: 'evidence_commit_exists',
-  run: (root, ctx) => {
+  run: ({ root, context: ctx }) => {
     const commits = ctx.git?.existingCommits;
     if (!commits) return []; // git world unavailable -> cannot verify
     return root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence
@@ -286,7 +317,7 @@ const evidenceCommitExists: Rule<DefaultRoot> = {
 
 const evidenceShaFresh: Rule<DefaultRoot> = {
   name: 'evidence_sha_fresh',
-  run: (root, ctx) => root.issues.flatMap((i) => {
+  run: ({ root, context: ctx }) => root.issues.flatMap((i) => {
     const evCount = i.acceptanceCriteria.reduce((n, ac) => n + ac.evidence.length, 0);
     if (evCount === 0 || !i.pr) return [];
     const head = ctx.git?.prs?.[i.pr.url]?.headSha;
@@ -302,7 +333,7 @@ const evidenceShaFresh: Rule<DefaultRoot> = {
 
 const evidenceAcVersionFresh: Rule<DefaultRoot> = {
   name: 'evidence_ac_version_fresh',
-  run: (root) => root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence
+  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence
     .filter((ev) => ev.acVersion !== ac.version)
     .map((ev): Finding => ({
       code: 'evidence_ac_version_stale', severity: 'error',
@@ -312,7 +343,7 @@ const evidenceAcVersionFresh: Rule<DefaultRoot> = {
 
 const stateGates: Rule<DefaultRoot> = {
   name: 'state_gates',
-  run: (root, ctx) => root.issues.flatMap((i) => {
+  run: ({ root, context: ctx }) => root.issues.flatMap((i) => {
     const out: Finding[] = [];
     const rank = STATE_RANK[i.status];
     if (rank >= STATE_RANK.ready && i.acceptanceCriteria.length === 0) {
@@ -331,14 +362,102 @@ const stateGates: Rule<DefaultRoot> = {
   }),
 };
 
+// ── cross-issue rules (the root is the whole tracker) ───────────────────────
+const uniqueIssueIds: Rule<DefaultRoot> = {
+  name: 'unique_issue_ids',
+  run: ({ root }) => {
+    const seen = new Set<string>(); const dups: Finding[] = [];
+    for (const i of root.issues) {
+      if (seen.has(i.id)) dups.push({ code: 'duplicate_issue_id', severity: 'error', message: `Duplicate issue id ${i.id}.`, issueId: i.id });
+      seen.add(i.id);
+    }
+    return dups;
+  },
+};
+
+// relations must point at issues that exist, and `blocks`/`blocked-by` must be
+// reciprocal across the tracker (a consistency check only expressible cross-issue).
+const relationsConsistent: Rule<DefaultRoot> = {
+  name: 'relations_consistent',
+  run: ({ root }) => {
+    const ids = new Set(root.issues.map((i) => i.id));
+    const out: Finding[] = [];
+    const has = (id: string, type: string, target: string) =>
+      (root.issues.find((i) => i.id === id)?.relations ?? []).some((r) => r.type === type && r.issueId === target);
+    for (const i of root.issues) {
+      for (const r of i.relations ?? []) {
+        if (!ids.has(r.issueId)) {
+          out.push({ code: 'relation_target_missing', severity: 'error', message: `Issue ${i.id} ${r.type} ${r.issueId}, which does not exist.`, issueId: i.id });
+          continue;
+        }
+        if (r.type === 'blocks' && !has(r.issueId, 'blocked-by', i.id)) {
+          out.push({ code: 'relation_not_reciprocal', severity: 'warning', message: `Issue ${i.id} blocks ${r.issueId} but ${r.issueId} does not list "Blocked by: ${i.id}".`, issueId: i.id });
+        }
+        if (r.type === 'blocked-by' && !has(r.issueId, 'blocks', i.id)) {
+          out.push({ code: 'relation_not_reciprocal', severity: 'warning', message: `Issue ${i.id} is blocked by ${r.issueId} but ${r.issueId} does not list "Blocks: ${i.id}".`, issueId: i.id });
+        }
+      }
+    }
+    return out;
+  },
+};
+
+// Blocking integrity over the UNIFIED dependency graph (issues + ACs, both edge
+// directions, and the issue-level `relations` blocks/blocked-by). A blocker must name a
+// real node, can't be the AC itself; the graph must be acyclic; and a done node can't
+// depend on an unfinished one.
+const acBlockersResolve: Rule<DefaultRoot> = {
+  name: 'ac_blockers_resolve',
+  run: ({ root }) => blockerRefProblems(root).map((p): Finding => ({
+    code: p.kind === 'self' ? 'ac_self_block' : 'ac_blocker_missing', severity: 'error', issueId: p.issueId, acId: p.acId,
+    message: p.kind === 'self'
+      ? `AC ${formatRef({ issue: p.issueId, ac: p.acId })} lists itself as a blocker.`
+      : `AC ${formatRef({ issue: p.issueId, ac: p.acId })} references ${formatRef(p.ref)}, which does not exist.`,
+  })),
+};
+
+const acBlockNoCycle: Rule<DefaultRoot> = {
+  name: 'ac_block_no_cycle',
+  run: ({ root }) => blockCycles(root).map((cycle): Finding => {
+    const head = nodeIndex(root).get(cycle[0]!)!;
+    return { code: 'ac_block_cycle', severity: 'error', message: `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.`, issueId: head.issue.id, ...(head.ac ? { acId: head.ac.id } : {}) };
+  }),
+};
+
+const acNotBlockedByUnpassed: Rule<DefaultRoot> = {
+  name: 'ac_not_blocked_by_unpassed',
+  run: ({ root }) => completionViolations(root, { isIssueDone: (i) => i.status === 'done' }).map(({ node, dep }): Finding => ({
+    code: 'ac_blocked_by_unpassed', severity: 'error', issueId: node.issue.id, ...(node.ac ? { acId: node.ac.id } : {}),
+    message: `${node.key} is done but depends on ${dep.key} (status "${dep.kind === 'ac' ? dep.ac!.status : 'incomplete'}").`,
+  })),
+};
+
+// The default SDLC's PR branches: each issue's `PR:` value (a local branch name).
+// Used by this preset's loadContext to ask the git world for branch heads.
+export function prBranchesFrom(markdown: string): string[] {
+  const parsed = DefaultRootSchema.safeParse(parseDefault(markdown));
+  return parsed.success ? parsed.data.issues.map((i) => i.pr?.url).filter((u): u is string => !!u) : [];
+}
+function defaultPrBranches(input: PresetContextInput): string[] {
+  if (input.root) return (input.root as unknown as DefaultRoot).issues.map((i) => i.pr?.url).filter((u): u is string => !!u);
+  return input.bundle ? prBranchesFrom(input.bundle) : [];
+}
+
 export const DefaultPreset: Preset<DefaultRoot> = {
   name: 'default',
   schema: DefaultRootSchema,
+  // this preset's observed facts: the git world (commits + PR head/merged).
+  loadContext: (input) => gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits }),
   parse: parseDefault,
   rules: [
     issueMustBeAssigned,
     acCheckboxMatchesStatus,
     uniqueAcIds,
+    uniqueIssueIds,
+    relationsConsistent,
+    acBlockersResolve,
+    acBlockNoCycle,
+    acNotBlockedByUnpassed,
     passedAcNeedsEvidence,
     passedAcNeedsProof,
     evidenceCommitExists,
@@ -350,7 +469,7 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   // it is a core, always-on capability — recorded automatically on any change.)
   primitives: {
     proof: true, labels: true, relations: true, linkedIssues: true, children: true,
-    sources: false, category: false,
+    blocking: true, sources: false, category: false,
   },
 };
 

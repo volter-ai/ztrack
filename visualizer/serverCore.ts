@@ -5,6 +5,5 @@
 // so the visualizer stays self-contained without shipping the engine as loose modules.
 export { check } from '../src/core/engine.ts';
 export { resolvePreset } from '../src/core/registry.ts';
-export { gitWorld, prBranchesFrom } from '../src/core/gitWorld.ts';
 export { observeChanges, readAudit, timestampsFor } from '../src/core/audit.ts';
 export { buildSpeckitBundle } from '../src/presets/speckitCore.ts';

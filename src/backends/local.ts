@@ -9,7 +9,11 @@ function run(cmd: string, args: string[], options: { cwd: string; env: NodeJS.Pr
     const stderr: Buffer[] = [];
     proc.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
     proc.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    proc.on('error', reject);
+    proc.on('error', (error: NodeJS.ErrnoException) => {
+      reject(error.code === 'ENOENT' && cmd === 'python3'
+        ? new Error('ztrack requires Python 3 (`python3` on PATH) for the local backend — install from https://python.org, or set backend "markdown" in .volter/tracker-config.json.')
+        : error);
+    });
     proc.on('close', (code, signal) => {
       const result = {
         stdout: Buffer.concat(stdout).toString('utf8'),

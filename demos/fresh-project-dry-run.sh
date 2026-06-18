@@ -75,7 +75,7 @@ else:
 
 text = text.replace(
     "## Evidence\n",
-    f"## Evidence\n\n[E1] type: pr ac: {ac} repo: demo/ztrack number: 1 head: main justification: Fresh-project dry run proof.\n",
+    f"## Evidence\n\n- [E1] type: pr ac: {ac} repo: demo/ztrack number: 1 head: main justification: Fresh-project dry run proof.\n",
     1,
 )
 path.write_text(text)
@@ -121,17 +121,17 @@ for preset in basic simple-sdlc simple-spec speckit; do
   printf '%s red/green ok\n' "$preset"
 done
 
-repo="$(new_repo "ci-snapshot")"
+repo="$(new_repo "ci-root")"
 cd "$repo"
 real_sha="$(git rev-parse --short HEAD)"
 npx ztrack init --team APP --preset basic >/dev/null
-npx ztrack issue scaffold --title "Snapshot gate" > body.md
+npx ztrack issue scaffold --title "Root gate" > body.md
 mark_first_ac_passed basic "$real_sha"
-npx ztrack issue create --title "Snapshot gate" --label type:case --state "In Progress" --assignee dry-run --body-file body.md >/dev/null
-npx ztrack snapshot export --out .volter/snapshot.json >/dev/null
-npx ztrack check --input .volter/snapshot.json --verify-commits --json > snapshot.json
-test "$(json_field snapshot.json summary.status)" = "pass"
-printf 'ci snapshot ok\n'
+npx ztrack issue create --title "Root gate" --label type:case --state "In Progress" --assignee dry-run --body-file body.md >/dev/null
+npx ztrack export --out .volter/root.json >/dev/null
+npx ztrack check --input .volter/root.json --verify-commits --json > root-check.json
+test "$(json_field root-check.json summary.status)" = "pass"
+printf 'ci root ok\n'
 
 repo="$(new_repo "mcp-loop")"
 cd "$repo"
@@ -173,15 +173,19 @@ node "$repo_root/scripts/setup-ztrack-repo.mjs" \
   --seed-demo-issues \
   --force > "$tmp_root/autonomous.json"
 test -f "$autonomous/profiles/simple-sdlc/scheduler/schedule.json"
+test -f "$autonomous/profiles/simple-sdlc/profile.json"
 test -f "$autonomous/profiles/simple-sdlc/scheduler/scripts/run.mjs"
 test -f "$autonomous/profiles/simple-sdlc/scheduler/scripts/pm-tick.mjs"
 test -f "$autonomous/profiles/simple-sdlc/scheduler/scripts/cleanup-pm.mjs"
+test -f "$autonomous/profiles/simple-sdlc/scheduler/scripts/recover-develop.mjs"
+test -f "$autonomous/profiles/simple-sdlc/scheduler/scripts/recover-review.mjs"
 test -f "$autonomous/profiles/simple-sdlc/scripts/run-agent.mjs"
 test -f "$autonomous/.agents/skills/ztrack-simple-sdlc-pm/SKILL.md"
 test -f "$autonomous/.agents/skills/ztrack-simple-sdlc-develop/SKILL.md"
 test -f "$autonomous/.claude/skills/ztrack-simple-sdlc-pm/SKILL.md"
 test -f "$autonomous/.claude/skills/ztrack-simple-sdlc-develop/SKILL.md"
 cd "$autonomous"
+npx ztrack-profile-check --repo . --profile simple-sdlc > "$tmp_root/profile-check.json"
 cat > "$tmp_root/termfleet" <<'SH'
 #!/usr/bin/env bash
 while [ "$#" -gt 0 ]; do [ "$1" = "--prompt" ] && { printf '%s' "$2" > agent-prompt.txt; exit 0; }; shift; done
@@ -195,6 +199,52 @@ test "$(cat agent-prompt.txt)" = '/ztrack-simple-sdlc-pm'
 rm agent-prompt.txt
 PATH="$tmp_root:$PATH" ZTRACK_AGENT=develop ZTRACK_ISSUE=AUTO-1 TERMFLEET_PROVIDER_URL="http://127.0.0.1:7376" node profiles/simple-sdlc/scripts/run-agent.mjs
 grep -q 'Assigned issue: AUTO-1' agent-prompt.txt
+
+cat > .gitignore <<'EOF'
+node_modules/
+agent-prompt.txt
+EOF
+git add .
+git commit -q -m "install autonomous profile"
+cat > stale.md <<'EOF'
+# Stale develop
+
+## Summary
+
+The recovery dry run needs a stale in-progress issue. [1]
+
+## Acceptance Criteria
+
+- [ ] dev/01 status: pending Recovery can requeue the issue. [1]
+
+## Sources
+
+[1] Requirement:
+> The recovery dry run needs a stale in-progress issue.
+
+## Evidence
+EOF
+npx ztrack issue create --title "Stale develop" --label type:case --state "In Progress" --assignee dry-run --body-file stale.md >/dev/null
+npx ztrack issue create --title "Stale review" --label type:case --label ztrack:reviewing --state "In Review" --assignee dry-run --body-file stale.md >/dev/null
+git add .
+git commit -q -m "seed stale recovery states"
+cat > "$tmp_root/termfleet" <<'SH'
+#!/usr/bin/env bash
+if [ "${1:-}" = "list" ]; then printf '[]\n'; exit 0; fi
+while [ "$#" -gt 0 ]; do [ "$1" = "--prompt" ] && { printf '%s' "$2" > agent-prompt.txt; exit 0; }; shift; done
+SH
+chmod +x "$tmp_root/termfleet"
+PATH="$tmp_root:$PATH" TERMFLEET_PROVIDER_URL="http://127.0.0.1:7376" node profiles/simple-sdlc/scheduler/scripts/recover-develop.mjs
+PATH="$tmp_root:$PATH" TERMFLEET_PROVIDER_URL="http://127.0.0.1:7376" node profiles/simple-sdlc/scheduler/scripts/recover-review.mjs
+npx ztrack issue list --json identifier,state,labels > recovery.json
+python3 - <<'PY'
+import json
+
+rows = {row["identifier"]: row for row in json.load(open("recovery.json"))}
+assert rows["AUTO-3"]["state"] == "Ready", rows
+assert rows["AUTO-4"]["state"] == "In Review", rows
+assert "ztrack:reviewing" not in rows["AUTO-4"].get("labels", []), rows
+PY
 printf 'autonomous profile setup ok\n'
 
 printf 'fresh-project dry run complete\n'

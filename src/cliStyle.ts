@@ -1,4 +1,4 @@
-import type { TrackerFinding, TrackerValidationReport } from './snapshotContract.ts';
+import type { CheckResult, CoreRoot, Finding } from './core/engine.ts';
 
 const wantsColor = (stream: NodeJS.WriteStream): boolean => {
   if (process.env.NO_COLOR) return false;
@@ -78,12 +78,22 @@ export function statusMark(kind: 'pass' | 'fail' | 'warn' | 'info'): string {
   return ui.blue('•');
 }
 
-function numberValue(value: unknown): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+// A small derived summary of a CheckResult — the validated root has no separate
+// "summary" object, so we compute the metric box from the findings + issue count.
+export interface CheckSummary { issues: number; errors: number; warnings: number; status: 'pass' | 'warn' | 'fail' }
+export function summarizeResult(result: CheckResult<CoreRoot>): CheckSummary {
+  const errors = result.findings.filter((f) => f.severity === 'error').length;
+  const warnings = result.findings.length - errors;
+  return {
+    issues: result.export?.issues.length ?? 0,
+    errors,
+    warnings,
+    status: errors > 0 ? 'fail' : warnings > 0 ? 'warn' : 'pass',
+  };
 }
 
-function statusText(report: TrackerValidationReport): string {
-  if (report.valid) return `${statusMark('pass')} ${ui.green('ztrack check passed')}`;
+function statusText(ok: boolean): string {
+  if (ok) return `${statusMark('pass')} ${ui.green('ztrack check passed')}`;
   return `${statusMark('fail')} ${ui.red('ztrack check failed')}`;
 }
 
@@ -91,18 +101,12 @@ function metric(label: string, value: unknown): string {
   return `${ui.dim(label)} ${ui.bold(String(value ?? 0))}`;
 }
 
-function metricBox(summary: Record<string, unknown>): string {
-  const raw = [
-    `cases ${summary.cases ?? 0}`,
-    `open ${summary.openCases ?? 0}`,
-    `errors ${summary.errors ?? 0}`,
-    `warnings ${summary.warnings ?? 0}`,
-  ].join('  •  ');
+function metricBox(summary: CheckSummary): string {
+  const raw = [`issues ${summary.issues}`, `errors ${summary.errors}`, `warnings ${summary.warnings}`].join('  •  ');
   const content = [
-    metric('cases', summary.cases),
-    metric('open', summary.openCases),
-    numberValue(summary.errors) > 0 ? `${ui.dim('errors')} ${ui.red(String(summary.errors))}` : metric('errors', summary.errors),
-    numberValue(summary.warnings) > 0 ? `${ui.dim('warnings')} ${ui.yellow(String(summary.warnings))}` : metric('warnings', summary.warnings),
+    metric('issues', summary.issues),
+    summary.errors > 0 ? `${ui.dim('errors')} ${ui.red(String(summary.errors))}` : metric('errors', summary.errors),
+    summary.warnings > 0 ? `${ui.dim('warnings')} ${ui.yellow(String(summary.warnings))}` : metric('warnings', summary.warnings),
   ].join(ui.dim('  •  '));
   const width = raw.length + 4;
   return [
@@ -112,12 +116,12 @@ function metricBox(summary: Record<string, unknown>): string {
   ].join('\n');
 }
 
-function findingGroupKey(finding: TrackerFinding): string {
-  return finding.issue || 'workspace';
+function findingGroupKey(finding: Finding): string {
+  return finding.issueId || 'workspace';
 }
 
-function findingLevel(finding: TrackerFinding): string {
-  return finding.level === 'error'
+function findingLevel(finding: Finding): string {
+  return finding.severity === 'error'
     ? ui.redBadge(' x error ')
     : ui.yellowBadge(' warn ');
 }
@@ -126,19 +130,19 @@ function codeLabel(code: string): string {
   return ui.dim(code);
 }
 
-export function renderCheckReport(report: TrackerValidationReport, options: { errorsOnly?: boolean; maxFindings?: number } = {}): string {
-  const summary = report.summary as Record<string, unknown>;
-  const findings = report.findings
-    .filter((finding) => !options.errorsOnly || finding.level === 'error')
+export function renderCheckReport(result: CheckResult<CoreRoot>, options: { errorsOnly?: boolean; maxFindings?: number } = {}): string {
+  const summary = summarizeResult(result);
+  const findings = result.findings
+    .filter((finding) => !options.errorsOnly || finding.severity === 'error')
     .slice()
     .sort((a, b) => {
-      if (a.level !== b.level) return a.level === 'error' ? -1 : 1;
+      if (a.severity !== b.severity) return a.severity === 'error' ? -1 : 1;
       return findingGroupKey(a).localeCompare(findingGroupKey(b)) || a.code.localeCompare(b.code);
     });
   const maxFindings = options.maxFindings ?? 120;
   const shown = findings.slice(0, maxFindings);
   const lines: string[] = [
-    statusText(report),
+    statusText(result.ok),
     metricBox(summary),
   ];
 
@@ -147,7 +151,7 @@ export function renderCheckReport(report: TrackerValidationReport, options: { er
   } else {
     lines.push('', ui.bold('Findings'));
     let currentGroup = '';
-    const groupItems = new Map<string, TrackerFinding[]>();
+    const groupItems = new Map<string, Finding[]>();
     for (const finding of shown) {
       const group = findingGroupKey(finding);
       groupItems.set(group, [...(groupItems.get(group) ?? []), finding]);
@@ -172,7 +176,7 @@ export function renderCheckReport(report: TrackerValidationReport, options: { er
     }
   }
 
-  const exitHint = report.valid
+  const exitHint = result.ok
     ? `${statusMark('pass')} ${ui.dim('exit 0')}`
     : `${statusMark('fail')} ${ui.dim('exit 1: produce evidence or lower the configured rigor')}`;
   lines.push('', exitHint);

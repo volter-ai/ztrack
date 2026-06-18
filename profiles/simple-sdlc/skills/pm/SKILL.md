@@ -9,6 +9,7 @@ Read:
 
 - `profiles/simple-sdlc/standards/workflow.md`
 - `profiles/simple-sdlc/standards/issue-and-evidence.md`
+- `profiles/simple-sdlc/profile.json`
 
 ## Tick
 

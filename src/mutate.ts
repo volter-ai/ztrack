@@ -2,9 +2,9 @@
 // and instead state intent — `tracker ac check dev/03 --commit <sha>
 // --evidence E1` — and the mutation engine performs a SCOPED edit: the body
 // is canonicalized (fmt), exactly one checkbox item changes, everything else
-// stays byte-identical. Field semantics mirror the exporter's derivation
+// stays byte-identical. Field semantics mirror the preset parser's derivation
 // (status field, Commit:, [EN]/[PN] refs, AC-Version stamp via
-// acVersionForItemBody) so the snapshot reflects the mutation faithfully.
+// acVersionForItemBody) so the next validation reflects the mutation faithfully.
 import { acVersionForItemBody } from './acVersion.ts';
 import { canonicalizeIssueMarkdown, parseMarkdownDocument } from './markdownModel.ts';
 import type { MarkdownCheckboxItem } from './markdownModel.ts';
@@ -115,7 +115,8 @@ export type EvidenceAddResult = { body: string; evidenceId: string };
 // `[En] type: <t> key: value ...` parsed by parseEvidenceSection.
 export function addEvidenceEntry(rawBody: string, spec: EvidenceSpec): EvidenceAddResult {
   const canonical = canonicalizeIssueMarkdown(rawBody);
-  const existingNums = [...canonical.matchAll(/^\s*\[E(\d+)\]/gm)].map((match) => Number(match[1]));
+  // `[En]` entries are GFM list items (`- [En] …`); tolerate a legacy bare line too.
+  const existingNums = [...canonical.matchAll(/^\s*(?:-\s+)?\[E(\d+)\]/gm)].map((match) => Number(match[1]));
   const id = `E${(existingNums.length ? Math.max(...existingNums) : 0) + 1}`;
 
   const fields: string[] = [`type: ${spec.type}`];
@@ -131,7 +132,9 @@ export function addEvidenceEntry(rawBody: string, spec: EvidenceSpec): EvidenceA
   push('ac', spec.ac);
   // justification may contain spaces; it is the last field (runs to EOL).
   push('justification', spec.justification);
-  const entryLine = `[${id}] ${fields.join(' ')}`;
+  // Evidence entries are GFM list items so each is its own node (the validator
+  // discovers one record per node — no line-scanning).
+  const entryLine = `- [${id}] ${fields.join(' ')}`;
 
   const lines = canonical.split('\n');
   const evidenceHeadingIdx = lines.findIndex((line) => /^#{1,6}\s+Evidence\s*$/i.test(line));
@@ -139,7 +142,7 @@ export function addEvidenceEntry(rawBody: string, spec: EvidenceSpec): EvidenceA
     const trimmed = canonical.replace(/\n+$/, '');
     return { body: canonicalizeIssueMarkdown(`${trimmed}\n\n## Evidence\n\n${entryLine}\n`), evidenceId: id };
   }
-  // Insert after the last existing [E..] line in the section, else right after
+  // Insert after the last existing [E..] entry in the section, else right after
   // the heading. The section ends at the next heading or EOF.
   let sectionEnd = lines.length;
   for (let i = evidenceHeadingIdx + 1; i < lines.length; i++) {
@@ -147,7 +150,7 @@ export function addEvidenceEntry(rawBody: string, spec: EvidenceSpec): EvidenceA
   }
   let insertAt = evidenceHeadingIdx + 1;
   for (let i = evidenceHeadingIdx + 1; i < sectionEnd; i++) {
-    if (/^\s*\[E\d+\]/.test(lines[i]!)) insertAt = i + 1;
+    if (/^\s*(?:-\s+)?\[E\d+\]/.test(lines[i]!)) insertAt = i + 1;
   }
   lines.splice(insertAt, 0, entryLine);
   return { body: canonicalizeIssueMarkdown(lines.join('\n')), evidenceId: id };

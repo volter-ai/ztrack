@@ -1,11 +1,13 @@
-// The git-world context provider, shared by the CLI and the board. Builds the
-// injected `Context` for the default preset from a real repo:
-//   existingCommits — every commit in the repo
+// Preset-agnostic git facts for a preset's `loadContext`. Given a repo and the PR
+// branches a preset cares about, it builds the `Context.git` an SDLC's
+// freshness/merge/commit-existence rules read:
+//   existingCommits — every commit in the repo (withheld when verifyCommits===false)
 //   prs[branch]     — { headSha = branch tip, merged = contained in main }
-// Local PR model (no GitHub): an issue's `PR:` value is a git branch name.
+// Local PR model (no GitHub): an issue's `PR:` value is a git branch name. Which
+// branches matter is the PRESET's call (it passes them in) — this module knows
+// nothing about any preset's schema.
 
 import { execFileSync } from 'node:child_process';
-import { parseDefault, DefaultRootSchema } from '../presets/default.ts';
 import type { Context } from './engine.ts';
 
 export function git(repo: string, args: string[]): string {
@@ -16,8 +18,7 @@ export function git(repo: string, args: string[]): string {
   }
 }
 
-export function gitWorld(repo: string, prBranches: string[]): Context {
-  const existingCommits = git(repo, ['log', '--all', '--format=%H']).split('\n').filter(Boolean);
+export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommits?: boolean } = {}): Context {
   const prs: Record<string, { headSha?: string; merged?: boolean }> = {};
   for (const branch of prBranches) {
     const headSha = git(repo, ['rev-parse', '--verify', `${branch}^{commit}`]) || undefined;
@@ -30,11 +31,9 @@ export function gitWorld(repo: string, prBranches: string[]): Context {
     }
     prs[branch] = { ...(headSha ? { headSha } : {}), merged };
   }
+  // verifyCommits===false withholds commit existence so commit-verification rules
+  // skip (the typed replacement for the old `--verify-commits` opt-in).
+  if (opts.verifyCommits === false) return { git: { prs } };
+  const existingCommits = git(repo, ['log', '--all', '--format=%H']).split('\n').filter(Boolean);
   return { git: { existingCommits, prs } };
-}
-
-export function prBranchesFrom(markdown: string): string[] {
-  const parsed = DefaultRootSchema.safeParse(parseDefault(markdown));
-  if (!parsed.success) return [];
-  return parsed.data.issues.map((i) => i.pr?.url).filter((u): u is string => !!u);
 }

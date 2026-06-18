@@ -2,9 +2,9 @@
 // surface third-party agents use to get typechecked bookkeeping. Newline-
 // delimited JSON-RPC 2.0; no SDK dependency. Tools mirror the CLI surface:
 // issue read/write, scoped AC mutations, fmt, and the rulebook check.
-import { checkTrackerSnapshot } from './check.ts';
+import { checkTracker } from './check.ts';
+import { summarizeResult } from './cliStyle.ts';
 import { initTrackerPresets, initTrackerProject, projectRootFrom } from './config.ts';
-import { exportTrackerSnapshot } from './export.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { applyAcMutation, addEvidenceEntry } from './mutate.ts';
 import type { AcStatus, EvidenceSpec } from './mutate.ts';
@@ -23,7 +23,7 @@ const TOOLS = [
   },
   {
     name: 'tracker_check',
-    description: 'Export the tracker snapshot and run the full verification rulebook (state gates, evidence/SHA anchoring). Returns the report; valid=false means findings must be resolved with evidence.',
+    description: 'Validate the tracker through the single pipeline (parse → strict schema → pure rules: state gates, evidence/SHA anchoring). Returns { ok, summary, findings }; ok=false means findings must be resolved with evidence.',
     inputSchema: { type: 'object', properties: {
       issues: { type: 'string', description: 'Comma-separated case identifiers to restrict to' },
       categories: { type: 'object', description: 'Advanced preset-specific category override, if the installed validation supports it' },
@@ -104,12 +104,13 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
   switch (name) {
     case 'tracker_check': {
       const issues = args.issues ? String(args.issues).split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
-      const snapshot = exportTrackerSnapshot({ projectRoot, ...(issues ? { issues } : {}) });
-      return checkTrackerSnapshot(snapshot, {
+      const result = await checkTracker({
         projectRoot,
         ...(issues ? { issues } : {}),
         ...(args.categories ? { categories: args.categories } : {}),
+        verifyCommits: true,
       });
+      return { ok: result.ok, summary: summarizeResult(result), findings: result.findings };
     }
     case 'tracker_issue_list':
       return client.issue.list({ ...(args.state ? { state: args.state } : {}), limit: args.limit ?? 20, json: 'identifier,title,state' });
@@ -172,9 +173,11 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
 
 export async function serveMcp(): Promise<void> {
   const write = (message: Record<string, unknown>) => process.stdout.write(`${JSON.stringify(message)}\n`);
+  const MAX_LINE = 16 * 1024 * 1024; // 16 MiB per JSON-RPC line — guard against an unbounded no-newline stream
   let buffer = '';
   for await (const chunk of process.stdin) {
     buffer += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk);
+    if (buffer.length > MAX_LINE && !buffer.includes('\n')) { buffer = ''; continue; } // drop an oversized partial line
     let index;
     while ((index = buffer.indexOf('\n')) >= 0) {
       const line = buffer.slice(0, index).trim();

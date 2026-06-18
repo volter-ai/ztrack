@@ -6,5 +6,5 @@ const cli = process.env.TERMFLEET_CLI || 'termfleet', agent = process.env.TERMFL
 const url = process.env.TERMFLEET_PROVIDER_URL || 'http://127.0.0.1:7376', base = agent === 'claude' ? `/ztrack-simple-sdlc-${name}` : `$ztrack-simple-sdlc-${name}`;
 const prompt = issue ? `${base}\n\nAssigned issue: ${issue}. Work only this issue.` : base;
 const setup = `export PATH=${q(`${process.cwd()}/node_modules/.bin`)}:$PATH; export TERMFLEET_CLI=${q(cli)}; export TERMFLEET_PROVIDER_URL=${q(url)}; export TERMFLEET_AGENT=${q(agent)}${issue ? `; export ZTRACK_ISSUE=${q(issue)}` : ''}`;
-const r = spawnSync(`${cli} ${agent} new -y --url ${q(url)} --name ${q(`ztrack-${name}`)} --cwd ${q(process.cwd())} --prompt ${q(prompt)} --setup-command ${q(setup)}`, { shell: true, stdio: 'inherit', timeout: Number(process.env.TERMFLEET_LAUNCH_TIMEOUT_MS || 45000) });
+const r = spawnSync(`${cli} ${agent} new -y --url ${q(url)} --name ${q(`ztrack-${name}`)} --cwd ${q(process.cwd())} --prompt ${q(prompt)} --setup-command ${q(setup)} --create-timeout-ms ${Number(process.env.TERMFLEET_LAUNCH_TIMEOUT_MS || 45000)}`, { shell: true, stdio: 'inherit', timeout: Number(process.env.TERMFLEET_LAUNCH_TIMEOUT_MS || 45000) });
 process.exit(r.error?.code === 'ETIMEDOUT' ? 0 : (r.status ?? 1));

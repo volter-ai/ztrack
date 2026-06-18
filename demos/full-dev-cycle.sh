@@ -58,7 +58,7 @@ $source
 
 ## Evidence
 
-[E1] type: pr ac: dev/01 repo: example/taskflow-kit number: 1 head: main justification: Tests and implementation cover dev/01.
+- [E1] type: pr ac: dev/01 repo: example/taskflow-kit number: 1 head: main justification: Tests and implementation cover dev/01.
 EOF
 }
 
@@ -76,7 +76,7 @@ cat > package.json <<'EOF'
   "scripts": {
     "test": "node --test test/*.test.js",
     "check": "npm test && ztrack check",
-    "snapshot": "ztrack snapshot export --out .volter/snapshot.json"
+    "export": "ztrack export --out .volter/root.json"
   },
   "dependencies": {},
   "devDependencies": {}
@@ -271,7 +271,7 @@ text = text.replace(
     "- [ ] dev/02 status: pending Renaming rejects blank titles. [1]",
     f"- [x] dev/02 status: passed Renaming rejects blank titles. commit: {sys.argv[1]} [E2]",
 )
-text += "\n[E2] type: pr ac: dev/02 repo: example/taskflow-kit number: 2 head: main justification: Rename validation throws on blank titles.\n"
+text += "\n- [E2] type: pr ac: dev/02 repo: example/taskflow-kit number: 2 head: main justification: Rename validation throws on blank titles.\n"
 p.write_text(text)
 PY
 npx ztrack issue edit OSS-1 --body-file rename.md >/dev/null
@@ -303,7 +303,7 @@ PY
 npx ztrack issue edit OSS-4 --body-file broken.md >/dev/null
 npx ztrack check --json > green.json
 test "$(json_field green.json summary.status)" = "pass"
-test "$(json_field green.json summary.cases)" -eq 4
+test "$(json_field green.json summary.issues)" -eq 4
 
 npx ztrack issue list --label type:case --limit 10 --json identifier,title,state > issue-list.json
 test "$(python3 - <<'PY'
@@ -312,9 +312,9 @@ print(len(json.load(open("issue-list.json"))))
 PY
 )" -ge 3
 
-npx ztrack snapshot export --out .volter/snapshot.json >/dev/null
-npx ztrack check --input .volter/snapshot.json --verify-commits --json > snapshot-check.json
-test "$(json_field snapshot-check.json summary.status)" = "pass"
+npx ztrack export --out .volter/root.json >/dev/null
+npx ztrack check --input .volter/root.json --verify-commits --json > root-check.json
+test "$(json_field root-check.json summary.status)" = "pass"
 
 mkdir -p .github/workflows
 cat > .github/workflows/ztrack.yml <<'EOF'
@@ -332,7 +332,7 @@ jobs:
           fetch-depth: 0
       - uses: volter-ai/ztrack@v0
         with:
-          snapshot: .volter/snapshot.json
+          root: .volter/root.json
 EOF
 
 cat > sdk-cycle.mjs <<'EOF'
@@ -373,14 +373,14 @@ cat > .gitignore.local <<'EOF'
 red.json
 green.json
 issue-list.json
-snapshot-check.json
+root-check.json
 mcp-cycle.jsonl
 sdk-cycle.json
 sdk-cycle.mjs
 *.md.tmp
 EOF
 
-git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/snapshot.json package.json package-lock.json src test docs examples README.md
+git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json src test docs examples README.md
 git commit -q -m "adopt ztrack with verified task evidence"
 
 status="$(git status --short --ignored=no)"
@@ -393,7 +393,7 @@ git clone -q "$app" "$clone"
 cd "$clone"
 npm ci >/dev/null
 npm test >/dev/null
-npx ztrack check --input .volter/snapshot.json --verify-commits --json > clone-check.json
+npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json
 test "$(json_field clone-check.json summary.status)" = "pass"
 
 printf 'full dev cycle ok\n'

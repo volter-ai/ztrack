@@ -8,8 +8,8 @@
 // That makes the freshness and `done`-merge checks real against a local repo.
 
 import { readFileSync } from 'node:fs';
-import { checkDefault } from '../presets/default.ts';
-import { gitWorld, prBranchesFrom } from './gitWorld.ts';
+import { checkDefault, prBranchesFrom } from '../presets/default.ts';
+import { gitWorld } from './gitWorld.ts';
 
 function main() {
   const args = process.argv.slice(2);

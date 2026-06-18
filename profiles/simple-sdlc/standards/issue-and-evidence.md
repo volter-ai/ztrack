@@ -29,7 +29,7 @@ Example:
 
 ## Evidence
 
-[E1] type: pr ac: dev/01 repo: example/app number: 12 head: main justification: Test covers insufficient stock branch.
+- [E1] type: pr ac: dev/01 repo: example/app number: 12 head: main justification: Test covers insufficient stock branch.
 ```
 
 For local-backend work with no PR, use truthful test evidence:

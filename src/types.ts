@@ -27,8 +27,8 @@ export interface TrackerConfig {
   organization?: {
     /**
      * @deprecated Legacy named selector. New repos must use validation.entrypoint
-     * installed by `ztrack init --preset <starter>`.
-     * The current tracker-snapshot rulebook also honors organization.grammar/check.
+     * installed by `ztrack init --preset <starter>`, which resolves to a core
+     * preset (`createGenericPreset`). Configs with only this field are rejected.
      */
     validationPreset?: string;
     /** Regex sources (no flags) for external issue keys cited in issue bodies/sources, e.g. "APP-\\d+". */
@@ -54,9 +54,9 @@ export interface TrackerConfig {
      */
     grammar?: { extends?: string; slotAliases?: Record<string, string[]> };
     /**
-     * Check selector for the current tracker-snapshot rulebook.
-     * Absent = full strictness (all categories at max depth, all profiles).
-     * New validation semantics belong in preset Zod schemas, not here.
+     * Rule-category selector for `ztrack check` (maps to Context.categories).
+     * Absent = run every rule. New validation semantics belong in preset Zod
+     * schemas + rules, not here.
      */
     check?: {
       /** Per-category depth: { sourced, code, visual, behavioral } 0-3 (0 = off). */
