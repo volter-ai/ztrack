@@ -7,8 +7,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const name = process.env.ZTRACK_AGENT;
-if (!name) throw new Error('ZTRACK_AGENT required');
+// AUTONOMY_AGENT is the generic launcher convention (e.g. the compiler-generated pm-tick launcher);
+// ZTRACK_AGENT is how PM's skill dispatches workers. Accept either — both name an agent.
+const name = process.env.AUTONOMY_AGENT || process.env.ZTRACK_AGENT;
+if (!name) throw new Error('AUTONOMY_AGENT or ZTRACK_AGENT required');
 const issue = process.env.ZTRACK_ISSUE || '';
 
 const here = dirname(fileURLToPath(import.meta.url));
