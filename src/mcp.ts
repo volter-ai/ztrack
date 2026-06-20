@@ -7,7 +7,7 @@ import { summarizeResult } from './cliStyle.ts';
 import { initTrackerPresets, initTrackerProject, projectRootFrom } from './config.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { applyAcMutation, addEvidenceEntry } from './mutate.ts';
-import type { AcStatus, EvidenceSpec } from './mutate.ts';
+import type { AcStatus, BlockField, EvidenceSpec } from './mutate.ts';
 import { createTrackerClient } from './sdk.ts';
 
 type JsonRpcRequest = { jsonrpc: '2.0'; id?: number | string | null; method: string; params?: Record<string, any> };
@@ -79,6 +79,16 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { issue: { type: 'string' }, acId: { type: 'string' }, status: { type: 'string' } }, required: ['issue', 'acId', 'status'] },
   },
   {
+    name: 'tracker_ac_block',
+    description: 'Declare that an acceptance criterion is blocked by (or blocks, with blocks=true) other nodes. Each ref is a bare AC id in this issue ("dev/02"), a cross-issue AC ("APP-2:dev/01"), or a whole issue ("APP-4"). Validated as a dependency graph by tracker_check.',
+    inputSchema: { type: 'object', properties: { issue: { type: 'string' }, acId: { type: 'string' }, refs: { type: 'array', items: { type: 'string' } }, blocks: { type: 'boolean', description: 'set the forward `blocks` edge instead of `blocked-by`' } }, required: ['issue', 'acId', 'refs'] },
+  },
+  {
+    name: 'tracker_ac_unblock',
+    description: 'Remove blocking refs from an acceptance criterion (or all of that field when refs is omitted). blocks=true targets the `blocks` field instead of `blocked-by`.',
+    inputSchema: { type: 'object', properties: { issue: { type: 'string' }, acId: { type: 'string' }, refs: { type: 'array', items: { type: 'string' } }, blocks: { type: 'boolean' } }, required: ['issue', 'acId'] },
+  },
+  {
     name: 'tracker_fmt',
     description: 'Canonicalize an issue body (whitespace, checkbox markers, section order). write=false previews.',
     inputSchema: { type: 'object', properties: { issue: { type: 'string' }, write: { type: 'boolean' } }, required: ['issue'] },
@@ -145,6 +155,18 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
         : name === 'tracker_ac_uncheck'
           ? applyAcMutation(body, { op: 'uncheck', acId: String(args.acId) })
           : applyAcMutation(body, { op: 'set-status', acId: String(args.acId), status: String(args.status) as AcStatus });
+      await client.issue.edit(String(args.issue), { body: result.body });
+      return { issue: args.issue, acId: result.acId, changed: result.changed, itemAfter: result.itemAfter };
+    }
+    case 'tracker_ac_block':
+    case 'tracker_ac_unblock': {
+      const issue = await client.issue.view(String(args.issue), { json: 'body' });
+      const body = String((issue as Record<string, unknown>).body ?? '');
+      const field: BlockField = args.blocks ? 'blocks' : 'blocked-by';
+      const refs = Array.isArray(args.refs) ? args.refs.map(String) : undefined;
+      const result = name === 'tracker_ac_block'
+        ? applyAcMutation(body, { op: 'block', acId: String(args.acId), field, refs: refs ?? [] })
+        : applyAcMutation(body, { op: 'unblock', acId: String(args.acId), field, ...(refs ? { refs } : {}) });
       await client.issue.edit(String(args.issue), { body: result.body });
       return { issue: args.issue, acId: result.acId, changed: result.changed, itemAfter: result.itemAfter };
     }

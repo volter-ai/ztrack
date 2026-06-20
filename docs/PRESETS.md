@@ -197,6 +197,10 @@ The default reference preset authors the same via sub-lines under the AC:
   - blocks: AC-4
 ```
 
+Set blockers with a structured mutation rather than hand-editing the body:
+`ztrack ac block <issue> <acId> <refs…> [--blocks]` and `ztrack ac unblock …` (also the
+`tracker_ac_block` / `tracker_ac_unblock` MCP tools).
+
 A blocker targets either a **specific AC** (`APP-2:dev/01`, or a bare `dev/02` for
 this issue) or a **whole issue** (`APP-4` — satisfied when all of APP-4's ACs are).
 A bare token is read as a local AC if one exists, otherwise as an issue. Blocking

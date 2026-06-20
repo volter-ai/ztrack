@@ -1,9 +1,13 @@
 // @ts-nocheck — standalone Bun app; not part of the tsc build (tsconfig only includes src/**).
 // ztrack visualizer — a preset-agnostic web view over the CORE export (not a
-// legacy snapshot contract). For a repo, it runs every tracker/*.md through its
-// preset (resolved from the core registry) with that preset's local context, and
-// returns the validated export + findings. The client renders the generic core
-// model and defers preset-specific fields to a per-preset extension.
+// legacy snapshot contract). For a configured repo it routes through the SAME
+// pipeline as `ztrack check`/`export`: the active preset is resolved from the
+// repo's tracker-config `validation.entrypoint` (repo-local presets load) and
+// issues are read via the configured backend (sqlite-backed repos work), then
+// validated and returned with findings. With no tracker-config it falls back to
+// the legacy per-document path (bare tracker/*.md, or speckit specs/). The client
+// renders the generic core model and defers preset-specific fields to a per-preset
+// extension.
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, normalize, sep } from 'node:path';
@@ -16,7 +20,17 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const useSource = existsSync(join(here, '..', 'src', 'core', 'engine.ts'));
 const core = useSource ? await import('./serverCore.ts') : await import('./core.js');
-const { check, resolvePreset, observeChanges, readAudit, timestampsFor, buildSpeckitBundle } = core;
+const {
+  check,
+  resolvePreset,
+  observeChanges,
+  readAudit,
+  timestampsFor,
+  buildSpeckitBundle,
+  loadTrackerConfig,
+  resolveTrackerValidation,
+  loadValidationInput,
+} = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
 const PROJECT_DIR = (process.env.PROJECT_DIR ?? process.cwd()).replace(/\/$/, '');
@@ -55,17 +69,58 @@ function documents(preset: string): string[] {
   return existsSync(TRACKER_DIR) ? readdirSync(TRACKER_DIR).filter((f) => f.endsWith('.md')).sort().map((f) => readFileSync(join(TRACKER_DIR, f), 'utf8')) : [];
 }
 
+// Load issues + findings the way `ztrack check`/`export` do: resolve the active
+// preset from the repo's tracker-config `validation.entrypoint` (so a repo-local
+// preset like peak's `peakcore` loads — not "Unknown preset"), and read issues
+// through the configured backend (so a sqlite-backed repo yields its real issues —
+// not an empty board from globbing tracker/*.md). One bundle, one check — the same
+// pipeline the CLI runs. Returns null when there is no tracker-config to honor
+// (e.g. a bare markdown/speckit dir), so the caller falls back to per-document.
+async function configuredBoard(): Promise<{ preset: unknown; presetName: string; issues: unknown[]; findings: unknown[] } | null> {
+  let config: { validation?: { entrypoint?: string } };
+  try {
+    config = loadTrackerConfig(PROJECT_DIR);
+  } catch {
+    return null; // no tracker-config — not a configured repo; use the doc-glob path
+  }
+  // Honor validation.entrypoint exactly as check does; fall back to the core
+  // registry by the requested preset name only when no entrypoint is configured.
+  const preset = config.validation?.entrypoint?.trim()
+    ? resolveTrackerValidation(config, PROJECT_DIR)
+    : resolvePreset(PRESET);
+  const { bundle, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
+  const r = check(preset, bundle, context);
+  return {
+    preset,
+    presetName: preset.name ?? PRESET,
+    issues: r.export ? [...r.export.issues] : [],
+    findings: [...r.findings],
+  };
+}
+
 async function board() {
-  const preset = resolvePreset(PRESET);
+  const configured = await configuredBoard();
+  let preset: unknown;
+  let presetName: string;
   const issues: unknown[] = [];
   const findings: unknown[] = [];
-  for (const doc of documents(PRESET)) {
-    // Context is preset-owned: each preset's loadContext gathers exactly the facts
-    // its rules read (git/world/services). The visualizer assumes nothing.
-    const ctx = (await preset.loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
-    const r = check(preset, doc, ctx);
-    if (r.export) issues.push(...r.export.issues);
-    findings.push(...r.findings);
+  if (configured) {
+    preset = configured.preset;
+    presetName = configured.presetName;
+    issues.push(...configured.issues);
+    findings.push(...configured.findings);
+  } else {
+    // No tracker-config: legacy per-document path (bare tracker/*.md or speckit specs/).
+    preset = resolvePreset(PRESET);
+    presetName = (preset as { name?: string }).name ?? PRESET;
+    for (const doc of documents(PRESET)) {
+      // Context is preset-owned: each preset's loadContext gathers exactly the facts
+      // its rules read (git/world/services). The visualizer assumes nothing.
+      const ctx = (await (preset as { loadContext?: (i: unknown) => unknown }).loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
+      const r = check(preset, doc, ctx);
+      if (r.export) issues.push(...r.export.issues);
+      findings.push(...r.findings);
+    }
   }
   let mtime: string | null = null;
   try { mtime = existsSync(TRACKER_DIR) ? statSync(TRACKER_DIR).mtime.toISOString() : null; } catch { mtime = null; }
@@ -83,8 +138,8 @@ async function board() {
   }
   return {
     title: 'tracker',
-    preset: PRESET,
-    primitives: preset.primitives ?? {}, // which primitives this SDLC implements
+    preset: presetName,
+    primitives: (preset as { primitives?: Record<string, unknown> }).primitives ?? {}, // which primitives this SDLC implements
     projectDir: PROJECT_DIR,
     fetchedAt: new Date().toISOString(),
     trackerChangedAt: mtime,

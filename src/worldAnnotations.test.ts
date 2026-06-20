@@ -3,12 +3,12 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-// The world adapters read the mirrored world through @volter/twin's generic surface.
+// The world adapters read the mirrored world through @volter-ai-dev/twin's generic surface.
 // twin is an OPTIONAL peer (absent in this standalone repo), so stub its surface to
 // exercise the adapters' own logic (annotation CRUD + integrity validation).
 type Ev = { id: string; service: string; type: string; origin: string; occurredAt: string; subject?: unknown; data?: Record<string, unknown>; external?: { id?: string; url?: string }; raw?: unknown };
 let EVENTS: Ev[] = [];
-mock.module('@volter/twin', () => ({
+mock.module('@volter-ai-dev/twin', () => ({
   DELTA_TYPE_SUFFIX: '.delta',
   isEgressEventType: (t: string) => t.endsWith('.egress'),
   worldStateRoot: (root?: string) => root ?? process.cwd(), // annotations live at <root>/<service>/annotations.jsonl

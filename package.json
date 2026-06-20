@@ -27,8 +27,6 @@
     "!dist/src/presets/default.*",
     "!dist/src/presets/spec.*",
     "!dist/src/presets/speckitCore.*",
-    "!dist/src/worldAnnotations.*",
-    "!dist/src/worldSourceBooks.*",
     "hooks",
     "visualizer",
     "!visualizer/node_modules",
@@ -94,6 +92,14 @@
     "./dsse": {
       "types": "./dist/src/dsse.d.ts",
       "default": "./dist/src/dsse.js"
+    },
+    "./world-annotations": {
+      "types": "./dist/src/worldAnnotations.d.ts",
+      "default": "./dist/src/worldAnnotations.js"
+    },
+    "./world-source-books": {
+      "types": "./dist/src/worldSourceBooks.d.ts",
+      "default": "./dist/src/worldSourceBooks.js"
     }
   },
   "bin": {
@@ -120,13 +126,14 @@
   "devDependencies": {
     "@types/bun": "^1.2.20",
     "@types/node": "^24.0.0",
+    "@volter-ai-dev/twin": "^0.1.0",
     "typescript": "^5.9.0"
   },
   "peerDependencies": {
-    "@volter/twin": "*"
+    "@volter-ai-dev/twin": "*"
   },
   "peerDependenciesMeta": {
-    "@volter/twin": {
+    "@volter-ai-dev/twin": {
       "optional": true
     }
   },

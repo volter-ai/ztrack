@@ -237,7 +237,7 @@ GraphQL-shaped query against the local tracker store.
   }
 
   if (args[0] === 'annotations') {
-    throw new Error('ztrack annotations requires the optional @volter/twin peer dependency and a mirrored world store.');
+    throw new Error('ztrack annotations requires the optional @volter-ai-dev/twin peer dependency and a mirrored world store.');
   }
 
   if (await handleEvidenceCommand(args, client)) return;
@@ -246,13 +246,16 @@ GraphQL-shaped query against the local tracker store.
     const action = args[1];
     const issueId = args[2];
     const acId = args[3];
-    if (!action || !issueId || !acId || !['check', 'uncheck', 'set-status'].includes(action)) {
-      throw new Error('usage: tracker ac <check|uncheck|set-status> <issue> <acId> [--commit sha] [--evidence E1,E2] [--proof P1] [--status s] [--no-anchor] [--dry-run]');
+    if (!action || !issueId || !acId || !['check', 'uncheck', 'set-status', 'block', 'unblock'].includes(action)) {
+      throw new Error('usage: tracker ac <check|uncheck|set-status|block|unblock> <issue> <acId> [refs...] [--commit sha] [--evidence E1,E2] [--proof P1] [--status s] [--blocks] [--no-anchor] [--dry-run]');
     }
     const issue = await client.issue.view(issueId, { json: 'body' });
     const body = String((issue as Record<string, unknown>).body ?? '');
     const evidence = optionValue(args, '--evidence').split(',').map((s) => s.trim()).filter(Boolean);
     const proof = optionValue(args, '--proof').split(',').map((s) => s.trim()).filter(Boolean);
+    // for block/unblock: positional refs after the acId; --blocks selects the forward edge.
+    const blockField = args.includes('--blocks') ? 'blocks' as const : 'blocked-by' as const;
+    const refs = args.slice(4).filter((a) => !a.startsWith('--'));
     const result = action === 'check'
       ? applyAcMutation(body, {
           op: 'check', acId,
@@ -263,6 +266,10 @@ GraphQL-shaped query against the local tracker store.
         })
       : action === 'uncheck'
         ? applyAcMutation(body, { op: 'uncheck', acId })
+      : action === 'block'
+        ? applyAcMutation(body, { op: 'block', acId, field: blockField, refs })
+      : action === 'unblock'
+        ? applyAcMutation(body, { op: 'unblock', acId, field: blockField, ...(refs.length ? { refs } : {}) })
         : applyAcMutation(body, { op: 'set-status', acId, status: optionValue(args, '--status') as AcStatus });
     const willBePassed = action === 'check'
       || (action === 'set-status' && optionValue(args, '--status') === 'passed');

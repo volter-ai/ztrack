@@ -7,3 +7,11 @@ export { check } from '../src/core/engine.ts';
 export { resolvePreset } from '../src/core/registry.ts';
 export { observeChanges, readAudit, timestampsFor } from '../src/core/audit.ts';
 export { buildSpeckitBundle } from '../src/presets/speckitCore.ts';
+// The board view routes through the SAME loaders as `ztrack check`/`export`: the
+// active preset is resolved from the repo's tracker-config `validation.entrypoint`
+// (so repo-local presets like peak's load), and issues are read via the configured
+// backend (so sqlite-backed repos work), not by globbing tracker/*.md. Reuse — do
+// not duplicate — these so the visualizer can never drift from the check pipeline.
+export { loadTrackerConfig } from '../src/config.ts';
+export { resolveTrackerValidation } from '../src/presetRegistry.ts';
+export { loadValidationInput } from '../src/core/loader.ts';

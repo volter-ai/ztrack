@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { createGenericPreset } from './presetKit.ts';
 import { check } from './core/engine.ts';
 import { buildIssueBundle } from './core/bundle.ts';
+import { applyAcMutation } from './mutate.ts';
 
 const HEAD = 'a1b2c3d4e5f6';
 const ctx = { git: { existingCommits: [HEAD] } };
@@ -217,6 +218,19 @@ describe('createGenericPreset', () => {
       expect(root.issues[0]!.acceptanceCriteria[0]!.blockedBy).toEqual([{ issue: 'APP-2' }]); // issue-level, not a dangling AC
       const r = check(basic, buildIssueBundle([a, b]), ctx);
       expect(r.findings.some((f) => f.code === 'basic_ac_blocked_by_unpassed')).toBe(true);
+    });
+
+    test('a blocker written by `ac block` parses correctly even with a trailing AC-Version stamp', () => {
+      // structured write path: check (stamps AC-Version), then block. The parser must
+      // read the blocker and NOT swallow the AC-Version token into the ref.
+      const start = '# APP-1: t\n\n## Acceptance Criteria\n\n- [ ] dev/03 status: pending Wire it. [1]\n- [ ] dev/02 status: pending First.\n\n## Sources\n\n[1] r\n';
+      const checked = applyAcMutation(start, { op: 'check', acId: 'dev/03', commit: 'abc1234' }).body;
+      const blocked = applyAcMutation(checked, { op: 'block', acId: 'dev/03', field: 'blocked-by', refs: ['dev/02'] }).body;
+      const root = basic.schema.parse(basic.parse(buildIssueBundle([{ id: 'APP-1', body: blocked }])));
+      const ac = root.issues[0]!.acceptanceCriteria.find((a) => a.id === 'dev/03')!;
+      expect(ac.blockedBy).toEqual([{ issue: 'APP-1', ac: 'dev/02' }]); // clean ref, no AC-Version garbage
+      const r = check(basic, buildIssueBundle([{ id: 'APP-1', body: blocked }]), ctx);
+      expect(r.findings.some((f) => f.code === 'basic_ac_blocker_missing')).toBe(false);
     });
   });
 });

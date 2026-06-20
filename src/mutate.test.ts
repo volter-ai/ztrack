@@ -56,4 +56,39 @@ describe("applyAcMutation — setext headings", () => {
   });
 });
 
+describe('applyAcMutation — block / unblock', () => {
+  const body = '## Acceptance Criteria\n\n- [ ] dev/03 status: pending Wire it. [1]\n';
+
+  test('block adds a blocked-by field; repeated refs are de-duped; status untouched', () => {
+    const r1 = applyAcMutation(body, { op: 'block', acId: 'dev/03', field: 'blocked-by', refs: ['dev/02', 'APP-2:dev/01'] });
+    expect(r1.itemAfter).toContain('blocked-by: dev/02, APP-2:dev/01');
+    expect(r1.itemAfter).toContain('status: pending'); // completion state untouched
+    const r2 = applyAcMutation(r1.body, { op: 'block', acId: 'dev/03', field: 'blocked-by', refs: ['dev/02', 'APP-4'] });
+    expect(r2.itemAfter).toMatch(/blocked-by: dev\/02, APP-2:dev\/01, APP-4/); // merged, dev/02 not duplicated
+  });
+
+  test('--blocks targets the forward edge independently of blocked-by', () => {
+    const r = applyAcMutation(body, { op: 'block', acId: 'dev/03', field: 'blocks', refs: ['dev/05'] });
+    expect(r.itemAfter).toContain('blocks: dev/05');
+  });
+
+  test('unblock removes a specific ref, then clears the field when emptied', () => {
+    const blocked = applyAcMutation(body, { op: 'block', acId: 'dev/03', field: 'blocked-by', refs: ['dev/02', 'APP-4'] }).body;
+    const minusOne = applyAcMutation(blocked, { op: 'unblock', acId: 'dev/03', field: 'blocked-by', refs: ['dev/02'] });
+    expect(minusOne.itemAfter).toContain('blocked-by: APP-4');
+    expect(minusOne.itemAfter).not.toContain('dev/02');
+    const cleared = applyAcMutation(minusOne.body, { op: 'unblock', acId: 'dev/03', field: 'blocked-by' });
+    expect(cleared.itemAfter).not.toContain('blocked-by');
+  });
+
+  test('a blocker added to a checked AC coexists with the trailing AC-Version stamp', () => {
+    const checked = applyAcMutation(body, { op: 'check', acId: 'dev/03', commit: 'abc1234' }).body;
+    expect(checked).toContain('AC-Version: acv_');
+    const r = applyAcMutation(checked, { op: 'block', acId: 'dev/03', field: 'blocked-by', refs: ['dev/02'] });
+    // blocker present, AC-Version still present and still trailing the line
+    expect(r.itemAfter).toContain('blocked-by: dev/02');
+    expect(r.itemAfter).toMatch(/blocked-by: dev\/02 AC-Version: acv_/);
+  });
+});
+
 });

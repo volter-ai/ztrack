@@ -11,10 +11,15 @@ import type { MarkdownCheckboxItem } from './markdownModel.ts';
 
 export type AcStatus = 'pending' | 'passed' | 'failed' | 'stale' | 'blocked' | 'descoped';
 
+export type BlockField = 'blocked-by' | 'blocks';
 export type AcMutation =
   | { op: 'check'; acId: string; commit?: string; evidence?: string[]; proof?: string[]; anchor?: boolean }
   | { op: 'uncheck'; acId: string }
-  | { op: 'set-status'; acId: string; status: AcStatus };
+  | { op: 'set-status'; acId: string; status: AcStatus }
+  // add/remove blocking refs (raw tokens: a bare AC id, `issue:ac`, or a whole issue).
+  // `unblock` without refs clears the whole field.
+  | { op: 'block'; acId: string; field: BlockField; refs: string[] }
+  | { op: 'unblock'; acId: string; field: BlockField; refs?: string[] };
 
 export type AcMutationResult = {
   body: string;
@@ -78,6 +83,34 @@ function checkItem(itemBody: string, acId: string, mutation: Extract<AcMutation,
     body = `${stripped} AC-Version: ${acVersionForItemBody(acId, stripped)}`;
   }
   return tidy(body);
+}
+
+// The inline `blocked-by:` / `blocks:` field on an AC's checkbox line. The value runs
+// to the next known field, a [marker], the trailing AC-Version stamp, or EOL — matching
+// the generic preset's parser so a read after the write sees exactly these refs.
+const blockFieldRe = (field: BlockField) =>
+  new RegExp(`\\b${field}:\\s*(.+?)(?=\\s+(?:status|commit|blocked-by|blocks|ac-version):|\\s*\\[[^\\]]*\\]|$)`, 'i');
+
+function blockingRefs(itemBody: string, field: BlockField): string[] {
+  const m = blockFieldRe(field).exec(itemBody);
+  return m ? m[1]!.split(',').map((s) => s.trim()).filter(Boolean) : [];
+}
+
+// Rewrite the field to exactly `refs` (empty removes it). When appending, keep the
+// AC-Version stamp last so it stays in its conventional trailing position.
+function setBlockingField(itemBody: string, field: BlockField, refs: string[]): string {
+  const m = blockFieldRe(field).exec(itemBody);
+  const value = refs.join(', ');
+  if (m) {
+    const replaced = refs.length ? `${field}: ${value}` : '';
+    return tidy(itemBody.slice(0, m.index) + replaced + itemBody.slice(m.index + m[0].length));
+  }
+  if (refs.length === 0) return tidy(itemBody);
+  const tidied = tidy(itemBody);
+  const anchor = /\s*\bAC-Version:\s*acv_[0-9a-f]{8,64}\b\.?/i.exec(tidied);
+  return anchor
+    ? tidy(`${tidied.slice(0, anchor.index)} ${field}: ${value}${tidied.slice(anchor.index)}`)
+    : tidy(`${tidied} ${field}: ${value}`);
 }
 
 function uncheckItem(itemBody: string, acId: string): string {
@@ -200,9 +233,16 @@ export function applyAcMutation(rawBody: string, mutation: AcMutation): AcMutati
   } else if (mutation.op === 'uncheck') {
     newChecked = false;
     newFirst = uncheckItem(firstLine, canonicalId);
-  } else {
+  } else if (mutation.op === 'set-status') {
     newChecked = mutation.status === 'passed' ? true : mutation.status === 'pending' ? false : item.checked;
     newFirst = tidy(setStatusField(firstLine, canonicalId, mutation.status));
+  } else {
+    // block / unblock — edit only the blocking field; completion state is untouched.
+    const existing = blockingRefs(firstLine, mutation.field);
+    const next = mutation.op === 'block'
+      ? [...existing, ...mutation.refs.filter((r) => !existing.includes(r))]
+      : (mutation.refs ? existing.filter((r) => !mutation.refs!.includes(r)) : []);
+    newFirst = setBlockingField(firstLine, mutation.field, next);
   }
   const newBody = [newFirst, ...restLines].join('\n');
 

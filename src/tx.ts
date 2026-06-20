@@ -45,6 +45,8 @@ function editDetail(edit: TxEdit): string {
   if (edit.op === 'set-body') return `body replaced (${edit.body.length} chars)`;
   if (edit.op === 'check') return `ac ${edit.acId} -> checked${edit.commit ? ` (commit ${edit.commit})` : ''}${edit.evidence?.length ? ` [${edit.evidence.join(',')}]` : ''}`;
   if (edit.op === 'uncheck') return `ac ${edit.acId} -> unchecked`;
+  if (edit.op === 'block') return `ac ${edit.acId} -> ${edit.field} += ${edit.refs.join(', ')}`;
+  if (edit.op === 'unblock') return `ac ${edit.acId} -> ${edit.field} -= ${edit.refs?.join(', ') ?? 'all'}`;
   return `ac ${edit.acId} -> status ${edit.status}`;
 }
 

@@ -14,7 +14,11 @@ All notable ztrack release changes are recorded here.
   `ac_self_block`, `ac_block_cycle` (the graph must be acyclic, including cross-level
   deadlocks), and `ac_blocked_by_unpassed` (a done node can't depend on an unfinished
   one). The same graph powers a transitive blocked/actionable view (`blockStatuses`).
-  Implemented by the installed presets and the default reference preset.
+  Implemented by the installed presets and the default reference preset. Blocking is
+  fully optional — a repo that never writes a `blocked-by:`/`blocks:` line is
+  unaffected. Set it with a structured mutation (no hand-editing required):
+  `ztrack ac block <issue> <acId> <refs…> [--blocks]` / `ztrack ac unblock …`, and the
+  `tracker_ac_block` / `tracker_ac_unblock` MCP tools.
 - **Hardening:** the repo-local validation entrypoint is confined to the project
   directory; the markdown backend rejects path-traversal issue ids; `ztrack check
   --input` reports malformed JSON cleanly; the visualizer binds to `127.0.0.1` and

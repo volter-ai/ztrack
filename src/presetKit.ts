@@ -21,6 +21,18 @@ import { blockCycles, blockerRefProblems, completionViolations, nodeIndex, norma
 // reaching into ztrack internals: require('ztrack/preset-kit').gitWorld(root, branches).
 export { gitWorld } from './core/gitWorld.ts';
 
+// World annotations are part of a preset's loadContext surface too (e.g. a
+// loadContext that filters world events by annotation exemption), so expose the
+// reader/writer API here alongside gitWorld rather than forcing internal imports.
+export {
+  listAnnotations,
+  isAnnotationExemptEvent,
+  addAnnotation,
+  createAnnotation,
+  validateWorldAnnotations,
+  type WorldAnnotation,
+} from './worldAnnotations.ts';
+
 export interface GenericPresetConfig {
   name: string;
   requireSourceMarker?: boolean;
@@ -92,7 +104,7 @@ const STATUS_RE = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/
 // AC blocking, authored inline on the checkbox line: `blocked-by: <refs>` / `blocks:
 // <refs>`, each a comma list of AC refs (bare = this issue, `issue:ac` = cross-issue).
 // The value runs to the next known field, a [marker], or end of line.
-const BLOCK_FIELD_RE = /\b(blocked-by|blocks):\s*(.+?)(?=\s+(?:status|commit|blocked-by|blocks):|\s*\[[^\]]*\]|$)/gi;
+const BLOCK_FIELD_RE = /\b(blocked-by|blocks):\s*(.+?)(?=\s+(?:status|commit|blocked-by|blocks|ac-version):|\s*\[[^\]]*\]|$)/gi;
 const AC_ID_RE = /^\s*(AC[- ]?|case\/|dev\/|ext\/|proc\/)(\d{1,3})\b/i;
 const EV_ENTRY_RE = /^\s*\[(E\d+)\]\s+(.+)$/;
 const FIELD_RE = /\b([a-z][a-z0-9-]*)\s*:\s*(.+?)(?=\s+[a-z][a-z0-9-]*\s*:|$)/gi;

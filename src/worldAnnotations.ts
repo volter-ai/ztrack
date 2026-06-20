@@ -4,8 +4,8 @@
 // "this event is a `source` (a requirement), `noise`, or a `duplicate`", with an
 // exact quote that must resolve into the event payload. That classification is
 // verification vocabulary — using the mirrored world as an *evidence substrate* is
-// the tracker's decision, so this lives here, not in `@volter/twin`. It reads the
-// world only through `@volter/twin`'s generic event surface and stores annotations
+// the tracker's decision, so this lives here, not in `@volter-ai-dev/twin`. It reads the
+// world only through `@volter-ai-dev/twin`'s generic event surface and stores annotations
 // alongside the events they describe (`.volter/world/<service>/annotations.jsonl`).
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -13,12 +13,12 @@ import { z } from 'zod';
 import {
   DELTA_TYPE_SUFFIX, discoverWorldServices, isEgressEventType, listEvents,
   loadWorldConfig, summarizeWorldFindings, worldStateRoot,
-} from '@volter/twin';
-import type { WorldConfig, WorldServiceConfig, WorldServiceEvent, WorldValidationFinding, WorldValidationReport } from '@volter/twin';
+} from '@volter-ai-dev/twin';
+import type { WorldConfig, WorldServiceConfig, WorldServiceEvent, WorldValidationFinding, WorldValidationReport } from '@volter-ai-dev/twin';
 
 // The annotation/source config the tracker layers on the world's generic per-service
 // config (carried via its index signature). These fields are verification concerns,
-// owned + typed here, not in @volter/twin.
+// owned + typed here, not in @volter-ai-dev/twin.
 type AnnotationServiceConfig = WorldServiceConfig & {
   annotationPolicy?: 'required' | 'exempt';
   browseUrlTemplate?: string;
@@ -82,7 +82,7 @@ export function isAnnotationExemptEvent(event: WorldServiceEvent, config?: World
   return false;
 }
 
-// ── annotation integrity validation (was validateWorldService in @volter/twin) ──
+// ── annotation integrity validation (was validateWorldService in @volter-ai-dev/twin) ──
 type JsonObject = Record<string, unknown>;
 const isObject = (v: unknown): v is JsonObject => Boolean(v && typeof v === 'object' && !Array.isArray(v));
 const stringValue = (v: unknown): string => (typeof v === 'string' ? v : '');
