@@ -14,7 +14,7 @@
 // The digest form (`sha256:<hex>`) matches the OCI / git-object idiom: a blob
 // is immutable and self-verifying, so a put is idempotent (dedup for free).
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { stateDirName, trackerConfigPath } from './config.ts';
 
@@ -48,6 +48,18 @@ export function trackerDbPath(projectRoot: string): string | null {
     : join(stateDirName(), 'tracker.sqlite');
   const dbPath = isAbsolute(rel) ? rel : join(projectRoot, rel);
   return existsSync(dbPath) ? dbPath : null;
+}
+
+// The `markdown` backend has no sqlite blob table, so blobs live as
+// content-addressed files in a `blobs/` dir PEER to the markdown issue store
+// (committed alongside the issues — content-addressed, deduped, identical from
+// every checkout: the same "address by content, not location" guarantee the
+// sqlite table gives, without a binary DB). Returns null unless backend is
+// `markdown`, so the sqlite path stays authoritative for the `local` backend.
+export function markdownBlobDir(projectRoot: string): string | null {
+  const config = readJson(trackerConfigPath(projectRoot));
+  if (!isObject(config) || config.backend !== 'markdown') return null;
+  return join(projectRoot, '.volter', 'tracker', 'markdown', 'blobs');
 }
 
 function openDb(projectRoot: string): SqliteDb | null {
@@ -93,6 +105,15 @@ export function putBlob(
   mediaType?: string,
 ): BlobRef {
   const hash = sha256(bytes);
+  const ref = `sha256:${hash}`;
+  const mdDir = markdownBlobDir(projectRoot);
+  if (mdDir) {
+    mkdirSync(mdDir, { recursive: true });
+    const p = join(mdDir, hash);
+    if (!existsSync(p)) writeFileSync(p, bytes); // idempotent: content-addressed
+    if (mediaType && !existsSync(`${p}.type`)) writeFileSync(`${p}.type`, mediaType);
+    return ref;
+  }
   const db = openDb(projectRoot);
   if (!db) throw new Error('tracker blob store: no local sqlite DB resolved (is backend `local` configured?)');
   try {
@@ -115,6 +136,8 @@ export function putBlob(
 export function hasBlob(projectRoot: string, refOrHash: string): boolean {
   const hash = blobHashFromRef(refOrHash) ?? (/^[0-9a-f]{64}$/i.test(refOrHash.trim()) ? refOrHash.trim().toLowerCase() : null);
   if (!hash) return false;
+  const mdDir = markdownBlobDir(projectRoot);
+  if (mdDir) return existsSync(join(mdDir, hash));
   const db = openDb(projectRoot);
   if (!db) return false;
   try {
@@ -129,6 +152,12 @@ export function hasBlob(projectRoot: string, refOrHash: string): boolean {
 export function getBlob(projectRoot: string, refOrHash: string): { bytes: Uint8Array; mediaType: string | null } | null {
   const hash = blobHashFromRef(refOrHash) ?? (/^[0-9a-f]{64}$/i.test(refOrHash.trim()) ? refOrHash.trim().toLowerCase() : null);
   if (!hash) return null;
+  const mdDir = markdownBlobDir(projectRoot);
+  if (mdDir) {
+    const p = join(mdDir, hash);
+    if (!existsSync(p)) return null;
+    return { bytes: readFileSync(p), mediaType: existsSync(`${p}.type`) ? readFileSync(`${p}.type`, 'utf8') : null };
+  }
   const db = openDb(projectRoot);
   if (!db) return null;
   try {
