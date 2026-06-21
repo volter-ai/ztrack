@@ -27,7 +27,7 @@ function parseCategories(flag: string): Partial<Record<RuleCategory, number>> | 
 
 const KNOWN_FLAGS: Record<string, Set<string>> = {
   export: new Set(['--out', '--issues']),
-  check: new Set(['--input', '--issues', '--case', '--categories', '--fail-on-warning', '--verify-commits', '--errors-only', '--output', '--json', '--max-findings']),
+  check: new Set(['--input', '--issues', '--case', '--categories', '--phase', '--fail-on-warning', '--verify-commits', '--errors-only', '--output', '--json', '--max-findings']),
 };
 
 /** `ztrack check` (validate the live tracker or a committed validated root) and
@@ -39,7 +39,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [--input root.json] [--issues a,b] [--categories name=N,...] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n');
+      : 'Usage: ztrack check [--input root.json] [--issues a,b] [--categories name=N,...] [--phase all|gate] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\n--phase gate runs only the ongoing-gate rules (excludes transition/promotion-time authoring checks); default all runs every rule.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -59,6 +59,9 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   const categories = parseCategories(optionValue(flagArgs, '--categories'));
   const failOnWarning = flagArgs.includes('--fail-on-warning');
   const verifyCommits = flagArgs.includes('--verify-commits') ? true : undefined;
+  const phaseRaw = optionValue(flagArgs, '--phase');
+  if (phaseRaw && phaseRaw !== 'all' && phaseRaw !== 'gate') throw new Error(`ztrack check: --phase must be 'all' or 'gate' (got '${phaseRaw}')`);
+  const phase = phaseRaw === 'gate' || phaseRaw === 'all' ? phaseRaw : undefined;
   const inputPath = optionValue(flagArgs, '--input');
   let inputRoot: unknown;
   if (inputPath) {
@@ -71,8 +74,8 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     try { inputRoot = JSON.parse(raw); } catch (e) { throw new Error(`ztrack check: --input ${abs} is not valid JSON (${(e as Error).message}). It should be a validated root written by 'ztrack export'.`); }
   }
   const result: TrackerCheckResult = inputPath
-    ? await checkTrackerRoot(inputRoot, { projectRoot, ...(issues ? { issues } : {}), ...(categories ? { categories } : {}), ...(verifyCommits !== undefined ? { verifyCommits } : {}) })
-    : await checkTracker({ projectRoot, ...(issues ? { issues } : {}), ...(categories ? { categories } : {}), failOnWarning, ...(verifyCommits !== undefined ? { verifyCommits } : {}) });
+    ? await checkTrackerRoot(inputRoot, { projectRoot, ...(issues ? { issues } : {}), ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), ...(verifyCommits !== undefined ? { verifyCommits } : {}) })
+    : await checkTracker({ projectRoot, ...(issues ? { issues } : {}), ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), failOnWarning, ...(verifyCommits !== undefined ? { verifyCommits } : {}) });
 
   const failed = !result.ok || (failOnWarning && result.findings.length > 0);
   const payload = { ok: result.ok, summary: summarizeResult(result), findings: result.findings };
