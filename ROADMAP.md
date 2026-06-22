@@ -52,9 +52,7 @@ each lands, with the proof that shows it.
   the publish workflow is green (typecheck, tests, consumer-path, loop-gate, then npm
   publish) and `npm view ztrack@0.6.0` resolves. ✅
 
-**All items complete (0.6.0).** Next, if/when wanted: whether an in-loop agent should be able
-to reach `loop stop` / `waiver sign` at all is a genuine product question left open under the
-cooperative trust boundary (R5) — pick it up only if adversarial agents become a concern.
+**All items complete (0.6.0).**
 
 ### Review follow-ups (post-0.6.0, multi-agent review)
 
@@ -65,18 +63,20 @@ block cycles / duplicate ids (H2 — now `waivable: false`); hook/CLI robustness
 guards); a gitignore migration so loop runtime files are ignored on repos `init`'d before the
 loop existed; and the visualizer dropping all-acknowledged issues from the findings view.
 
-Deliberately deferred (low value / out of scope, not bugs in the shipped path):
+All follow-ups now closed:
 
-- [ ] **The standalone `default`/`speckit` presets reject `status: descoped`** (their AC
-  status enums lack it). These are the **visualizer's** presets (not what `ztrack init`
-  installs); descope is a generic-preset feature, so rejecting it is arguably correct — but a
-  generic-preset tracker with a descoped AC, viewed under the default viz preset, could fail
-  to parse. Add `descoped` to their enums if that combination matters.
-- [ ] **The visualizer client isn't typechecked in CI** (separate Bun app, lazy-installed
-  deps; only bundled, not `tsc`'d). Pre-existing; a `tsconfig` + a CI typecheck step would
-  catch shape drift in the client.
-- [ ] **`src/core/cli.ts` is an unwired dev entry** (no bin, nothing imports it) — dead-ish.
-  Either wire it or delete it; it's the only non-test importer of the standalone presets.
+- [x] **Visualizer client typechecked in CI** — added `visualizer/tsconfig.json` and a CI
+  step (`tsc --noEmit -p visualizer/tsconfig.json`). It passed at 0 errors. ✅
+- [x] **`src/core/cli.ts` deleted** — an unwired dev entry (no bin, no importer, no test).
+  Its standalone-preset exports stay used by the preset unit tests. ✅
+- [x] **"`default`/`speckit` reject `status: descoped`" — verified a non-issue.** A configured
+  ztrack project validates with the installed generic preset (`resolveTrackerValidation`),
+  which supports `descoped`; the standalone-preset fallback (`server.ts:89`) only fires for
+  no-config markdown viewing, where a `descoped` AC doesn't arise. A preset/data mismatch
+  there correctly errors. No change. ✅
+- [x] **In-loop agent reaching `loop stop` / `waiver sign` — settled as a Non-Goal** (see
+  below): we do not build containment; that's the harness's permission layer. The cooperative
+  boundary (R5) is the intended design, not a gap. ✅
 
 ### Testing posture — E2E-first (done; see TESTING.md)
 
@@ -84,12 +84,11 @@ The primary gate is the **real packed+installed CLI** (`demos/check-e2e.sh` for 
 behaviors, `loop-gate-ci.sh` for the loop+waiver, `fresh-project-dry-run.sh` for install/MCP/
 SDK, all in CI; `loop-e2e.sh` live-agent, manual). Unit tests are minimal and **surgical**:
 the block graph, scope/ref grammar, AC-Version mutations, the mdast parser's exact output, the
-waiver freshness/`waivable` logic, install-parity, and the viz-only presets. The
-generic-preset behavioral tests were migrated out of `presetKit.test.ts` into `check-e2e.sh`.
-
-- [ ] **Minor residual:** `src/scopeIntegration.test.ts` (3t) is now also covered E2E by
-  `loop-gate-ci` (auto-scope) — kept for the precise routing-logic assertions, but it's the
-  one remaining behavioral test with an E2E equivalent.
+waiver freshness/`waivable` logic, install-parity, the markdown serialization edges, and the
+viz-only presets. The generic-preset behavioral tests were migrated out of `presetKit.test.ts`
+into `check-e2e.sh`. (`scopeIntegration.test.ts` stays — it asserts the scope-routing
+integration precisely against the `default` preset, which the generic-preset E2E doesn't
+isolate.)
 
 ## Non-Goals
 
@@ -97,3 +96,11 @@ generic-preset behavioral tests were migrated out of `presetKit.test.ts` into `c
 - No LLM-as-judge gate for `check`; fuzzy or subjective feedback belongs in
   `lint`.
 - No forced migration away from the tracker your team already uses.
+- **No containment of the in-loop agent.** The loop is cooperative: an operator (or the
+  agent) can `ztrack loop stop`, `ztrack waiver sign`, or edit the tracker. These are
+  operator tools, not access we try to prevent — real containment (what a process may run /
+  read / write) is the harness's permission and sandbox layer, not ztrack's. ztrack's
+  guarantee is narrower and honest: while armed, a turn ends only when the issue actually
+  passes `ztrack check`, and every sanctioned way out is recorded (a waiver in the tracker, a
+  capped breadcrumb in `loop status`), never silent. See `plugins/ztrack-gate` for the
+  trust-boundary writeup.
