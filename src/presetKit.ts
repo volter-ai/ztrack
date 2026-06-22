@@ -22,17 +22,12 @@ import { normalizeBlockRefs, parseBlockToken, type RawBlockRef } from './core/bl
 // reaching into ztrack internals: require('ztrack/preset-kit').gitWorld(root, branches).
 export { gitWorld } from './core/gitWorld.ts';
 
-// World annotations are part of a preset's loadContext surface too (e.g. a
-// loadContext that filters world events by annotation exemption), so expose the
-// reader/writer API here alongside gitWorld rather than forcing internal imports.
-export {
-  listAnnotations,
-  isAnnotationExemptEvent,
-  addAnnotation,
-  createAnnotation,
-  validateWorldAnnotations,
-  type WorldAnnotation,
-} from './worldAnnotations.ts';
+// World annotations live behind the `@volter-ai-dev/twin` PEER dependency, so they are
+// deliberately NOT re-exported here: pulling them through the authoring entry would force
+// every installed preset (even a basic tracker that loads `ztrack/preset-kit`) to resolve
+// `twin` just to load. A preset whose loadContext uses world annotations imports them from
+// the dedicated subpath instead — `require('ztrack/world-annotations')` — where the `twin`
+// dependency it actually uses is expected to be present.
 
 // ── authoring API for repo-local presets installed by `ztrack init` ──────────
 // An installed preset.cjs is REAL CODE: it rents the engine + this kit's generic

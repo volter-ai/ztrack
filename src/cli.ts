@@ -11,7 +11,8 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { initTrackerPresets, initTrackerProject, projectRootFrom, upgradeTrackerPreset } from './config.ts';
+import { initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, upgradeTrackerPreset } from './config.ts';
+import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
 import { createTrackerClient } from './sdk.ts';
@@ -27,6 +28,18 @@ async function readStdinIfPiped(): Promise<string | undefined> {
   for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   const text = Buffer.concat(chunks).toString('utf8');
   return text.length ? text : undefined;
+}
+
+// `issue scaffold` produces a starter body. Prefer the active preset's OWN scaffold so
+// the body satisfies that preset's rules (required sections, source markers, AC ids);
+// fall back to the generic body when no preset is configured or it defines none.
+function activePresetScaffold(title: string): string | undefined {
+  try {
+    const root = projectRootFrom();
+    return resolveTrackerValidation(loadTrackerConfig(root), root).scaffold?.(title);
+  } catch {
+    return undefined;
+  }
 }
 
 async function main(): Promise<void> {
@@ -112,7 +125,7 @@ async function main(): Promise<void> {
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {
     const title = optionValue(args, '--title') || 'New case';
-    process.stdout.write(scaffoldCaseBody(title));
+    process.stdout.write(activePresetScaffold(title) ?? scaffoldCaseBody(title));
     return;
   }
 
