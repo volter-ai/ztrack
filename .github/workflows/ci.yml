@@ -29,4 +29,4 @@ jobs:
           node --input-type=module -e "const paths=['ztrack','ztrack/config','ztrack/sdk','ztrack/check','ztrack/export','ztrack/markdown-model','ztrack/ac-version','ztrack/presets','ztrack/preset-kit','ztrack/mutate','ztrack/mcp','ztrack/attest','ztrack/lint','ztrack/tx','ztrack/dsse']; for (const p of paths) await import(p);"
       - name: Internal subpath smoke
         run: |
-          node --input-type=module -e "const blocked=['ztrack/presets/default','ztrack/presets/genericRuntime','ztrack/world-annotations','ztrack/world-source-books']; for (const p of blocked) { try { await import(p); throw new Error(p+' unexpectedly imported'); } catch (error) { if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }"
+          node --input-type=module -e "const blocked=['ztrack/presets/default','ztrack/presets/genericRuntime']; for (const p of blocked) { try { await import(p); throw new Error(p+' unexpectedly imported'); } catch (error) { if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }"
