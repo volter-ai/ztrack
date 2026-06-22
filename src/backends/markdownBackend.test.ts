@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMarkdownBackend } from './markdownBackend.ts';
@@ -32,6 +32,19 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect(v3.completedAt).not.toBeNull();
 
     expect(J(await be.command(['issue', 'create', '--title', 'Second'])).identifier).toBe('PH-2'); // id increments
+  });
+
+  test('create/edit read --body-file, not just --body (else the body is silently dropped)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mdbe-'));
+    const be = createMarkdownBackend(dir, 'PH');
+    const bodyPath = join(dir, 'body.md');
+    writeFileSync(bodyPath, '# T\n\n## Acceptance Criteria\n\n- [x] AC-01 do it\n');
+    const created = J(await be.command(['issue', 'create', '--title', 'T', '--body-file', bodyPath]));
+    expect(created.body).toContain('AC-01'); // the file content was stored, not dropped
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).body).toContain('## Acceptance Criteria');
+    writeFileSync(bodyPath, '# T\n\nedited via file\n');
+    await be.command(['issue', 'edit', 'PH-1', '--body-file', bodyPath]);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).body).toContain('edited via file');
   });
 
   test('list filters (state/label/search) + project list + deferred snapshot', async () => {

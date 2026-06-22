@@ -59,6 +59,13 @@ function listRow(c: CanonicalIssue, fields: string[]): Record<string, unknown> {
 
 function flagVal(args: string[], name: string): string | undefined { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; }
 function flagAll(args: string[], name: string): string[] { const out: string[] = []; for (let i = 0; i < args.length; i += 1) if (args[i] === `--${name}`) out.push(args[i + 1]!); return out; }
+// The CLI passes an issue body either inline (`--body`) or by path (`--body-file`); read
+// both, else the file content is silently dropped (the issue stores no acceptance criteria).
+function bodyArg(args: string[]): string | undefined {
+  const inline = flagVal(args, 'body'); if (inline !== undefined) return inline;
+  const file = flagVal(args, 'body-file'); if (file !== undefined) return readFileSync(file, 'utf8');
+  return undefined;
+}
 const ok = (stdout: string): TrackerCommandResult => ({ stdout, stderr: '' });
 
 export class MarkdownBackend implements TrackerBackend {
@@ -100,7 +107,7 @@ export class MarkdownBackend implements TrackerBackend {
       const id = `${this.teamKey}-${loadAll(this.dir).reduce((m, c) => Math.max(m, Number(c.identifier.split('-').pop()) || 0), 0) + 1}`;
       const now = new Date().toISOString();
       const c: CanonicalIssue = {
-        identifier: id, title: flagVal(args, 'title') ?? '', body: flagVal(args, 'body') ?? '',
+        identifier: id, title: flagVal(args, 'title') ?? '', body: bodyArg(args) ?? '',
         state: flagVal(args, 'state') ?? 'Backlog', stateType: 'open', assignees: flagVal(args, 'assignee') ? [flagVal(args, 'assignee')!] : [],
         labels: flagAll(args, 'label'), project: flagVal(args, 'project') ?? null, parent: flagVal(args, 'parent') ?? null,
         children: [], branchName: '', priority: 0, devProgress: '', createdAt: now, updatedAt: now,
@@ -112,7 +119,7 @@ export class MarkdownBackend implements TrackerBackend {
     if (verb === 'issue' && sub === 'edit') {
       const c = loadOne(this.dir, rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
       const t = flagVal(args, 'title'); if (t) c.title = t;
-      const b = flagVal(args, 'body'); if (b !== undefined) c.body = b;
+      const b = bodyArg(args); if (b !== undefined) c.body = b;
       const s = flagVal(args, 'state'); if (s) c.state = s;
       const p = flagVal(args, 'project'); if (p) c.project = p; if (args.includes('--remove-project')) c.project = null;
       const pa = flagVal(args, 'parent'); if (pa) c.parent = pa; if (args.includes('--remove-parent')) c.parent = null;
