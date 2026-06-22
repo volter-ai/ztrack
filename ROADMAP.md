@@ -68,12 +68,28 @@ loop existed; and the visualizer dropping all-acknowledged issues from the findi
 Deliberately deferred (low value / out of scope, not bugs in the shipped path):
 
 - [ ] **The standalone `default`/`speckit` presets reject `status: descoped`** (their AC
-  status enums lack it). Descope is a generic-preset feature and those presets aren't what
-  `ztrack init` installs, so rejecting the status is arguably correct — but if descope should
-  be cross-preset, their enums + done-gates need it.
+  status enums lack it). These are the **visualizer's** presets (not what `ztrack init`
+  installs); descope is a generic-preset feature, so rejecting it is arguably correct — but a
+  generic-preset tracker with a descoped AC, viewed under the default viz preset, could fail
+  to parse. Add `descoped` to their enums if that combination matters.
 - [ ] **The visualizer client isn't typechecked in CI** (separate Bun app, lazy-installed
   deps; only bundled, not `tsc`'d). Pre-existing; a `tsconfig` + a CI typecheck step would
   catch shape drift in the client.
+- [ ] **`src/core/cli.ts` is an unwired dev entry** (no bin, nothing imports it) — dead-ish.
+  Either wire it or delete it; it's the only non-test importer of the standalone presets.
+
+### Testing posture — E2E-first (done; see TESTING.md)
+
+The primary gate is the **real packed+installed CLI** (`demos/check-e2e.sh` for `check` rule
+behaviors, `loop-gate-ci.sh` for the loop+waiver, `fresh-project-dry-run.sh` for install/MCP/
+SDK, all in CI; `loop-e2e.sh` live-agent, manual). Unit tests are minimal and **surgical**:
+the block graph, scope/ref grammar, AC-Version mutations, the mdast parser's exact output, the
+waiver freshness/`waivable` logic, install-parity, and the viz-only presets. The
+generic-preset behavioral tests were migrated out of `presetKit.test.ts` into `check-e2e.sh`.
+
+- [ ] **Minor residual:** `src/scopeIntegration.test.ts` (3t) is now also covered E2E by
+  `loop-gate-ci` (auto-scope) — kept for the precise routing-logic assertions, but it's the
+  one remaining behavioral test with an E2E equivalent.
 
 ## Non-Goals
 

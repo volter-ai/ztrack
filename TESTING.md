@@ -35,9 +35,15 @@ Reserved for complex pure logic, and for code the CLI can't reach:
   rule-firing behaviors, which live in `check-e2e.sh`;
 - the install-parity guard that keeps the vendored `preset.cjs` byte-for-byte equivalent to
   `createGenericPreset` (`src/presetInstall.test.ts`);
-- the standalone `default` / `spec` / `speckit` presets (`src/presets/*.test.ts`), which are
-  **not reachable through the shipped `ztrack` CLI** — so a unit test is their only possible
-  coverage.
+- the standalone `default` / `spec` / `speckit` presets (`src/presets/*.test.ts`). `ztrack
+  check` always uses the installed generic `preset.cjs`; these are reached in the shipped
+  product only through the **visualizer** (`serverCore.ts` resolves them via the registry for
+  display), where E2E is impractical — so a unit test is their surgical coverage. (`src/core/
+  cli.ts`, which also imports them, is an unwired dev entry — not a bin.)
+- markdown serialization + parser edges (`src/backends/markdown.test.ts`,
+  `src/presets/issueMarkdown.test.ts`, `src/graphql.test.ts`): null-vs-empty, comment-block
+  round-trips, fenced-code blocks, CRLF, `fmt` fixed-point — exactly the things a CLI E2E
+  can't isolate.
 
 ## Adding a feature
 
