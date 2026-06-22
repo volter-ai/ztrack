@@ -2,6 +2,28 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.6.0
+
+- **Loop escape hardening + state hygiene** (the `ztrack-gate` Stop hook + `ztrack loop`):
+  - The per-session self-exempt path is now offered only once the agent is **past the
+    half-way point of the iteration budget** (`n*2 > max`), so an early held turn reads as
+    "keep working" and the hand-back surfaces only as a last resort — not a turn-1 quit
+    button.
+  - The **iteration cap holds-and-surfaces** instead of silently vanishing: on cap the loop
+    disarms (the agent is never trapped) but drops a gitignored `.ztrack-loop-capped.json`
+    breadcrumb, and `ztrack loop status` now reports `loop capped → <issue> after N
+    iterations`; `ztrack loop start` clears it.
+  - **State hygiene:** any disarm (green / cap / `ztrack loop stop`) now sweeps EVERY
+    session's `.ztrack-loop-iter-*` and `.ztrack-loop-exempt-*` files, so no stale runtime
+    state lingers in `.volter`.
+- **Docs:** the `ztrack-gate` plugin README gains a "Trust boundary — cooperative, not a
+  sandbox" section (the loop fixes premature-stop for a well-intentioned agent; it does NOT
+  *contain* an agent that wants out — that's the harness's job; sanctioned exits are
+  recorded, not silent), and notes descope counts toward "done" only on SDLC-gated presets
+  (under `basic`, the waiver is the durable escape).
+- **CI:** `demos/loop-gate-ci.sh` now also covers the above (R1/R2/R3, deterministic);
+  `actions/setup-node` bumped off the deprecated Node 20 runner.
+
 ## 0.5.0
 
 - **New: the ztrack loop — a ralph-pattern autonomy loop whose completion ORACLE is
