@@ -20,6 +20,7 @@ export const ui = {
   magenta: color('\x1b[35m'),
   redBadge: color('\x1b[41m\x1b[30m\x1b[1m'),
   yellowBadge: color('\x1b[43m\x1b[30m\x1b[1m'),
+  cyanBadge: color('\x1b[46m\x1b[30m\x1b[1m'),
 };
 
 export function heading(title: string, subtitle?: string): string {
@@ -80,14 +81,16 @@ export function statusMark(kind: 'pass' | 'fail' | 'warn' | 'info'): string {
 
 // A small derived summary of a CheckResult — the validated root has no separate
 // "summary" object, so we compute the metric box from the findings + issue count.
-export interface CheckSummary { issues: number; errors: number; warnings: number; status: 'pass' | 'warn' | 'fail' }
+export interface CheckSummary { issues: number; errors: number; warnings: number; acknowledged: number; status: 'pass' | 'warn' | 'fail' }
 export function summarizeResult(result: CheckResult<CoreRoot>): CheckSummary {
   const errors = result.findings.filter((f) => f.severity === 'error').length;
-  const warnings = result.findings.length - errors;
+  const acknowledged = result.findings.filter((f) => f.severity === 'acknowledged').length;
+  const warnings = result.findings.length - errors - acknowledged;
   return {
     issues: result.export?.issues.length ?? 0,
     errors,
     warnings,
+    acknowledged,
     status: errors > 0 ? 'fail' : warnings > 0 ? 'warn' : 'pass',
   };
 }
@@ -102,11 +105,13 @@ function metric(label: string, value: unknown): string {
 }
 
 function metricBox(summary: CheckSummary): string {
-  const raw = [`issues ${summary.issues}`, `errors ${summary.errors}`, `warnings ${summary.warnings}`].join('  •  ');
+  const ackPart = summary.acknowledged > 0 ? [`acknowledged ${summary.acknowledged}`] : [];
+  const raw = [`issues ${summary.issues}`, `errors ${summary.errors}`, `warnings ${summary.warnings}`, ...ackPart].join('  •  ');
   const content = [
     metric('issues', summary.issues),
     summary.errors > 0 ? `${ui.dim('errors')} ${ui.red(String(summary.errors))}` : metric('errors', summary.errors),
     summary.warnings > 0 ? `${ui.dim('warnings')} ${ui.yellow(String(summary.warnings))}` : metric('warnings', summary.warnings),
+    ...(summary.acknowledged > 0 ? [`${ui.dim('acknowledged')} ${ui.cyan(String(summary.acknowledged))}`] : []),
   ].join(ui.dim('  •  '));
   const width = raw.length + 4;
   return [
@@ -121,9 +126,9 @@ function findingGroupKey(finding: Finding): string {
 }
 
 function findingLevel(finding: Finding): string {
-  return finding.severity === 'error'
-    ? ui.redBadge(' x error ')
-    : ui.yellowBadge(' warn ');
+  if (finding.severity === 'error') return ui.redBadge(' x error ');
+  if (finding.severity === 'acknowledged') return ui.cyanBadge(' ack ');
+  return ui.yellowBadge(' warn ');
 }
 
 function codeLabel(code: string): string {

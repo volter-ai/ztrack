@@ -120,5 +120,34 @@ v="$( { [ "$exempted" = YES ] && [ "$armed_after" = YES ] && [ "$foreign" = 2 ];
 echo "   live agent self-exempted=$exempted (want YES), loop still armed=$armed_after (want YES), foreign session held (hook exit=$foreign, want 2)  $v"
 [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
+echo "=== I. durable waiver: a fresh, signed waiver releases the loop on a red issue ==="
+# An authority acknowledges the red state via the real CLI; the engine downgrades the
+# issue's errors to 'acknowledged' so the check passes and the armed agent is released.
+d="$(setup waiver red arm)"
+( cd "$d" && npx ztrack waiver sign APP-1 --reason "known infra gap, tracked separately" --by "alice" >/dev/null )
+wexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # acknowledged → 0
+out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"
+v="$( { [ "$wexit" = 0 ] && [ "${t:-0}" -eq 1 ]; } && echo PASS || echo FAIL )"
+echo "   signed waiver → check exit=$wexit (want 0), armed agent released num_turns=$t (want 1)  $v"
+[ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
+
+echo "=== J. the waiver AUTO-STALES: a new commit re-blocks (freshness anchor holds) ==="
+( cd "$d" && git commit --allow-empty -q -m "more work moved HEAD" )
+jexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # sha drifted → stale → re-blocks → 1
+jstale="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_stale )"
+v="$( { [ "$jexit" = 1 ] && [ "${jstale:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
+echo "   after a new commit → check exit=$jexit (want 1), waiver_stale reported=$jstale (want ≥1)  $v"
+[ "$v" = PASS ] || fails=$((fails+1))
+
+echo "=== K. an unreasoned waiver is ITSELF an error (it can't silently mute the check) ==="
+d="$(setup unreasoned red noarm)"
+printf '# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n\n## Waiver\n\nby: someone\nsha: %s\nac-version: acw_deadbeef00\n' "$( cd "$d" && git rev-parse HEAD )" > "$d/unreasoned.md"
+( cd "$d" && npx ztrack issue edit APP-1 --body-file unreasoned.md >/dev/null )
+kexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"
+kmiss="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_missing_reason )"
+v="$( { [ "$kexit" = 1 ] && [ "${kmiss:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
+echo "   unreasoned waiver → check exit=$kexit (want 1), waiver_missing_reason=$kmiss (want ≥1)  $v"
+[ "$v" = PASS ] || fails=$((fails+1))
+
 echo
 if [ "$fails" -eq 0 ]; then echo "loop e2e: ALL PASS (real agent, real hook, real ztrack)"; else echo "loop e2e: $fails FAIL"; exit 1; fi

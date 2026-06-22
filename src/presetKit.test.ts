@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createGenericPreset } from './presetKit.ts';
-import { check } from './core/engine.ts';
+import { check, issueAcFingerprint } from './core/engine.ts';
 import { buildIssueBundle } from './core/bundle.ts';
 import { applyAcMutation } from './mutate.ts';
 
@@ -232,5 +232,60 @@ describe('createGenericPreset', () => {
       const r = check(basic, buildIssueBundle([{ id: 'APP-1', body: blocked }]), ctx);
       expect(r.findings.some((f) => f.code === 'basic_ac_blocker_missing')).toBe(false);
     });
+  });
+});
+
+describe('freshness-anchored waiver', () => {
+  const wv = createGenericPreset({ name: 'wv', requireSdlcGates: true });
+  const SHA = 'a1b2c3d4e5f6a1b2c3d4';
+  const wvCtx = { git: { currentSha: SHA, existingCommits: [SHA] } };
+  // a checked AC that cites no commit and no evidence — two real `error` findings to waive.
+  const AC = '## Acceptance Criteria\n\n- [x] dev/01 status: passed Do the thing.\n';
+  const body = (w?: { reason?: string; by?: string; sha?: string; acv?: string }): string =>
+    !w ? AC : `${AC}\n## Waiver\n\nreason: ${w.reason ?? ''}\nby: ${w.by ?? ''}\nsha: ${w.sha ?? ''}\nac-version: ${w.acv ?? ''}\n`;
+  const run = (b: string) => check(wv, buildIssueBundle([frame('W-1', { state: 'open', stateType: 'open', assignee: 'a', body: b })]), wvCtx);
+  // the fingerprint the engine computes for this issue's ACs (the waiver section doesn't change ACs).
+  const FP = issueAcFingerprint(wv.schema.parse(wv.parse(buildIssueBundle([frame('W-1', { state: 'open', stateType: 'open', assignee: 'a', body: body() })]))).issues[0]!);
+
+  test('the unwaived red issue gates (errors stand)', () => {
+    const r = run(body());
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((f) => f.code === 'wv_checked_ac_missing_commit_hash' && f.severity === 'error')).toBe(true);
+  });
+
+  test('a reasoned, signed, FRESH waiver downgrades the issue’s errors to acknowledged → ok', () => {
+    const r = run(body({ reason: 'known infra gap, tracked in APP-9', by: 'alice', sha: SHA, acv: FP }));
+    expect(r.ok).toBe(true);
+    expect(r.findings.some((f) => f.severity === 'error')).toBe(false);
+    const ack = r.findings.find((f) => f.code === 'wv_checked_ac_missing_commit_hash');
+    expect(ack?.severity).toBe('acknowledged');
+    expect(ack?.message).toContain('acknowledged by alice');
+    expect(r.findings.some((f) => f.code.startsWith('waiver_'))).toBe(false);
+  });
+
+  test('a waiver with no reason is itself an error and does NOT downgrade', () => {
+    const r = run(body({ by: 'alice', sha: SHA, acv: FP }));
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((f) => f.code === 'waiver_missing_reason' && f.severity === 'error')).toBe(true);
+    expect(r.findings.some((f) => f.code === 'wv_checked_ac_missing_commit_hash' && f.severity === 'error')).toBe(true);
+  });
+
+  test('a waiver with no sign-off is itself an error and does NOT downgrade', () => {
+    const r = run(body({ reason: 'x', sha: SHA, acv: FP }));
+    expect(r.findings.some((f) => f.code === 'waiver_missing_signoff' && f.severity === 'error')).toBe(true);
+    expect(r.ok).toBe(false);
+  });
+
+  test('a waiver signed against a DIFFERENT commit is stale (warning) and does NOT downgrade', () => {
+    const r = run(body({ reason: 'x', by: 'alice', sha: 'deadbeefdeadbeefdead', acv: FP }));
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((f) => f.code === 'waiver_stale' && f.severity === 'warning')).toBe(true);
+    expect(r.findings.some((f) => f.code === 'wv_checked_ac_missing_commit_hash' && f.severity === 'error')).toBe(true);
+  });
+
+  test('a waiver whose ac-version no longer matches (criteria edited) is stale and does NOT downgrade', () => {
+    const r = run(body({ reason: 'x', by: 'alice', sha: SHA, acv: 'acw_000000000000' }));
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((f) => f.code === 'waiver_stale')).toBe(true);
   });
 });

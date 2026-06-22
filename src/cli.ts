@@ -5,6 +5,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkTracker } from './check.ts';
+import { exportTrackerRoot } from './export.ts';
+import { issueAcFingerprint } from './core/engine.ts';
+import { git } from './core/gitWorld.ts';
 import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { lintIssueBody } from './lint.ts';
 import { applyTx, planTx } from './tx.ts';
@@ -40,6 +43,19 @@ function activePresetScaffold(title: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+// Remove an existing `## Waiver` section (heading + body up to the next `## ` or EOF)
+// so `waiver sign` re-stamps a single canonical block and `waiver clear` drops it.
+function stripWaiverSection(body: string): string {
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of body.split('\n')) {
+    if (/^##\s+waiver\b/i.test(line)) { skipping = true; continue; }
+    if (skipping && /^##\s+/.test(line)) skipping = false;
+    if (!skipping) out.push(line);
+  }
+  return `${out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '')}\n`;
 }
 
 async function main(): Promise<void> {
@@ -155,6 +171,54 @@ async function main(): Promise<void> {
       return;
     }
     throw new Error(`${command} loop: unknown action '${action}'. Try 'start <issue>', 'stop', or 'status'.`);
+  }
+
+  if (args[0] === 'waiver') {
+    // The DURABLE escape: an authority records that <issue>'s failing state is knowingly
+    // accepted. A valid (reasoned + signed-off + fresh) waiver downgrades the issue's
+    // errors to 'acknowledged' so `check` passes — but it is anchored to the commit + the
+    // acceptance-criteria fingerprint, so it auto-stales the moment either drifts.
+    const action = args[1];
+    const projectRoot = projectRootFrom();
+    if (!action || ['--help', '-h', 'help'].includes(action)) {
+      process.stdout.write(`Usage: ${command} waiver <sign <issue> --reason "..." --by "..." | clear <issue> | status <issue>>\n\nRecords a freshness-anchored acknowledgment on <issue>. A valid waiver downgrades that issue's errors to 'acknowledged' so \`${command} check\` passes; it auto-stales when the commit or acceptance criteria change, and an unreasoned or unsigned waiver is itself an error.\n`);
+      return;
+    }
+    const id = args[2];
+    if (!id || id.startsWith('-')) throw new Error(`${command} waiver ${action}: needs an issue id, e.g. \`${command} waiver ${action} APP-1\``);
+    const wClient = createTrackerClient();
+    const issueView = await wClient.issue.view(id, { json: 'body' });
+    const body = String((issueView as Record<string, unknown>).body ?? '');
+    if (action === 'sign') {
+      const reason = optionValue(args, '--reason');
+      const by = optionValue(args, '--by');
+      if (!reason) throw new Error(`${command} waiver sign: --reason "<why this failing state is acceptable>" is required`);
+      if (!by) throw new Error(`${command} waiver sign: --by "<the authority signing off>" is required`);
+      const root = await exportTrackerRoot({ projectRoot, issues: [id] });
+      const issue = root.issues.find((i) => i.id === id);
+      if (!issue) throw new Error(`${command} waiver sign: issue ${id} not found in the tracker`);
+      const sha = git(projectRoot, ['rev-parse', 'HEAD']);
+      if (!sha) throw new Error(`${command} waiver sign: cannot read HEAD (need a git repo with at least one commit to anchor the waiver to)`);
+      const fingerprint = issueAcFingerprint(issue);
+      const section = `## Waiver\n\nreason: ${reason}\nby: ${by}\nsha: ${sha}\nac-version: ${fingerprint}\n`;
+      const newBody = `${stripWaiverSection(body).replace(/\s+$/, '')}\n\n${section}`;
+      await wClient.issue.edit(id, { body: newBody });
+      process.stdout.write(`${statusMark('pass')} ${ui.green('waiver signed')} ${ui.dim(`→ ${id} by ${by}, anchored to ${sha.slice(0, 8)} / ${fingerprint}. It auto-stales if the commit or acceptance criteria change.`)}\n`);
+      return;
+    }
+    if (action === 'clear') {
+      await wClient.issue.edit(id, { body: stripWaiverSection(body) });
+      process.stdout.write(`${statusMark('pass')} ${ui.dim(`waiver cleared on ${id}`)}\n`);
+      return;
+    }
+    if (action === 'status') {
+      const has = /^##\s+waiver\b/im.test(body);
+      process.stdout.write(has
+        ? `${statusMark('info')} ${ui.bold(`${id} carries a waiver`)} ${ui.dim(`(run \`${command} check\` to see whether it is fresh and honored)`)}\n`
+        : `${statusMark('info')} ${ui.dim(`${id} has no waiver`)}\n`);
+      return;
+    }
+    throw new Error(`${command} waiver: unknown action '${action}'. Try 'sign <issue> --reason ... --by ...', 'clear <issue>', or 'status <issue>'.`);
   }
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {

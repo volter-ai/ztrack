@@ -16,6 +16,7 @@
 // `unknown`, no preset-private "native", no `toIssues` projection: the parse
 // target IS the schema.
 
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import type { RuleCategory, RuleDepth } from '../checkRules.ts';
 import { blockCycles, blockerRefProblems, completionViolations, nodeIndex } from './blocking.ts';
@@ -59,8 +60,25 @@ export interface CoreIssue {
   linkedIssues?: LinkedIssue[]; // primitive
   children?: string[];          // primitive
   sources?: Source[];           // primitive
+  waiver?: Waiver;              // an authority's freshness-anchored acknowledgment (see Waiver)
 }
 export interface CoreRoot { issues: CoreIssue[] }
+
+// A WAIVER is a durable, honest escape hatch: an authority records that an issue's
+// failing state is knowingly accepted, WITHOUT silently muting the check forever. It
+// is anchored to the work it was signed against — the commit (`sha`) and a fingerprint
+// of the acceptance criteria (`acFingerprint`) — so it AUTO-STALES the moment either
+// drifts, at which point the underlying findings apply again. A valid (reasoned +
+// signed-off + fresh) waiver downgrades that issue's `error` findings to `acknowledged`
+// (non-gating); a stale or malformed one does not. Unlike the per-session loop
+// exemption, this lives in the tracker and survives sessions — but it cannot rot
+// silently, because freshness is structural, not a date someone forgets to revisit.
+export interface Waiver {
+  reason: string;         // why the failing state is acceptable (required; empty → error)
+  approvedBy: string;     // the authority who signed off (required; empty → error)
+  sha: string;            // the commit the waiver was signed against (freshness anchor)
+  acFingerprint: string;  // fingerprint of the ACs when signed (freshness anchor)
+}
 
 // ── audit (a derived primitive): a separate append-only log, written on every
 // edit by the mutation affordances — NOT git history, NOT the markdown body.
@@ -76,7 +94,10 @@ export interface AuditEntry {
 }
 
 // ── findings + injected local context ──────────────────────────────────────
-export type Severity = 'error' | 'warning';
+// 'acknowledged' is a downgraded 'error' — a real finding an authority's fresh waiver
+// has accepted. It is reported (so the acceptance is visible) but does NOT gate, exactly
+// like a warning. Only 'error' gates `ok`.
+export type Severity = 'error' | 'warning' | 'acknowledged';
 export interface Finding {
   code: string;
   severity: Severity;
@@ -348,6 +369,62 @@ function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: Derive
     }));
 }
 
+// Order-independent structural fingerprint, so a waiver's anchor is stable across
+// re-parses but changes the instant any AC field (text, status, checkbox, blockers,
+// evidence) changes — the "AC-version" half of a waiver's freshness.
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>).sort().map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** The acceptance-criteria fingerprint a waiver anchors to. Computed identically at
+ *  sign time (`ztrack waiver sign`) and check time, so a waiver stays fresh only while
+ *  the criteria it was signed against are byte-for-byte the same. */
+export function issueAcFingerprint(issue: CoreIssue): string {
+  return `acw_${createHash('sha256').update(stableStringify(issue.acceptanceCriteria)).digest('hex').slice(0, 12)}`;
+}
+
+function shaAnchored(a: string, b: string): boolean {
+  return !!a && !!b && (a === b || a.startsWith(b) || b.startsWith(a));
+}
+
+function waiverFresh(w: Waiver, issue: CoreIssue, currentSha?: string): boolean {
+  return shaAnchored(w.sha, currentSha ?? '') && w.acFingerprint === issueAcFingerprint(issue);
+}
+
+// Post-process: a valid (reasoned + signed-off + fresh) waiver downgrades its issue's
+// `error` findings to `acknowledged`. A waiver missing a reason or sign-off is itself an
+// error (and never downgrades); a stale waiver is a non-gating warning that leaves the
+// underlying findings in force. This is core machinery — every preset gets it for free;
+// presets only decide how a waiver is parsed from their markdown.
+function applyWaivers<R extends CoreRoot>(findings: Finding[], model: DerivedModel<R>): Finding[] {
+  const currentSha = model.context.git?.currentSha;
+  const extra: Finding[] = [];
+  const downgrade = new Map<string, string>(); // issueId -> approvedBy
+  for (const { issueId, issue } of model.issues) {
+    const w = (issue as CoreIssue).waiver;
+    if (!w) continue;
+    const hasReason = !!w.reason?.trim();
+    const hasSignoff = !!w.approvedBy?.trim();
+    if (!hasReason) extra.push({ code: 'waiver_missing_reason', severity: 'error', issueId, message: `Issue ${issueId} carries a waiver with no reason. A waiver must state why the failing state is acceptable.` });
+    if (!hasSignoff) extra.push({ code: 'waiver_missing_signoff', severity: 'error', issueId, message: `Issue ${issueId} carries a waiver with no sign-off (\`by:\`). A waiver must name the authority who accepted it.` });
+    if (!hasReason || !hasSignoff) continue; // malformed → never downgrades
+    if (!waiverFresh(w, issue, currentSha)) {
+      extra.push({ code: 'waiver_stale', severity: 'warning', issueId, message: `Issue ${issueId}'s waiver is stale — the commit or acceptance criteria changed since ${w.approvedBy} signed it. Re-sign to re-acknowledge; until then the findings below apply.` });
+      continue; // stale → no downgrade, the real findings stand
+    }
+    downgrade.set(issueId, w.approvedBy.trim());
+  }
+  if (!downgrade.size && !extra.length) return findings;
+  const adjusted = findings.map((f): Finding => (f.issueId && f.severity === 'error' && downgrade.has(f.issueId))
+    ? { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${downgrade.get(f.issueId)})` }
+    : f);
+  return [...adjusted, ...extra];
+}
+
 function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<R>): CheckResult<R> {
   const ctx = input.context;
   const model = deriveCoreModel(input.root, ctx, preset.isIssueDone);
@@ -367,7 +444,8 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
       return [{ code: 'rule_threw', severity: 'error', message: `Rule '${r.code}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
     }
   });
-  return { ok: !findings.some((f) => f.severity === 'error'), findings, export: input.root };
+  const waived = applyWaivers(findings, model);
+  return { ok: !waived.some((f) => f.severity === 'error'), findings: waived, export: input.root };
 }
 
 /** The one entry point: parse -> ValidationInputSchema.parse({context, root}) ->

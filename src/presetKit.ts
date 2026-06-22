@@ -86,6 +86,15 @@ const GenericAcSchema = z.object({
   blocks: z.array(BlockRefSchema).optional(),     // primitive: nodes this one gates
 }).strict();
 
+// A `## Waiver` block, parsed into the core Waiver shape. Present only when the issue
+// carries the section; the engine validates it (reason + sign-off required, freshness).
+const GenericWaiverSchema = z.object({
+  reason: z.string(),
+  approvedBy: z.string(),
+  sha: z.string(),
+  acFingerprint: z.string(),
+}).strict();
+
 const GenericIssueSchema = z.object({
   id: z.string().min(1),                          // core
   title: z.string(),                              // core
@@ -97,6 +106,7 @@ const GenericIssueSchema = z.object({
   labels: z.array(z.string()),                    // primitive
   sourceMarkers: z.array(z.string()),             // preset: [N] markers present in the body
   sections: z.array(z.string()),                  // preset: ## section titles present
+  waiver: GenericWaiverSchema.optional(),         // core: an authority's freshness-anchored acknowledgment
 }).strict();
 
 const GenericRootSchema = z.object({ issues: z.array(GenericIssueSchema) }).strict();
@@ -274,6 +284,21 @@ function parseGenericIssue(markdown: string): Record<string, unknown> | null {
   const acMarkers = (issue.acceptanceCriteria as Array<{ sourceRefs: string[] }>).flatMap((ac) => ac.sourceRefs);
   const proseMarkers = sectionContentNodes(/^(Summary|Sources)$/i).flatMap((n) => sourceMarkers(nodeText(n)));
   issue.sourceMarkers = uniqSorted([...acMarkers, ...proseMarkers]);
+
+  // A `## Waiver` block records an authority's freshness-anchored acknowledgment. Parse
+  // whenever the section is present (even if a field is missing — the engine flags an
+  // unreasoned/unsigned waiver); fields read only from the Waiver section's own nodes.
+  if ((issue.sections as string[]).some((s) => /^waiver$/i.test(s))) {
+    const wtext = sectionContentNodes(/^Waiver$/i).map(nodeText).join('\n');
+    // [ \t]* (not \s*) so an empty field doesn't swallow the next line's value.
+    const field = (re: RegExp): string => re.exec(wtext)?.[1]?.trim() ?? '';
+    issue.waiver = {
+      reason: field(/(?:^|\n)[ \t]*reason:[ \t]*(.+)/i),
+      approvedBy: field(/(?:^|\n)[ \t]*by:[ \t]*(.+)/i),
+      sha: field(/(?:^|\n)[ \t]*sha:[ \t]*(\S+)/i),
+      acFingerprint: field(/(?:^|\n)[ \t]*ac-version:[ \t]*(\S+)/i),
+    };
+  }
   return issue.id ? issue : null;
 }
 
