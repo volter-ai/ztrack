@@ -66,7 +66,7 @@ const issueFilterLabels: Record<IssueFilter, string> = { all: 'Any issue', block
 
 function applyView(list: CoreIssue[], view: string, findings: Finding[]) {
   if (view === 'all') return list;
-  if (view === 'findings') return list.filter((i) => errorsOf(findings, i.id).length || warningsOf(findings, i.id).length);
+  if (view === 'findings') return list.filter((i) => errorsOf(findings, i.id).length || warningsOf(findings, i.id).length || acknowledgedOf(findings, i.id).length);
   return list.filter((i) => i.status === view);
 }
 function primaryLabel(i: CoreIssue) { const l = labelsOf(i); return l.find((x) => x.startsWith('priority:') || /^P\d$/.test(x)) ?? l[0] ?? 'No label'; }

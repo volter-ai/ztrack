@@ -121,7 +121,7 @@ const STATUS_RE = /\bstatus:\s*(pending|passed|failed|stale|blocked|descoped)\b/
 // AC blocking, authored inline on the checkbox line: `blocked-by: <refs>` / `blocks:
 // <refs>`, each a comma list of AC refs (bare = this issue, `issue:ac` = cross-issue).
 // The value runs to the next known field, a [marker], or end of line.
-const BLOCK_FIELD_RE = /\b(blocked-by|blocks):\s*(.+?)(?=\s+(?:status|commit|blocked-by|blocks|ac-version):|\s*\[[^\]]*\]|$)/gi;
+const BLOCK_FIELD_RE = /\b(blocked-by|blocks):\s*(.+?)(?=\s+(?:status|commit|blocked-by|blocks|ac-version|reason):|\s*\[[^\]]*\]|$)/gi;
 const AC_ID_RE = /^\s*(AC[- ]?|case\/|dev\/|ext\/|proc\/)(\d{1,3})\b/i;
 const EV_ENTRY_RE = /^\s*\[(E\d+)\]\s+(.+)$/;
 const FIELD_RE = /\b([a-z][a-z0-9-]*)\s*:\s*(.+?)(?=\s+[a-z][a-z0-9-]*\s*:|$)/gi;
@@ -268,7 +268,11 @@ function parseGenericIssue(markdown: string): Record<string, unknown> | null {
     const status = STATUS_RE.exec(text)?.[1]?.toLowerCase() ?? (checked ? 'passed' : 'pending');
     const evidenceRefs = uniqSorted([...text.matchAll(EVIDENCE_REF_RE)].map((m) => m[1]!));
     const { blockedBy, blocks } = parseAcBlocking(text, issue.id as string);
-    const descopeReason = /\breason:[ \t]*(.+?)[ \t]*$/i.exec(text)?.[1]?.trim();
+    // Only a descoped AC carries a `reason:`; bound the capture so it doesn't swallow a
+    // trailing [E?]/[N] ref or another field into the prose (mirrors BLOCK_FIELD_RE).
+    const descopeReason = status === 'descoped'
+      ? /\breason:[ \t]*(.+?)[ \t]*(?=\s\[[^\]]*\]|\s+(?:status|commit|blocked-by|blocks|ac-version):|$)/i.exec(text)?.[1]?.trim()
+      : undefined;
     return {
       id, type, checked, status,
       text: text.replace(/\s{2,}/g, ' ').trim(),
@@ -414,11 +418,15 @@ export function createGenericPreset(config: GenericPresetConfig): Preset<Generic
         if (!isDone(issue)) return false;
         // An AC is "settled" for done-ness when it passed OR was explicitly descoped (a
         // recorded scope decision — the honest alternative to waiving). `blocked` is NOT
-        // settled: a done case can't carry an AC that's still waiting on other work.
-        const settled = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed' || ac.status === 'descoped').length;
-        return issue.acceptanceCriteria.length === 0 || settled < issue.acceptanceCriteria.length;
+        // settled: a done case can't carry an AC that's still waiting on other work. And a
+        // done case needs at least one ACTUALLY passed AC — descoping every criterion is not
+        // "done", it's a no-op (cancel it instead), and would otherwise be a free bypass.
+        const acs = issue.acceptanceCriteria;
+        const settled = acs.filter((ac) => ac.checked || ac.status === 'passed' || ac.status === 'descoped').length;
+        const passed = acs.filter((ac) => ac.checked || ac.status === 'passed').length;
+        return acs.length === 0 || settled < acs.length || passed === 0;
       },
-      message: () => 'Done cases require every acceptance criterion to be passed or descoped.',
+      message: () => 'Done cases require every acceptance criterion to be passed or descoped, with at least one actually passed (descoping every criterion is not "done").',
     }));
     // Descoping is the in-the-open scope decision, so it must say why — an unjustified
     // descope is as suspect as an unreasoned waiver.

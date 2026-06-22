@@ -302,4 +302,25 @@ describe('descope: the honest alternative to a waiver', () => {
     const r = run('- [x] dev/01 status: passed Did it. commit: a1b2c3d4 [E1]\n- [ ] dev/02 status: blocked\n');
     expect(r.findings.some((f) => f.code === 'wv_done_with_unpassed_acceptance_criteria')).toBe(true);
   });
+
+  test('a done case with EVERY AC descoped is flagged (needs ≥1 actually passed)', () => {
+    const r = run('- [ ] dev/01 status: descoped reason: cut from v1\n- [ ] dev/02 status: descoped reason: cut from v1\n');
+    expect(r.findings.some((f) => f.code === 'wv_done_with_unpassed_acceptance_criteria')).toBe(true);
+  });
+
+  test('`reason:` on the same line as `blocked-by:` does not corrupt the blocker (H1)', () => {
+    const root = wv.schema.parse(wv.parse(buildIssueBundle([frame('D-1', { state: 'open', stateType: 'open', assignee: 'a',
+      body: '## Acceptance Criteria\n\n- [ ] dev/01 status: pending First.\n- [ ] dev/02 status: descoped blocked-by: dev/01 reason: out of scope\n' })])));
+    const ac2 = root.issues[0]!.acceptanceCriteria.find((a) => a.id === 'dev/02')!;
+    expect(ac2.blockedBy).toEqual([{ issue: 'D-1', ac: 'dev/01' }]); // the real blocker survives, not "dev/01 reason"
+    expect(ac2.descopeReason).toBe('out of scope');
+  });
+
+  test('descopeReason is set only on descoped ACs and does not swallow trailing refs (M4)', () => {
+    const root = wv.schema.parse(wv.parse(buildIssueBundle([frame('D-1', { state: 'open', stateType: 'open', assignee: 'a',
+      body: '## Acceptance Criteria\n\n- [x] dev/01 status: passed Do it for a reason: clarity [E1] commit: abc1234\n- [ ] dev/02 status: descoped reason: superseded by auth work [E1]\n\n## Evidence\n\n[E1] type: pr\n' })])));
+    const acs = root.issues[0]!.acceptanceCriteria;
+    expect(acs.find((a) => a.id === 'dev/01')!.descopeReason).toBeUndefined();   // not descoped → no reason
+    expect(acs.find((a) => a.id === 'dev/02')!.descopeReason).toBe('superseded by auth work'); // [E1] not swallowed
+  });
 });

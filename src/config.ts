@@ -166,10 +166,20 @@ export function initTrackerProject(
     organization: { check: { categories: { sourced: 1, code: 2 } } },
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  ensureTrackerGitignore(root);
+  return { configPath, alreadyInitialized: false, teamKey: key, preset, ...(validationEntrypoint ? { validationEntrypoint } : {}) };
+}
+
+/** Idempotently ensure ztrack's managed `.gitignore` patterns are present. On a fresh repo
+ *  it writes the whole block; on a repo whose block predates a new pattern (e.g. the loop
+ *  runtime files added later) it appends only the missing lines — so the loop's session
+ *  state never leaks into a commit on a repo that was `init`'d before the loop existed.
+ *  Called by `init` and by `ztrack loop start` (the point where loop-state files appear). */
+export function ensureTrackerGitignore(root: string): void {
   const gitignorePath = resolve(root, '.gitignore');
   const ignoreMarker = '# ztrack (added by ztrack init)';
   const stateDir = stateDirName();
-  const ignoreBlock = [
+  const managed = [
     ignoreMarker,
     `${stateDir}/tracker/tracker.sqlite`,
     `${stateDir}/tracker/tracker.sqlite-*`,
@@ -181,14 +191,19 @@ export function initTrackerProject(
     `${stateDir}/.ztrack-loop-iter-*`,
     `${stateDir}/.ztrack-loop-exempt-*`,
     `${stateDir}/.ztrack-loop-capped.json`,
-    '',
-  ].join('\n');
-  const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
-  if (!existingIgnore.includes(ignoreMarker)) {
-    const prefix = existingIgnore && !existingIgnore.endsWith('\n') ? '\n' : '';
-    writeFileSync(gitignorePath, `${existingIgnore}${prefix}${existingIgnore ? '\n' : ''}${ignoreBlock}`);
+  ];
+  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
+  if (!existing.includes(ignoreMarker)) {
+    const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
+    writeFileSync(gitignorePath, `${existing}${prefix}${existing ? '\n' : ''}${managed.join('\n')}\n`);
+    return;
   }
-  return { configPath, alreadyInitialized: false, teamKey: key, preset, ...(validationEntrypoint ? { validationEntrypoint } : {}) };
+  const present = new Set(existing.split('\n').map((s) => s.trim()));
+  const missing = managed.filter((line) => line !== ignoreMarker && !present.has(line));
+  if (missing.length) {
+    const prefix = existing.endsWith('\n') ? '' : '\n';
+    writeFileSync(gitignorePath, `${existing}${prefix}${missing.join('\n')}\n`);
+  }
 }
 
 export function projectRootFrom(start = process.cwd()): string {

@@ -14,7 +14,7 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, upgradeTrackerPreset } from './config.ts';
+import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, upgradeTrackerPreset } from './config.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
@@ -164,6 +164,7 @@ async function main(): Promise<void> {
       const maxRaw = optionValue(args, '--max');
       const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
       mkdirSync(stateDir, { recursive: true });
+      ensureTrackerGitignore(root); // so the loop's runtime/exempt files are ignored even on a repo init'd before the loop existed
       sweepRuntime();
       if (existsSync(cappedPath)) rmSync(cappedPath); // a fresh arm clears any prior cap breadcrumb
       writeFileSync(marker, `${JSON.stringify({ issue, maxIterations, startedAt: new Date().toISOString() }, null, 2)}\n`);
@@ -178,13 +179,15 @@ async function main(): Promise<void> {
       return;
     }
     if (action === 'status') {
-      if (existsSync(marker)) {
-        const m = JSON.parse(readFileSync(marker, 'utf8')) as { issue: string; maxIterations: number; startedAt: string };
+      // A torn write of a runtime file must not crash `status`; treat unreadable as absent.
+      const readJson = (p: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>; } catch { return null; } };
+      const m = existsSync(marker) ? readJson(marker) : null;
+      if (m) {
         process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${m.issue}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
         return;
       }
-      if (existsSync(cappedPath)) {
-        const c = JSON.parse(readFileSync(cappedPath, 'utf8')) as { issue: string; iterations: number; cappedAt: string };
+      const c = existsSync(cappedPath) ? readJson(cappedPath) : null;
+      if (c) {
         process.stdout.write(`${statusMark('warn')} ${ui.yellow(`loop capped → ${c.issue}`)} ${ui.dim(`(hit the iteration cap after ${c.iterations} iterations, still red as of ${c.cappedAt}; run \`${command} check\` then \`${command} loop start ${c.issue}\` to re-arm)`)}\n`);
         return;
       }

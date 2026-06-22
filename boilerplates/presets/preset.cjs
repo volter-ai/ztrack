@@ -117,11 +117,14 @@ if (requireSdlcGates) {
     when: ({ issue }) => {
       if (!isDone(issue)) return false;
       // settled = passed OR explicitly descoped (the in-the-open scope decision). `blocked`
-      // is NOT settled: a done case can't carry an AC still waiting on other work.
-      const settled = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed' || ac.status === 'descoped').length;
-      return issue.acceptanceCriteria.length === 0 || settled < issue.acceptanceCriteria.length;
+      // is NOT settled. And a done case needs >=1 ACTUALLY passed AC — descoping every
+      // criterion isn't "done", it's a no-op (cancel it), and would be a free bypass.
+      const acs = issue.acceptanceCriteria;
+      const settled = acs.filter((ac) => ac.checked || ac.status === 'passed' || ac.status === 'descoped').length;
+      const passed = acs.filter((ac) => ac.checked || ac.status === 'passed').length;
+      return acs.length === 0 || settled < acs.length || passed === 0;
     },
-    message: () => 'Done cases require every acceptance criterion to be passed or descoped.',
+    message: () => 'Done cases require every acceptance criterion to be passed or descoped, with at least one actually passed (descoping every criterion is not "done").',
   }));
   // a descoped AC must say why — an unjustified descope is as suspect as an unreasoned waiver.
   rules.push(rule({

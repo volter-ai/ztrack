@@ -44,7 +44,9 @@ sweep_loop_state() { rm -f "$marker" "$root/$state_dir/.ztrack-loop-iter-"* "$ro
 
 # per-session iteration counter (so the cap bounds THIS loop run, not the whole machine)
 iterfile="$root/$state_dir/.ztrack-loop-iter-$session_id"
-n="$(cat "$iterfile" 2>/dev/null || echo 0)"; n=$((n + 1)); printf '%s' "$n" > "$iterfile"
+n="$(cat "$iterfile" 2>/dev/null || echo 0)"
+case "$n" in ''|*[!0-9]*) n=0 ;; esac   # a torn/partial write mustn't crash the arithmetic under set -u
+n=$((n + 1)); printf '%s' "$n" > "$iterfile"
 if [ "$n" -gt "$max" ]; then
   # Hold-and-surface, don't silently vanish: disarm (so the agent isn't trapped) but leave a
   # gitignored breadcrumb so `ztrack loop status` shows the loop capped on this issue.
