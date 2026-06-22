@@ -188,7 +188,21 @@ cd "$autonomous"
 npx ztrack-profile-check --repo . --profile simple-sdlc > "$tmp_root/profile-check.json"
 cat > "$tmp_root/termfleet" <<'SH'
 #!/usr/bin/env bash
-while [ "$#" -gt 0 ]; do [ "$1" = "--prompt" ] && { printf '%s' "$2" > agent-prompt.txt; exit 0; }; shift; done
+# Fake termfleet: capture the launched prompt and RETURN a terminalId (the autonomy
+# runner requires one), honoring both --prompt and --prompt-file.
+mode=""; prompt=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    new) mode=new; shift;;
+    list) mode=list; shift;;
+    --prompt) prompt="$2"; shift 2;;
+    --prompt-file) prompt="$(cat "$2")"; shift 2;;
+    *) shift;;
+  esac
+done
+if [ "$mode" = list ]; then printf '[]\n'; exit 0; fi
+printf '%s' "$prompt" > agent-prompt.txt
+printf '{"terminalId":"t-1"}\n'
 SH
 chmod +x "$tmp_root/termfleet"
 PATH="$tmp_root:$PATH" TERMFLEET_PROVIDER_URL="http://127.0.0.1:7376" node profiles/simple-sdlc/scheduler/scripts/run.mjs --once
@@ -198,7 +212,9 @@ PATH="$tmp_root:$PATH" TERMFLEET_AGENT=claude TERMFLEET_PROVIDER_URL="http://127
 test "$(cat agent-prompt.txt)" = '/ztrack-simple-sdlc-pm'
 rm agent-prompt.txt
 PATH="$tmp_root:$PATH" ZTRACK_AGENT=develop ZTRACK_ISSUE=AUTO-1 TERMFLEET_PROVIDER_URL="http://127.0.0.1:7376" node profiles/simple-sdlc/scripts/run-agent.mjs
-grep -q 'Assigned issue: AUTO-1' agent-prompt.txt
+# develop launches with its own skill prompt; the assigned issue flows via the ZTRACK_ISSUE
+# env (re-exported by the runner's setup-command / params), not embedded in the prompt text.
+grep -q 'ztrack-simple-sdlc-develop' agent-prompt.txt
 
 cat > .gitignore <<'EOF'
 node_modules/
@@ -230,8 +246,21 @@ git add .
 git commit -q -m "seed stale recovery states"
 cat > "$tmp_root/termfleet" <<'SH'
 #!/usr/bin/env bash
-if [ "${1:-}" = "list" ]; then printf '[]\n'; exit 0; fi
-while [ "$#" -gt 0 ]; do [ "$1" = "--prompt" ] && { printf '%s' "$2" > agent-prompt.txt; exit 0; }; shift; done
+# Fake termfleet (recovery phase): `list` returns no live sessions; `new` captures the
+# prompt and returns a terminalId.
+mode=""; prompt=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    new) mode=new; shift;;
+    list) mode=list; shift;;
+    --prompt) prompt="$2"; shift 2;;
+    --prompt-file) prompt="$(cat "$2")"; shift 2;;
+    *) shift;;
+  esac
+done
+if [ "$mode" = list ]; then printf '[]\n'; exit 0; fi
+printf '%s' "$prompt" > agent-prompt.txt
+printf '{"terminalId":"t-1"}\n'
 SH
 chmod +x "$tmp_root/termfleet"
 PATH="$tmp_root:$PATH" TERMFLEET_PROVIDER_URL="http://127.0.0.1:7376" node profiles/simple-sdlc/scheduler/scripts/recover-develop.mjs
