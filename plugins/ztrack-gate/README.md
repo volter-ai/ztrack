@@ -59,6 +59,22 @@ durable they are, none of which silently lies about "done":
   work, correct an over-specified AC, fix a false-positive rule, or — when a criterion is
   genuinely out of scope — **descope the AC** (`- [ ] AC-03 status: descoped reason: …`),
   which is a recorded, in-the-open scope decision rather than an acknowledged failure.
+  (Descope counts toward "done" only on presets that gate done-ness — `simple-sdlc` and
+  other SDLC-gated presets; the default `basic` preset doesn't gate done-ness, so there the
+  waiver is the durable escape.)
+
+## Trust boundary — cooperative, not a sandbox
+
+The loop fixes one specific failure of a **well-intentioned** agent: stopping too early /
+trusting its own judgement of "done". It replaces "declare victory and halt" with a
+deterministic gate. It does **not** *contain* an agent that wants out — by design. An
+operator (or any process with a shell in the repo) can `ztrack loop stop`, `ztrack waiver
+sign`, create the exempt file, or just edit the tracker markdown; these are operator tools,
+not access we try to prevent. Real containment (what an agent may run, read, or write) is
+the **harness's** job — its permission and sandbox layer — not ztrack's. What ztrack
+guarantees is narrower and honest: while the loop is armed, a turn ends only when the issue
+*actually passes `ztrack check`*, and every sanctioned way out is **recorded** (a waiver in
+the tracker, a capped breadcrumb in `loop status`) rather than silent.
 
 ## Requirements
 
