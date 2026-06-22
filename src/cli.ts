@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkTracker } from './check.ts';
@@ -144,9 +144,18 @@ async function main(): Promise<void> {
     // armed, the Stop hook holds the agent's turn until <issue> passes `ztrack check`.
     const action = args[1];
     const root = projectRootFrom();
-    const marker = join(root, stateDirName(), '.ztrack-loop.json');
+    const stateDir = join(root, stateDirName());
+    const marker = join(stateDir, '.ztrack-loop.json');
+    const cappedPath = join(stateDir, '.ztrack-loop-capped.json');
+    // Sweep every session's runtime state (iter counters + leftover exemptions), so a
+    // disarm/arm leaves nothing stale behind — mirrors the hook's sweep_loop_state.
+    const sweepRuntime = (): void => {
+      for (const f of existsSync(stateDir) ? readdirSync(stateDir) : []) {
+        if (f.startsWith('.ztrack-loop-iter-') || f.startsWith('.ztrack-loop-exempt-')) rmSync(join(stateDir, f), { force: true });
+      }
+    };
     if (!action || action === '--help' || action === '-h' || action === 'help') {
-      process.stdout.write(`Usage: ${command} loop <start <issue> [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate. While armed, the Stop hook keeps the agent going until <issue> passes \`${command} check\` (then it disarms), or the iteration cap trips. start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
+      process.stdout.write(`Usage: ${command} loop <start <issue> [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate. While armed, the Stop hook keeps the agent going until <issue> passes \`${command} check\` (then it disarms), or the iteration cap trips (status then shows it capped). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
       return;
     }
     if (action === 'start') {
@@ -154,20 +163,32 @@ async function main(): Promise<void> {
       if (!issue || issue.startsWith('-')) throw new Error(`${command} loop start: needs an issue id, e.g. \`${command} loop start ZT-1\``);
       const maxRaw = optionValue(args, '--max');
       const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
-      mkdirSync(dirname(marker), { recursive: true });
+      mkdirSync(stateDir, { recursive: true });
+      sweepRuntime();
+      if (existsSync(cappedPath)) rmSync(cappedPath); // a fresh arm clears any prior cap breadcrumb
       writeFileSync(marker, `${JSON.stringify({ issue, maxIterations, startedAt: new Date().toISOString() }, null, 2)}\n`);
       process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${issue} (max ${maxIterations}); the Stop gate now holds the turn until ${issue} is green`)}\n`);
       return;
     }
     if (action === 'stop') {
       if (existsSync(marker)) rmSync(marker);
+      if (existsSync(cappedPath)) rmSync(cappedPath);
+      sweepRuntime();
       process.stdout.write(`${statusMark('pass')} ${ui.dim('loop disarmed')}\n`);
       return;
     }
     if (action === 'status') {
-      if (!existsSync(marker)) { process.stdout.write(`${statusMark('info')} ${ui.dim('no loop armed')}\n`); return; }
-      const m = JSON.parse(readFileSync(marker, 'utf8')) as { issue: string; maxIterations: number; startedAt: string };
-      process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${m.issue}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
+      if (existsSync(marker)) {
+        const m = JSON.parse(readFileSync(marker, 'utf8')) as { issue: string; maxIterations: number; startedAt: string };
+        process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${m.issue}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
+        return;
+      }
+      if (existsSync(cappedPath)) {
+        const c = JSON.parse(readFileSync(cappedPath, 'utf8')) as { issue: string; iterations: number; cappedAt: string };
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`loop capped → ${c.issue}`)} ${ui.dim(`(hit the iteration cap after ${c.iterations} iterations, still red as of ${c.cappedAt}; run \`${command} check\` then \`${command} loop start ${c.issue}\` to re-arm)`)}\n`);
+        return;
+      }
+      process.stdout.write(`${statusMark('info')} ${ui.dim('no loop armed')}\n`);
       return;
     }
     throw new Error(`${command} loop: unknown action '${action}'. Try 'start <issue>', 'stop', or 'status'.`);

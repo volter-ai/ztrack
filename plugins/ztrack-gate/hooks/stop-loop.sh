@@ -38,12 +38,19 @@ if [ -f "$exempt" ]; then
   exit 0
 fi
 
+# Sweep ALL of this loop's runtime state on disarm — every session's iter counter and every
+# leftover exemption — not just this session's, so nothing stale lingers in .volter.
+sweep_loop_state() { rm -f "$marker" "$root/$state_dir/.ztrack-loop-iter-"* "$root/$state_dir/.ztrack-loop-exempt-"*; }
+
 # per-session iteration counter (so the cap bounds THIS loop run, not the whole machine)
 iterfile="$root/$state_dir/.ztrack-loop-iter-$session_id"
 n="$(cat "$iterfile" 2>/dev/null || echo 0)"; n=$((n + 1)); printf '%s' "$n" > "$iterfile"
 if [ "$n" -gt "$max" ]; then
-  rm -f "$marker" "$iterfile"
-  echo "ztrack loop: hit the iteration cap ($max) for $issue without going green — stopping. Run 'ztrack check' to see what's left, then re-arm to keep going." >&2
+  # Hold-and-surface, don't silently vanish: disarm (so the agent isn't trapped) but leave a
+  # gitignored breadcrumb so `ztrack loop status` shows the loop capped on this issue.
+  sweep_loop_state
+  printf '{"issue":"%s","iterations":%s,"cappedAt":"%s"}\n' "$issue" "$max" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$root/$state_dir/.ztrack-loop-capped.json"
+  echo "ztrack loop: hit the iteration cap ($max) for $issue without going green — stopping. 'ztrack loop status' shows this; run 'ztrack check' to see what's left, then 'ztrack loop start' to re-arm." >&2
   exit 0
 fi
 
@@ -58,14 +65,18 @@ fi
 out="$(cd "$root" && ZTRACK_ACTIVE_ISSUE="$issue" "$ztrack_bin" check --auto-scope 2>&1)"
 code=$?
 if [ "$code" -eq 0 ]; then
-  rm -f "$marker" "$iterfile"
+  sweep_loop_state
   echo "ztrack loop: $issue is green — done." >&2
   exit 0
 fi
 {
   echo "ztrack loop ($issue): not done yet — resolve these before the turn can end:"
   echo "$out" | tail -50
-  echo
-  echo "If you are genuinely blocked and must hand back to a human, exempt THIS session only by creating an empty file at: $state_dir/.ztrack-loop-exempt-$session_id (this does not disarm the loop; a fresh session resumes it). Otherwise keep working."
+  # Offer the per-session hand-back only once the agent is PAST THE HALF-WAY point of the
+  # iteration budget — early on the answer is "keep working", not "here's the quit button".
+  if [ $((n * 2)) -gt "$max" ]; then
+    echo
+    echo "If you are genuinely blocked and must hand back to a human, exempt THIS session only by creating an empty file at: $state_dir/.ztrack-loop-exempt-$session_id (this does not disarm the loop; a fresh session resumes it). Otherwise keep working."
+  fi
 } >&2
 exit 2

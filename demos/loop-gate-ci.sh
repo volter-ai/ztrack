@@ -26,6 +26,8 @@ mk_issue() { printf '%s' "$2" > "$1/body.md"; ( cd "$1" && npx ztrack issue crea
 arm()  { ( cd "$1" && npx ztrack loop start APP-1 --max "${2:-5}" >/dev/null ); }
 # helpers that CAPTURE a non-zero exit (so `set -e` doesn't abort): cmd && rc=0 || rc=$?
 fire() { local rc; ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$hook" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+fire_msg() { ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$hook" 2>&1 >/dev/null ) || true; }  # echoes the hook's held message
+count_state() { find "$1/.volter" -maxdepth 1 \( -name '.ztrack-loop-iter-*' -o -name '.ztrack-loop-exempt-*' \) 2>/dev/null | wc -l | tr -d ' '; }
 chk()  { local rc; ( cd "$1" && npx ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
 armed(){ [ -f "$1/.volter/.ztrack-loop.json" ] && echo YES || echo NO; }
 greps(){ ( cd "$1" && npx ztrack check 2>&1 ) | grep -c "$2" || true; }
@@ -76,6 +78,35 @@ printf '# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evide
 ( cd "$d" && npx ztrack issue edit APP-1 --body-file u.md >/dev/null )
 ok "$(chk "$d")" 1 "an unreasoned waiver does not pass"
 ok "$([ "$(greps "$d" waiver_missing_reason)" -ge 1 ] && echo YES || echo NO)" YES "and it reports waiver_missing_reason"
+
+echo "## R1: the self-exempt path is offered only past the half-way point of the budget"
+d="$(new_repo r1)"; mk_issue "$d" "$red"; arm "$d" 6
+early="$(fire_msg "$d" R1)"                                   # n=1 (1*2 <= 6) -> not offered
+fire_msg "$d" R1 >/dev/null; fire_msg "$d" R1 >/dev/null      # n=2,3
+late="$(fire_msg "$d" R1)"                                    # n=4 (4*2 > 6) -> offered
+ok "$(printf '%s' "$early" | grep -c 'ztrack-loop-exempt-')" 0 "no exempt path on an early held turn (keep working)"
+ok "$([ "$(printf '%s' "$late" | grep -c 'ztrack-loop-exempt-')" -ge 1 ] && echo YES || echo NO)" YES "exempt path offered once past half the budget"
+
+echo "## R2: the iteration cap holds-and-surfaces (breadcrumb + status), never a silent vanish"
+d="$(new_repo r2)"; mk_issue "$d" "$red"; arm "$d" 2
+fire "$d" R2 >/dev/null; fire "$d" R2 >/dev/null              # n=1,2 held
+ok "$(fire "$d" R2)" 0 "the turn past --max releases (exit 0, not trapped)"
+ok "$(armed "$d")" NO "the cap removes the arm marker"
+ok "$([ -f "$d/.volter/.ztrack-loop-capped.json" ] && echo YES || echo NO)" YES "and leaves a capped breadcrumb"
+ok "$(fire "$d" FRESH)" 0 "a fresh session is not trapped after a cap (not armed -> exit 0)"
+ok "$([ "$( ( cd "$d" && npx ztrack loop status ) | grep -c capped )" -ge 1 ] && echo YES || echo NO)" YES "loop status reports the cap"
+( cd "$d" && npx ztrack loop start APP-1 --max 2 >/dev/null )
+ok "$([ -f "$d/.volter/.ztrack-loop-capped.json" ] && echo YES || echo NO)" NO "re-arming clears the breadcrumb"
+
+echo "## R3: any disarm sweeps EVERY session's iter/exempt files (no stale litter)"
+d="$(new_repo r3)"; mk_issue "$d" "$green"; arm "$d" 5
+: > "$d/.volter/.ztrack-loop-iter-DEAD"; : > "$d/.volter/.ztrack-loop-exempt-DEAD"   # stray from a dead session
+fire "$d" R3 >/dev/null                                       # green -> disarm -> sweep all
+ok "$(count_state "$d")" 0 "going green sweeps every session's iter/exempt files"
+d="$(new_repo r3stop)"; mk_issue "$d" "$red"; arm "$d" 5
+: > "$d/.volter/.ztrack-loop-iter-X"; : > "$d/.volter/.ztrack-loop-exempt-X"
+( cd "$d" && npx ztrack loop stop >/dev/null )
+ok "$(count_state "$d")" 0 "loop stop sweeps stray iter/exempt files"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "loop-gate-ci: ALL PASS"; else echo "loop-gate-ci: $fails FAIL"; exit 1; fi

@@ -23,7 +23,7 @@ describe('initTrackerProject', () => {
           installedFrom: 'basic',
         },
       });
-      expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('# ztrack (added by ztrack init)\n.volter/tracker/tracker.sqlite\n.volter/tracker/tracker.sqlite-*\n.volter/tracker/tracker.sqlite.lock\n.volter/tracker/local-store.json\n.volter/tracker/markdown/\n.volter/agent-dispatch/\n.volter/.ztrack-loop.json\n.volter/.ztrack-loop-iter-*\n.volter/.ztrack-loop-exempt-*\n');
+      expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('# ztrack (added by ztrack init)\n.volter/tracker/tracker.sqlite\n.volter/tracker/tracker.sqlite-*\n.volter/tracker/tracker.sqlite.lock\n.volter/tracker/local-store.json\n.volter/tracker/markdown/\n.volter/agent-dispatch/\n.volter/.ztrack-loop.json\n.volter/.ztrack-loop-iter-*\n.volter/.ztrack-loop-exempt-*\n.volter/.ztrack-loop-capped.json\n');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

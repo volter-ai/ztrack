@@ -180,6 +180,7 @@ export function initTrackerProject(
     `${stateDir}/.ztrack-loop.json`,
     `${stateDir}/.ztrack-loop-iter-*`,
     `${stateDir}/.ztrack-loop-exempt-*`,
+    `${stateDir}/.ztrack-loop-capped.json`,
     '',
   ].join('\n');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
