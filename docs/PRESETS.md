@@ -48,21 +48,31 @@ feature records.
 ## Installed Contract
 
 The installed file is plain CommonJS so a fresh repo can edit it without a build
-step. It exports a core `Preset` produced by `createGenericPreset`:
+step. It is REAL editable code: it rents the engine, markdown parser, and root
+schema from `ztrack/preset-kit`, and declares its rules as records over the
+derived model:
 
 ```js
-module.exports = require("ztrack/preset-kit").createGenericPreset({
-  name: "basic",
-  requireSourceMarker: false,
-  requireSdlcGates: false,
-  requireSpecSections: false,
-  requireSpeckitSections: false,
-});
+const { definePreset, rule, gitWorld, genericParser, genericSchema, genericScaffold } =
+  require("ztrack/preset-kit");
+
+const requireSdlcGates = "false" === "true";   // inline flags you can edit
+const rules = [
+  rule({
+    code: "basic_checkbox_status_mismatch",
+    select: (m) => m.acs,                       // a scope off the derived model
+    when: ({ ac }) => (ac.checked && ac.status !== "passed") || (!ac.checked && ac.status === "passed"),
+    message: ({ ac }) => `AC ${ac.id} checkbox disagrees with status "${ac.status}".`,
+  }),
+  // ...edit, add, or remove records directly
+];
+module.exports = definePreset({ name: "basic", schema: genericSchema, parse: genericParser, rules /* , derive, isIssueDone, ... */ });
 ```
 
-`createGenericPreset` returns a real core `Preset` — an mdast parser, one strict
-Zod schema, and pure rules. Each `--preset` flips the booleans above. Most teams
-should edit that file instead of creating a new package.
+The parser and schema are rented; the **rules are yours to edit**. Each `--preset`
+sets the inline flags. Most teams edit the records in that file instead of creating a
+new package. (The typed factory those records mirror is `createGenericPreset`;
+`src/presetInstall.test.ts` guards that the installed file stays equivalent to it.)
 
 A preset defines validation as ONE typed pipeline: the loader (the only impure
 boundary) reads the backend and calls the preset's own `loadContext` to gather

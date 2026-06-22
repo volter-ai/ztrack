@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { buildSpeckitBundle, checkSpeckit, parseSpeckit, SpeckitPreset, SpeckitRootSchema } from './speckitCore.ts';
+import { checkRoot } from '../core/engine.ts';
 
 const HEAD = 'cafe1234beef';
 const SPEC = `# Feature Specification: Appointment Search
@@ -251,9 +252,10 @@ describe('speckit core preset (full process capture)', () => {
   });
 
   test('cross-issue (root) rule: duplicate feature ids fail (root is multi-issue)', () => {
-    const rule = SpeckitPreset.rules.find((r) => r.name === 'speckit_unique_feature_ids')!;
-    // the rule only reads issue.id; a minimal two-feature root exercises the root layer
-    const findings = rule.run({ context: {}, root: { issues: [{ id: 'F-1' }, { id: 'F-1' }] } as never });
+    // a root holding the same parsed feature twice exercises the cross-issue layer
+    const spec = `# Feature Specification: Foo\n\n## User Scenarios\n\n### User Story 1 - A (Priority: P1)\n- Given x When y Then z\n`;
+    const root = SpeckitRootSchema.parse(parseSpeckit(buildSpeckitBundle([{ path: 'specs/foo/spec.md', content: spec }])));
+    const findings = checkRoot(SpeckitPreset, { issues: [root.issues[0]!, root.issues[0]!] }, {}).findings;
     expect(findings.some((f) => f.code === 'speckit_duplicate_feature_id')).toBe(true);
   });
 

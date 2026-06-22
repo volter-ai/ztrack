@@ -13,7 +13,7 @@ copy-pasteable, deterministic, and honest about what ztrack can verify locally.
 | Autonomous profile setup | Agent-run projects | one script creates/adopts a repo, installs preset + profile, installs scheduler config, seeds issues, dispatches first agent | Ready in `demos/autonomous-profile-setup.sh` |
 | Existing repo adoption | Maintainers and agents | install, first issue, first gate, CI/MCP | Ready in `docs/ADOPTING.md` |
 | Preset selection | Maintainers and agents | choosing `basic`, `simple-sdlc`, `simple-spec`, or `speckit` | Ready in `docs/PRESETS.md` |
-| Installed preset shape | Teams with their own SDLC | `createGenericPreset` single-pipeline shape + repo-local edit path | Starter in `demos/installed-preset/` |
+| Installed preset shape | Teams with their own SDLC | editable rule records over the derived model (rented engine/parser/schema) + repo-local edit path | Starter in `demos/installed-preset/` |
 | CI validated-root gate | OSS maintainers | committed `.volter/root.json` + GitHub Action | Ready in `docs/EXAMPLES.md` |
 | MCP agent loop | Agent users | `tracker_check`, evidence-first AC mutation | Ready in `docs/EXAMPLES.md` |
 | SDK/API integration | Tool builders | `createTrackerClient` issue CRUD | Ready in `demos/sdk-api/` |

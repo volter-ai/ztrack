@@ -1,21 +1,22 @@
-// preset-kit: createGenericPreset — the editable, configurable core Preset that
-// `ztrack init` installs. It is a REAL core preset (one strict Zod schema, mdast
-// parse, pure rules over the validated ValidationInput) — not a snapshot runtime.
+// preset-kit: the authoring API a repo-local preset rents, plus createGenericPreset (the
+// in-package reference implementation `ztrack init` VENDORS records from).
 //
-// The repo-local `.volter/tracker/validation/preset.cjs` is just:
-//   module.exports = require('ztrack/preset-kit').createGenericPreset({ ... });
-// so a project keeps an editable entrypoint with zero build step while still
-// running the single validation pipeline.
+// `ztrack init` installs `.volter/tracker/validation/preset.cjs` as REAL editable code:
+// it imports the engine + this kit's genericParser/genericSchema/genericScaffold and
+// declares its rules as records over the derived model (see boilerplates/presets/preset.cjs).
+// createGenericPreset is the typed, tested factory those vendored records mirror — kept as
+// the reference (and an alternative thin authoring style). presetInstall.test.ts proves the
+// installed template stays behaviorally identical to it.
 
 import { z } from 'zod';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
-import type { CoreIssue, Finding, Preset, Rule } from './core/engine.ts';
+import { rule, type BlockerFact, type CompletionFact, type CycleFact, type DerivedModel, type Preset, type Rule } from './core/engine.ts';
 import { splitIssueBundle } from './core/bundle.ts';
 import { gitWorld } from './core/gitWorld.ts';
 import { BlockRefSchema, formatRef } from './core/ref.ts';
-import { blockCycles, blockerRefProblems, completionViolations, nodeIndex, normalizeBlockRefs, parseBlockToken, type RawBlockRef } from './core/blocking.ts';
+import { normalizeBlockRefs, parseBlockToken, type RawBlockRef } from './core/blocking.ts';
 
 // Re-exported so a repo-local preset's `loadContext` can gather git facts without
 // reaching into ztrack internals: require('ztrack/preset-kit').gitWorld(root, branches).
@@ -32,6 +33,17 @@ export {
   validateWorldAnnotations,
   type WorldAnnotation,
 } from './worldAnnotations.ts';
+
+// ── authoring API for repo-local presets installed by `ztrack init` ──────────
+// An installed preset.cjs is REAL CODE: it rents the engine + this kit's generic
+// parser/schema/scaffold and declares its rules as records over the derived model.
+// These exports are that authoring surface (the parts an installed preset imports).
+export { rule, definePreset, check, checkRoot, deriveCoreModel } from './core/engine.ts';
+export type {
+  Preset, Rule, RuleRecord, DerivedModel, Located, Finding, Severity, Context,
+  BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot,
+} from './core/engine.ts';
+export { formatRef, BlockRefSchema } from './core/ref.ts';
 
 export interface GenericPresetConfig {
   name: string;
@@ -277,142 +289,152 @@ function parseGeneric(bundle: string): unknown {
 }
 
 const shaMatches = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
-const isCanceled = (i: GenericRoot['issues'][number]) => i.stateType.toLowerCase() === 'canceled';
-const isDone = (i: GenericRoot['issues'][number]) => ['done', 'completed'].includes((i.stateType || i.status).toLowerCase());
+type GIssue = GenericRoot['issues'][number];
+type GAC = GIssue['acceptanceCriteria'][number];
+const isCanceled = (i: GIssue) => i.stateType.toLowerCase() === 'canceled';
+const isDone = (i: GIssue) => ['done', 'completed'].includes((i.stateType || i.status).toLowerCase());
+// Typed view of this preset's derived facts (the one place the open `derived` bag is narrowed).
+type GenericFacts = { missingCommitHashes: Array<{ issueId: string; acId: string; sha: string }>; unknownEvidenceRefs: Array<{ issueId: string; acId: string; ref: string }> };
+const facts = (m: DerivedModel<GenericRoot>): GenericFacts => m.derived as unknown as GenericFacts;
 
 export function createGenericPreset(config: GenericPresetConfig): Preset<GenericRoot> {
   const name = config.name;
   const code = (suffix: string) => `${name}_${suffix}`;
-  // for the blocking graph: a zero-AC issue counts as a met blocker only when its
-  // backend state is a done state.
-  const isIssueDone = (issue: CoreIssue): boolean => isDone(issue as unknown as GenericRoot['issues'][number]);
+  const codeDepth = { category: 'code' as const, depth: 2 as const };
 
-  const rules: Rule<GenericRoot>[] = [];
-
-  // cross-issue (root) rule: the root is multi-issue (the loader frames the whole
-  // tracker), so ids must be unique across it — a check only expressible here.
-  rules.push({
-    name: code('duplicate_issue_id'),
-    run: ({ root }) => {
-      const seen = new Set<string>(); const out: Finding[] = [];
-      for (const i of root.issues) {
-        if (seen.has(i.id)) out.push({ code: code('duplicate_issue_id'), severity: 'error', issueId: i.id, message: `Duplicate issue id ${i.id} in the tracker.` });
-        seen.add(i.id);
-      }
-      return out;
-    },
-  });
+  // Rules are declarative records over the engine's derived model. Duplicate ids and the
+  // unified block graph (cycles, blocker problems, completion violations) arrive on the
+  // core model; the per-commit/per-evidence-ref problems this preset checks are derived
+  // below. The omnibus "checked AC evidence" rule decomposes into four named records.
+  const rules: Rule<GenericRoot>[] = [
+    // cross-issue: ids unique across the framed tracker root.
+    rule<GenericRoot, { issueId: string }>({
+      code: code('duplicate_issue_id'), select: (m) => m.duplicateIssueIds,
+      message: ({ issueId }) => `Duplicate issue id ${issueId} in the tracker.`,
+    }),
+    // invariant: an explicit `status:` must not contradict the GFM checkbox.
+    rule<GenericRoot, { issueId: string; acId: string; ac: GAC }>({
+      code: code('checkbox_status_mismatch'), select: (m) => m.acs,
+      when: ({ ac }) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'),
+      message: ({ ac }) => `AC ${ac.id} checkbox (${ac.checked ? '[x]' : '[ ]'}) disagrees with status "${ac.status}".`,
+    }),
+    rule<GenericRoot, { issueId: string; issue: GIssue }>({
+      code: code('case_missing_assignee'), select: (m) => m.issues,
+      when: ({ issue }) => !isCanceled(issue) && issue.assignee.trim() === '',
+      message: () => 'Non-canceled cases must have an assignee.',
+    }),
+    // checked-AC evidence/commit gates (commit existence comes from the model's context).
+    rule<GenericRoot, { issueId: string; acId: string; ac: GAC }>({
+      code: code('checked_ac_missing_commit_hash'), ...codeDepth, select: (m) => m.acs,
+      when: ({ ac }) => (ac.checked || ac.status === 'passed') && ac.commitHashes.length === 0,
+      message: ({ ac }) => `Checked AC ${ac.id} does not cite a commit hash.`,
+    }),
+    rule<GenericRoot, { issueId: string; acId: string; sha: string }>({
+      code: code('checked_ac_commit_hash_missing'), ...codeDepth,
+      select: (m) => facts(m).missingCommitHashes,
+      message: ({ acId, sha }) => `Checked AC ${acId} cites missing commit ${sha}.`,
+    }),
+    rule<GenericRoot, { issueId: string; acId: string; ac: GAC }>({
+      code: code('checked_ac_missing_evidence'), ...codeDepth, select: (m) => m.acs,
+      when: ({ ac }) => (ac.checked || ac.status === 'passed') && ac.evidenceRefs.length === 0,
+      message: ({ ac }) => `Checked AC ${ac.id} does not cite evidence.`,
+    }),
+    rule<GenericRoot, { issueId: string; acId: string; ref: string }>({
+      code: code('checked_ac_unknown_evidence'), ...codeDepth,
+      select: (m) => facts(m).unknownEvidenceRefs,
+      message: ({ acId, ref }) => `Checked AC ${acId} cites unknown evidence ${ref}.`,
+    }),
+    // cross-tree blocking integrity over the unified dependency graph (engine-analyzed).
+    rule<GenericRoot, BlockerFact>({
+      code: code('ac_self_block'), select: (m) => m.graph.blockerProblems, when: (b) => b.kind === 'self',
+      message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} lists itself as a blocker.`,
+    }),
+    rule<GenericRoot, BlockerFact>({
+      code: code('ac_blocker_missing'), select: (m) => m.graph.blockerProblems, when: (b) => b.kind !== 'self',
+      message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} references ${b.refText}, which does not exist.`,
+    }),
+    rule<GenericRoot, CycleFact>({
+      code: code('ac_block_cycle'), select: (m) => m.graph.cycles,
+      message: ({ cycle }) => `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.`,
+    }),
+    rule<GenericRoot, CompletionFact>({
+      code: code('ac_blocked_by_unpassed'), select: (m) => m.graph.completionViolations,
+      message: ({ nodeKey, depKey, depStatus }) => `${nodeKey} is done but depends on ${depKey} (status "${depStatus}").`,
+    }),
+  ];
 
   if (config.requireSourceMarker) {
-    rules.push({
-      name: code('case_missing_source_marker'), category: 'sourced', depth: 1,
-      run: ({ root }) => root.issues.filter((i) => i.sourceMarkers.length === 0).map((i): Finding => ({
-        code: code('case_missing_source_marker'), severity: 'error', issueId: i.id,
-        message: 'Case body must cite at least one [N] source marker.',
-      })),
-    });
+    rules.push(rule<GenericRoot, { issueId: string; issue: GIssue }>({
+      code: code('case_missing_source_marker'), category: 'sourced', depth: 1, select: (m) => m.issues,
+      when: ({ issue }) => issue.sourceMarkers.length === 0,
+      message: () => 'Case body must cite at least one [N] source marker.',
+    }));
   }
 
-  // invariant: an explicit `status:` must not contradict the GFM checkbox.
-  rules.push({
-    name: code('checkbox_status_mismatch'),
-    run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria
-      .filter((ac) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'))
-      .map((ac): Finding => ({ code: code('checkbox_status_mismatch'), severity: 'error', issueId: i.id, acId: ac.id, message: `AC ${ac.id} checkbox (${ac.checked ? '[x]' : '[ ]'}) disagrees with status "${ac.status}".` }))),
-  });
-
-  rules.push({
-    name: code('case_missing_assignee'),
-    run: ({ root }) => root.issues.filter((i) => !isCanceled(i) && i.assignee.trim() === '').map((i): Finding => ({
-      code: code('case_missing_assignee'), severity: 'error', issueId: i.id,
-      message: 'Non-canceled cases must have an assignee.',
-    })),
-  });
-
-  const sectionRule = (suffix: string, sections: string[]) => ({
-    name: code(suffix),
-    run: ({ root }: { root: GenericRoot }) => root.issues.flatMap((i): Finding[] =>
-      sections.filter((s) => !i.sections.includes(s)).map((s): Finding => ({
-        code: code(`missing_${s.toLowerCase().replace(/\s+/g, '_')}`), severity: 'error', issueId: i.id,
-        message: `Issue must include a ## ${s} section.`,
-      }))),
-  });
-  if (config.requireSpecSections) rules.push(sectionRule('spec_sections', ['Requirements', 'Acceptance Criteria']));
-  if (config.requireSpeckitSections) rules.push(sectionRule('speckit_sections', ['User Stories', 'Functional Requirements', 'Tasks']));
+  // one record per required section, each emitting its own missing_<section> code.
+  const sectionRules = (sections: string[]) => sections.map((s) =>
+    rule<GenericRoot, { issueId: string; issue: GIssue }>({
+      code: code(`missing_${s.toLowerCase().replace(/\s+/g, '_')}`), select: (m) => m.issues,
+      when: ({ issue }) => !issue.sections.includes(s),
+      message: () => `Issue must include a ## ${s} section.`,
+    }));
+  if (config.requireSpecSections) rules.push(...sectionRules(['Requirements', 'Acceptance Criteria']));
+  if (config.requireSpeckitSections) rules.push(...sectionRules(['User Stories', 'Functional Requirements', 'Tasks']));
 
   if (config.requireSdlcGates) {
-    rules.push({
-      name: code('case_missing_acceptance_criteria'),
-      run: ({ root }) => root.issues.filter((i) => !isCanceled(i) && i.acceptanceCriteria.length === 0).map((i): Finding => ({
-        code: code('case_missing_acceptance_criteria'), severity: 'error', issueId: i.id,
-        message: 'Active cases must include at least one acceptance criterion.',
-      })),
-    });
-    rules.push({
-      name: code('done_with_unpassed_acceptance_criteria'),
-      run: ({ root }) => root.issues.filter((i) => isDone(i)).flatMap((i): Finding[] => {
-        const passed = i.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed').length;
-        return i.acceptanceCriteria.length === 0 || passed < i.acceptanceCriteria.length
-          ? [{ code: code('done_with_unpassed_acceptance_criteria'), severity: 'error', issueId: i.id, message: 'Done cases require every acceptance criterion to be passed.' }]
-          : [];
-      }),
-    });
+    rules.push(rule<GenericRoot, { issueId: string; issue: GIssue }>({
+      code: code('case_missing_acceptance_criteria'), select: (m) => m.issues,
+      when: ({ issue }) => !isCanceled(issue) && issue.acceptanceCriteria.length === 0,
+      message: () => 'Active cases must include at least one acceptance criterion.',
+    }));
+    rules.push(rule<GenericRoot, { issueId: string; issue: GIssue }>({
+      code: code('done_with_unpassed_acceptance_criteria'), select: (m) => m.issues,
+      when: ({ issue }) => {
+        if (!isDone(issue)) return false;
+        const passed = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed').length;
+        return issue.acceptanceCriteria.length === 0 || passed < issue.acceptanceCriteria.length;
+      },
+      message: () => 'Done cases require every acceptance criterion to be passed.',
+    }));
   }
 
-  // checked-AC evidence/commit gates (pure: commit existence comes from ctx.git)
-  rules.push({
-    name: code('checked_ac_evidence'), category: 'code', depth: 2,
-    run: ({ root, context }) => {
-      const existing = context.git?.existingCommits;
-      return root.issues.flatMap((i) => i.acceptanceCriteria
-        .filter((ac) => ac.checked || ac.status === 'passed')
-        .flatMap((ac): Finding[] => {
-          const out: Finding[] = [];
-          if (ac.commitHashes.length === 0) out.push({ code: code('checked_ac_missing_commit_hash'), severity: 'error', issueId: i.id, acId: ac.id, message: `Checked AC ${ac.id} does not cite a commit hash.` });
-          if (existing) {
-            for (const sha of ac.commitHashes) {
-              if (!existing.some((c) => shaMatches(c, sha))) out.push({ code: code('checked_ac_commit_hash_missing'), severity: 'error', issueId: i.id, acId: ac.id, message: `Checked AC ${ac.id} cites missing commit ${sha}.` });
-            }
-          }
-          if (ac.evidenceRefs.length === 0) out.push({ code: code('checked_ac_missing_evidence'), severity: 'error', issueId: i.id, acId: ac.id, message: `Checked AC ${ac.id} does not cite evidence.` });
-          const known = new Set(ac.evidence.map((e) => e.id));
-          for (const ref of ac.evidenceRefs) {
-            if (!known.has(ref)) out.push({ code: code('checked_ac_unknown_evidence'), severity: 'error', issueId: i.id, acId: ac.id, message: `Checked AC ${ac.id} cites unknown evidence ${ref}.` });
-          }
-          return out;
-        }));
-    },
-  });
+  // this preset's analyzed facts: per-commit and per-evidence-ref problems on checked ACs.
+  const derive = (model: DerivedModel<GenericRoot>) => {
+    const missingCommitHashes: Array<{ issueId: string; acId: string; sha: string }> = [];
+    const unknownEvidenceRefs: Array<{ issueId: string; acId: string; ref: string }> = [];
+    const existing = model.context.git?.existingCommits;
+    for (const i of model.root.issues) {
+      for (const ac of i.acceptanceCriteria) {
+        if (!(ac.checked || ac.status === 'passed')) continue;
+        if (existing) for (const sha of ac.commitHashes) if (!existing.some((c) => shaMatches(c, sha))) missingCommitHashes.push({ issueId: i.id, acId: ac.id, sha });
+        const known = new Set(ac.evidence.map((e) => e.id));
+        for (const ref of ac.evidenceRefs) if (!known.has(ref)) unknownEvidenceRefs.push({ issueId: i.id, acId: ac.id, ref });
+      }
+    }
+    return { missingCommitHashes, unknownEvidenceRefs };
+  };
 
-  // cross-tree blocking integrity over the UNIFIED dependency graph (AC + issue nodes,
-  // both `blocked-by`/`blocks` directions). Referent + self checks run over the authored
-  // refs; cycle + completion gates run over the graph.
-  rules.push({
-    name: code('ac_blocker_missing'),
-    run: ({ root }) => blockerRefProblems(root).map((p): Finding => ({
-      code: p.kind === 'self' ? code('ac_self_block') : code('ac_blocker_missing'),
-      severity: 'error', issueId: p.issueId, acId: p.acId,
-      message: p.kind === 'self'
-        ? `AC ${formatRef({ issue: p.issueId, ac: p.acId })} lists itself as a blocker.`
-        : `AC ${formatRef({ issue: p.issueId, ac: p.acId })} references ${formatRef(p.ref)}, which does not exist.`,
-    })),
-  });
-  rules.push({
-    name: code('ac_block_cycle'),
-    run: ({ root }) => blockCycles(root).map((cycle): Finding => {
-      const head = nodeIndex(root).get(cycle[0]!)!;
-      return { code: code('ac_block_cycle'), severity: 'error', issueId: head.issue.id, ...(head.ac ? { acId: head.ac.id } : {}), message: `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.` };
-    }),
-  });
-  rules.push({
-    name: code('ac_blocked_by_unpassed'),
-    run: ({ root }) => completionViolations(root, { isIssueDone }).map(({ node, dep }): Finding => ({
-      code: code('ac_blocked_by_unpassed'), severity: 'error', issueId: node.issue.id, ...(node.ac ? { acId: node.ac.id } : {}),
-      message: `${node.key} is done but depends on ${dep.key} (status "${dep.kind === 'ac' ? dep.ac!.status : 'incomplete'}").`,
-    })),
-  });
+  return {
+    name,
+    schema: GenericRootSchema,
+    loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
+    parse: parseGeneric,
+    // a zero-AC issue counts as a met blocker (for the graph completion gate) only at a done state.
+    isIssueDone: isDone,
+    derive,
+    rules,
+    scaffold: genericScaffold(config),
+    primitives: { labels: true, blocking: true, sources: false, proof: false, relations: false, linkedIssues: false, children: false, category: false },
+  };
+}
 
-  const scaffold = (title: string): string => {
+// ── rented mechanism an installed preset imports (parser/schema/scaffold) ─────
+// The generic markdown parser and root schema, and the starter-body generator, exposed
+// so a repo-local preset can rent them and keep only its RULES as editable records.
+export const genericParser = parseGeneric;
+export const genericSchema = GenericRootSchema;
+export function genericScaffold(config: GenericPresetConfig): (title: string) => string {
+  return (title: string): string => {
     if (config.requireSpecSections && !config.requireSpeckitSections) {
       return `# ${title}\n\n## Summary\n\nShort statement of the feature or behavior. [1]\n\n## Requirements\n\n- The system must describe one concrete requirement. [1]\n\n## Acceptance Criteria\n\n- [ ] spec/01 status: pending Describe one observable acceptance criterion. [1]\n\n## Sources\n\n[1] Requirement:\nPaste the source text here.\n\n## Evidence\n`;
     }
@@ -421,15 +443,5 @@ export function createGenericPreset(config: GenericPresetConfig): Preset<Generic
     }
     const marker = config.requireSourceMarker;
     return `# ${title}\n\n## Summary\n\n${marker ? 'Source-grounded summary. [1]' : 'Short statement of the work.'}\n\n## Acceptance Criteria\n\n- [ ] dev/01 status: pending Describe one observable outcome.${marker ? ' [1]' : ''}\n\n${marker ? '## Sources\n\n[1] Requirement:\nPaste the source text here.\n\n' : ''}## Evidence\n`;
-  };
-
-  return {
-    name,
-    schema: GenericRootSchema,
-    loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
-    parse: parseGeneric,
-    rules,
-    scaffold,
-    primitives: { labels: true, blocking: true, sources: false, proof: false, relations: false, linkedIssues: false, children: false, category: false },
   };
 }

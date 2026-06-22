@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-import { check, checkRoot, type Preset } from './engine.ts';
+import { check, checkRoot, rule, type Preset } from './engine.ts';
 
 const RootSchema = z.object({ issues: z.array(z.object({ id: z.string(), title: z.string(), summary: z.string(), status: z.string(), acceptanceCriteria: z.array(z.object({ id: z.string(), status: z.string(), evidence: z.array(z.object({ id: z.string() })) })) })) }).strict();
 type R = z.infer<typeof RootSchema>;
@@ -12,7 +12,7 @@ describe('check() runner', () => {
       name: 'throwy',
       schema: z.object({ issues: z.array(z.any()) }),
       parse: () => ({ issues: [] }),
-      rules: [{ name: 'boom', run: () => { throw new Error('kaboom'); } }],
+      rules: [{ code: 'boom', select: () => { throw new Error('kaboom'); }, message: () => '' }],
       primitives: {},
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,16 +23,16 @@ describe('check() runner', () => {
     expect(result.findings[0]?.message).toContain('kaboom');
   });
 
-  test('rules receive the validated ValidationInput { context, root }', () => {
-    let seenInput: unknown;
+  test('rules receive the derived model carrying { context, root }', () => {
+    let seen: { root: R; context: { now?: string } } | undefined;
     const preset: Preset<R> = {
       name: 'spy', schema: RootSchema, parse: () => ({ issues: [emptyIssue] }),
-      rules: [{ name: 'spy', run: (input) => { seenInput = input; return []; } }],
+      rules: [rule<R, { issueId?: string }>({ code: 'spy', select: (m) => { seen = m; return []; }, message: () => '' })],
     };
     const result = check(preset, 'x', { now: '2026-01-01', git: { existingCommits: ['abc'] } });
     expect(result.ok).toBe(true);
-    expect((seenInput as { root: R }).root.issues[0]?.id).toBe('A-1');
-    expect((seenInput as { context: { now?: string } }).context.now).toBe('2026-01-01');
+    expect(seen?.root.issues[0]?.id).toBe('A-1');
+    expect(seen?.context.now).toBe('2026-01-01');
   });
 
   test('an unknown context key is rejected by the strict ValidationInputSchema', () => {
@@ -55,9 +55,9 @@ describe('check() runner', () => {
     const preset: Preset<R> = {
       name: 'p', schema: RootSchema, parse: () => ({ issues: [emptyIssue] }),
       rules: [
-        { name: 'inv', run: () => [{ code: 'inv', severity: 'warning', message: 'i' }] },
-        { name: 'deep', category: 'code', depth: 3, run: () => [{ code: 'deep', severity: 'warning', message: 'd' }] },
-        { name: 'shallow', category: 'code', depth: 1, run: () => [{ code: 'shallow', severity: 'warning', message: 's' }] },
+        rule<R, { issueId: string }>({ code: 'inv', severity: 'warning', select: (m) => m.issues, message: () => 'i' }),
+        rule<R, { issueId: string }>({ code: 'deep', severity: 'warning', category: 'code', depth: 3, select: (m) => m.issues, message: () => 'd' }),
+        rule<R, { issueId: string }>({ code: 'shallow', severity: 'warning', category: 'code', depth: 1, select: (m) => m.issues, message: () => 's' }),
       ],
     };
     const codes = check(preset, 'x', { categories: { code: 1 } }).findings.map((f) => f.code).sort();

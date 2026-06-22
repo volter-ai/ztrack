@@ -213,22 +213,17 @@ npm install -D "$tarball" >/dev/null
 npx ztrack init --team AC --preset simple-sdlc >/dev/null
 
 # Project-specific policy: completed API cases must include a Rollout Plan.
-# Push a rule onto the installed preset over the validated root.
+# Add a rule RECORD to the installed preset (`rule` is already in scope in that file).
 cat >> .volter/tracker/validation/preset.cjs <<'EOF'
 
-module.exports.rules.push({
-  name: 'atlas_api_done_missing_rollout_plan',
-  run: ({ root }) => root.issues
-    .filter((i) => (i.labels || []).includes('area:api')
-      && ['done', 'completed'].includes(String(i.stateType || i.status || '').toLowerCase())
-      && !i.sections.includes('Rollout Plan'))
-    .map((i) => ({
-      code: 'atlas_api_done_missing_rollout_plan',
-      severity: 'error',
-      issueId: i.id,
-      message: 'Completed API cases must include ## Rollout Plan.',
-    })),
-});
+module.exports.rules.push(rule({
+  code: 'atlas_api_done_missing_rollout_plan',
+  select: (m) => m.issues,
+  when: ({ issue }) => (issue.labels || []).includes('area:api')
+    && ['done', 'completed'].includes(String(issue.stateType || issue.status || '').toLowerCase())
+    && !issue.sections.includes('Rollout Plan'),
+  message: () => 'Completed API cases must include ## Rollout Plan.',
+}));
 EOF
 
 cat > .github/workflows/ztrack.yml <<'EOF'

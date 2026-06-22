@@ -1,41 +1,48 @@
-// Installed-preset demo: a minimal repo-local validation preset.
+// Installed-preset demo: a minimal repo-local validation preset, in the shape
+// `ztrack init` installs.
 //
-// ztrack uses a single validation pipeline. The loader gathers tracker markdown
-// plus the git world, an mdast parser produces a candidate root, one strict
-// schema validates it, and pure rules run over the validated root. The
-// validated root ({ issues: [...] }) is what `ztrack check`, the visualizer,
-// and the SDK all read.
+// ztrack is used as a LIBRARY: the engine, markdown parser, and root schema are rented
+// from `ztrack/preset-kit`; the RULES are declarative records over the engine's derived
+// model — no imperative `run`, no monkey-patching. Each rule:
 //
-// A real installed preset lives at `.volter/tracker/validation/preset.cjs`.
-// It is a core Preset built on the shared `createGenericPreset` factory, which
-// returns { name, schema, parse, rules, scaffold, primitives }. `rules` is an
-// array of pure rules: { name, run } where run = (input) => Finding[] and
-// input = { context, root }, root = { issues: [...] }. A Finding is
-// { code, severity: 'error' | 'warning', message, issueId?, acId?, evidenceId? }.
+//   { code, severity?, category?, depth?, select, when?, message }
+//     select(model)        -> the list to check (a scope, an aggregate, a derived fact)
+//     when(item, model)?   -> keep only matches (omit = keep all)
+//     message(item, model) -> the finding text; issueId/acId/evidenceId come off the item
 //
-// You extend a preset by PUSHING a rule onto `module.exports.rules` — no
-// monkey-patching. This file shows that pattern as a compact teaching example.
-const { createGenericPreset } = require('ztrack/preset-kit');
+// The model exposes: root, context, issues, acs, evidence, duplicateIssueIds,
+// duplicateAcIds, graph: { cycles, blockerProblems, completionViolations }, derived.
+// You extend the preset by editing the `rules` array — add, change, or remove records.
+const { definePreset, rule, gitWorld, genericParser, genericSchema, genericScaffold } =
+  require('ztrack/preset-kit');
 
-// 1) Start from the generic preset. `requireSourceMarker: true` adds a built-in
-//    rule that every issue body must cite at least one [N] source marker.
-module.exports = createGenericPreset({
-  name: 'installed-demo',
-  requireSourceMarker: true,
-});
+const name = 'installed-demo';
 
-// 2) Add ONE project-owned rule. Each parsed issue exposes: id, title, summary,
-//    status, stateType, assignee, labels[], sourceMarkers[], sections[] (the ##
-//    heading titles present in the body), and acceptanceCriteria[]. Here we
-//    require every issue body to include a `## Summary` section.
-module.exports.rules.push({
-  name: 'installed_demo_case_missing_summary',
-  run: ({ root }) => root.issues
-    .filter((i) => !i.sections.includes('Summary'))
-    .map((i) => ({
-      code: 'installed_demo_case_missing_summary',
-      severity: 'error',
-      issueId: i.id,
-      message: 'Installed demo preset requires each case body to include a ## Summary section.',
-    })),
+// Project-owned rules, as records. (A real install starts from the full generic record
+// set; this compact example writes two from scratch to show the shape.)
+const rules = [
+  // every issue body must cite at least one [N] source marker
+  rule({
+    code: `${name}_case_missing_source_marker`, category: 'sourced', depth: 1,
+    select: (m) => m.issues,
+    when: ({ issue }) => issue.sourceMarkers.length === 0,
+    message: () => 'Case body must cite at least one [N] source marker.',
+  }),
+  // every issue body must include a ## Summary section
+  rule({
+    code: `${name}_case_missing_summary`,
+    select: (m) => m.issues,
+    when: ({ issue }) => !issue.sections.includes('Summary'),
+    message: () => 'Installed demo preset requires each case body to include a ## Summary section.',
+  }),
+];
+
+module.exports = definePreset({
+  name,
+  schema: genericSchema,                    // rented: the strict root shape
+  parse: genericParser,                     // rented: markdown -> the schema shape
+  loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
+  rules,
+  scaffold: genericScaffold({ name, requireSourceMarker: true }),
+  primitives: { labels: true, blocking: true, sources: false, proof: false, relations: false, linkedIssues: false, children: false, category: false },
 });

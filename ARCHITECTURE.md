@@ -7,7 +7,7 @@ gates fail. This doc maps the pieces of the single validation pipeline and how d
 > **TL;DR**
 > - **One typed pipeline.** Validation is a single pass: a loader reads issue markdown and, through the active preset's `loadContext`, gathers that preset's observed facts into a typed `Context`; the preset parses markdown to an mdast-backed `root`; `ValidationInputSchema.parse({ context, root })` types the whole input; pure rules run; the validated `root` **is** the export. There is no separate snapshot model assembled after validation.
 > - **One impure boundary.** `src/core/loader.ts` is the only place that does I/O (tracker backend, git, time). Everything downstream — schema, rules, export — is pure and operates over the typed `Context` and `root`.
-> - **One installed preset.** `ztrack init` writes `.volter/tracker/validation/preset.cjs = createGenericPreset({...})`, a real core `Preset` (mdast parse + strict Zod schema + pure rules) editable with no build step. `ztrack check`/`init` run that preset through the same pipeline.
+> - **One installed preset.** `ztrack init` writes `.volter/tracker/validation/preset.cjs` as real editable code: it rents the engine + parser + schema from `ztrack/preset-kit` and declares its rules as declarative records over the engine's derived model, wrapped in `definePreset({...})` — editable with no build step. `ztrack check`/`init` run that preset through the same pipeline. (The typed reference those records mirror is `createGenericPreset`.)
 
 ---
 
@@ -88,13 +88,15 @@ The active rulebook is the repo-local `.volter/tracker/validation/preset.cjs` th
 writes:
 
 ```js
-module.exports = require('ztrack/preset-kit').createGenericPreset({
-  name, requireSourceMarker, requireSdlcGates, requireSpecSections, requireSpeckitSections,
-})
+const { definePreset, rule, gitWorld, genericParser, genericSchema } = require('ztrack/preset-kit');
+const rules = [ rule({ code, select: (m) => m.acs, when, message }), /* ...editable records... */ ];
+module.exports = definePreset({ name, schema: genericSchema, parse: genericParser, rules /* , derive, ... */ });
 ```
 
-This is a **real core `Preset`** — mdast parse + strict Zod schema + pure rules — not a
-separate runtime. It is editable with no build step.
+This is a **real core `Preset`** — it rents the parser + schema and declares its rules as
+declarative records over the engine's derived model, not a separate runtime. It is editable
+with no build step. (The typed factory those records mirror is `createGenericPreset`, guarded
+by `src/presetInstall.test.ts`.)
 
 | file | role |
 |---|---|

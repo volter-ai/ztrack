@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, type Context, type Finding, type Preset, type Rule } from '../core/engine.ts';
+import { check as runCheck, rule, type Context, type Preset } from '../core/engine.ts';
 import { splitIssueBundle } from '../core/bundle.ts';
 import { gitWorld } from '../core/gitWorld.ts';
 
@@ -115,56 +115,34 @@ export function parseSpec(markdown: string): unknown {
   return { issues: splitIssueBundle(markdown).map((s) => parseSpecIssue(s.body)).filter((i): i is Record<string, unknown> => i !== null) };
 }
 
-// ── rules: pure, over the typed root + context ──────────────────────────────
-const passedAcNeedsEvidence: Rule<SpecRoot> = {
-  name: 'passed_ac_needs_evidence',
-  run: ({ root }) => root.issues.flatMap((issue) =>
-    issue.acceptanceCriteria.filter((ac) => ac.status === 'passed' && ac.evidence.length === 0).map((ac): Finding => ({
-      code: 'passed_ac_missing_evidence', severity: 'error',
-      message: `AC ${ac.id} is passed but cites no commit-backed evidence.`, issueId: issue.id, acId: ac.id,
-    }))),
-};
+// ── rules: declarative records over the engine's derived model ──────────────
+// Duplicate-id detection is universal, so it arrives on the core model (m.duplicateAcIds
+// / m.duplicateIssueIds) — this preset writes no derive and uses no blocking graph.
+type SpecAC = SpecRoot['issues'][number]['acceptanceCriteria'][number];
+type SpecEvidence = SpecAC['evidence'][number];
 
-const evidenceCommitExists: Rule<SpecRoot> = {
-  name: 'evidence_commit_exists',
-  run: ({ root, context: ctx }) => {
-    const existing = ctx.git?.existingCommits;
-    if (!existing) return []; // git world unavailable -> cannot verify commit existence
-    // Prefix-match both directions so an abbreviated SHA (the schema allows 7-40 hex)
-    // matches a full 40-char hash from `git log`, like the default/speckit presets.
-    const commitExists = (sha: string): boolean => existing.some((c) => c.startsWith(sha) || sha.startsWith(c));
-    return root.issues.flatMap((issue) => issue.acceptanceCriteria.flatMap((ac) =>
-      ac.evidence.filter((ev) => !commitExists(ev.commit)).map((ev): Finding => ({
-        code: 'evidence_commit_not_found', severity: 'error',
-        message: `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`, issueId: issue.id, acId: ac.id, evidenceId: ev.id,
-      }))));
-  },
-};
+const shaMatches = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
 
-const uniqueAcIds: Rule<SpecRoot> = {
-  name: 'unique_ac_ids',
-  run: ({ root }) => root.issues.flatMap((issue) => {
-    const seen = new Set<string>(); const dups: Finding[] = [];
-    for (const ac of issue.acceptanceCriteria) {
-      if (seen.has(ac.id)) dups.push({ code: 'duplicate_ac_id', severity: 'error', message: `Duplicate AC id ${ac.id}.`, issueId: issue.id, acId: ac.id });
-      seen.add(ac.id);
-    }
-    return dups;
+const SPEC_RULES = [
+  rule<SpecRoot, { issueId: string; acId: string; ac: SpecAC }>({
+    code: 'passed_ac_missing_evidence', select: (m) => m.acs,
+    when: ({ ac }) => ac.status === 'passed' && ac.evidence.length === 0,
+    message: ({ ac }) => `AC ${ac.id} is passed but cites no commit-backed evidence.`,
   }),
-};
-
-// cross-issue: issue ids unique across the whole tracker root
-const uniqueIssueIds: Rule<SpecRoot> = {
-  name: 'unique_issue_ids',
-  run: ({ root }) => {
-    const seen = new Set<string>(); const dups: Finding[] = [];
-    for (const i of root.issues) {
-      if (seen.has(i.id)) dups.push({ code: 'duplicate_issue_id', severity: 'error', message: `Duplicate issue id ${i.id}.`, issueId: i.id });
-      seen.add(i.id);
-    }
-    return dups;
-  },
-};
+  rule<SpecRoot, { issueId: string; acId: string; evidenceId: string; ev: SpecEvidence }>({
+    code: 'evidence_commit_not_found', select: (m) => m.evidence,
+    when: ({ ev }, m) => { const c = m.context.git?.existingCommits; return !!c && !c.some((x) => shaMatches(x, ev.commit)); },
+    message: ({ ev }) => `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`,
+  }),
+  rule<SpecRoot, { issueId: string; acId: string }>({
+    code: 'duplicate_ac_id', select: (m) => m.duplicateAcIds,
+    message: ({ acId }) => `Duplicate AC id ${acId}.`,
+  }),
+  rule<SpecRoot, { issueId: string }>({
+    code: 'duplicate_issue_id', select: (m) => m.duplicateIssueIds,
+    message: ({ issueId }) => `Duplicate issue id ${issueId}.`,
+  }),
+];
 
 export const SpecPreset: Preset<SpecRoot> = {
   name: 'spec',
@@ -172,7 +150,7 @@ export const SpecPreset: Preset<SpecRoot> = {
   // observed facts: commit existence (no PR model in this preset).
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpec,
-  rules: [passedAcNeedsEvidence, evidenceCommitExists, uniqueAcIds, uniqueIssueIds],
+  rules: SPEC_RULES,
 };
 
 export function checkSpec(markdown: string, ctx?: Context) {

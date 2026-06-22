@@ -19,11 +19,11 @@ import { z } from 'zod';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, type BlockRef, type Context, type Finding, type Preset, type PresetContextInput, type Rule } from '../core/engine.ts';
+import { check as runCheck, rule, type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact, type DerivedModel, type Preset, type PresetContextInput } from '../core/engine.ts';
 import { splitIssueBundle } from '../core/bundle.ts';
 import { gitWorld } from '../core/gitWorld.ts';
 import { BlockRefSchema, formatRef } from '../core/ref.ts';
-import { blockCycles, blockerRefProblems, completionViolations, nodeIndex, normalizeBlockRefs, parseBlockToken, type RawBlockRef } from '../core/blocking.ts';
+import { normalizeBlockRefs, parseBlockToken, type RawBlockRef } from '../core/blocking.ts';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
@@ -235,202 +235,174 @@ export function serializeDefault(root: DefaultRoot): string {
   return root.issues.map(serializeIssue).join('\n');
 }
 
-// ── rules: pure, over the typed root + git-world context ─────────────────────
+// ── rules: declarative records over the engine's derived model ───────────────
+// Each rule SELECTS a list off the analyzed model — a per-item scope (issues / acs /
+// evidence), a universal aggregate (duplicate ids), an engine-derived graph fact, or
+// one of THIS preset's own derived facts — and DESCRIBES each match. The block-graph
+// algorithms and id aggregates are computed once by the engine; this preset adds only
+// relation reciprocity and dangling proof references (see deriveDefault).
 const STATE_RANK: Record<DefaultRoot['issues'][number]['status'], number> = {
   draft: 0, ready: 1, 'in-progress': 2, 'in-review': 3, done: 4,
 };
 
-const issueMustBeAssigned: Rule<DefaultRoot> = {
-  name: 'issue_must_be_assigned',
-  run: ({ root }) => root.issues.filter((i) => i.assignee.trim() === '').map((i): Finding => ({
-    code: 'issue_missing_assignee', severity: 'error', message: `Issue ${i.id} has no assignee.`, issueId: i.id,
-  })),
-};
-
-const acCheckboxMatchesStatus: Rule<DefaultRoot> = {
-  name: 'ac_checkbox_matches_status',
-  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria
-    .filter((ac) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'))
-    .map((ac): Finding => ({
-      code: 'ac_checkbox_status_mismatch', severity: 'error',
-      message: `AC ${ac.id} checkbox (${ac.checked ? '[x]' : '[ ]'}) disagrees with status "${ac.status}".`,
-      issueId: i.id, acId: ac.id,
-    }))),
-};
-
-const uniqueAcIds: Rule<DefaultRoot> = {
-  name: 'unique_ac_ids',
-  run: ({ root }) => root.issues.flatMap((i) => {
-    const seen = new Set<string>(); const dups: Finding[] = [];
-    for (const ac of i.acceptanceCriteria) {
-      if (seen.has(ac.id)) dups.push({ code: 'duplicate_ac_id', severity: 'error', message: `Duplicate AC id ${ac.id}.`, issueId: i.id, acId: ac.id });
-      seen.add(ac.id);
-    }
-    return dups;
-  }),
-};
-
-const passedAcNeedsEvidence: Rule<DefaultRoot> = {
-  name: 'passed_ac_needs_evidence',
-  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria
-    .filter((ac) => ac.status === 'passed' && ac.evidence.length === 0)
-    .map((ac): Finding => ({
-      code: 'passed_ac_missing_evidence', severity: 'error',
-      message: `AC ${ac.id} is passed but has no image evidence.`, issueId: i.id, acId: ac.id,
-    }))),
-};
-
-// evidence without proof + explanation is incomplete: a passed AC must explain
-// how its evidence demonstrates the criterion, and the proof must cite real evidence.
-const passedAcNeedsProof: Rule<DefaultRoot> = {
-  name: 'passed_ac_needs_proof',
-  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac): Finding[] => {
-    if (ac.status !== 'passed') return [];
-    if (!ac.proof || ac.proof.explanation.trim() === '') {
-      return [{ code: 'passed_ac_missing_proof', severity: 'error', message: `AC ${ac.id} is passed but has no proof explaining how its evidence demonstrates it.`, issueId: i.id, acId: ac.id }];
-    }
-    const evIds = new Set(ac.evidence.map((e) => e.id));
-    const dangling = ac.proof.evidenceRefs.filter((r) => !evIds.has(r));
-    if (ac.proof.evidenceRefs.length === 0) {
-      return [{ code: 'proof_cites_no_evidence', severity: 'error', message: `AC ${ac.id} proof cites no evidence.`, issueId: i.id, acId: ac.id }];
-    }
-    return dangling.map((r): Finding => ({ code: 'proof_evidence_ref_missing', severity: 'error', message: `AC ${ac.id} proof references evidence "${r}", which does not exist on the AC.`, issueId: i.id, acId: ac.id }));
-  })),
-};
+type Issue = DefaultRoot['issues'][number];
+type AC = Issue['acceptanceCriteria'][number];
+type Evidence = AC['evidence'][number];
 
 // shas may be short (7+) or full (40); a match is either being a prefix of the other
 const shaMatches = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
 
-const evidenceCommitExists: Rule<DefaultRoot> = {
-  name: 'evidence_commit_exists',
-  run: ({ root, context: ctx }) => {
-    const commits = ctx.git?.existingCommits;
-    if (!commits) return []; // git world unavailable -> cannot verify
-    return root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence
-      .filter((ev) => !commits.some((c) => shaMatches(c, ev.commit)))
-      .map((ev): Finding => ({
-        code: 'evidence_commit_not_found', severity: 'error',
-        message: `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`, issueId: i.id, acId: ac.id, evidenceId: ev.id,
-      }))));
-  },
-};
+interface RelationProblem { issueId: string; kind: 'missing' | 'reciprocal'; relType: string; target: string }
+interface ProofRefProblem { issueId: string; acId: string; ref: string }
 
-const evidenceShaFresh: Rule<DefaultRoot> = {
-  name: 'evidence_sha_fresh',
-  run: ({ root, context: ctx }) => root.issues.flatMap((i) => {
-    const evCount = i.acceptanceCriteria.reduce((n, ac) => n + ac.evidence.length, 0);
-    if (evCount === 0 || !i.pr) return [];
-    const head = ctx.git?.prs?.[i.pr.url]?.headSha;
-    if (!head) return [{ code: 'current_head_unknown', severity: 'error', message: `Issue ${i.id} has evidence but the PR head sha is unknown.`, issueId: i.id }];
-    return i.acceptanceCriteria.flatMap((ac) => ac.evidence
-      .filter((ev) => !shaMatches(ev.commit, head))
-      .map((ev): Finding => ({
-        code: 'evidence_sha_stale', severity: 'error',
-        message: `Evidence ${ev.id} was captured at ${ev.commit}, not the current head ${head}.`, issueId: i.id, acId: ac.id, evidenceId: ev.id,
-      })));
+// This preset's OWN analyzed facts. Everything universal — duplicate ids, the unified
+// block graph (cycles, blocker problems, completion violations) — already arrives on the
+// core model; only cross-issue relation reciprocity and dangling proof references are
+// default-specific, so they are derived here.
+function deriveDefault(model: DerivedModel<DefaultRoot>): { relationProblems: RelationProblem[]; proofRefProblems: ProofRefProblem[] } {
+  const ids = new Set(model.root.issues.map((i) => i.id));
+  const has = (id: string, type: string, target: string) =>
+    (model.root.issues.find((i) => i.id === id)?.relations ?? []).some((r) => r.type === type && r.issueId === target);
+  const relationProblems: RelationProblem[] = [];
+  for (const i of model.root.issues) {
+    for (const r of i.relations ?? []) {
+      if (!ids.has(r.issueId)) { relationProblems.push({ issueId: i.id, kind: 'missing', relType: r.type, target: r.issueId }); continue; }
+      if (r.type === 'blocks' && !has(r.issueId, 'blocked-by', i.id)) relationProblems.push({ issueId: i.id, kind: 'reciprocal', relType: 'blocks', target: r.issueId });
+      if (r.type === 'blocked-by' && !has(r.issueId, 'blocks', i.id)) relationProblems.push({ issueId: i.id, kind: 'reciprocal', relType: 'blocked-by', target: r.issueId });
+    }
+  }
+  const proofRefProblems: ProofRefProblem[] = [];
+  for (const issue of model.root.issues) {
+    for (const ac of issue.acceptanceCriteria) {
+      if (ac.status !== 'passed' || !ac.proof || ac.proof.explanation.trim() === '' || ac.proof.evidenceRefs.length === 0) continue;
+      const evIds = new Set(ac.evidence.map((e) => e.id));
+      for (const ref of ac.proof.evidenceRefs.filter((r) => !evIds.has(r))) proofRefProblems.push({ issueId: issue.id, acId: ac.id, ref });
+    }
+  }
+  return { relationProblems, proofRefProblems };
+}
+// Typed view of this preset's derived facts — the one place the engine's open
+// `derived` bag is narrowed to what deriveDefault produced; selects stay cast-free.
+type DefaultFacts = { relationProblems: RelationProblem[]; proofRefProblems: ProofRefProblem[] };
+const facts = (m: DerivedModel<DefaultRoot>): DefaultFacts => m.derived as unknown as DefaultFacts;
+
+const DEFAULT_RULES = [
+  // wellformedness over single items + universal id aggregates
+  rule<DefaultRoot, { issueId: string; issue: Issue }>({
+    code: 'issue_missing_assignee', select: (m) => m.issues,
+    when: ({ issue }) => issue.assignee.trim() === '',
+    message: ({ issue }) => `Issue ${issue.id} has no assignee.`,
   }),
-};
-
-const evidenceAcVersionFresh: Rule<DefaultRoot> = {
-  name: 'evidence_ac_version_fresh',
-  run: ({ root }) => root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence
-    .filter((ev) => ev.acVersion !== ac.version)
-    .map((ev): Finding => ({
-      code: 'evidence_ac_version_stale', severity: 'error',
-      message: `Evidence ${ev.id} is for AC ${ac.id} v${ev.acVersion}, but the AC is now v${ac.version}.`, issueId: i.id, acId: ac.id, evidenceId: ev.id,
-    })))),
-};
-
-const stateGates: Rule<DefaultRoot> = {
-  name: 'state_gates',
-  run: ({ root, context: ctx }) => root.issues.flatMap((i) => {
-    const out: Finding[] = [];
-    const rank = STATE_RANK[i.status];
-    if (rank >= STATE_RANK.ready && i.acceptanceCriteria.length === 0) {
-      out.push({ code: 'ready_requires_dev_ac', severity: 'error', message: `Issue ${i.id} is "${i.status}" but has no dev ACs.`, issueId: i.id });
-    }
-    if (rank >= STATE_RANK['in-review']) {
-      if (!i.pr) out.push({ code: 'review_requires_pr', severity: 'error', message: `Issue ${i.id} is "${i.status}" but has no PR.`, issueId: i.id });
-      if (i.acceptanceCriteria.some((ac) => ac.status !== 'passed')) {
-        out.push({ code: 'review_requires_all_acs_passed', severity: 'error', message: `Issue ${i.id} is "${i.status}" but not all ACs are passed.`, issueId: i.id });
-      }
-    }
-    if (i.status === 'done' && i.pr && ctx.git?.prs?.[i.pr.url]?.merged !== true) {
-      out.push({ code: 'done_requires_merged_pr', severity: 'error', message: `Issue ${i.id} is done but its PR is not merged.`, issueId: i.id });
-    }
-    return out;
+  rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
+    code: 'ac_checkbox_status_mismatch', select: (m) => m.acs,
+    when: ({ ac }) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'),
+    message: ({ ac }) => `AC ${ac.id} checkbox (${ac.checked ? '[x]' : '[ ]'}) disagrees with status "${ac.status}".`,
   }),
-};
-
-// ── cross-issue rules (the root is the whole tracker) ───────────────────────
-const uniqueIssueIds: Rule<DefaultRoot> = {
-  name: 'unique_issue_ids',
-  run: ({ root }) => {
-    const seen = new Set<string>(); const dups: Finding[] = [];
-    for (const i of root.issues) {
-      if (seen.has(i.id)) dups.push({ code: 'duplicate_issue_id', severity: 'error', message: `Duplicate issue id ${i.id}.`, issueId: i.id });
-      seen.add(i.id);
-    }
-    return dups;
-  },
-};
-
-// relations must point at issues that exist, and `blocks`/`blocked-by` must be
-// reciprocal across the tracker (a consistency check only expressible cross-issue).
-const relationsConsistent: Rule<DefaultRoot> = {
-  name: 'relations_consistent',
-  run: ({ root }) => {
-    const ids = new Set(root.issues.map((i) => i.id));
-    const out: Finding[] = [];
-    const has = (id: string, type: string, target: string) =>
-      (root.issues.find((i) => i.id === id)?.relations ?? []).some((r) => r.type === type && r.issueId === target);
-    for (const i of root.issues) {
-      for (const r of i.relations ?? []) {
-        if (!ids.has(r.issueId)) {
-          out.push({ code: 'relation_target_missing', severity: 'error', message: `Issue ${i.id} ${r.type} ${r.issueId}, which does not exist.`, issueId: i.id });
-          continue;
-        }
-        if (r.type === 'blocks' && !has(r.issueId, 'blocked-by', i.id)) {
-          out.push({ code: 'relation_not_reciprocal', severity: 'warning', message: `Issue ${i.id} blocks ${r.issueId} but ${r.issueId} does not list "Blocked by: ${i.id}".`, issueId: i.id });
-        }
-        if (r.type === 'blocked-by' && !has(r.issueId, 'blocks', i.id)) {
-          out.push({ code: 'relation_not_reciprocal', severity: 'warning', message: `Issue ${i.id} is blocked by ${r.issueId} but ${r.issueId} does not list "Blocks: ${i.id}".`, issueId: i.id });
-        }
-      }
-    }
-    return out;
-  },
-};
-
-// Blocking integrity over the UNIFIED dependency graph (issues + ACs, both edge
-// directions, and the issue-level `relations` blocks/blocked-by). A blocker must name a
-// real node, can't be the AC itself; the graph must be acyclic; and a done node can't
-// depend on an unfinished one.
-const acBlockersResolve: Rule<DefaultRoot> = {
-  name: 'ac_blockers_resolve',
-  run: ({ root }) => blockerRefProblems(root).map((p): Finding => ({
-    code: p.kind === 'self' ? 'ac_self_block' : 'ac_blocker_missing', severity: 'error', issueId: p.issueId, acId: p.acId,
-    message: p.kind === 'self'
-      ? `AC ${formatRef({ issue: p.issueId, ac: p.acId })} lists itself as a blocker.`
-      : `AC ${formatRef({ issue: p.issueId, ac: p.acId })} references ${formatRef(p.ref)}, which does not exist.`,
-  })),
-};
-
-const acBlockNoCycle: Rule<DefaultRoot> = {
-  name: 'ac_block_no_cycle',
-  run: ({ root }) => blockCycles(root).map((cycle): Finding => {
-    const head = nodeIndex(root).get(cycle[0]!)!;
-    return { code: 'ac_block_cycle', severity: 'error', message: `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.`, issueId: head.issue.id, ...(head.ac ? { acId: head.ac.id } : {}) };
+  rule<DefaultRoot, { issueId: string; acId: string }>({
+    code: 'duplicate_ac_id', select: (m) => m.duplicateAcIds,
+    message: ({ acId }) => `Duplicate AC id ${acId}.`,
   }),
-};
+  rule<DefaultRoot, { issueId: string }>({
+    code: 'duplicate_issue_id', select: (m) => m.duplicateIssueIds,
+    message: ({ issueId }) => `Duplicate issue id ${issueId}.`,
+  }),
 
-const acNotBlockedByUnpassed: Rule<DefaultRoot> = {
-  name: 'ac_not_blocked_by_unpassed',
-  run: ({ root }) => completionViolations(root, { isIssueDone: (i) => i.status === 'done' }).map(({ node, dep }): Finding => ({
-    code: 'ac_blocked_by_unpassed', severity: 'error', issueId: node.issue.id, ...(node.ac ? { acId: node.ac.id } : {}),
-    message: `${node.key} is done but depends on ${dep.key} (status "${dep.kind === 'ac' ? dep.ac!.status : 'incomplete'}").`,
-  })),
-};
+  // evidence + proof
+  rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
+    code: 'passed_ac_missing_evidence', select: (m) => m.acs,
+    when: ({ ac }) => ac.status === 'passed' && ac.evidence.length === 0,
+    message: ({ ac }) => `AC ${ac.id} is passed but has no image evidence.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
+    code: 'passed_ac_missing_proof', select: (m) => m.acs,
+    when: ({ ac }) => ac.status === 'passed' && (!ac.proof || ac.proof.explanation.trim() === ''),
+    message: ({ ac }) => `AC ${ac.id} is passed but has no proof explaining how its evidence demonstrates it.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
+    code: 'proof_cites_no_evidence', select: (m) => m.acs,
+    when: ({ ac }) => ac.status === 'passed' && !!ac.proof && ac.proof.explanation.trim() !== '' && ac.proof.evidenceRefs.length === 0,
+    message: ({ ac }) => `AC ${ac.id} proof cites no evidence.`,
+  }),
+  rule<DefaultRoot, ProofRefProblem>({
+    code: 'proof_evidence_ref_missing', select: (m) => facts(m).proofRefProblems,
+    message: ({ acId, ref }) => `AC ${acId} proof references evidence "${ref}", which does not exist on the AC.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; ev: Evidence }>({
+    code: 'evidence_commit_not_found', select: (m) => m.evidence,
+    when: ({ ev }, m) => { const c = m.context.git?.existingCommits; return !!c && !c.some((x) => shaMatches(x, ev.commit)); },
+    message: ({ ev }) => `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`,
+  }),
+  rule<DefaultRoot, { issueId: string; issue: Issue }>({
+    code: 'current_head_unknown', select: (m) => m.issues,
+    when: ({ issue }, m) => {
+      const evCount = issue.acceptanceCriteria.reduce((n, ac) => n + ac.evidence.length, 0);
+      return evCount > 0 && !!issue.pr && !m.context.git?.prs?.[issue.pr.url]?.headSha;
+    },
+    message: ({ issue }) => `Issue ${issue.id} has evidence but the PR head sha is unknown.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; issue: Issue; ev: Evidence }>({
+    code: 'evidence_sha_stale', select: (m) => m.evidence,
+    when: ({ issue, ev }, m) => { const h = issue.pr && m.context.git?.prs?.[issue.pr.url]?.headSha; return !!h && !shaMatches(ev.commit, h); },
+    message: ({ issue, ev }, m) => `Evidence ${ev.id} was captured at ${ev.commit}, not the current head ${m.context.git!.prs![issue.pr!.url]!.headSha}.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; ac: AC; ev: Evidence }>({
+    code: 'evidence_ac_version_stale', select: (m) => m.evidence,
+    when: ({ ac, ev }) => ev.acVersion !== ac.version,
+    message: ({ ac, ev }) => `Evidence ${ev.id} is for AC ${ac.id} v${ev.acVersion}, but the AC is now v${ac.version}.`,
+  }),
+
+  // lifecycle gates — the omnibus state_gates rule, decomposed into named records
+  rule<DefaultRoot, { issueId: string; issue: Issue }>({
+    code: 'ready_requires_dev_ac', select: (m) => m.issues,
+    when: ({ issue }) => STATE_RANK[issue.status] >= STATE_RANK.ready && issue.acceptanceCriteria.length === 0,
+    message: ({ issue }) => `Issue ${issue.id} is "${issue.status}" but has no dev ACs.`,
+  }),
+  rule<DefaultRoot, { issueId: string; issue: Issue }>({
+    code: 'review_requires_pr', select: (m) => m.issues,
+    when: ({ issue }) => STATE_RANK[issue.status] >= STATE_RANK['in-review'] && !issue.pr,
+    message: ({ issue }) => `Issue ${issue.id} is "${issue.status}" but has no PR.`,
+  }),
+  rule<DefaultRoot, { issueId: string; issue: Issue }>({
+    code: 'review_requires_all_acs_passed', select: (m) => m.issues,
+    when: ({ issue }) => STATE_RANK[issue.status] >= STATE_RANK['in-review'] && issue.acceptanceCriteria.some((ac) => ac.status !== 'passed'),
+    message: ({ issue }) => `Issue ${issue.id} is "${issue.status}" but not all ACs are passed.`,
+  }),
+  rule<DefaultRoot, { issueId: string; issue: Issue }>({
+    code: 'done_requires_merged_pr', select: (m) => m.issues,
+    when: ({ issue }, m) => issue.status === 'done' && !!issue.pr && m.context.git?.prs?.[issue.pr.url]?.merged !== true,
+    message: ({ issue }) => `Issue ${issue.id} is done but its PR is not merged.`,
+  }),
+
+  // relations (cross-issue, derived by this preset) — select the source, filter with when
+  rule<DefaultRoot, RelationProblem>({
+    code: 'relation_target_missing', select: (m) => facts(m).relationProblems, when: (p) => p.kind === 'missing',
+    message: ({ issueId, relType, target }) => `Issue ${issueId} ${relType} ${target}, which does not exist.`,
+  }),
+  rule<DefaultRoot, RelationProblem>({
+    code: 'relation_not_reciprocal', severity: 'warning', select: (m) => facts(m).relationProblems, when: (p) => p.kind === 'reciprocal',
+    message: ({ issueId, relType, target }) => relType === 'blocks'
+      ? `Issue ${issueId} blocks ${target} but ${target} does not list "Blocked by: ${issueId}".`
+      : `Issue ${issueId} is blocked by ${target} but ${target} does not list "Blocks: ${issueId}".`,
+  }),
+
+  // blocking graph — analyzed once by the engine, declared here over its fact types
+  rule<DefaultRoot, BlockerFact>({
+    code: 'ac_self_block', select: (m) => m.graph.blockerProblems, when: (b) => b.kind === 'self',
+    message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} lists itself as a blocker.`,
+  }),
+  rule<DefaultRoot, BlockerFact>({
+    code: 'ac_blocker_missing', select: (m) => m.graph.blockerProblems, when: (b) => b.kind !== 'self',
+    message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} references ${b.refText}, which does not exist.`,
+  }),
+  rule<DefaultRoot, CycleFact>({
+    code: 'ac_block_cycle', select: (m) => m.graph.cycles,
+    message: ({ cycle }) => `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.`,
+  }),
+  rule<DefaultRoot, CompletionFact>({
+    code: 'ac_blocked_by_unpassed', select: (m) => m.graph.completionViolations,
+    message: ({ nodeKey, depKey, depStatus }) => `${nodeKey} is done but depends on ${depKey} (status "${depStatus}").`,
+  }),
+];
 
 // The default SDLC's PR branches: each issue's `PR:` value (a local branch name).
 // Used by this preset's loadContext to ask the git world for branch heads.
@@ -449,22 +421,11 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   // this preset's observed facts: the git world (commits + PR head/merged).
   loadContext: (input) => gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits }),
   parse: parseDefault,
-  rules: [
-    issueMustBeAssigned,
-    acCheckboxMatchesStatus,
-    uniqueAcIds,
-    uniqueIssueIds,
-    relationsConsistent,
-    acBlockersResolve,
-    acBlockNoCycle,
-    acNotBlockedByUnpassed,
-    passedAcNeedsEvidence,
-    passedAcNeedsProof,
-    evidenceCommitExists,
-    evidenceShaFresh,
-    evidenceAcVersionFresh,
-    stateGates,
-  ],
+  // an AC-less issue counts as done (for the block graph's completion gate) only at the terminal state.
+  isIssueDone: (i) => i.status === 'done',
+  // relation reciprocity + dangling proof refs; the block graph + id aggregates are core.
+  derive: deriveDefault,
+  rules: DEFAULT_RULES,
   // which standard primitives this SDLC implements. (audit is NOT declared here:
   // it is a core, always-on capability — recorded automatically on any change.)
   primitives: {

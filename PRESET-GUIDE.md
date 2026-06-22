@@ -2,14 +2,17 @@
 
 How to add or extend a core-contract preset in ztrack, and how to
 adversarially review it. `ztrack init` writes `.volter/tracker/validation/preset.cjs`
-= `module.exports = require('ztrack/preset-kit').createGenericPreset({ name,
-requireSourceMarker, requireSdlcGates, requireSpecSections, requireSpeckitSections })`.
-`createGenericPreset` (`src/presetKit.ts`, exported as the `ztrack/preset-kit`
-entry) returns a real core `Preset` (mdast + strict Zod + pure rules). Most
-projects start by installing `basic`, `simple-sdlc`, `simple-spec`, or `speckit`
-and editing that file; read [docs/PRESETS.md](docs/PRESETS.md) for that normal
-path. To author a custom preset, a repo replaces `preset.cjs` to export its own
-core `Preset` `{ name, schema, parse, rules }`. **An agent changing the internal
+as REAL editable code: it rents ztrack as a library (the engine + `genericParser` +
+`genericSchema` from the `ztrack/preset-kit` entry) and declares its rules as
+**declarative records over the engine's derived model**, wrapped in `definePreset({...})`.
+The `requireSourceMarker`/`requireSdlcGates`/`requireSpecSections`/`requireSpeckitSections`
+flags are inline constants you edit. (The typed reference those records mirror is
+`createGenericPreset` in `src/presetKit.ts`; `src/presetInstall.test.ts` proves the
+installed template stays behaviorally identical to it.) Most projects start by installing
+`basic`, `simple-sdlc`, `simple-spec`, or `speckit` and editing the records in that file;
+read [docs/PRESETS.md](docs/PRESETS.md) for that normal path. To author a custom preset, a
+repo edits the records (or replaces `preset.cjs` to export its own core `Preset`
+`{ name, schema, parse, rules }`). **An agent changing the internal
 core preset system should read this doc first.** Reference implementations (the
 bar): `src/presets/{default,spec,speckitCore}.ts`. Core engine:
 `src/core/engine.ts`.

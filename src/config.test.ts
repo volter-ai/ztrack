@@ -43,16 +43,17 @@ describe('initTrackerProject', () => {
           installedFrom: 'simple-sdlc',
         },
       });
-      // The installed entrypoint configures the shared createGenericPreset factory
-      // (a core preset) — it does not reimplement validation. Its runtime behavior
-      // is covered by presetKit.test.ts; here we assert the install wiring.
+      // The installed entrypoint is REAL editable records that rent ztrack as a library
+      // (engine + parser + schema), not a config shim. Runtime behavior is proven against
+      // createGenericPreset in presetInstall.test.ts; here we assert the install wiring.
       const text = readFileSync(entrypoint, 'utf8');
       expect(text).toContain('Repo-local ztrack validation preset');
       expect(text).toContain("require('ztrack/preset-kit')");
-      expect(text).toContain("createGenericPreset");
-      expect(text).toContain("name: 'simple-sdlc'");
-      expect(text).toContain("requireSdlcGates: 'true' === 'true'");
-      expect(text).toContain("requireSourceMarker: 'true' === 'true'");
+      expect(text).toContain('definePreset(');
+      expect(text).toContain('rule({');
+      expect(text).toContain("const name = 'simple-sdlc'");
+      expect(text).toContain("const requireSdlcGates = 'true' === 'true'");
+      expect(text).toContain("const requireSourceMarker = 'true' === 'true'");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -65,8 +66,8 @@ describe('initTrackerProject', () => {
       try {
         initTrackerProject(root, 'app', { preset: presetName });
         const text = readFileSync(trackerValidationEntrypointPath(root), 'utf8');
-        expect(text).toContain(`name: '${presetName}'`);
-        expect(text).toContain(`${flag[presetName]}: 'true' === 'true'`);
+        expect(text).toContain(`const name = '${presetName}'`);
+        expect(text).toContain(`const ${flag[presetName]} = 'true' === 'true'`);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
