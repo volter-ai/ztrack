@@ -34,6 +34,17 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect(J(await be.command(['issue', 'create', '--title', 'Second'])).identifier).toBe('PH-2'); // id increments
   });
 
+  test('create/edit derive stateType from the state name (Done→completed, Canceled→canceled)', async () => {
+    const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
+    expect(J(await be.command(['issue', 'create', '--title', 'D', '--state', 'Done'])).state).toEqual({ name: 'Done', type: 'completed' });
+    expect(J(await be.command(['issue', 'create', '--title', 'C', '--state', 'Canceled'])).state).toEqual({ name: 'Canceled', type: 'canceled' });
+    expect(J(await be.command(['issue', 'create', '--title', 'P', '--state', 'In Progress'])).state).toEqual({ name: 'In Progress', type: 'open' });
+    // edit re-derives, and `list --state open` filters by TYPE (excludes Done/Canceled)
+    await be.command(['issue', 'edit', 'PH-1', '--state', 'In Review']);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).stateType).toBe('open');
+    expect(J(await be.command(['issue', 'list', '--state', 'open', '--json', 'identifier'])).map((r: { identifier: string }) => r.identifier)).toEqual(['PH-1', 'PH-3']);
+  });
+
   test('create/edit read --body-file, not just --body (else the body is silently dropped)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'mdbe-'));
     const be = createMarkdownBackend(dir, 'PH');

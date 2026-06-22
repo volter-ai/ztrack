@@ -66,6 +66,14 @@ function bodyArg(args: string[]): string | undefined {
   const file = flagVal(args, 'body-file'); if (file !== undefined) return readFileSync(file, 'utf8');
   return undefined;
 }
+// The status TYPE behind a state NAME — preset rules gate on stateType (`isDone`/`isCanceled`),
+// so `--state Done`/`Canceled` must record `completed`/`canceled`, not a hardcoded `open`.
+function stateTypeOf(name: string): 'open' | 'completed' | 'canceled' {
+  const n = name.trim().toLowerCase();
+  if (n === 'done' || n === 'completed') return 'completed';
+  if (n === 'canceled' || n === 'cancelled') return 'canceled';
+  return 'open';
+}
 const ok = (stdout: string): TrackerCommandResult => ({ stdout, stderr: '' });
 
 export class MarkdownBackend implements TrackerBackend {
@@ -114,7 +122,7 @@ export class MarkdownBackend implements TrackerBackend {
       const now = new Date().toISOString();
       const c: CanonicalIssue = {
         identifier: id, title: flagVal(args, 'title') ?? '', body: bodyArg(args) ?? '',
-        state: flagVal(args, 'state') ?? 'Backlog', stateType: 'open', assignees: flagVal(args, 'assignee') ? [flagVal(args, 'assignee')!] : [],
+        state: flagVal(args, 'state') ?? 'Backlog', stateType: stateTypeOf(flagVal(args, 'state') ?? 'Backlog'), assignees: flagVal(args, 'assignee') ? [flagVal(args, 'assignee')!] : [],
         labels: flagAll(args, 'label'), project: flagVal(args, 'project') ?? null, parent: flagVal(args, 'parent') ?? null,
         children: [], branchName: '', priority: 0, devProgress: '', createdAt: now, updatedAt: now,
         completedAt: null, canceledAt: null, url: `local://tracker/issue/${id}`, comments: [],
@@ -126,7 +134,7 @@ export class MarkdownBackend implements TrackerBackend {
       const c = loadOne(this.dir, rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
       const t = flagVal(args, 'title'); if (t) c.title = t;
       const b = bodyArg(args); if (b !== undefined) c.body = b;
-      const s = flagVal(args, 'state'); if (s) c.state = s;
+      const s = flagVal(args, 'state'); if (s) { c.state = s; c.stateType = stateTypeOf(s); }
       const p = flagVal(args, 'project'); if (p) c.project = p; if (args.includes('--remove-project')) c.project = null;
       const pa = flagVal(args, 'parent'); if (pa) c.parent = pa; if (args.includes('--remove-parent')) c.parent = null;
       for (const l of flagAll(args, 'add-label')) if (!c.labels.includes(l)) c.labels.push(l);
