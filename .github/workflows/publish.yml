@@ -37,6 +37,12 @@ jobs:
         run: bun run typecheck
       - name: Test
         run: bun test
+      - name: Fresh project dry run
+        # Gate the release on the REAL consumer path: pack, install into fresh repos, and
+        # run init -> check across every preset (plus MCP/SDK/autonomy). typecheck + bun
+        # test above never exercise an INSTALLED package, so they can't catch an install
+        # that fails to load — which is exactly how 0.3.0 shipped broken. This can.
+        run: bash demos/fresh-project-dry-run.sh
       - name: Publish to npm
         run: npm publish --access public
         env:
