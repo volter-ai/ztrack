@@ -1,6 +1,6 @@
 {
   "name": "ztrack-gate",
-  "description": "Hold the agent's turn open until the active issue passes `ztrack check` — a deterministic, per-worktree-scoped done-oracle gate for autonomous loops. Self-gating: no-ops in repos without a ztrack tracker.",
+  "description": "A ralph-pattern autonomy loop whose completion oracle is `ztrack check`. Arm it with `ztrack loop start <issue>`; while armed, the Stop hook holds the agent's turn until that issue is green (then disarms), or the iteration cap trips. Not armed → the turn ends normally, so interactive use is never gated.",
   "version": "0.1.0",
   "author": {
     "name": "volter-ai"

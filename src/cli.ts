@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkTracker } from './check.ts';
@@ -11,7 +11,7 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, upgradeTrackerPreset } from './config.ts';
+import { initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, upgradeTrackerPreset } from './config.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
@@ -121,6 +121,40 @@ async function main(): Promise<void> {
       return;
     }
     throw new Error(`ztrack preset: unknown action '${action}'. Try '${command} preset upgrade'.`);
+  }
+
+  if (args[0] === 'loop') {
+    // The explicit-start that makes the gate loop-scoped instead of always-on: while
+    // armed, the Stop hook holds the agent's turn until <issue> passes `ztrack check`.
+    const action = args[1];
+    const root = projectRootFrom();
+    const marker = join(root, stateDirName(), '.ztrack-loop.json');
+    if (!action || action === '--help' || action === '-h' || action === 'help') {
+      process.stdout.write(`Usage: ${command} loop <start <issue> [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate. While armed, the Stop hook keeps the agent going until <issue> passes \`${command} check\` (then it disarms), or the iteration cap trips. start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
+      return;
+    }
+    if (action === 'start') {
+      const issue = args[2];
+      if (!issue || issue.startsWith('-')) throw new Error(`${command} loop start: needs an issue id, e.g. \`${command} loop start ZT-1\``);
+      const maxRaw = optionValue(args, '--max');
+      const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
+      mkdirSync(dirname(marker), { recursive: true });
+      writeFileSync(marker, `${JSON.stringify({ issue, maxIterations, startedAt: new Date().toISOString() }, null, 2)}\n`);
+      process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${issue} (max ${maxIterations}); the Stop gate now holds the turn until ${issue} is green`)}\n`);
+      return;
+    }
+    if (action === 'stop') {
+      if (existsSync(marker)) rmSync(marker);
+      process.stdout.write(`${statusMark('pass')} ${ui.dim('loop disarmed')}\n`);
+      return;
+    }
+    if (action === 'status') {
+      if (!existsSync(marker)) { process.stdout.write(`${statusMark('info')} ${ui.dim('no loop armed')}\n`); return; }
+      const m = JSON.parse(readFileSync(marker, 'utf8')) as { issue: string; maxIterations: number; startedAt: string };
+      process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${m.issue}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
+      return;
+    }
+    throw new Error(`${command} loop: unknown action '${action}'. Try 'start <issue>', 'stop', or 'status'.`);
   }
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {

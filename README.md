@@ -99,7 +99,7 @@ them and only validates the claims agents or humans make there.
 
 - **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
 - **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
-- **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry against the gate until it passes. Easiest to turn on via the bundled Claude Code plugin (one toggle, self-gating, no `settings.json` editing):
+- **Autonomy loop:** a ralph-pattern loop whose completion oracle is `check` — `ztrack loop start <issue>` holds the agent's turn until that issue is green (then disarms), capped so it can't grind forever. Turn it on via the bundled Claude Code plugin (one toggle, armed-only so interactive work is untouched):
 
   ```
   /plugin marketplace add volter-ai/ztrack

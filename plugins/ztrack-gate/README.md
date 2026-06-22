@@ -1,11 +1,11 @@
 # ztrack-gate
 
-A Claude Code plugin that turns `ztrack`'s deterministic done-oracle into a **Stop hook**:
-the agent's turn can't end while the active issue's `ztrack check --auto-scope` is red. It's
-the "keep going until the work is *actually* done" mechanism — an executable gate, not a
+A Claude Code plugin that runs an autonomy **loop** whose completion *oracle* is `ztrack`
+— a ralph loop that automatically knows how to prove success. While the loop is armed, the
+agent's turn can't end until the issue passes `ztrack check`; it's an executable gate, not a
 phrase match or an LLM judging a transcript. Compose it with the
-[`ralph-loop`](https://github.com/anthropics/claude-code) plugin: ralph re-prompts (the
-loop), ztrack-gate decides *done* (the oracle).
+[`ralph-loop`](https://github.com/anthropics/claude-code) plugin if you like: ralph
+re-prompts, ztrack-gate decides *done*.
 
 ## Turn it on
 
@@ -14,32 +14,42 @@ loop), ztrack-gate decides *done* (the oracle).
 /plugin install ztrack-gate@ztrack
 ```
 
-That's it — enabling the plugin registers the Stop hook automatically (no `settings.json`
-editing). Enable it globally and forget about it: it's **self-gating**.
+Enabling the plugin registers the Stop hook automatically (no `settings.json` editing). It's
+**armed**, not always-on, so it leaves interactive work alone.
 
-## Self-gating
+## Use it
 
-On every turn-end the hook looks for a ztrack tracker (`.volter/tracker-config.json`) in the
-current repo or an ancestor:
+```
+ztrack loop start ZT-1     # arm: hold the turn until ZT-1 is green
+# ...the agent works; each turn-end runs `ztrack check`. red → held (with the findings as
+#    the next-step list); green → released + auto-disarmed; iteration cap → stop, surface.
+ztrack loop status         # what's armed
+ztrack loop stop           # disarm (issue stays open/red; you just stop the loop)
+```
 
-- **No tracker** → it exits 0 and lets the turn end. Safe to enable for *all* your repos —
-  it never bothers you in ones that don't use ztrack.
-- **Tracker present** → it runs that repo's installed `ztrack check --auto-scope` and
-  **blocks the turn (exit 2)** if the issue this branch/worktree is for is red, handing the
-  agent the findings to fix. Green → the turn ends.
+- **Armed + red** → the turn is **blocked (exit 2)** and the findings are handed back to the
+  agent to resolve.
+- **Armed + green** → released, and the loop **disarms itself**.
+- **Not armed** → the turn ends normally. Enable the plugin globally and it never bothers you
+  outside a loop you started.
+- **Iteration cap** (`--max`, default 8) → if it can't go green, the loop stops and surfaces
+  what's left, rather than grinding forever.
 
 ## Requirements
 
-The repo being gated must have `ztrack` installed as a dependency (`npm i -D ztrack`) and a
-tracker (`ztrack init`). The hook runs that **local** ztrack — the same engine the repo-local
-preset imports (binary == library) — so "done" only moves on a reviewed lockfile bump.
-Override the binary path with `ZTRACK_BIN`.
+The repo must have `ztrack` installed as a dependency (`npm i -D ztrack`) and a tracker
+(`ztrack init`). The hook runs that **local** ztrack — the same engine the repo-local preset
+imports (binary == library) — so "done" only moves on a reviewed lockfile bump. Override the
+binary with `ZTRACK_BIN`.
 
 ## Try it locally first
 
-From a checkout of this repo you can add it as a local-path marketplace without publishing:
+Add this repo as a local-path marketplace, no publishing needed:
 
 ```
 /plugin marketplace add /path/to/volter-ztrack
 /plugin install ztrack-gate@ztrack
 ```
+
+The real end-to-end test (live headless agent + the loop + real ztrack) is
+`demos/loop-e2e.sh`.
