@@ -2,6 +2,24 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.8.0
+
+- **The default backend is now pure-JS markdown** — `ztrack init` stores issues as plain
+  `.volter/tracker/markdown/*.md` files. **No Python on the happy path:** `npm install
+  ztrack` + Node + git is all a new project needs. The Python/SQLite `local` backend (adding
+  full-text search) stays available via `backend: "local"`. Existing projects are unchanged
+  (their config still names whatever backend they chose).
+- Fixed three markdown-backend gaps that flipping the default surfaced (it had never been the
+  default, and each gap silently produced a *passing* check on an empty/mis-typed issue):
+  - `--body-file` is now read on create/edit (was silently dropping the body → no acceptance
+    criteria → vacuous pass).
+  - `--state open|closed|all` filter by status **type** (the recovery scripts use `list
+    --state open`), not a literal state name.
+  - `create`/`edit` derive `stateType` from the state name (`Done`→completed,
+    `Canceled`→canceled), so done-gates and canceled-exemptions apply.
+- CI now exercises the full surface under the markdown default (it would have caught the
+  above), and the package-manager compatibility matrix tests it for real.
+
 ## 0.7.2
 
 - **Fix: `ztrack/package.json` was not importable** — `require('ztrack/package.json')` (and
