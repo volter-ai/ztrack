@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { createGenericPreset } from './presetKit.ts';
 import { check, issueAcFingerprint } from './core/engine.ts';
 import { buildIssueBundle } from './core/bundle.ts';
@@ -38,47 +35,11 @@ describe('createGenericPreset', () => {
     expect(issue.sourceMarkers).toContain('1');
   });
 
-  test('clean passing case', () => {
-    const body = `## Acceptance Criteria\n\n- [x] dev/01 status: passed Done. commit: ${HEAD} [E1] [1]\n\n## Evidence\n\n[E1] type: pr ac: dev/01\n\n## Sources\n\n[1] req\n`;
-    const r = check(sdlc, buildIssueBundle([frame('APP-1', { state: 'done', stateType: 'completed', assignee: 'otto', body })]), ctx);
-    expect(r.findings).toEqual([]);
-    expect(r.ok).toBe(true);
-  });
-
-  test('rules fire: missing source marker, missing assignee, no ACs, checked AC missing commit/evidence', () => {
-    const noMarkerNoAssignee = check(sdlc, buildIssueBundle([frame('A-1', { state: 'open', stateType: 'open', body: '## Acceptance Criteria\n' })]), ctx);
-    const codes = noMarkerNoAssignee.findings.map((f) => f.code);
-    expect(codes).toContain('simple-sdlc_case_missing_source_marker');
-    expect(codes).toContain('simple-sdlc_case_missing_assignee');
-    expect(codes).toContain('simple-sdlc_case_missing_acceptance_criteria');
-
-    const badAc = check(sdlc, buildIssueBundle([frame('A-2', { state: 'open', stateType: 'open', assignee: 'a', body: '## Acceptance Criteria\n\n- [x] dev/01 status: passed no commit no evidence [1]\n\n## Sources\n\n[1] r\n' })]), ctx);
-    const c2 = badAc.findings.map((f) => f.code);
-    expect(c2).toContain('simple-sdlc_checked_ac_missing_commit_hash');
-    expect(c2).toContain('simple-sdlc_checked_ac_missing_evidence');
-  });
-
-  test('checked AC citing a missing commit fails against ctx.git', () => {
-    const body = '## Acceptance Criteria\n\n- [x] dev/01 status: passed done commit: deadbeef1234 [E1] [1]\n\n## Evidence\n\n[E1] type: pr\n\n## Sources\n\n[1] r\n';
-    const r = check(sdlc, buildIssueBundle([frame('A-3', { state: 'open', stateType: 'open', assignee: 'a', body })]), ctx);
-    expect(r.findings.some((f) => f.code === 'simple-sdlc_checked_ac_commit_hash_missing')).toBe(true);
-  });
-
-  test('loadContext injects git commits for installed repo-local presets', async () => {
-    const repo = mkdtempSync(join(tmpdir(), 'ztrack-preset-kit-'));
-    try {
-      execFileSync('git', ['-C', repo, 'init', '-q']);
-      execFileSync('git', ['-C', repo, 'config', 'user.email', 'test@example.com']);
-      execFileSync('git', ['-C', repo, 'config', 'user.name', 'ztrack test']);
-      execFileSync('git', ['-C', repo, 'commit', '--allow-empty', '-q', '-m', 'initial']);
-      const context = await sdlc.loadContext?.({ projectRoot: repo });
-      const body = '## Acceptance Criteria\n\n- [x] dev/01 status: passed done commit: deadbee [E1] [1]\n\n## Evidence\n\n[E1] type: pr\n\n## Sources\n\n[1] r\n';
-      const r = check(sdlc, buildIssueBundle([frame('A-5', { state: 'open', stateType: 'open', assignee: 'a', body })]), context);
-      expect(r.findings.some((f) => f.code === 'simple-sdlc_checked_ac_commit_hash_missing')).toBe(true);
-    } finally {
-      rmSync(repo, { recursive: true, force: true });
-    }
-  });
+  // Behavioral rule-firing — a clean pass; missing source-marker / assignee / AC; a checked
+  // AC missing its commit/evidence; commit existence under --verify-commits; a canceled case
+  // being exempt — is proven END-TO-END through the real installed CLI in demos/check-e2e.sh,
+  // not re-asserted in-process here. What stays below is SURGICAL: the mdast parser's exact
+  // output, and a rule the real CLI can't reach (it won't author duplicate ids).
 
   test('cross-issue (root) rule: duplicate issue ids across the tracker fail', () => {
     const b = '## Acceptance Criteria\n\n[1] marker\n';
@@ -87,12 +48,6 @@ describe('createGenericPreset', () => {
       { id: 'DUP', body: frame('DUP', { state: 'open', stateType: 'open', assignee: 'a', body: b }).body },
     ]), ctx);
     expect(r.findings.some((f) => f.code === 'simple-sdlc_duplicate_issue_id')).toBe(true);
-  });
-
-  test('canceled issues are exempt from assignee/AC gates', () => {
-    const r = check(sdlc, buildIssueBundle([frame('A-4', { state: 'Canceled', stateType: 'canceled', body: '[1] marker\n' })]), ctx);
-    expect(r.findings.some((f) => f.code === 'simple-sdlc_case_missing_assignee')).toBe(false);
-    expect(r.findings.some((f) => f.code === 'simple-sdlc_case_missing_acceptance_criteria')).toBe(false);
   });
 
   test('evidence is discovered structurally from the ## Evidence section only (no global line-scan)', () => {

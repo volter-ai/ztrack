@@ -24,6 +24,8 @@ jobs:
         run: npm pack --dry-run
       - name: Fresh project dry run
         run: bash demos/fresh-project-dry-run.sh
+      - name: Check rule behaviors (real CLI e2e)
+        run: bash demos/check-e2e.sh
       - name: Loop gate (Stop hook + waiver, no live agent)
         run: bash demos/loop-gate-ci.sh
       - name: Export smoke
