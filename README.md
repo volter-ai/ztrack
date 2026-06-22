@@ -49,9 +49,11 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 > backend is a small Python/SQLite program; or set `backend: "markdown"` to avoid
 > Python). The `ztrack visualizer` additionally needs [Bun](https://bun.sh).
 >
-> **Yarn PnP:** ztrack works under Plug'n'Play — use `backend: "markdown"` (PnP's
-> zip store can't expose the Python backend's helper script to a subprocess), or set
-> `nodeLinker: node-modules`. npm and pnpm work out of the box.
+> **Package managers:** verified on Node 20+ under **npm, pnpm, yarn (classic + Berry), and
+> bun** (`init` + `check`, library `import()` from CommonJS, and `ztrack/package.json`
+> access). Under **Yarn PnP** specifically, use `backend: "markdown"` (PnP's zip store can't
+> expose the Python backend's helper script to a subprocess) or set `nodeLinker:
+> node-modules`.
 
 ```bash
 npx ztrack init --preset basic
