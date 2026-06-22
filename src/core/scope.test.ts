@@ -5,6 +5,16 @@ import type { Finding } from './engine.ts';
 const ids = ['ZT-1', 'ZT-2', 'ZT-42'];
 
 describe('resolveActiveIssue', () => {
+  test('an explicit pin wins over the branch', () => {
+    expect(resolveActiveIssue({ explicit: 'ZT-1', branch: 'ZT-42-x', issueIds: ids }).issueId).toBe('ZT-1');
+  });
+
+  test('an explicit pin not in the tracker fails closed (null)', () => {
+    const r = resolveActiveIssue({ explicit: 'NOPE-9', branch: 'ZT-42-x', issueIds: ids });
+    expect(r.issueId).toBeNull();
+    expect(r.reason).toContain('not in the tracker');
+  });
+
   test('matches an id embedded in the branch name', () => {
     expect(resolveActiveIssue({ branch: 'ZT-42-add-autoscope', issueIds: ids }).issueId).toBe('ZT-42');
   });

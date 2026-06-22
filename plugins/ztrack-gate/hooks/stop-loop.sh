@@ -43,7 +43,9 @@ if [ ! -x "$ztrack_bin" ]; then
   exit 2
 fi
 
-out="$(cd "$root" && "$ztrack_bin" check 2>&1)"
+# --auto-scope validates the whole tracker but exits nonzero only on THIS armed issue;
+# ZTRACK_ACTIVE_ISSUE pins it so other red issues don't hold this loop.
+out="$(cd "$root" && ZTRACK_ACTIVE_ISSUE="$issue" "$ztrack_bin" check --auto-scope 2>&1)"
 code=$?
 if [ "$code" -eq 0 ]; then
   rm -f "$marker" "$iterfile"

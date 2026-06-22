@@ -87,15 +87,16 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   const maxFindings = rawMax && Number.isInteger(parsedMax) && parsedMax >= 0 ? parsedMax : 120;
 
   // --auto-scope: validate the whole tracker (so cross-issue rules stay correct),
-  // but gate (exit nonzero) only on the issue THIS checkout is for — resolved from
-  // the git branch/worktree name. Git reads go through gitWorld's `git()`, the one
-  // sanctioned boundary; resolution + partition are pure.
+  // but gate (exit nonzero) only on ONE active issue — taken from ZTRACK_ACTIVE_ISSUE if
+  // set (the loop arms it that way), otherwise resolved from the git branch/worktree name.
+  // Git reads go through gitWorld's `git()`, the one sanctioned boundary; the rest is pure.
   if (flagArgs.includes('--auto-scope')) {
     const branch = git(projectRoot, ['rev-parse', '--abbrev-ref', 'HEAD']) || undefined;
     const top = git(projectRoot, ['rev-parse', '--show-toplevel']);
     const worktree = top ? basename(top) : undefined;
     const issueIds = (result.export?.issues ?? []).map((i) => i.id);
-    const { issueId, reason } = resolveActiveIssue({ ...(branch ? { branch } : {}), ...(worktree ? { worktree } : {}), issueIds });
+    const explicit = process.env.ZTRACK_ACTIVE_ISSUE?.trim();
+    const { issueId, reason } = resolveActiveIssue({ ...(explicit ? { explicit } : {}), ...(branch ? { branch } : {}), ...(worktree ? { worktree } : {}), issueIds });
     const { blocking, informational } = partitionFindings(result.findings, issueId);
 
     const blockingErrors = blocking.some((f) => f.severity === 'error');

@@ -31,6 +31,19 @@ setup() { # $1=name $2=red|green $3=arm|noarm  -> echoes the repo dir
   printf '%s' "$d"
 }
 
+setup_multi() { # $1=name $2=arm-issue  -> APP-1 green, APP-2 red; arms $2; echoes dir
+  local d="$tmp/$1"; mkdir -p "$d"; ( cd "$d"
+    git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
+    echo "# $1" > README.md; git add README.md; git commit -q -m init
+    npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
+    npx ztrack init --team APP --preset basic >/dev/null
+    printf '%s' "$green_body" > g.md; npx ztrack issue create --title G --label type:case --state "In Progress" --assignee tester --body-file g.md >/dev/null
+    printf '%s' "$red_body"   > r.md; npx ztrack issue create --title R --label type:case --state "In Progress" --assignee tester --body-file r.md >/dev/null
+    npx ztrack loop start "$2" --max 2 >/dev/null
+  )
+  printf '%s' "$d"
+}
+
 run() { # $1=dir -> echoes the agent JSON result
   ( cd "$1" && timeout 240 claude -p "Reply with exactly the single word DONE and take no other action." \
       --model "$model" --output-format json --permission-mode bypassPermissions \
@@ -49,6 +62,14 @@ out="$(run "$(setup armed-green green arm)")"; t="$(turns "$out")"; v="$(verdict
 
 echo "=== C. NOT armed + red tracker → agent is FREE (num_turns == 1) ==="
 out="$(run "$(setup not-armed red noarm)")"; t="$(turns "$out")"; v="$(verdict "$t" -eq 1)"; echo "   num_turns=$t  $v"; [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
+
+echo "=== D. multi-issue scoping: arm the GREEN issue while another is RED → released ==="
+d="$(setup_multi scoping APP-1)"
+g_exit="$( (cd "$d" && ZTRACK_ACTIVE_ISSUE=APP-1 npx ztrack check --auto-scope >/dev/null 2>&1); echo $? )"
+r_exit="$( (cd "$d" && ZTRACK_ACTIVE_ISSUE=APP-2 npx ztrack check --auto-scope >/dev/null 2>&1); echo $? )"
+echo "   deterministic scoped check: APP-1 exit=$g_exit (want 0), APP-2 exit=$r_exit (want 1)"
+{ [ "$g_exit" = 0 ] && [ "$r_exit" = 1 ]; } || { fails=$((fails+1)); echo "   FAIL: scoping override"; }
+out="$(run "$d")"; t="$(turns "$out")"; v="$(verdict "$t" -eq 1)"; echo "   agent armed APP-1 → num_turns=$t  $v (released despite APP-2 red)"; [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
 echo
 if [ "$fails" -eq 0 ]; then echo "loop e2e: ALL PASS (real agent, real hook, real ztrack)"; else echo "loop e2e: $fails FAIL"; exit 1; fi

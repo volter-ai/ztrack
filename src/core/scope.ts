@@ -10,6 +10,7 @@
 import type { Finding } from './engine.ts';
 
 export interface ScopeSignals {
+  explicit?: string;   // an issue id pinned by the caller (ZTRACK_ACTIVE_ISSUE / the loop); wins over git
   branch?: string;     // current branch — `git rev-parse --abbrev-ref HEAD`
   worktree?: string;   // basename of the worktree root
   issueIds: string[];  // ids present in the loaded tracker
@@ -41,6 +42,13 @@ function matchName(name: string, issueIds: string[]): string[] {
  *  Zero matches → null (the caller fails closed and gates the whole tracker).
  *  Two distinct ids in one name → ambiguous → null: never guess the scope. */
 export function resolveActiveIssue(signals: ScopeSignals): ScopeResolution {
+  // An explicitly pinned issue (e.g. the loop's armed issue) wins over git resolution;
+  // an unknown pin fails closed rather than silently falling back to the branch.
+  if (signals.explicit) {
+    return signals.issueIds.includes(signals.explicit)
+      ? { issueId: signals.explicit, reason: `pinned to ${signals.explicit}` }
+      : { issueId: null, reason: `pinned issue '${signals.explicit}' is not in the tracker` };
+  }
   const sources: Array<readonly [string, string | undefined]> = [
     ['branch', signals.branch],
     ['worktree', signals.worktree],
