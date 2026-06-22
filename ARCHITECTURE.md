@@ -144,8 +144,23 @@ presets are `basic`, `simple-sdlc`, `simple-spec`, and `speckit`; all four resol
 | `mcp.ts` (`tracker_check`, …) | the validator over MCP |
 | `sdk.ts` `createTrackerClient` | backend-agnostic CRUD (`local` or `markdown`); writes via the backend; `tx.ts` re-checks |
 | `server.ts` / `graphql.ts` | GraphQL over the backend (CRUD) |
-| `core/cli.ts` | the core-contract `check` over a single issue file (engine demo / preset dev) |
 | `visualizer/` (`ztrack visualizer`) | standalone Bun web app over `check().export`; runs every `tracker/*.md` through its preset and renders issues, ACs, findings, and timestamps (read-only) |
+
+### Module format (ESM-first)
+
+ztrack is published as **ESM** (`"type": "module"`); every library subpath
+(`ztrack/check`, `ztrack/sdk`, `ztrack/export`, `ztrack/mutate`, `ztrack/mcp`, …) is an ES
+module. Consume it with `import`, or — from a CommonJS file — with **dynamic
+`await import('ztrack/check')`**, which works on every Node ≥ 12 (including under Yarn PnP).
+We deliberately do **not** ship a CommonJS build of the whole library: ztrack's parser deps
+(`mdast-*`) are ESM-only, so a CJS build would have to *bundle* each subpath self-contained
+(~17× the package), and `import()` already covers CJS callers correctly.
+
+The **one** exception is `ztrack/preset-kit`: the installed `preset.cjs` is loaded by a
+synchronous `require()` (the loader can't be async per resolve), so it must `require()` the
+kit. That subpath therefore has a `require` export condition pointing at a self-contained
+CommonJS bundle (`dist/preset-kit.cjs`) so it works on Node ≥ 20 and Yarn PnP. See the 0.7.1
+changelog.
 
 > **Note** — `ztrack snapshot project-manager` is an **unrelated** feature: a PM status
 > report generated from the backend. It is not part of validation and shares no code with

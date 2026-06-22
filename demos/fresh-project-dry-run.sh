@@ -294,4 +294,18 @@ NODE_OPTIONS="--no-experimental-require-module" npx ztrack check --json > requir
 test "$(json_field require-esm.json summary.status)" = "pass"
 printf 'require(esm) guard ok (preset loads without native require-esm)\n'
 
+# The library subpaths are ESM (no CJS build by design); a CommonJS caller consumes them
+# via dynamic import(). Lock that contract — it must hold even without native require(esm).
+cat > cjs-import.cjs <<'JS'
+(async () => {
+  const check = await import('ztrack/check');
+  const sdk = await import('ztrack/sdk');
+  if (typeof check.checkTracker !== 'function' || typeof sdk.createTrackerClient !== 'function') {
+    throw new Error('ESM subpath not importable from CommonJS');
+  }
+})().catch((e) => { console.error(e.message); process.exit(1); });
+JS
+NODE_OPTIONS="--no-experimental-require-module" node cjs-import.cjs
+printf 'esm-subpath import() guard ok (CommonJS callers can import the library)\n'
+
 printf 'fresh-project dry run complete\n'
