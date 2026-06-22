@@ -10,6 +10,8 @@ node_modules/
 .env
 .env.*
 .DS_Store
+# Termfleet per-instance scratch files (transient tooling artifacts)
+.termfleet-instance-*.json
 # Build artifacts — produced by `npm run build` (and by `prepack` for npm publish);
 # not committed. The GitHub Action runs ztrack from source via Bun.
 visualizer/core.js

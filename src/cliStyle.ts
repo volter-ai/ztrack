@@ -182,3 +182,39 @@ export function renderCheckReport(result: CheckResult<CoreRoot>, options: { erro
   lines.push('', exitHint);
   return `${lines.join('\n')}\n`;
 }
+
+// `--auto-scope` view: a banner naming the resolved issue (or the fail-closed
+// fallback), the blocking findings rendered as the gate, and a one-line digest of
+// the findings in OTHER issues that this branch is not responsible for.
+export function renderScopedReport(
+  result: CheckResult<CoreRoot>,
+  opts: {
+    activeIssue: string | null; reason: string;
+    blocking: Finding[]; informational: Finding[];
+    errorsOnly?: boolean; maxFindings?: number;
+  },
+): string {
+  const banner = opts.activeIssue
+    ? `${statusMark('info')} ${ui.dim('auto-scope →')} ${ui.bold(opts.activeIssue)} ${ui.dim(`(${opts.reason})`)}`
+    : `${statusMark('warn')} ${ui.dim('auto-scope →')} ${ui.yellow('unresolved')} ${ui.dim(`(${opts.reason}); gating the whole tracker`)}`;
+
+  const blockingResult: CheckResult<CoreRoot> = {
+    ok: !opts.blocking.some((f) => f.severity === 'error'),
+    findings: opts.blocking,
+    ...(result.export ? { export: result.export } : {}),
+  };
+  const body = renderCheckReport(blockingResult, {
+    ...(opts.errorsOnly ? { errorsOnly: true } : {}),
+    ...(opts.maxFindings !== undefined ? { maxFindings: opts.maxFindings } : {}),
+  });
+
+  let info = '';
+  if (opts.informational.length) {
+    const byIssue = new Map<string, number>();
+    for (const f of opts.informational) byIssue.set(f.issueId ?? 'workspace', (byIssue.get(f.issueId ?? 'workspace') ?? 0) + 1);
+    const digest = [...byIssue].map(([id, n]) => `  ${ui.dim('•')} ${id} ${ui.dim(`(${n})`)}`).join('\n');
+    info = `\n${ui.dim(`ℹ ${opts.informational.length} finding(s) in other issues — not gating this branch:`)}\n${digest}\n`;
+  }
+
+  return `${banner}\n${body}${info}`;
+}

@@ -1,0 +1,70 @@
+// End-to-end auto-scope over the REAL default preset: run an actual check over a
+// two-issue tracker, then apply the same resolve+partition the CLI's --auto-scope
+// path applies, and assert the scoped gate's verdict differs from the whole-tracker
+// verdict. This is the behavior that matters — a green gate for THIS branch even
+// when an unrelated issue is red.
+import { describe, expect, test } from 'bun:test';
+import { checkDefault } from './presets/default.ts';
+import { buildIssueBundle } from './core/bundle.ts';
+import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
+
+const HEAD = 'cafe1234beef';
+const PR = 'https://github.com/volter-ai/x/pull/5';
+const ctx = { git: { existingCommits: [HEAD], prs: { [PR]: { headSha: HEAD, merged: false } } } };
+
+const clean = (id: string) => ({ id, body: `# ${id}: Appointment search
+
+Assignee: otto
+Summary: members find appointments fast
+Status: in-review
+PR: ${PR}
+
+## Acceptance Criteria
+
+- [x] AC-1 v2 Members can filter by status
+  - status: passed
+  - evidence ev1: image=shots/ac1.png commit=${HEAD} acv=2
+  - proof: "ev1 shows the status filter applied" -> ev1
+` });
+
+const broken = (id: string) => ({ id, body: `# ${id}: Half-authored
+
+Assignee: otto
+Summary: not ready yet
+Status: in-review
+
+## Acceptance Criteria
+` });
+
+function scoped(issues: Array<{ id: string; body: string }>, branch: string) {
+  const whole = checkDefault(buildIssueBundle(issues), ctx);
+  const issueIds = (whole.export?.issues ?? []).map((i) => i.id);
+  const { issueId } = resolveActiveIssue({ branch, issueIds });
+  return { whole, active: issueId, ...partitionFindings(whole.findings, issueId) };
+}
+
+describe('auto-scope over real default-preset findings', () => {
+  test('routes findings by the resolved active issue', () => {
+    const s = scoped([broken('DEF-1'), broken('OTHER-9')], 'feature/DEF-1-fix');
+    expect(s.active).toBe('DEF-1');
+    expect(s.blocking.length).toBeGreaterThan(0);
+    expect(s.blocking.every((f) => f.issueId === 'DEF-1')).toBe(true);
+    expect(s.informational.length).toBeGreaterThan(0);
+    expect(s.informational.every((f) => f.issueId === 'OTHER-9')).toBe(true);
+  });
+
+  test('a clean active issue passes the scoped gate even when another issue is red', () => {
+    const s = scoped([clean('DEF-1'), broken('OTHER-9')], 'feature/DEF-1-fix');
+    expect(s.active).toBe('DEF-1');
+    expect(s.whole.ok).toBe(false);       // the whole tracker is red...
+    expect(s.blocking).toHaveLength(0);    // ...but the gate for THIS branch is green
+    expect(s.informational.length).toBeGreaterThan(0);
+  });
+
+  test('unresolved branch fails closed: the whole tracker gates', () => {
+    const s = scoped([broken('DEF-1'), broken('OTHER-9')], 'autonomy-cutover');
+    expect(s.active).toBeNull();
+    expect(s.blocking).toHaveLength(s.whole.findings.length);
+    expect(s.informational).toHaveLength(0);
+  });
+});
