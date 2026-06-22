@@ -35,6 +35,24 @@ ztrack loop stop           # disarm (issue stays open/red; you just stop the loo
 - **Iteration cap** (`--max`, default 8) → if it can't go green, the loop stops and surfaces
   what's left, rather than grinding forever.
 
+## Escapes
+
+A loop you can't get out of is a trap, so there are three honest ways out — graded by how
+durable they are, none of which silently lies about "done":
+
+- **Disarm** — `ztrack loop stop`. Ends the loop for everyone; the issue stays red. The
+  blunt instrument.
+- **Per-session self-exempt** — when blocked, the held turn's message prints an exact path
+  (`.volter/.ztrack-loop-exempt-<session_id>`). Create that file and *this* session's turn
+  may end. It's keyed to the live session id (so a fresh session is held again) and
+  gitignored (so it can't be committed) — it cannot outlive the session that made it.
+- **Durable waiver** — `ztrack waiver sign <issue> --reason "…" --by "…"`. An authority
+  records that the failing state is knowingly accepted; the issue's errors become
+  `acknowledged` and `check` passes. Unlike the others this lives in the tracker and
+  survives sessions — but it's **anchored to the commit + a fingerprint of the acceptance
+  criteria**, so it auto-stales the instant either drifts (the errors come back). An
+  unreasoned or unsigned waiver is itself an error. `ztrack waiver clear <issue>` removes it.
+
 ## Requirements
 
 The repo must have `ztrack` installed as a dependency (`npm i -D ztrack`) and a tracker

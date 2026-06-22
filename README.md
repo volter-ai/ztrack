@@ -99,13 +99,13 @@ them and only validates the claims agents or humans make there.
 
 - **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
 - **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
-- **Autonomy loop:** a ralph-pattern loop whose completion oracle is `check` — `ztrack loop start <issue>` holds the agent's turn until that issue is green (then disarms), capped so it can't grind forever. Turn it on via the bundled Claude Code plugin (one toggle, armed-only so interactive work is untouched):
+- **Autonomy loop:** a ralph-pattern loop whose completion oracle is `check` — `ztrack loop start <issue>` holds the agent's turn until that issue is green (then disarms), capped so it can't grind forever. Three honest escapes (none fakes "done"): disarm, a per-session self-exempt that can't outlive the session, and a durable `ztrack waiver sign` that's anchored to the commit + acceptance-criteria fingerprint so it auto-stales. Turn it on via the bundled Claude Code plugin (one toggle, armed-only so interactive work is untouched):
 
   ```
   /plugin marketplace add volter-ai/ztrack
   /plugin install ztrack-gate@ztrack
   ```
-  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire `hooks/stop-check.sh` into your `Stop` hooks directly.
+  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire `hooks/stop-loop.sh` into your `Stop` hooks directly.
 
 See [examples](docs/EXAMPLES.md) for a minimal local check, a committed validated-root
 CI gate, and an MCP agent loop.
