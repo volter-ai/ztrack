@@ -13,17 +13,17 @@ gates fail. This doc maps the pieces of the single validation pipeline and how d
 
 ## 1. The data store
 
-Issues live in a **local store**, selected by `backend` in `.volter/tracker-config.json`:
+Issues live in a **local markdown store** — one `.md` per issue:
 
 | backend | where | what |
 |---|---|---|
-| `local` | `.volter/tracker/tracker.sqlite` (a Python program, `backend/tracker-local.py`) | SQLite rows: body markdown + metadata columns + comments |
-| `markdown` | `.volter/tracker/markdown/<id>.md` | one `.md` per issue: frontmatter metadata + body + `<!--tracker:comments-->` |
+| `markdown` (only) | `.volter/tracker/markdown/<id>.md` | one `.md` per issue: frontmatter metadata + body + `<!--tracker:comments-->` |
 
-Both are gitignored local runtime state. They are **interchangeable peers**
-(`TrackerBackend.command(args)`), emit identical JSON, and convert losslessly
-(`backends/markdownPort.ts`). The store is **not** a SaaS — external systems sync
-through the worlds pipeline (see §5), never as live backends.
+It is gitignored local runtime state, pure JS (`backends/markdownBackend.ts`, with
+`markdown.ts` as the (de)serializer). The former Python/SQLite `local` backend was
+removed; projects still on it run `ztrack migrate-local` once (reads the old
+`tracker.sqlite` and rewrites each issue as markdown). The store is **not** a SaaS —
+external systems sync through the worlds pipeline (see §5), never as live backends.
 
 ---
 
@@ -47,7 +47,6 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 | `presets/default.ts`, `spec.ts`, `speckitCore.ts` | internal/reference strict schemas + mdast parsers + pure rules per SDLC |
 | `backends/markdown.ts` | canonical-issue ⇄ markdown (de)serializer |
 | `backends/markdownBackend.ts` | the `markdown` peer `TrackerBackend` (issue verbs over the `.md` store) |
-| `backends/markdownPort.ts` | lossless SQLite→markdown port + round-trip proof |
 | `presets/issueMarkdown.ts`, `markdownModel.ts` | the lenient issue-markdown parser/model (mdast tree-walk); `markdown-model` re-exports it |
 | `acVersion.ts` | content-hash of an acceptance criterion (`AC-Version`) for freshness/anchoring |
 
@@ -189,7 +188,7 @@ world-backed preset.
 
 ## 6. Do-not-confuse cheat sheet
 
-- **The store is SQLite (`local`) or a markdown folder — never a SaaS.** GitHub/Jira/Slack are world sync spokes, not backends.
+- **The store is a local markdown folder — never a SaaS.** GitHub/Jira/Slack are world sync spokes, not backends.
 - **Validation is one pipeline.** `core/engine.ts` (`check`/`checkRoot`) over the repo-local `createGenericPreset` preset is all there is; the "export" is just `check().export` (the validated `Root`). There is no separate snapshot model.
 - **The write-side layer is not validation.** `mutate.ts`, `markdownModel.ts`, `lint.ts`, and `presets.ts`'s `parseRawIssueMarkdown`/`renderPresetCanonicalIssueMarkdown` edit/format issue bodies; the validation pipeline does not import them. Distinct from those, `core/mutate.ts` is the store + audit affordance (the engine's reference mutation path).
 - **`markdownModel.ts` re-exports `presets/issueMarkdown.ts`** — the same lenient issue-markdown model under both names.

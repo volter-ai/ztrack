@@ -6,19 +6,6 @@ import { fileURLToPath } from 'node:url';
 import type { TrackerConfig } from './types.ts';
 
 /**
- * The Python storage backend ships inside this package; its location is an
- * implementation detail. Every spawner (local backend, sync relay, ingress
- * reflection) must resolve it through here, never via a repo-relative path.
- */
-export function trackerBackendScriptPath(): string {
-  const candidates = [
-    fileURLToPath(new URL('../backend/tracker-local.py', import.meta.url)),
-    fileURLToPath(new URL('../../backend/tracker-local.py', import.meta.url)),
-  ];
-  return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0];
-}
-
-/**
  * Name of the per-project state directory holding tracker config and data
  * (`<root>/<stateDir>/tracker-config.json`, database, …). Defaults to
  * `.volter`; hosts that need a different directory set VOLTER_STATE_DIR.
@@ -227,7 +214,10 @@ export function loadTrackerConfig(projectRoot = projectRootFrom()): TrackerConfi
   } catch (error) {
     throw new Error(`Tracker config at ${configPath} is not valid JSON: ${(error as Error).message}`);
   }
-  return { ...raw, backend: raw.backend === 'markdown' ? 'markdown' : 'local' };
+  // markdown is the default and only live backend; a config still naming the removed
+  // Python `local` backend is preserved verbatim so the client can point the user at
+  // `ztrack migrate-local` instead of silently reading an empty store.
+  return { ...raw, backend: raw.backend === 'local' ? 'local' : 'markdown' };
 }
 
 /**

@@ -1,82 +1,26 @@
-// Content-addressed evidence blob store, in the tracker's own sqlite DB.
+// Content-addressed evidence blob store for the markdown tracker.
 //
 // Why this exists: evidence (screenshots, frames) used to be referenced by a
 // filesystem PATH (`uploads/<issue>/x.png`). A path's existence depends on
 // WHICH checkout you stat — a develop run writes it into an isolated worktree
 // (often a gitignored dir), the validator stats `main`, and they perpetually
 // disagree; the file then vanishes when the worktree is reaped. The fix is to
-// stop addressing evidence by location and address it by CONTENT: the bytes
-// are stored once, keyed by their sha256, in the tracker DB — the same shared,
-// symlinked store that issues live in. "Does this evidence exist" becomes a DB
-// query, identical from every worktree and from main. No path, no gitignore,
-// no land-to-main step.
+// stop addressing evidence by location and address it by CONTENT: the bytes are
+// stored once, keyed by their sha256, as files in a `blobs/` dir PEER to the
+// markdown issue store (committed alongside the issues — deduped, identical from
+// every worktree and from main). "Does this evidence exist" becomes a file stat.
 //
 // The digest form (`sha256:<hex>`) matches the OCI / git-object idiom: a blob
 // is immutable and self-verifying, so a put is idempotent (dedup for free).
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
-import { stateDirName, trackerConfigPath } from './config.ts';
+import { join } from 'node:path';
 
-function readJson(path: string): unknown {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-type SqliteDb = {
-  query: (sql: string) => { get: (...args: unknown[]) => unknown; run: (...args: unknown[]) => unknown };
-  run: (sql: string, ...args: unknown[]) => unknown;
-  exec: (sql: string) => unknown;
-  close: () => void;
-};
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-// Resolve the local sqlite DB path the same way the exporter does, so the blob
-// store always lives in the one shared DB the rest of the tracker uses.
-export function trackerDbPath(projectRoot: string): string | null {
-  const config = readJson(trackerConfigPath(projectRoot));
-  if (!isObject(config) || config.backend !== 'local') return null;
-  const local = isObject(config.local) ? config.local : {};
-  const rel = typeof local.database === 'string' && local.database
-    ? local.database
-    : join(stateDirName(), 'tracker.sqlite');
-  const dbPath = isAbsolute(rel) ? rel : join(projectRoot, rel);
-  return existsSync(dbPath) ? dbPath : null;
-}
-
-// The `markdown` backend has no sqlite blob table, so blobs live as
-// content-addressed files in a `blobs/` dir PEER to the markdown issue store
-// (committed alongside the issues — content-addressed, deduped, identical from
-// every checkout: the same "address by content, not location" guarantee the
-// sqlite table gives, without a binary DB). Returns null unless backend is
-// `markdown`, so the sqlite path stays authoritative for the `local` backend.
-export function markdownBlobDir(projectRoot: string): string | null {
-  const config = readJson(trackerConfigPath(projectRoot));
-  if (!isObject(config) || config.backend !== 'markdown') return null;
+// Blobs live in a `blobs/` dir peer to the markdown issue store
+// (`.volter/tracker/markdown`), content-addressed, deduped, and committed
+// alongside the issues — identical from every checkout, no binary DB.
+export function markdownBlobDir(projectRoot: string): string {
   return join(projectRoot, '.volter', 'tracker', 'markdown', 'blobs');
-}
-
-function openDb(projectRoot: string): SqliteDb | null {
-  const dbPath = trackerDbPath(projectRoot);
-  if (!dbPath) return null;
-  const { Database } = require('bun:sqlite') as { Database: new (path: string) => SqliteDb };
-  const db = new Database(dbPath);
-  db.exec(
-    `CREATE TABLE IF NOT EXISTS tracker_blob (
-       hash TEXT PRIMARY KEY,
-       bytes BLOB NOT NULL,
-       media_type TEXT,
-       size INTEGER NOT NULL,
-       created_at TEXT NOT NULL
-     )`,
-  );
-  return db;
 }
 
 export type BlobRef = string; // canonical form: `sha256:<hex>`
@@ -96,77 +40,35 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
+function hashOf(refOrHash: string): string | null {
+  return blobHashFromRef(refOrHash) ?? (/^[0-9a-f]{64}$/i.test(refOrHash.trim()) ? refOrHash.trim().toLowerCase() : null);
+}
+
 // Store bytes content-addressed; return the canonical `sha256:<hex>` ref.
 // Idempotent: identical content yields the same ref and writes nothing the
-// second time (INSERT OR IGNORE on the hash primary key).
-export function putBlob(
-  projectRoot: string,
-  bytes: Uint8Array,
-  mediaType?: string,
-): BlobRef {
+// second time (the file already exists at its content hash).
+export function putBlob(projectRoot: string, bytes: Uint8Array, mediaType?: string): BlobRef {
   const hash = sha256(bytes);
-  const ref = `sha256:${hash}`;
-  const mdDir = markdownBlobDir(projectRoot);
-  if (mdDir) {
-    mkdirSync(mdDir, { recursive: true });
-    const p = join(mdDir, hash);
-    if (!existsSync(p)) writeFileSync(p, bytes); // idempotent: content-addressed
-    if (mediaType && !existsSync(`${p}.type`)) writeFileSync(`${p}.type`, mediaType);
-    return ref;
-  }
-  const db = openDb(projectRoot);
-  if (!db) throw new Error('tracker blob store: no local sqlite DB resolved (is backend `local` configured?)');
-  try {
-    db.run(
-      'INSERT OR IGNORE INTO tracker_blob(hash, bytes, media_type, size, created_at) VALUES(?, ?, ?, ?, ?)',
-      hash,
-      bytes,
-      mediaType ?? null,
-      bytes.byteLength,
-      new Date().toISOString(),
-    );
-  } finally {
-    db.close();
-  }
+  const dir = markdownBlobDir(projectRoot);
+  mkdirSync(dir, { recursive: true });
+  const p = join(dir, hash);
+  if (!existsSync(p)) writeFileSync(p, bytes); // idempotent: content-addressed
+  if (mediaType && !existsSync(`${p}.type`)) writeFileSync(`${p}.type`, mediaType);
   return `sha256:${hash}`;
 }
 
 // Existence check — the validator's question. Accepts a `sha256:<hex>` ref or a
-// bare hex hash. Pure DB query: identical from every checkout/worktree.
+// bare hex hash. Pure file stat: identical from every checkout/worktree.
 export function hasBlob(projectRoot: string, refOrHash: string): boolean {
-  const hash = blobHashFromRef(refOrHash) ?? (/^[0-9a-f]{64}$/i.test(refOrHash.trim()) ? refOrHash.trim().toLowerCase() : null);
-  if (!hash) return false;
-  const mdDir = markdownBlobDir(projectRoot);
-  if (mdDir) return existsSync(join(mdDir, hash));
-  const db = openDb(projectRoot);
-  if (!db) return false;
-  try {
-    const row = db.query('SELECT 1 AS present FROM tracker_blob WHERE hash = ?').get(hash) as { present?: number } | null;
-    return Boolean(row?.present);
-  } finally {
-    db.close();
-  }
+  const hash = hashOf(refOrHash);
+  return hash ? existsSync(join(markdownBlobDir(projectRoot), hash)) : false;
 }
 
 // Retrieve bytes (e.g. to re-extract or serve). Null if absent.
 export function getBlob(projectRoot: string, refOrHash: string): { bytes: Uint8Array; mediaType: string | null } | null {
-  const hash = blobHashFromRef(refOrHash) ?? (/^[0-9a-f]{64}$/i.test(refOrHash.trim()) ? refOrHash.trim().toLowerCase() : null);
+  const hash = hashOf(refOrHash);
   if (!hash) return null;
-  const mdDir = markdownBlobDir(projectRoot);
-  if (mdDir) {
-    const p = join(mdDir, hash);
-    if (!existsSync(p)) return null;
-    return { bytes: readFileSync(p), mediaType: existsSync(`${p}.type`) ? readFileSync(`${p}.type`, 'utf8') : null };
-  }
-  const db = openDb(projectRoot);
-  if (!db) return null;
-  try {
-    const row = db.query('SELECT bytes, media_type FROM tracker_blob WHERE hash = ?').get(hash) as
-      | { bytes?: Uint8Array; media_type?: string | null }
-      | null;
-    if (!row?.bytes) return null;
-    return { bytes: row.bytes, mediaType: row.media_type ?? null };
-  } finally {
-    db.close();
-  }
+  const p = join(markdownBlobDir(projectRoot), hash);
+  if (!existsSync(p)) return null;
+  return { bytes: readFileSync(p), mediaType: existsSync(`${p}.type`) ? readFileSync(`${p}.type`, 'utf8') : null };
 }

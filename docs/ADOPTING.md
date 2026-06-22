@@ -58,9 +58,9 @@ The setup writes `.volter/tracker-config.json`, creates local tracker state
 under `.volter/tracker/`, and installs editable validation at
 `.volter/tracker/validation/preset.cjs`.
 
-Prerequisites: Node/npm for `npx`, Python 3 on `PATH` for the local store, and a
-git repository. Commit verification can only see commits fetched into the local
-checkout.
+Prerequisites: Node/npm for `npx` and a git repository — the issue store is plain
+markdown files (pure JS, no database). Commit verification can only see commits
+fetched into the local checkout.
 
 Use a stricter starter when the repo already has that shape:
 
@@ -119,8 +119,8 @@ approval chains, evolve the installed entrypoint into the project's rulebook.
 ## 4. Add CI
 
 For CI, prefer a committed validated root because a fresh CI checkout does not
-contain your local SQLite store. Commit the config and installed validation too;
-the validated root is checked against that rulebook.
+contain your local (gitignored) markdown store. Commit the config and installed
+validation too; the validated root is checked against that rulebook.
 
 ```bash
 npx ztrack export --out .volter/root.json

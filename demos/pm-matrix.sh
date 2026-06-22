@@ -49,13 +49,12 @@ $YARN1 ztrack issue create --title T --label type:case --state "In Progress" --a
 $YARN1 ztrack check >/dev/null 2>&1; report $? "yarn-classic: init + green check"
 set -e; cd "$repo_root"
 
-echo "## yarn Berry / PnP (backend: markdown — Python helper can't live in PnP's zip store)"
+echo "## yarn Berry / PnP (pure-JS markdown backend — no subprocess/helper to resolve)"
 d="$tmp/pnp"; sha="$(new_consumer "$d")"; cd "$d"; set +e
 printf '{"name":"c","packageManager":"yarn@4.5.3"}\n' > package.json
 $YARN4 install >/dev/null 2>&1
 $YARN4 add ./ztrack.tgz >/dev/null 2>&1
 $YARN4 ztrack init --team APP --preset basic >/dev/null 2>&1
-python3 -c "import json;p='.volter/tracker-config.json';d=json.load(open(p));d['backend']='markdown';json.dump(d,open(p,'w'))"
 green_body "$sha"
 $YARN4 ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null 2>&1
 $YARN4 ztrack check >/dev/null 2>&1; report $? "yarn-PnP+markdown: init + green check"

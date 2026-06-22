@@ -1,7 +1,7 @@
-// The tracker store is local, with two interchangeable backends at parity:
-// `local` (SQLite, scales) and `markdown` (a folder of .md files, human-readable
-// and easy while a project fits in memory/disk). External systems (Linear, …)
-// are sync spokes through the worlds pipeline — never alternate live backends.
+// The tracker store is local markdown: a folder of human-readable .md files, pure JS.
+// `local` is the removed Python/SQLite backend — retained in the union only so an old
+// config naming it can be detected and routed to `ztrack migrate-local`. External
+// systems (Linear, …) are sync spokes through the worlds pipeline, never live backends.
 export type TrackerBackendName = 'local' | 'markdown';
 
 export interface TrackerConfig {

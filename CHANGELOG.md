@@ -2,6 +2,23 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.9.0
+
+- **The Python/SQLite `local` backend is removed.** ztrack is now pure JS end to end —
+  the markdown backend (`.volter/tracker/markdown/*.md`) is the only store. Node + git is
+  the entire toolchain; no `python3`, no native/Bun SQLite, so Yarn PnP and every package
+  manager work with zero extra configuration. This deletes `backend/tracker-local.py`
+  (~2,500 lines), `backends/local.ts`, the dead `markdownPort.ts` porter, and the unused
+  `bun:sqlite` evidence-blob path (blobs are content-addressed files peer to the issues).
+- **`ztrack migrate-local`** — a one-time migration for projects still on `backend:
+  "local"`: it reads the old `tracker.sqlite` (a tiny stdlib `python3 -c` dump — needed
+  only for this one read) and rewrites every issue as markdown, then flips the config to
+  `markdown`. The original `tracker.sqlite` is left in place as a backup. A live client on
+  a `local` config now errors with a pointer to this command instead of reading an empty
+  store.
+- The Python-only Linear-emulation verbs (`sprint`, `user`, `query`, `milestone`, …) that
+  never had a markdown implementation are dropped from the CLI help surface.
+
 ## 0.8.0
 
 - **The default backend is now pure-JS markdown** — `ztrack init` stores issues as plain

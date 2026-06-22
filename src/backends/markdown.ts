@@ -1,10 +1,9 @@
-// Markdown backend (de)serialization — the core of the `markdown` peer backend to
-// `local` (SQLite). An issue is stored as one `tracker/<id>.md`: YAML-ish frontmatter
-// (flat canonical metadata, JSON-encoded values for lossless round-trip), the issue
-// body verbatim, then comments in a trailing `<!--tracker:comments … -->` HTML block
-// (invisible to the preset parser, machine-readable here). The canonical issue is
-// the SAME shape both backends speak, so a port is read-canonical → write-markdown
-// and is lossless by construction (proven by round-trip; see `markdownPort.ts`).
+// Markdown backend (de)serialization — the core of the `markdown` backend, the
+// tracker's only store. An issue is stored as one `tracker/<id>.md`: YAML-ish
+// frontmatter (flat canonical metadata, JSON-encoded values for lossless round-trip),
+// the issue body verbatim, then comments in a trailing `<!--tracker:comments … -->`
+// HTML block (invisible to the preset parser, machine-readable here). Serialize and
+// parse are inverses by construction (proven by `roundTripDiff`).
 
 // ── canonical issue (the backend-agnostic, source-of-truth shape) ────────────
 export interface CanonicalComment { user: string; createdAt: string; body: string }

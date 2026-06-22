@@ -34,7 +34,7 @@ npx ztrack issue create --title "Adopt ztrack" --label type:case --state "In Pro
 npx ztrack check
 ```
 
-If the command fails because Python or git is missing, report that environment
+If the command fails because git is missing, report that environment
 blocker. Otherwise continue.
 
 Use `simple-sdlc`, `simple-spec`, or `speckit` only when the repository already

@@ -33,9 +33,8 @@ ${helpSection('bottom', 'Data', [
   ])}
 
 ${ui.bold('Resources')}
-  init, issue, project, milestone, sprint, label, state, user, search, query
-  view, api, check, export, fmt, lint, tx, evidence, ac, mcp, visualizer
-  loop, waiver, preset, completions
+  init, migrate-local, issue, project, search, view, api, check, export
+  fmt, lint, tx, evidence, ac, mcp, visualizer, loop, waiver, preset, completions
 
 ${ui.dim(`Shell completion:  source <(${command} completions bash)   # or zsh`)}
 ${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}

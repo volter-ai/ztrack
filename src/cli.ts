@@ -14,7 +14,8 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, upgradeTrackerPreset } from './config.ts';
+import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
+import { migrateLocalToMarkdown } from './migrateLocal.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
@@ -111,6 +112,29 @@ async function main(): Promise<void> {
       ui.dim('Recognized labels include type:case and type:bug.'),
       ui.dim('Unrecognized checked work warns instead of passing silently.'),
       ui.dim('Edit the installed validation preset to encode your project rules.'),
+      '',
+    ].join('\n'));
+    return;
+  }
+
+  if (args[0] === 'migrate-local') {
+    const root = projectRootFrom(resolve(optionValue(args, '--root') || process.cwd()));
+    const result = migrateLocalToMarkdown(root);
+    if (!result.ran) {
+      process.stdout.write(`${statusMark('pass')} ${ui.green('Nothing to migrate')} ${ui.dim(`(no ${result.sqlitePath})`)}\n`);
+      return;
+    }
+    // flip the project onto the markdown backend now that its issues are markdown files
+    const configPath = trackerConfigPath(root);
+    const raw = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+    raw.backend = 'markdown';
+    writeFileSync(configPath, `${JSON.stringify(raw, null, 2)}\n`);
+    process.stdout.write([
+      `${statusMark('pass')} ${heading('Migrated to the markdown backend', `${result.migrated} issue${result.migrated === 1 ? '' : 's'}`)}`,
+      `  ${ui.dim(`from ${result.sqlitePath} (left in place as a backup)`)}`,
+      `  ${ui.dim(`backend set to "markdown" in ${configPath}`)}`,
+      '',
+      ui.dim('Verify with `ztrack check`, then delete the old tracker.sqlite when satisfied.'),
       '',
     ].join('\n'));
     return;

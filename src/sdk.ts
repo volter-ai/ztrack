@@ -1,5 +1,4 @@
 import { loadEnvFiles, loadTrackerConfig, projectRootFrom } from './config.ts';
-import { createLocalBackend } from './backends/local.ts';
 import { createMarkdownBackend } from './backends/markdownBackend.ts';
 import { executeTrackerGraphql } from './graphql.ts';
 import type { TrackerClient, TrackerIssueInput, TrackerIssueUpdate } from './types.ts';
@@ -56,9 +55,16 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
   const projectRoot = options.projectRoot ?? projectRootFrom();
   loadEnvFiles(projectRoot);
   const config = loadTrackerConfig(projectRoot);
-  const backend = config.backend === 'markdown'
-    ? createMarkdownBackend(projectRoot, config.local?.teamKey ?? 'PH')
-    : createLocalBackend(config.backend, projectRoot);
+  // markdown is the only backend. A config still on the removed Python `local` backend
+  // has its issues in tracker.sqlite — direct the user to the one-time migration rather
+  // than silently reading an empty markdown store.
+  if (config.backend === 'local') {
+    throw new Error(
+      'This project uses the removed Python `local` backend (issues are in .volter/tracker/tracker.sqlite). '
+      + 'Run `ztrack migrate-local` once to convert them to the pure-JS markdown backend.',
+    );
+  }
+  const backend = createMarkdownBackend(projectRoot, config.local?.teamKey ?? 'PH');
 
   return {
     command(args, inputText) {

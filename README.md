@@ -45,16 +45,14 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 
 ## Quickstart (under a minute)
 
-> **Prerequisites:** Node ≥ 20 and `git`. The default backend stores issues as plain
-> markdown files (pure JS). An **optional** `local` backend (Python/SQLite, adding
-> full-text search) is available via `backend: "local"` and needs `python3`. The
-> `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+> **Prerequisites:** Node ≥ 20 and `git`. That's it — issues are stored as plain
+> markdown files (pure JS, no database or Python). The `ztrack visualizer`
+> additionally needs [Bun](https://bun.sh).
 >
-> **Package managers:** verified on Node 20+ under **npm, pnpm, yarn (classic + Berry), and
-> bun** (`init` + `check`, library `import()` from CommonJS, and `ztrack/package.json`
-> access). Under **Yarn PnP** specifically, use `backend: "markdown"` (PnP's zip store can't
-> expose the Python backend's helper script to a subprocess) or set `nodeLinker:
-> node-modules`.
+> **Package managers:** verified on Node 20+ under **npm, pnpm, yarn (classic + Berry +
+> PnP), and bun** (`init` + `check`, library `import()` from CommonJS, and
+> `ztrack/package.json` access). The pure-JS store needs no subprocess, so Yarn PnP
+> works with no extra configuration.
 
 ```bash
 npx ztrack init --preset basic
