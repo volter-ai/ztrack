@@ -16,3 +16,6 @@ node_modules/
 # not committed. The GitHub Action runs ztrack from source via Bun.
 visualizer/core.js
 dist/
+
+# claude code agent worktrees (ephemeral)
+.claude/worktrees/

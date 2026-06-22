@@ -688,6 +688,11 @@ button { cursor: pointer; }
   border-color: rgba(153, 111, 0, 0.32);
   background: #fff8e5;
 }
+.case-metrics .metric-acknowledged {
+  color: #0e7490;
+  border-color: rgba(14, 116, 144, 0.3);
+  background: #ecfeff;
+}
 .case-metrics .metric-blocked-by {
   color: var(--amber);
   border-color: rgba(153, 111, 0, 0.32);
@@ -850,6 +855,19 @@ button { cursor: pointer; }
 .ac-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .check { color: var(--muted); font-size: 11px; font-weight: 900; }
 .ac-row.checked .check { color: var(--green); }
+/* descoped: settled (counts toward progress) but intentionally not done — muted, not green. */
+.ac-row.descoped .check { color: #0e7490; }
+.ac-descope-reason { color: #0e7490; font-size: 11px; margin-top: 2px; font-style: italic; }
+.waiver-banner {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(14, 116, 144, 0.3);
+  border-radius: 8px;
+  background: #ecfeff;
+  color: #0e7490;
+  font-size: 12px;
+  line-height: 1.4;
+}
 .ac-body { font-size: 13px; line-height: 1.38; min-width: 0; }
 .ac-evidence {
   border: 1px solid var(--line-soft);
@@ -1277,6 +1295,8 @@ button { cursor: pointer; }
 }
 .finding.error, .error { color: var(--red); background: #fff5f5; border-color: rgba(199, 52, 52, 0.35); }
 .finding.warning { color: var(--amber); background: #fff8e5; border-color: rgba(153, 111, 0, 0.32); }
+/* acknowledged: a real error a fresh waiver has accepted — visible but non-gating. */
+.finding.acknowledged { color: #0e7490; background: #ecfeff; border-color: rgba(14, 116, 144, 0.3); }
 .finding-summary {
   border: 1px solid rgba(153, 111, 0, 0.28);
   border-radius: 8px;

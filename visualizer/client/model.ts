@@ -7,8 +7,9 @@ export interface CoreIssue {
   id: string; title: string; summary: string; status: string;
   acceptanceCriteria: CoreAC[]; [k: string]: unknown;
 }
+// 'acknowledged' is a downgraded error a fresh waiver has accepted — reported but non-gating.
 export interface Finding {
-  code: string; severity: 'error' | 'warning'; message: string;
+  code: string; severity: 'error' | 'warning' | 'acknowledged'; message: string;
   issueId?: string; acId?: string; evidenceId?: string;
 }
 export type PrimitiveName = 'labels' | 'relations' | 'linkedIssues' | 'children' | 'sources' | 'category' | 'proof' | 'audit';

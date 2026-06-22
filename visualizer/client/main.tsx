@@ -26,13 +26,14 @@ function formatDateTime(iso?: string) {
 }
 
 // ── field accessors (core + default primitives) ──────────────────────────────
-// an AC counts as complete if its status is a terminal-success one (presets use
-// 'passed' (default) or 'done' (speckit))
-const isAcComplete = (a: { status: string }) => a.status === 'passed' || a.status === 'done';
+// an AC counts as complete (settled) if its status is terminal: a success state
+// ('passed' (default) or 'done' (speckit)) or an explicit, recorded descope.
+const isAcComplete = (a: { status: string }) => a.status === 'passed' || a.status === 'done' || a.status === 'descoped';
 const passed = (i: CoreIssue) => i.acceptanceCriteria.filter(isAcComplete).length;
 const acProgress = (i: CoreIssue) => { const total = i.acceptanceCriteria.length; const done = passed(i); return { done, total, percent: total ? Math.round(done / total * 100) : 0 }; };
 const errorsOf = (f: Finding[], id: string) => f.filter((x) => x.issueId === id && x.severity === 'error');
 const warningsOf = (f: Finding[], id: string) => f.filter((x) => x.issueId === id && x.severity === 'warning');
+const acknowledgedOf = (f: Finding[], id: string) => f.filter((x) => x.issueId === id && x.severity === 'acknowledged');
 const labelsOf = (i: CoreIssue) => ((i as { labels?: string[] }).labels ?? []);
 const linkedOf = (i: CoreIssue) => ((i as { linkedIssues?: Array<{ system: string; key: string; url?: string }> }).linkedIssues ?? []);
 const childrenOf = (i: CoreIssue) => ((i as { children?: string[] }).children ?? []);
@@ -288,7 +289,7 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
 }) {
   const [tab, setTab] = useState<Tab>('overview');
   const fs = findings.filter((f) => f.issueId === issue.id);
-  const errs = fs.filter((f) => f.severity === 'error').length, warns = fs.filter((f) => f.severity === 'warning').length;
+  const errs = fs.filter((f) => f.severity === 'error').length, warns = fs.filter((f) => f.severity === 'warning').length, acks = fs.filter((f) => f.severity === 'acknowledged').length;
   const blockedBy = relsOf(issue, 'blocked-by').length, blocks = relsOf(issue, 'blocks').length;
   return (
     <aside className="detail-drawer open" aria-label="Issue details">
@@ -310,11 +311,17 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
             {blocks > 0 && <span className="metric-blocks">blocks {blocks}</span>}
             {errs > 0 && <span className="metric-error">{errs} errors</span>}
             {warns > 0 && <span className="metric-warning">{warns} warnings</span>}
+            {acks > 0 && <span className="metric-acknowledged" title="downgraded to acknowledged by a fresh waiver">{acks} acknowledged</span>}
           </div>
         </header>
         <AcWheelStrip issue={issue} ext={ext} />
+        {(issue as { waiver?: { reason?: string; approvedBy?: string } }).waiver && (
+          <div className="waiver-banner" title="A signed waiver downgrades this issue's errors to acknowledged while its acceptance criteria are unchanged.">
+            ⚑ Waiver by {(issue as { waiver?: { approvedBy?: string } }).waiver!.approvedBy || 'unknown'}: {(issue as { waiver?: { reason?: string } }).waiver!.reason || '(no reason)'}
+          </div>
+        )}
         {fs.length > 0 && (
-          <details className="finding-summary"><summary>{errs} errors, {warns} warnings</summary>
+          <details className="finding-summary"><summary>{errs} errors, {warns} warnings{acks > 0 ? `, ${acks} acknowledged` : ''}</summary>
             <div className="finding-list">{fs.map((f, i) => <div className={`finding ${f.severity}`} key={i}>{f.severity.toUpperCase()} {f.code}{f.acId ? ` ${f.acId}` : ''}: {f.message}</div>)}</div>
           </details>
         )}
@@ -330,10 +337,11 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
                 <div className="panel-title"><h3>Acceptance Criteria</h3><span>{issue.acceptanceCriteria.length}</span></div>
                 <div className="ac-list">
                   {issue.acceptanceCriteria.map((ac) => (
-                    <div className={`ac-row${isAcComplete(ac) ? ' checked' : ''}`} key={ac.id}>
+                    <div className={`ac-row${isAcComplete(ac) ? ' checked' : ''}${ac.status === 'descoped' ? ' descoped' : ''}`} key={ac.id}>
                       <span className="check">{ac.status}</span>
                       <div className="ac-body">
                         <div>{ext.acText ? ext.acText(ac) : <strong>{ac.id}</strong>}</div>
+                        {ac.status === 'descoped' && (ac as { descopeReason?: string }).descopeReason && <div className="ac-descope-reason">descoped: {(ac as { descopeReason?: string }).descopeReason}</div>}
                         {ext.acProof?.(ac)}
                         {ext.acEvidence && <div className="ac-evidence">{ext.acEvidence(ac, (p) => '/project/' + p.replace(/^\/+/, ''))}</div>}
                       </div>
@@ -455,6 +463,7 @@ function App() {
 
   const errors = findings.filter((f) => f.severity === 'error').length;
   const warnings = findings.filter((f) => f.severity === 'warning').length;
+  const acknowledged = findings.filter((f) => f.severity === 'acknowledged').length;
   const globalFindings = findings.filter((f) => !f.issueId);
 
   const selectIssue = (i: CoreIssue) => { setSelectedId(i.id); writeRoute(view, i.id); };
@@ -472,7 +481,7 @@ function App() {
         <nav className="views" aria-label="Views">
           {VIEWS.map((v) => <button className={`view${view === v ? ' active' : ''}`} key={v} onClick={() => changeView(v)} type="button"><span>{viewLabel(v)}</span><strong>{viewCount(v)}</strong></button>)}
         </nav>
-        <div className={`health health-${payload ? (payload.ok ? 'pass' : 'fail') : 'pass'}`}><span>{payload ? (payload.ok ? 'PASS' : 'FAIL') : '…'}</span><small>{errors} errors, {warnings} warnings</small></div>
+        <div className={`health health-${payload ? (payload.ok ? 'pass' : 'fail') : 'pass'}`}><span>{payload ? (payload.ok ? 'PASS' : 'FAIL') : '…'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div>
         {payload && (
           <div className="primitives-strip"><div className="primitives-head">primitives</div>
             {(['proof', 'labels', 'relations', 'linkedIssues', 'children', 'sources', 'category'] as const).map((p) => (
@@ -513,6 +522,7 @@ function App() {
               <span>{items.length} issues</span>
               <span>{errors} errors</span>
               <span>{warnings} warnings</span>
+              {acknowledged > 0 && <span>{acknowledged} acknowledged</span>}
               {view !== 'all' && <button className="active-filter" onClick={() => changeView('all')} type="button">View: {viewLabel(view)} x</button>}
               {query && <button className="active-filter" onClick={() => setQuery('')} type="button">Search: {query} x</button>}
               {issueFilter !== 'all' && <button className="active-filter" onClick={() => setIssueFilter('all')} type="button">{issueFilterLabels[issueFilter]} x</button>}
