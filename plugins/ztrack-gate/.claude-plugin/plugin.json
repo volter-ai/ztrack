@@ -1,0 +1,10 @@
+{
+  "name": "ztrack-gate",
+  "description": "Hold the agent's turn open until the active issue passes `ztrack check` — a deterministic, per-worktree-scoped done-oracle gate for autonomous loops. Self-gating: no-ops in repos without a ztrack tracker.",
+  "version": "0.1.0",
+  "author": {
+    "name": "volter-ai"
+  },
+  "homepage": "https://github.com/volter-ai/ztrack",
+  "keywords": ["ztrack", "stop-hook", "autonomy", "gate", "ralph"]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "ztrack",
+  "description": "Plugins for ztrack — the deterministic done-oracle for agentic SDLC. Currently: ztrack-gate, a self-gating Stop hook that holds an agent's turn until the active issue passes `ztrack check`.",
+  "owner": {
+    "name": "volter-ai",
+    "url": "https://github.com/volter-ai/ztrack"
+  },
+  "plugins": [
+    {
+      "name": "ztrack-gate",
+      "source": "./plugins/ztrack-gate",
+      "description": "Stop hook that holds the agent's turn open until `ztrack check --auto-scope` is green for the issue this worktree is for — a deterministic done-oracle gate. Self-gating: it only acts in repos that have a ztrack tracker, so it is safe to enable globally."
+    }
+  ]
+}

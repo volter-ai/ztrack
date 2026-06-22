@@ -99,7 +99,13 @@ them and only validates the claims agents or humans make there.
 
 - **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
 - **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
-- **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry a typechecker until it passes
+- **Stop-hook:** block an agent's turn until `check` is green — agents fix-and-retry against the gate until it passes. Easiest to turn on via the bundled Claude Code plugin (one toggle, self-gating, no `settings.json` editing):
+
+  ```
+  /plugin marketplace add volter-ai/ztrack
+  /plugin install ztrack-gate@ztrack
+  ```
+  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire `hooks/stop-check.sh` into your `Stop` hooks directly.
 
 See [examples](docs/EXAMPLES.md) for a minimal local check, a committed validated-root
 CI gate, and an MCP agent loop.
