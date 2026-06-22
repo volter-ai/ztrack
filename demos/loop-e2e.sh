@@ -52,6 +52,7 @@ run() { # $1=dir $2=prompt -> echoes the agent JSON result
       2>/dev/null )
 }
 turns() { printf '%s' "$1" | sed -n 's/.*"num_turns":\([0-9]*\).*/\1/p' | head -1; }
+sid() { printf '%s' "$1" | sed -n 's/.*"session_id":"\([^"]*\)".*/\1/p' | head -1; }
 verdict() { [ "${1:-0}" "$2" "$3" ] && echo PASS || echo "FAIL"; }
 
 fails=0
@@ -92,6 +93,32 @@ echo "   after the agent: ztrack check exit=$green_exit (want 0), loop disarmed=
 echo "=== F. disarm escape: arm a red issue, then \`ztrack loop stop\` → agent is FREE ==="
 d="$(setup disarm red arm)"; ( cd "$d" && npx ztrack loop stop >/dev/null )
 out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"; v="$(verdict "$t" -eq 1)"; echo "   disarmed before run → num_turns=$t  $v (free, though the issue stays red)"; [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
+
+echo "=== G. per-session exemption is session-scoped — it does NOT leak across sessions ==="
+# Drive the REAL hook directly with two distinct session_id payloads against one armed red
+# issue. S1 created its own exemption file; S2 is a fresh session that finds S1's leftover
+# file on disk. The invariant: the file is keyed to a session_id, so only S1 is honored.
+d="$(setup exempt red arm)"
+: > "$d/.volter/.ztrack-loop-exempt-S1"                                  # session S1 exempts itself
+( cd "$d" && printf '{"session_id":"S1"}' | bash "$hook" >/dev/null 2>&1 ); s1=$?   # honored → exit 0
+( cd "$d" && printf '{"session_id":"S2"}' | bash "$hook" >/dev/null 2>&1 ); s2=$?   # fresh session → held → exit 2
+v="$( { [ "$s1" = 0 ] && [ "$s2" = 2 ]; } && echo PASS || echo FAIL )"
+echo "   S1 (exempt) hook exit=$s1 (want 0), S2 (fresh, sees S1's file) hook exit=$s2 (want 2)  $v"
+[ "$v" = PASS ] || { fails=$((fails+1)); echo "   FAIL: exemption leaked across sessions"; }
+
+echo "=== H. a LIVE agent uses the self-exempt escape; its real file doesn't leak to another session ==="
+# A real blocked agent follows the hook's printed instruction and self-exempts. Then we drive
+# the real hook as a DIFFERENT session against the agent's own leftover exemption file: it must
+# still be held. (Deterministic foreign-session call, so the leak check doesn't ride a 2nd flaky agent.)
+exempt_prompt="You are working on issue APP-1, but you are completely blocked and cannot make progress. A Stop hook will refuse to let your turn end and will print a line like: create an empty file at: .volter/.ztrack-loop-exempt-XXXX. When you see that line, run exactly: touch <that exact path> (use the path the hook printed), then stop. Do NOT edit body.md or any tracker files; do NOT try to fix the issue."
+d="$(setup exempt-live red arm)"; ( cd "$d" && npx ztrack loop start APP-1 --max 6 >/dev/null )
+out="$(run "$d" "$exempt_prompt")"; s1="$(sid "$out")"
+exempted="$( [ -n "$s1" ] && [ -f "$d/.volter/.ztrack-loop-exempt-$s1" ] && echo YES || echo NO )"  # the agent created ITS file
+armed_after="$( [ -f "$d/.volter/.ztrack-loop.json" ] && echo YES || echo NO )"                     # loop still armed ⇒ ended via exemption, not green/cap
+( cd "$d" && printf '{"session_id":"someone-else"}' | bash "$hook" >/dev/null 2>&1 ); foreign=$?    # a foreign session sees s1's real file → still held
+v="$( { [ "$exempted" = YES ] && [ "$armed_after" = YES ] && [ "$foreign" = 2 ]; } && echo PASS || echo FAIL )"
+echo "   live agent self-exempted=$exempted (want YES), loop still armed=$armed_after (want YES), foreign session held (hook exit=$foreign, want 2)  $v"
+[ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
 echo
 if [ "$fails" -eq 0 ]; then echo "loop e2e: ALL PASS (real agent, real hook, real ztrack)"; else echo "loop e2e: $fails FAIL"; exit 1; fi

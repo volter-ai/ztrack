@@ -28,6 +28,16 @@ marker="$root/$state_dir/.ztrack-loop.json"
 issue="$(sed -n 's/.*"issue"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$marker" | head -1)"
 max="$(sed -n 's/.*"maxIterations"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$marker" | head -1)"; [ -n "$max" ] || max=8
 
+# per-session exemption: an escape hatch for a stuck session. The file is keyed to THIS
+# session_id, so it's honored only for the session that created it — a fresh session (new
+# id) won't match and is held again, and it's gitignored so it can't be committed/shared.
+# The loop stays armed (marker kept); this only lets the current session hand back.
+exempt="$root/$state_dir/.ztrack-loop-exempt-$session_id"
+if [ -f "$exempt" ]; then
+  echo "ztrack loop: session $session_id is exempt for $issue — letting this turn end. The loop stays armed, so a fresh session resumes it." >&2
+  exit 0
+fi
+
 # per-session iteration counter (so the cap bounds THIS loop run, not the whole machine)
 iterfile="$root/$state_dir/.ztrack-loop-iter-$session_id"
 n="$(cat "$iterfile" 2>/dev/null || echo 0)"; n=$((n + 1)); printf '%s' "$n" > "$iterfile"
@@ -55,5 +65,7 @@ fi
 {
   echo "ztrack loop ($issue): not done yet — resolve these before the turn can end:"
   echo "$out" | tail -50
+  echo
+  echo "If you are genuinely blocked and must hand back to a human, exempt THIS session only by creating an empty file at: $state_dir/.ztrack-loop-exempt-$session_id (this does not disarm the loop; a fresh session resumes it). Otherwise keep working."
 } >&2
 exit 2

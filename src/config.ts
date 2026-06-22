@@ -179,6 +179,7 @@ export function initTrackerProject(
     `${stateDir}/agent-dispatch/`,
     `${stateDir}/.ztrack-loop.json`,
     `${stateDir}/.ztrack-loop-iter-*`,
+    `${stateDir}/.ztrack-loop-exempt-*`,
     '',
   ].join('\n');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
