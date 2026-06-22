@@ -2,6 +2,13 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.7.0
+
+- **New: `ztrack completions <bash|zsh>`** — prints a shell completion script for the CLI
+  (top-level commands, subcommands, and the most-used flags). Tracker-independent. Install by
+  sourcing the output: `source <(ztrack completions bash)` (or `zsh`). Listed in `ztrack
+  help`; covered by real-CLI E2E in `demos/check-e2e.sh`.
+
 ## 0.6.1
 
 Fixes from a multi-agent review of the loop / waiver / descope work:

@@ -13,7 +13,12 @@ keeps the core local-first and deterministic.
 
 ## Later
 
-- First-class shell completions.
+- ~~First-class shell completions.~~ **Shipped (0.7.0):** `ztrack completions <bash|zsh>`.
+  This was the first feature **dogfooded through the loop itself** — authored as a ztrack
+  issue, armed (`ztrack loop start`), held while the ACs were claimed-but-unproven (the
+  oracle reported the missing commit/evidence), and released only once real commit+evidence
+  were cited. (Insight from the dogfood: you can't run a ztrack tracker from a checkout named
+  `ztrack` without renaming the package — self-reference shadows the installed CLI.)
 - Optional bundled connectors for common tracker/source systems.
 - Managed setup and support paths for teams that want help wiring ztrack into an
   existing workflow.
