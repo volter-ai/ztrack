@@ -38,3 +38,16 @@ jobs:
       - name: Internal subpath smoke
         run: |
           node --input-type=module -e "const blocked=['ztrack/presets/default','ztrack/presets/genericRuntime']; for (const p of blocked) { try { await import(p); throw new Error(p+' unexpectedly imported'); } catch (error) { if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }"
+
+  # Resolution layouts npm's flat node_modules doesn't exercise: pnpm strict store, yarn
+  # classic, yarn Berry/PnP, bun. Parallel to `test` so it doesn't slow the critical path.
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.20
+      - run: bun install --frozen-lockfile
+      - name: Package-manager matrix (pnpm / yarn / PnP / bun)
+        run: bash demos/pm-matrix.sh
