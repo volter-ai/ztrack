@@ -2,6 +2,14 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.7.2
+
+- **Fix: `ztrack/package.json` was not importable** — `require('ztrack/package.json')` (and
+  `import`) threw `ERR_PACKAGE_PATH_NOT_EXPORTED` because the `exports` map didn't list it.
+  An `exports` field restricts subpath access to exactly what it lists, and tooling commonly
+  reads a dependency's `package.json` (version checks, resolvers). Added
+  `"./package.json": "./package.json"` (Node's recommended practice). Guarded in CI.
+
 ## 0.7.1
 
 - **Fix: `ztrack check` failed on Node < 22.12 and under Yarn PnP** with `require() of ES

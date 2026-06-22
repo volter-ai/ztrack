@@ -308,4 +308,9 @@ JS
 NODE_OPTIONS="--no-experimental-require-module" node cjs-import.cjs
 printf 'esm-subpath import() guard ok (CommonJS callers can import the library)\n'
 
+# `exports` restricts subpaths; tooling commonly reads a dep's package.json, so it must be
+# exported (Node docs recommend `"./package.json": "./package.json"`).
+node -e "if (typeof require('ztrack/package.json').version !== 'string') process.exit(1)"
+printf 'package.json export guard ok\n'
+
 printf 'fresh-project dry run complete\n'
