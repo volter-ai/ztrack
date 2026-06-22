@@ -185,6 +185,10 @@ test -f "$autonomous/.agents/skills/ztrack-simple-sdlc-develop/SKILL.md"
 test -f "$autonomous/.claude/skills/ztrack-simple-sdlc-pm/SKILL.md"
 test -f "$autonomous/.claude/skills/ztrack-simple-sdlc-develop/SKILL.md"
 cd "$autonomous"
+# setup-ztrack-repo git-inits this repo but sets no identity; the commits below need one
+# (CI runners have no global git identity, unlike a dev machine).
+git config user.email dry-run@example.com
+git config user.name "ztrack Dry Run"
 npx ztrack-profile-check --repo . --profile simple-sdlc > "$tmp_root/profile-check.json"
 cat > "$tmp_root/termfleet" <<'SH'
 #!/usr/bin/env bash
