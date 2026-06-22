@@ -43,6 +43,10 @@ jobs:
         # test above never exercise an INSTALLED package, so they can't catch an install
         # that fails to load — which is exactly how 0.3.0 shipped broken. This can.
         run: bash demos/fresh-project-dry-run.sh
+      - name: Loop gate (Stop hook + waiver, no live agent)
+        # Also on the release gate: the installed package's Stop hook + `ztrack waiver`
+        # CLI round-trip, driven deterministically (no model calls).
+        run: bash demos/loop-gate-ci.sh
       - name: Publish to npm
         run: npm publish --access public
         env:

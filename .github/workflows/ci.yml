@@ -24,6 +24,8 @@ jobs:
         run: npm pack --dry-run
       - name: Fresh project dry run
         run: bash demos/fresh-project-dry-run.sh
+      - name: Loop gate (Stop hook + waiver, no live agent)
+        run: bash demos/loop-gate-ci.sh
       - name: Export smoke
         run: |
           node --input-type=module -e "const paths=['ztrack','ztrack/config','ztrack/sdk','ztrack/check','ztrack/export','ztrack/markdown-model','ztrack/ac-version','ztrack/presets','ztrack/preset-kit','ztrack/mutate','ztrack/mcp','ztrack/attest','ztrack/lint','ztrack/tx','ztrack/dsse']; for (const p of paths) await import(p);"
