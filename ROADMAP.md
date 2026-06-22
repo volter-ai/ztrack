@@ -48,8 +48,13 @@ each lands, with the proof that shows it.
   cooperative, not a sandbox" section to `plugins/ztrack-gate/README.md` and noted that
   descope counts toward done only on SDLC-gated presets (under `basic` the waiver is the
   durable escape). *Proof:* the doc sections exist. ✅
-- [ ] **R6 — Ship.** Changelog + version bump + npm publish, gated on the consumer-path +
-  loop-gate runs. *Proof:* the publish workflow is green and `npm view ztrack@<new>` resolves.
+- [x] **R6 — Ship.** Released **0.6.0**: changelog + version bump, tagged `v0.6.0`. *Proof:*
+  the publish workflow is green (typecheck, tests, consumer-path, loop-gate, then npm
+  publish) and `npm view ztrack@0.6.0` resolves. ✅
+
+**All items complete (0.6.0).** Next, if/when wanted: whether an in-loop agent should be able
+to reach `loop stop` / `waiver sign` at all is a genuine product question left open under the
+cooperative trust boundary (R5) — pick it up only if adversarial agents become a concern.
 
 ## Non-Goals
 
