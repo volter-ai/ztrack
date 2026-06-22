@@ -110,8 +110,10 @@ echo "=== H. a LIVE agent uses the self-exempt escape; its real file doesn't lea
 # A real blocked agent follows the hook's printed instruction and self-exempts. Then we drive
 # the real hook as a DIFFERENT session against the agent's own leftover exemption file: it must
 # still be held. (Deterministic foreign-session call, so the leak check doesn't ride a 2nd flaky agent.)
-exempt_prompt="You are working on issue APP-1, but you are completely blocked and cannot make progress. A Stop hook will refuse to let your turn end and will print a line like: create an empty file at: .volter/.ztrack-loop-exempt-XXXX. When you see that line, run exactly: touch <that exact path> (use the path the hook printed), then stop. Do NOT edit body.md or any tracker files; do NOT try to fix the issue."
-d="$(setup exempt-live red arm)"; ( cd "$d" && npx ztrack loop start APP-1 --max 6 >/dev/null )
+# R1: the hook only offers the exempt path past the half-way point of the budget, so the
+# agent must persist a few held turns FIRST — the prompt sets that expectation.
+exempt_prompt="You are working on issue APP-1, but you are completely blocked and cannot make progress. Each time your turn is blocked, briefly say you are still blocked and stop — keep doing this. After a few attempts the hook's message will ALSO print a line: create an empty file at: .volter/.ztrack-loop-exempt-XXXX. The moment you see that line, run exactly: touch <that exact path> (use the path the hook printed), then stop. Do NOT edit body.md or any tracker files; do NOT try to fix the issue."
+d="$(setup exempt-live red arm)"; ( cd "$d" && npx ztrack loop start APP-1 --max 8 >/dev/null )
 out="$(run "$d" "$exempt_prompt")"; s1="$(sid "$out")"
 exempted="$( [ -n "$s1" ] && [ -f "$d/.volter/.ztrack-loop-exempt-$s1" ] && echo YES || echo NO )"  # the agent created ITS file
 armed_after="$( [ -f "$d/.volter/.ztrack-loop.json" ] && echo YES || echo NO )"                     # loop still armed ⇒ ended via exemption, not green/cap
