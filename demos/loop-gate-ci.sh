@@ -14,12 +14,12 @@ hook="$repo_root/plugins/ztrack-gate/hooks/stop-loop.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 tarball="$(cd "$repo_root" && npm pack --pack-destination "$tmp" --silent)"
 
-new_repo() { # $1=name -> echoes dir; fresh git repo with ztrack installed + a basic tracker
+new_repo() { # $1=name [$2=preset] -> echoes dir; fresh git repo with ztrack installed + a tracker
   local d="$tmp/$1"; mkdir -p "$d"; ( cd "$d"
     git init -q; git config user.email ci@example.com; git config user.name "loop ci"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset basic >/dev/null )
+    npx ztrack init --team APP --preset "${2:-basic}" >/dev/null )
   printf '%s' "$d"
 }
 mk_issue() { printf '%s' "$2" > "$1/body.md"; ( cd "$1" && npx ztrack issue create --title Task --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null ); }
@@ -107,6 +107,40 @@ d="$(new_repo r3stop)"; mk_issue "$d" "$red"; arm "$d" 5
 : > "$d/.volter/.ztrack-loop-iter-X"; : > "$d/.volter/.ztrack-loop-exempt-X"
 ( cd "$d" && npx ztrack loop stop >/dev/null )
 ok "$(count_state "$d")" 0 "loop stop sweeps stray iter/exempt files"
+
+echo "## review-fix regressions — through the REAL packed+installed ztrack CLI (not just unit tests)"
+
+echo "# H1: a real blocker on a line that also carries reason: isn't lost / isn't a phantom-missing"
+d="$(new_repo h1)"
+# dev/02 blocks on the real dev/01 (with a reason: on the line); dev/03 blocks on a missing dev/99.
+printf '# Task\n\n## Acceptance Criteria\n\n- [ ] dev/01 status: pending First.\n- [ ] dev/02 status: pending Wait. blocked-by: dev/01 reason: deferred\n- [ ] dev/03 status: pending Y. blocked-by: dev/99 reason: gone\n\n## Evidence\n' > "$d/body.md"
+( cd "$d" && npx ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null )
+# Exactly ONE missing-blocker (dev/99). With the bug, dev/01's ref was corrupted too → 2.
+ok "$(greps "$d" 'ac_blocker_missing')" 1 "exactly one missing-blocker (dev/99); dev/01-with-reason is resolved, not a phantom"
+
+echo "# H2: a waiver clears a readiness error but NOT a structural self-block"
+d="$(new_repo h2)"
+printf '# Task\n\n## Acceptance Criteria\n\n- [x] dev/01 do the thing\n- [ ] dev/02 status: pending Loop. blocked-by: dev/02\n\n## Evidence\n' > "$d/body.md"
+( cd "$d" && npx ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null )
+ok "$(chk "$d")" 1 "unwaived: red (readiness + self-block)"
+( cd "$d" && npx ztrack waiver sign APP-1 --reason "accept the readiness gap" >/dev/null )
+ok "$(chk "$d")" 1 "after a fresh waiver: STILL red — the self-block is non-waivable"
+ok "$([ "$(greps "$d" 'ac_self_block')" -ge 1 ] && echo YES || echo NO)" YES "ac_self_block is still reported (not acknowledged) post-waiver"
+
+echo "# M3: a done case with EVERY AC descoped is red (needs >=1 actually passed) — via simple-sdlc"
+d="$(new_repo m3 simple-sdlc)"
+printf '# Task\n\n## Acceptance Criteria\n\n- [ ] dev/01 status: descoped reason: cut from v1 [1]\n- [ ] dev/02 status: descoped reason: cut from v1 [1]\n\n## Sources\n\n[1] r\n\n## Evidence\n' > "$d/body.md"
+( cd "$d" && npx ztrack issue create --title T --label type:case --state "Done" --assignee t --body-file body.md >/dev/null )
+ok "$(chk "$d")" 1 "all-descoped done issue is red"
+ok "$([ "$(greps "$d" 'done_with_unpassed')" -ge 1 ] && echo YES || echo NO)" YES "and it reports done_with_unpassed"
+
+echo "# gitignore migration: loop start re-adds the ignore patterns on a repo that lacked them"
+d="$(new_repo gi)"
+grep -v 'ztrack-loop' "$d/.gitignore" > "$d/.gi.tmp" && mv "$d/.gi.tmp" "$d/.gitignore"   # simulate a pre-loop init
+ok "$(grep -c 'ztrack-loop' "$d/.gitignore" || true)" 0 "precondition: loop ignore lines absent"
+mk_issue "$d" "$red"
+( cd "$d" && npx ztrack loop start APP-1 --max 5 >/dev/null )
+ok "$([ "$(grep -c 'ztrack-loop-exempt' "$d/.gitignore")" -ge 1 ] && echo YES || echo NO)" YES "loop start migrated the .gitignore (exempt files now ignored)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "loop-gate-ci: ALL PASS"; else echo "loop-gate-ci: $fails FAIL"; exit 1; fi
