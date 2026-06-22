@@ -2,6 +2,44 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.5.0
+
+- **New: the ztrack loop — a ralph-pattern autonomy loop whose completion ORACLE is
+  `ztrack check` (deterministic), not a trusted phrase or an LLM judging a transcript.**
+  `ztrack loop start <issue>` arms a session-scoped Stop-hook gate (via the bundled
+  `ztrack-gate` Claude Code plugin): while armed, the agent's turn can't end until that
+  issue passes `ztrack check` (then the loop disarms itself), or the per-session iteration
+  cap (`--max`, default 8) trips. NOT armed → turns end normally, so interactive use is
+  never gated. `ztrack loop stop` / `status`. The gate scopes to the armed issue via
+  `check --auto-scope` + `ZTRACK_ACTIVE_ISSUE`, so other red issues don't hold it.
+- **New: three honest escapes from the loop**, graded by how durable they are — none fakes
+  "done":
+  - **Disarm** (`ztrack loop stop`): ends the loop for everyone; the issue stays red.
+  - **Per-session self-exempt**: a blocked turn's message prints a session-keyed path
+    (`.volter/.ztrack-loop-exempt-<session_id>`); creating that file lets *this* session's
+    turn end. Keyed to the live session id and gitignored, so it can't leak to another
+    session or outlive the one that made it.
+  - **Durable waiver** (`ztrack waiver sign <issue> --reason "…"` / `clear` / `status`):
+    records that the failing state is knowingly accepted; the issue's `error` findings
+    become the new non-gating `acknowledged` severity so `check` passes. Sign-off is your
+    **git identity**, captured automatically (the same identity that authors commits).
+    Anchored to a fingerprint of the **acceptance criteria**, so it AUTO-STALES the instant
+    those criteria change (an unrelated commit elsewhere does NOT invalidate it); an
+    unreasoned waiver is itself an error.
+- **New: descope as a first-class "satisfied-with-reason" AC state** (SDLC-gated presets).
+  A done case whose AC is `status: descoped reason: …` is green WITHOUT a waiver — the
+  honest home for "this criterion is out of scope". An unjustified descope is itself an
+  error; `blocked` stays unsettled (a done case can't carry work that's still waiting).
+- **New: `acknowledged` finding severity** — a downgraded `error` a fresh waiver has
+  accepted: reported everywhere (CLI report, `--auto-scope` report, MCP, visualizer) but
+  non-gating, like a warning. Only `error` gates `ok`. The visualizer renders the
+  acknowledged count, a waiver banner (who signed it and why), and descoped ACs with their
+  reason. (TS consumers that exhaustively switch on `Severity` should add the new arm.)
+- CI now covers the Stop hook's full decision table and the `ztrack waiver` CLI round-trip
+  deterministically (no live agent), on both the test and publish gates
+  (`demos/loop-gate-ci.sh`). The live-agent end-to-end stays a manual demo
+  (`demos/loop-e2e.sh`).
+
 ## 0.4.0
 
 - **Breaking: validation rules are declarative records, not imperative functions.** A
