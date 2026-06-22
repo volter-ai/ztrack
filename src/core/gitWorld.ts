@@ -19,7 +19,6 @@ export function git(repo: string, args: string[]): string {
 }
 
 export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommits?: boolean } = {}): Context {
-  const currentSha = git(repo, ['rev-parse', 'HEAD']) || undefined; // freshness anchor for waivers
   const prs: Record<string, { headSha?: string; merged?: boolean }> = {};
   for (const branch of prBranches) {
     const headSha = git(repo, ['rev-parse', '--verify', `${branch}^{commit}`]) || undefined;
@@ -34,7 +33,7 @@ export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommi
   }
   // verifyCommits===false withholds commit existence so commit-verification rules
   // skip (the typed replacement for the old `--verify-commits` opt-in).
-  if (opts.verifyCommits === false) return { git: { ...(currentSha ? { currentSha } : {}), prs } };
+  if (opts.verifyCommits === false) return { git: { prs } };
   const existingCommits = git(repo, ['log', '--all', '--format=%H']).split('\n').filter(Boolean);
-  return { git: { ...(currentSha ? { currentSha } : {}), existingCommits, prs } };
+  return { git: { existingCommits, prs } };
 }

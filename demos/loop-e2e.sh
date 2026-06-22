@@ -46,7 +46,7 @@ setup_multi() { # $1=name $2=arm-issue  -> APP-1 green, APP-2 red; arms $2; echo
 
 done_prompt="Reply with exactly the single word DONE and take no other action."
 run() { # $1=dir $2=prompt -> echoes the agent JSON result
-  ( cd "$1" && timeout 300 claude -p "$2" \
+  ( cd "$1" && timeout 480 claude -p "$2" \
       --model "$model" --output-format json --permission-mode bypassPermissions \
       --settings "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"bash '$hook'\"}]}]}}" \
       2>/dev/null )
@@ -120,28 +120,33 @@ v="$( { [ "$exempted" = YES ] && [ "$armed_after" = YES ] && [ "$foreign" = 2 ];
 echo "   live agent self-exempted=$exempted (want YES), loop still armed=$armed_after (want YES), foreign session held (hook exit=$foreign, want 2)  $v"
 [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
-echo "=== I. durable waiver: a fresh, signed waiver releases the loop on a red issue ==="
-# An authority acknowledges the red state via the real CLI; the engine downgrades the
-# issue's errors to 'acknowledged' so the check passes and the armed agent is released.
+echo "=== I. durable waiver: a fresh waiver, signed off as the git identity, releases the loop ==="
+# The committer acknowledges the red state via the real CLI (sign-off = git identity, no
+# free-text name); the engine downgrades the issue's errors to 'acknowledged' so the check
+# passes and the armed agent is released.
 d="$(setup waiver red arm)"
-( cd "$d" && npx ztrack waiver sign APP-1 --reason "known infra gap, tracked separately" --by "alice" >/dev/null )
+( cd "$d" && npx ztrack waiver sign APP-1 --reason "known infra gap, tracked separately" >/dev/null )
 wexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # acknowledged → 0
+wby="$( (cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null) | grep -c 'by: loop e2e' )"  # git user.name stamped, not a typed name
 out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"
-v="$( { [ "$wexit" = 0 ] && [ "${t:-0}" -eq 1 ]; } && echo PASS || echo FAIL )"
-echo "   signed waiver → check exit=$wexit (want 0), armed agent released num_turns=$t (want 1)  $v"
+v="$( { [ "$wexit" = 0 ] && [ "${t:-0}" -eq 1 ] && [ "${wby:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
+echo "   signed waiver → check exit=$wexit (want 0), signed-off-as-git-identity=$wby (want ≥1), agent released num_turns=$t (want 1)  $v"
 [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
-echo "=== J. the waiver AUTO-STALES: a new commit re-blocks (freshness anchor holds) ==="
-( cd "$d" && git commit --allow-empty -q -m "more work moved HEAD" )
-jexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # sha drifted → stale → re-blocks → 1
+echo "=== J. the waiver AUTO-STALES on a CRITERIA change, but NOT on an unrelated commit ==="
+# AC-only anchor: an unrelated commit must keep the waiver fresh; editing the AC must stale it.
+( cd "$d" && git commit --allow-empty -q -m "unrelated work moved HEAD" )
+j_commit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # unrelated commit → still fresh → 0
+( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['body'].replace('do the thing','do a DIFFERENT thing'))" > edited.md && npx ztrack issue edit APP-1 --body-file edited.md >/dev/null )
+j_edit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"     # criteria changed → stale → 1
 jstale="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_stale )"
-v="$( { [ "$jexit" = 1 ] && [ "${jstale:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
-echo "   after a new commit → check exit=$jexit (want 1), waiver_stale reported=$jstale (want ≥1)  $v"
+v="$( { [ "$j_commit" = 0 ] && [ "$j_edit" = 1 ] && [ "${jstale:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
+echo "   unrelated commit → exit=$j_commit (want 0, still fresh); AC edited → exit=$j_edit (want 1), waiver_stale=$jstale (want ≥1)  $v"
 [ "$v" = PASS ] || fails=$((fails+1))
 
 echo "=== K. an unreasoned waiver is ITSELF an error (it can't silently mute the check) ==="
 d="$(setup unreasoned red noarm)"
-printf '# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n\n## Waiver\n\nby: someone\nsha: %s\nac-version: acw_deadbeef00\n' "$( cd "$d" && git rev-parse HEAD )" > "$d/unreasoned.md"
+printf '# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n\n## Waiver\n\nby: someone\nac-version: acw_deadbeef00\n' > "$d/unreasoned.md"
 ( cd "$d" && npx ztrack issue edit APP-1 --body-file unreasoned.md >/dev/null )
 kexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"
 kmiss="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_missing_reason )"

@@ -237,13 +237,11 @@ describe('createGenericPreset', () => {
 
 describe('freshness-anchored waiver', () => {
   const wv = createGenericPreset({ name: 'wv', requireSdlcGates: true });
-  const SHA = 'a1b2c3d4e5f6a1b2c3d4';
-  const wvCtx = { git: { currentSha: SHA, existingCommits: [SHA] } };
   // a checked AC that cites no commit and no evidence — two real `error` findings to waive.
   const AC = '## Acceptance Criteria\n\n- [x] dev/01 status: passed Do the thing.\n';
-  const body = (w?: { reason?: string; by?: string; sha?: string; acv?: string }): string =>
-    !w ? AC : `${AC}\n## Waiver\n\nreason: ${w.reason ?? ''}\nby: ${w.by ?? ''}\nsha: ${w.sha ?? ''}\nac-version: ${w.acv ?? ''}\n`;
-  const run = (b: string) => check(wv, buildIssueBundle([frame('W-1', { state: 'open', stateType: 'open', assignee: 'a', body: b })]), wvCtx);
+  const body = (w?: { reason?: string; by?: string; acv?: string }): string =>
+    !w ? AC : `${AC}\n## Waiver\n\nreason: ${w.reason ?? ''}\nby: ${w.by ?? ''}\nac-version: ${w.acv ?? ''}\n`;
+  const run = (b: string) => check(wv, buildIssueBundle([frame('W-1', { state: 'open', stateType: 'open', assignee: 'a', body: b })]), {});
   // the fingerprint the engine computes for this issue's ACs (the waiver section doesn't change ACs).
   const FP = issueAcFingerprint(wv.schema.parse(wv.parse(buildIssueBundle([frame('W-1', { state: 'open', stateType: 'open', assignee: 'a', body: body() })]))).issues[0]!);
 
@@ -254,38 +252,54 @@ describe('freshness-anchored waiver', () => {
   });
 
   test('a reasoned, signed, FRESH waiver downgrades the issue’s errors to acknowledged → ok', () => {
-    const r = run(body({ reason: 'known infra gap, tracked in APP-9', by: 'alice', sha: SHA, acv: FP }));
+    const r = run(body({ reason: 'known infra gap, tracked in APP-9', by: 'alice (a@x)', acv: FP }));
     expect(r.ok).toBe(true);
     expect(r.findings.some((f) => f.severity === 'error')).toBe(false);
     const ack = r.findings.find((f) => f.code === 'wv_checked_ac_missing_commit_hash');
     expect(ack?.severity).toBe('acknowledged');
-    expect(ack?.message).toContain('acknowledged by alice');
+    expect(ack?.message).toContain('acknowledged by alice (a@x)');
     expect(r.findings.some((f) => f.code.startsWith('waiver_'))).toBe(false);
   });
 
   test('a waiver with no reason is itself an error and does NOT downgrade', () => {
-    const r = run(body({ by: 'alice', sha: SHA, acv: FP }));
+    const r = run(body({ by: 'alice', acv: FP }));
     expect(r.ok).toBe(false);
     expect(r.findings.some((f) => f.code === 'waiver_missing_reason' && f.severity === 'error')).toBe(true);
     expect(r.findings.some((f) => f.code === 'wv_checked_ac_missing_commit_hash' && f.severity === 'error')).toBe(true);
   });
 
   test('a waiver with no sign-off is itself an error and does NOT downgrade', () => {
-    const r = run(body({ reason: 'x', sha: SHA, acv: FP }));
+    const r = run(body({ reason: 'x', acv: FP }));
     expect(r.findings.some((f) => f.code === 'waiver_missing_signoff' && f.severity === 'error')).toBe(true);
     expect(r.ok).toBe(false);
   });
 
-  test('a waiver signed against a DIFFERENT commit is stale (warning) and does NOT downgrade', () => {
-    const r = run(body({ reason: 'x', by: 'alice', sha: 'deadbeefdeadbeefdead', acv: FP }));
+  test('a waiver whose ac-version no longer matches (criteria edited) is stale and does NOT downgrade', () => {
+    const r = run(body({ reason: 'x', by: 'alice', acv: 'acw_000000000000' }));
     expect(r.ok).toBe(false);
     expect(r.findings.some((f) => f.code === 'waiver_stale' && f.severity === 'warning')).toBe(true);
     expect(r.findings.some((f) => f.code === 'wv_checked_ac_missing_commit_hash' && f.severity === 'error')).toBe(true);
   });
+});
 
-  test('a waiver whose ac-version no longer matches (criteria edited) is stale and does NOT downgrade', () => {
-    const r = run(body({ reason: 'x', by: 'alice', sha: SHA, acv: 'acw_000000000000' }));
-    expect(r.ok).toBe(false);
-    expect(r.findings.some((f) => f.code === 'waiver_stale')).toBe(true);
+describe('descope: the honest alternative to a waiver', () => {
+  const wv = createGenericPreset({ name: 'wv', requireSdlcGates: true });
+  const run = (acBlock: string, state = 'done', stateType = 'completed') =>
+    check(wv, buildIssueBundle([frame('D-1', { state, stateType, assignee: 'a', body: `## Acceptance Criteria\n\n${acBlock}\n` })]), {});
+
+  test('a done case with a descoped (reasoned) AC is green — no waiver needed', () => {
+    const r = run('- [x] dev/01 status: passed Did it. commit: a1b2c3d4 [E1]\n- [ ] dev/02 status: descoped reason: out of scope for v1\n');
+    expect(r.findings.some((f) => f.code === 'wv_done_with_unpassed_acceptance_criteria')).toBe(false);
+    expect(r.findings.some((f) => f.code === 'wv_descoped_ac_missing_reason')).toBe(false);
+  });
+
+  test('a descoped AC with no reason is an error', () => {
+    const r = run('- [ ] dev/02 status: descoped\n', 'open', 'open');
+    expect(r.findings.some((f) => f.code === 'wv_descoped_ac_missing_reason' && f.severity === 'error')).toBe(true);
+  });
+
+  test('a BLOCKED AC is NOT settled — a done case carrying one still fails', () => {
+    const r = run('- [x] dev/01 status: passed Did it. commit: a1b2c3d4 [E1]\n- [ ] dev/02 status: blocked\n');
+    expect(r.findings.some((f) => f.code === 'wv_done_with_unpassed_acceptance_criteria')).toBe(true);
   });
 });

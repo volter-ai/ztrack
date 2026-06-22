@@ -181,7 +181,7 @@ async function main(): Promise<void> {
     const action = args[1];
     const projectRoot = projectRootFrom();
     if (!action || ['--help', '-h', 'help'].includes(action)) {
-      process.stdout.write(`Usage: ${command} waiver <sign <issue> --reason "..." --by "..." | clear <issue> | status <issue>>\n\nRecords a freshness-anchored acknowledgment on <issue>. A valid waiver downgrades that issue's errors to 'acknowledged' so \`${command} check\` passes; it auto-stales when the commit or acceptance criteria change, and an unreasoned or unsigned waiver is itself an error.\n`);
+      process.stdout.write(`Usage: ${command} waiver <sign <issue> --reason "..." | clear <issue> | status <issue>>\n\nRecords a freshness-anchored acknowledgment on <issue>, signed off as your git identity. A valid waiver downgrades that issue's errors to 'acknowledged' so \`${command} check\` passes; it auto-stales when the acceptance criteria change, and an unreasoned waiver is itself an error. Prefer descoping an AC (\`status: descoped reason: …\`) when the criterion is genuinely out of scope.\n`);
       return;
     }
     const id = args[2];
@@ -191,19 +191,23 @@ async function main(): Promise<void> {
     const body = String((issueView as Record<string, unknown>).body ?? '');
     if (action === 'sign') {
       const reason = optionValue(args, '--reason');
-      const by = optionValue(args, '--by');
       if (!reason) throw new Error(`${command} waiver sign: --reason "<why this failing state is acceptable>" is required`);
-      if (!by) throw new Error(`${command} waiver sign: --by "<the authority signing off>" is required`);
+      // Sign-off is the git identity, not a free-text name: a waiver records who actually
+      // signed it (the same identity that authors commits), captured automatically.
+      const gitName = git(projectRoot, ['config', 'user.name']);
+      const gitEmail = git(projectRoot, ['config', 'user.email']);
+      // `Name (email)`, not the git-canonical `Name <email>` — angle brackets get mangled
+      // by the markdown round-trip (treated as an autolink), parens survive cleanly.
+      const approvedBy = gitName && gitEmail ? `${gitName} (${gitEmail})` : (gitName || gitEmail);
+      if (!approvedBy) throw new Error(`${command} waiver sign: no git identity configured. Set one (\`git config user.name\` / \`user.email\`) — a waiver must record who signed it.`);
       const root = await exportTrackerRoot({ projectRoot, issues: [id] });
       const issue = root.issues.find((i) => i.id === id);
       if (!issue) throw new Error(`${command} waiver sign: issue ${id} not found in the tracker`);
-      const sha = git(projectRoot, ['rev-parse', 'HEAD']);
-      if (!sha) throw new Error(`${command} waiver sign: cannot read HEAD (need a git repo with at least one commit to anchor the waiver to)`);
       const fingerprint = issueAcFingerprint(issue);
-      const section = `## Waiver\n\nreason: ${reason}\nby: ${by}\nsha: ${sha}\nac-version: ${fingerprint}\n`;
+      const section = `## Waiver\n\nreason: ${reason}\nby: ${approvedBy}\nac-version: ${fingerprint}\n`;
       const newBody = `${stripWaiverSection(body).replace(/\s+$/, '')}\n\n${section}`;
       await wClient.issue.edit(id, { body: newBody });
-      process.stdout.write(`${statusMark('pass')} ${ui.green('waiver signed')} ${ui.dim(`→ ${id} by ${by}, anchored to ${sha.slice(0, 8)} / ${fingerprint}. It auto-stales if the commit or acceptance criteria change.`)}\n`);
+      process.stdout.write(`${statusMark('pass')} ${ui.green('waiver signed')} ${ui.dim(`→ ${id} by ${approvedBy}, anchored to the acceptance criteria (${fingerprint}). It auto-stales if those criteria change.`)}\n`);
       return;
     }
     if (action === 'clear') {

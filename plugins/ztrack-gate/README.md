@@ -46,12 +46,19 @@ durable they are, none of which silently lies about "done":
   (`.volter/.ztrack-loop-exempt-<session_id>`). Create that file and *this* session's turn
   may end. It's keyed to the live session id (so a fresh session is held again) and
   gitignored (so it can't be committed) — it cannot outlive the session that made it.
-- **Durable waiver** — `ztrack waiver sign <issue> --reason "…" --by "…"`. An authority
-  records that the failing state is knowingly accepted; the issue's errors become
-  `acknowledged` and `check` passes. Unlike the others this lives in the tracker and
-  survives sessions — but it's **anchored to the commit + a fingerprint of the acceptance
-  criteria**, so it auto-stales the instant either drifts (the errors come back). An
-  unreasoned or unsigned waiver is itself an error. `ztrack waiver clear <issue>` removes it.
+- **Durable waiver** — `ztrack waiver sign <issue> --reason "…"`. Records that the failing
+  state is knowingly accepted; the issue's errors become `acknowledged` and `check` passes.
+  Sign-off is your **git identity** (captured automatically — the same identity that authors
+  commits), not a free-text name. Unlike the others this lives in the tracker and survives
+  sessions — but it's **anchored to a fingerprint of the acceptance criteria**, so it
+  auto-stales the instant those criteria change (the errors come back); an unrelated commit
+  elsewhere does *not* invalidate it. An unreasoned waiver is itself an error.
+  `ztrack waiver clear <issue>` removes it.
+
+  This is the **last resort**. Before reaching for it, prefer the more honest fix: finish the
+  work, correct an over-specified AC, fix a false-positive rule, or — when a criterion is
+  genuinely out of scope — **descope the AC** (`- [ ] AC-03 status: descoped reason: …`),
+  which is a recorded, in-the-open scope decision rather than an acknowledged failure.
 
 ## Requirements
 

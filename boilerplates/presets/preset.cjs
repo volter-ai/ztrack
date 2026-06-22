@@ -116,10 +116,18 @@ if (requireSdlcGates) {
     code: code('done_with_unpassed_acceptance_criteria'), select: (m) => m.issues,
     when: ({ issue }) => {
       if (!isDone(issue)) return false;
-      const passed = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed').length;
-      return issue.acceptanceCriteria.length === 0 || passed < issue.acceptanceCriteria.length;
+      // settled = passed OR explicitly descoped (the in-the-open scope decision). `blocked`
+      // is NOT settled: a done case can't carry an AC still waiting on other work.
+      const settled = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed' || ac.status === 'descoped').length;
+      return issue.acceptanceCriteria.length === 0 || settled < issue.acceptanceCriteria.length;
     },
-    message: () => 'Done cases require every acceptance criterion to be passed.',
+    message: () => 'Done cases require every acceptance criterion to be passed or descoped.',
+  }));
+  // a descoped AC must say why — an unjustified descope is as suspect as an unreasoned waiver.
+  rules.push(rule({
+    code: code('descoped_ac_missing_reason'), select: (m) => m.acs,
+    when: ({ ac }) => ac.status === 'descoped' && !(ac.descopeReason && ac.descopeReason.trim()),
+    message: ({ ac }) => `Descoped AC ${ac.id} must cite a reason (\`reason: …\`) explaining why it is out of scope.`,
   }));
 }
 

@@ -82,6 +82,7 @@ const GenericAcSchema = z.object({
   sourceRefs: z.array(z.string()),                // preset: [N] markers cited
   commitHashes: z.array(z.string()),              // preset: commit: <sha> citations
   evidenceRefs: z.array(z.string()),              // preset: [E?] ids cited
+  descopeReason: z.string().optional(),           // preset: `reason:` justifying a descoped AC
   blockedBy: z.array(BlockRefSchema).optional(),  // primitive: nodes that gate this one
   blocks: z.array(BlockRefSchema).optional(),     // primitive: nodes this one gates
 }).strict();
@@ -91,7 +92,6 @@ const GenericAcSchema = z.object({
 const GenericWaiverSchema = z.object({
   reason: z.string(),
   approvedBy: z.string(),
-  sha: z.string(),
   acFingerprint: z.string(),
 }).strict();
 
@@ -268,6 +268,7 @@ function parseGenericIssue(markdown: string): Record<string, unknown> | null {
     const status = STATUS_RE.exec(text)?.[1]?.toLowerCase() ?? (checked ? 'passed' : 'pending');
     const evidenceRefs = uniqSorted([...text.matchAll(EVIDENCE_REF_RE)].map((m) => m[1]!));
     const { blockedBy, blocks } = parseAcBlocking(text, issue.id as string);
+    const descopeReason = /\breason:[ \t]*(.+?)[ \t]*$/i.exec(text)?.[1]?.trim();
     return {
       id, type, checked, status,
       text: text.replace(/\s{2,}/g, ' ').trim(),
@@ -275,6 +276,7 @@ function parseGenericIssue(markdown: string): Record<string, unknown> | null {
       commitHashes: uniqSorted([...text.matchAll(COMMIT_RE)].map((m) => m[1]!.toLowerCase())),
       evidenceRefs,
       evidence: evidenceRefs.filter((ref) => evidenceById.has(ref)).map((ref) => evidenceById.get(ref)!),
+      ...(descopeReason ? { descopeReason } : {}),
       ...(blockedBy.length ? { blockedBy } : {}),
       ...(blocks.length ? { blocks } : {}),
     };
@@ -295,7 +297,6 @@ function parseGenericIssue(markdown: string): Record<string, unknown> | null {
     issue.waiver = {
       reason: field(/(?:^|\n)[ \t]*reason:[ \t]*(.+)/i),
       approvedBy: field(/(?:^|\n)[ \t]*by:[ \t]*(.+)/i),
-      sha: field(/(?:^|\n)[ \t]*sha:[ \t]*(\S+)/i),
       acFingerprint: field(/(?:^|\n)[ \t]*ac-version:[ \t]*(\S+)/i),
     };
   }
@@ -411,10 +412,20 @@ export function createGenericPreset(config: GenericPresetConfig): Preset<Generic
       code: code('done_with_unpassed_acceptance_criteria'), select: (m) => m.issues,
       when: ({ issue }) => {
         if (!isDone(issue)) return false;
-        const passed = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed').length;
-        return issue.acceptanceCriteria.length === 0 || passed < issue.acceptanceCriteria.length;
+        // An AC is "settled" for done-ness when it passed OR was explicitly descoped (a
+        // recorded scope decision — the honest alternative to waiving). `blocked` is NOT
+        // settled: a done case can't carry an AC that's still waiting on other work.
+        const settled = issue.acceptanceCriteria.filter((ac) => ac.checked || ac.status === 'passed' || ac.status === 'descoped').length;
+        return issue.acceptanceCriteria.length === 0 || settled < issue.acceptanceCriteria.length;
       },
-      message: () => 'Done cases require every acceptance criterion to be passed.',
+      message: () => 'Done cases require every acceptance criterion to be passed or descoped.',
+    }));
+    // Descoping is the in-the-open scope decision, so it must say why — an unjustified
+    // descope is as suspect as an unreasoned waiver.
+    rules.push(rule<GenericRoot, { issueId: string; acId: string; ac: GAC }>({
+      code: code('descoped_ac_missing_reason'), select: (m) => m.acs,
+      when: ({ ac }) => ac.status === 'descoped' && !ac.descopeReason?.trim(),
+      message: ({ ac }) => `Descoped AC ${ac.id} must cite a reason (\`reason: …\`) explaining why it is out of scope.`,
     }));
   }
 

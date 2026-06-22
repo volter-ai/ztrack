@@ -99,7 +99,7 @@ them and only validates the claims agents or humans make there.
 
 - **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
 - **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
-- **Autonomy loop:** a ralph-pattern loop whose completion oracle is `check` — `ztrack loop start <issue>` holds the agent's turn until that issue is green (then disarms), capped so it can't grind forever. Three honest escapes (none fakes "done"): disarm, a per-session self-exempt that can't outlive the session, and a durable `ztrack waiver sign` that's anchored to the commit + acceptance-criteria fingerprint so it auto-stales. Turn it on via the bundled Claude Code plugin (one toggle, armed-only so interactive work is untouched):
+- **Autonomy loop:** a ralph-pattern loop whose completion oracle is `check` — `ztrack loop start <issue>` holds the agent's turn until that issue is green (then disarms), capped so it can't grind forever. Three honest escapes (none fakes "done"): disarm, a per-session self-exempt that can't outlive the session, and a durable `ztrack waiver sign` (signed off as your git identity, anchored to the acceptance-criteria fingerprint) that auto-stales when those criteria change — or just descope the AC when it's genuinely out of scope. Turn it on via the bundled Claude Code plugin (one toggle, armed-only so interactive work is untouched):
 
   ```
   /plugin marketplace add volter-ai/ztrack
