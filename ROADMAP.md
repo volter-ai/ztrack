@@ -56,6 +56,25 @@ each lands, with the proof that shows it.
 to reach `loop stop` / `waiver sign` at all is a genuine product question left open under the
 cooperative trust boundary (R5) — pick it up only if adversarial agents become a concern.
 
+### Review follow-ups (post-0.6.0, multi-agent review)
+
+Fixed and shipped (0.6.1): a `reason:`/`blocked-by:` parser collision that silently dropped
+a real dependency (H1); `descopeReason` over-capture (M4); a done case with EVERY AC
+descoped passing with nothing verified (M3); a waiver downgrading structural invariants like
+block cycles / duplicate ids (H2 — now `waivable: false`); hook/CLI robustness (torn-write
+guards); a gitignore migration so loop runtime files are ignored on repos `init`'d before the
+loop existed; and the visualizer dropping all-acknowledged issues from the findings view.
+
+Deliberately deferred (low value / out of scope, not bugs in the shipped path):
+
+- [ ] **The standalone `default`/`speckit` presets reject `status: descoped`** (their AC
+  status enums lack it). Descope is a generic-preset feature and those presets aren't what
+  `ztrack init` installs, so rejecting the status is arguably correct — but if descope should
+  be cross-preset, their enums + done-gates need it.
+- [ ] **The visualizer client isn't typechecked in CI** (separate Bun app, lazy-installed
+  deps; only bundled, not `tsc`'d). Pre-existing; a `tsconfig` + a CI typecheck step would
+  catch shape drift in the client.
+
 ## Non-Goals
 
 - No telemetry in the open-source core.

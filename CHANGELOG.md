@@ -2,6 +2,32 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.6.1
+
+Fixes from a multi-agent review of the loop / waiver / descope work:
+
+- **Parser:** a `reason:` after `blocked-by:`/`blocks:` on an AC line corrupted the blocker
+  — it parsed the dependency as a bogus issue and silently dropped the real one. The
+  descope `reason:` keyword collided with the block-field parser; now terminated correctly.
+- **Parser:** `descopeReason` was captured on ANY AC containing `reason:` and swallowed
+  trailing `[E?]` / `commit:` tokens into the prose; now gated on `status: descoped` and
+  bounded.
+- **Done-gate:** a done case with EVERY acceptance criterion descoped passed with nothing
+  verified — a free bypass cheaper than a waiver. The gate now also requires ≥1 actually
+  passed AC.
+- **Waiver scope:** a waiver downgraded structural invariants it has no business muting (a
+  block cycle, a duplicate id, a self-block, a checkbox/status contradiction). Added a
+  `waivable` flag (RuleRecord + Finding); those rules are non-waivable, so a waiver still
+  covers readiness failures (missing evidence/commit) but a block cycle stays red.
+- **Robustness:** the Stop hook guards a torn iteration-counter write (no `set -u` crash);
+  `ztrack loop status` no longer crashes on a truncated breadcrumb; the armed-but-ztrack-
+  missing block message now states how to get out.
+- **gitignore:** repos `init`'d before the loop existed never received the `.ztrack-loop-*`
+  ignore patterns (the block is written once). `ztrack loop start` and re-`init` now
+  idempotently append any missing managed lines, so session/exempt files can't be committed.
+- **Visualizer:** the "findings" view no longer drops issues whose findings are all
+  `acknowledged`.
+
 ## 0.6.0
 
 - **Loop escape hardening + state hygiene** (the `ztrack-gate` Stop hook + `ztrack loop`):
