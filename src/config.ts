@@ -157,7 +157,7 @@ export function initTrackerProject(
   mkdirSync(dirname(configPath), { recursive: true });
   const validationEntrypoint = installPreset(root, preset);
   const config: TrackerConfig = {
-    backend: 'local',
+    backend: 'markdown',
     local: { teamKey: key },
     validation: {
       entrypoint: `${stateDirName()}/tracker/validation/preset.cjs`,

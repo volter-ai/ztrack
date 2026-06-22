@@ -16,7 +16,7 @@ describe('initTrackerProject', () => {
       const entrypoint = trackerValidationEntrypointPath(root);
       expect(result).toMatchObject({ alreadyInitialized: false, teamKey: 'APP', preset: 'basic', validationEntrypoint: entrypoint });
       expect(loadTrackerConfig(root)).toMatchObject({
-        backend: 'local',
+        backend: 'markdown',
         local: { teamKey: 'APP' },
         validation: {
           entrypoint: '.volter/tracker/validation/preset.cjs',
@@ -57,7 +57,7 @@ describe('initTrackerProject', () => {
       const entrypoint = trackerValidationEntrypointPath(root);
       expect(result).toMatchObject({ alreadyInitialized: false, teamKey: 'APP', preset: 'simple-sdlc', validationEntrypoint: entrypoint });
       expect(loadTrackerConfig(root)).toMatchObject({
-        backend: 'local',
+        backend: 'markdown',
         local: { teamKey: 'APP' },
         validation: {
           entrypoint: '.volter/tracker/validation/preset.cjs',

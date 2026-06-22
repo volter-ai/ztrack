@@ -45,9 +45,10 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 
 ## Quickstart (under a minute)
 
-> **Prerequisites:** Node ≥ 20, `git`, and `python3` on PATH (the default local
-> backend is a small Python/SQLite program; or set `backend: "markdown"` to avoid
-> Python). The `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+> **Prerequisites:** Node ≥ 20 and `git`. The default backend stores issues as plain
+> markdown files (pure JS). An **optional** `local` backend (Python/SQLite, adding
+> full-text search) is available via `backend: "local"` and needs `python3`. The
+> `ztrack visualizer` additionally needs [Bun](https://bun.sh).
 >
 > **Package managers:** verified on Node 20+ under **npm, pnpm, yarn (classic + Berry), and
 > bun** (`init` + `check`, library `import()` from CommonJS, and `ztrack/package.json`
