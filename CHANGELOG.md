@@ -2,6 +2,40 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.4.0
+
+- **Breaking: validation rules are declarative records, not imperative functions.** A
+  rule was `{ name, run: (input) => Finding[] }`; it is now a record
+  `{ code, severity?, category?, depth?, phase?, select, when?, message }` evaluated over
+  an engine-derived model. The engine derives an analyzed model once per check (per-item
+  scopes `issues`/`acs`/`evidence`, id aggregates, and the unified block graph) and rules
+  `select` facts off it; a preset's own cross-entity/graph analysis moves to
+  `Preset.derive`. The schema carries SHAPE, the rules carry MEANING. **Migrate a custom
+  preset** by turning each rule into `rule({ code, select: (m) => …, when, message })` and
+  moving aggregate/graph computation into `derive`; a pushed
+  `module.exports.rules.push({ name, run })` becomes `…push(rule({ code, select, when, message }))`.
+  All four built-in presets (default, spec, generic, speckit) were migrated.
+- **New: presets are INSTALLED as editable code, not referred to.** `ztrack init` now
+  writes `.volter/tracker/validation/preset.cjs` as real plain-JS records that rent the
+  engine + parser + schema from `ztrack/preset-kit` — not a `createGenericPreset({ flags })`
+  shim. The rules live in your repo, editable in a PR. New `ztrack/preset-kit` authoring
+  exports: `definePreset`, `rule`, `formatRef`, the fact types, and `genericParser` /
+  `genericSchema` / `genericScaffold`. `createGenericPreset` stays as the typed reference
+  the install vendors from; `presetInstall.test.ts` guards byte-identical behavior.
+- **New: `ztrack preset upgrade`.** `init` records a pristine base
+  (`.volter/tracker/validation/.preset.base.cjs`, commit it); upgrade 3-way merges new
+  upstream rules into your edited preset (via `git merge-file`), preserving edits —
+  overlaps become `<<<<<<<` conflict markers to resolve, then `ztrack check`.
+- **New: `ztrack check --auto-scope`.** Validates the whole tracker (cross-issue rules
+  stay correct) but exits nonzero only on the issue the current git checkout is for
+  (resolved from the branch/worktree name); other issues are informational, and
+  unresolved/ambiguous scope fails closed. Built for a per-worktree Stop-hook gate so N
+  worktrees each scope themselves with no coordination.
+- **Fix: the bundled Stop hook runs the locally-installed ztrack** (`node_modules/.bin/ztrack`,
+  override `ZTRACK_BIN`), not `npx --yes ztrack` — so the engine running the check is the
+  same one the installed preset imports (binary == library), and "done" only moves on a
+  reviewed lockfile bump.
+
 ## 0.3.0
 
 - **New: universal ids + unified blocking.** Every node has a derived colon-delimited
