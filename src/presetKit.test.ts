@@ -280,6 +280,19 @@ describe('freshness-anchored waiver', () => {
     expect(r.findings.some((f) => f.code === 'waiver_stale' && f.severity === 'warning')).toBe(true);
     expect(r.findings.some((f) => f.code === 'wv_checked_ac_missing_commit_hash' && f.severity === 'error')).toBe(true);
   });
+
+  test('a fresh waiver downgrades readiness errors but NOT structural invariants (H2)', () => {
+    // dev/01: checked, no commit — a waivable readiness error. dev/02: self-block — a
+    // non-waivable structural invariant (can never be coherent no matter who signs off).
+    const acBlock = '- [x] dev/01 status: passed Did it.\n- [ ] dev/02 status: pending Wait. blocked-by: dev/02\n';
+    const base = `## Acceptance Criteria\n\n${acBlock}`;
+    const fp = issueAcFingerprint(wv.schema.parse(wv.parse(buildIssueBundle([frame('W-2', { state: 'open', stateType: 'open', assignee: 'a', body: base })]))).issues[0]!);
+    const waived = `${base}\n## Waiver\n\nreason: accept it\nby: alice\nac-version: ${fp}\n`;
+    const r = check(wv, buildIssueBundle([frame('W-2', { state: 'open', stateType: 'open', assignee: 'a', body: waived })]), {});
+    expect(r.findings.find((f) => f.code === 'wv_ac_self_block')?.severity).toBe('error');            // invariant survives the waiver
+    expect(r.findings.find((f) => f.code === 'wv_checked_ac_missing_commit_hash')?.severity).toBe('acknowledged'); // readiness error downgraded
+    expect(r.ok).toBe(false); // the non-waivable error still gates
+  });
 });
 
 describe('descope: the honest alternative to a waiver', () => {

@@ -37,12 +37,12 @@ const isDone = (i) => ['done', 'completed'].includes((i.stateType || i.status).t
 const rules = [
   // cross-issue: ids unique across the framed tracker root.
   rule({
-    code: code('duplicate_issue_id'), select: (m) => m.duplicateIssueIds,
+    code: code('duplicate_issue_id'), waivable: false, select: (m) => m.duplicateIssueIds,
     message: (x) => `Duplicate issue id ${x.issueId} in the tracker.`,
   }),
   // an explicit `status:` must not contradict the GFM checkbox.
   rule({
-    code: code('checkbox_status_mismatch'), select: (m) => m.acs,
+    code: code('checkbox_status_mismatch'), waivable: false, select: (m) => m.acs,
     when: ({ ac }) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'),
     message: ({ ac }) => `AC ${ac.id} checkbox (${ac.checked ? '[x]' : '[ ]'}) disagrees with status "${ac.status}".`,
   }),
@@ -72,19 +72,19 @@ const rules = [
   }),
   // blocking integrity over the unified dependency graph (analyzed once by the engine).
   rule({
-    code: code('ac_self_block'), select: (m) => m.graph.blockerProblems, when: (b) => b.kind === 'self',
+    code: code('ac_self_block'), waivable: false, select: (m) => m.graph.blockerProblems, when: (b) => b.kind === 'self',
     message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} lists itself as a blocker.`,
   }),
   rule({
-    code: code('ac_blocker_missing'), select: (m) => m.graph.blockerProblems, when: (b) => b.kind !== 'self',
+    code: code('ac_blocker_missing'), waivable: false, select: (m) => m.graph.blockerProblems, when: (b) => b.kind !== 'self',
     message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} references ${b.refText}, which does not exist.`,
   }),
   rule({
-    code: code('ac_block_cycle'), select: (m) => m.graph.cycles,
+    code: code('ac_block_cycle'), waivable: false, select: (m) => m.graph.cycles,
     message: ({ cycle }) => `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.`,
   }),
   rule({
-    code: code('ac_blocked_by_unpassed'), select: (m) => m.graph.completionViolations,
+    code: code('ac_blocked_by_unpassed'), waivable: false, select: (m) => m.graph.completionViolations,
     message: ({ nodeKey, depKey, depStatus }) => `${nodeKey} is done but depends on ${depKey} (status "${depStatus}").`,
   }),
 ];

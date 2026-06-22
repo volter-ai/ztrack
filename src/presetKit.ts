@@ -334,12 +334,12 @@ export function createGenericPreset(config: GenericPresetConfig): Preset<Generic
   const rules: Rule<GenericRoot>[] = [
     // cross-issue: ids unique across the framed tracker root.
     rule<GenericRoot, { issueId: string }>({
-      code: code('duplicate_issue_id'), select: (m) => m.duplicateIssueIds,
+      code: code('duplicate_issue_id'), waivable: false, select: (m) => m.duplicateIssueIds,
       message: ({ issueId }) => `Duplicate issue id ${issueId} in the tracker.`,
     }),
     // invariant: an explicit `status:` must not contradict the GFM checkbox.
     rule<GenericRoot, { issueId: string; acId: string; ac: GAC }>({
-      code: code('checkbox_status_mismatch'), select: (m) => m.acs,
+      code: code('checkbox_status_mismatch'), waivable: false, select: (m) => m.acs,
       when: ({ ac }) => (ac.checked && ac.status !== 'passed') || (!ac.checked && ac.status === 'passed'),
       message: ({ ac }) => `AC ${ac.id} checkbox (${ac.checked ? '[x]' : '[ ]'}) disagrees with status "${ac.status}".`,
     }),
@@ -371,19 +371,19 @@ export function createGenericPreset(config: GenericPresetConfig): Preset<Generic
     }),
     // cross-tree blocking integrity over the unified dependency graph (engine-analyzed).
     rule<GenericRoot, BlockerFact>({
-      code: code('ac_self_block'), select: (m) => m.graph.blockerProblems, when: (b) => b.kind === 'self',
+      code: code('ac_self_block'), waivable: false, select: (m) => m.graph.blockerProblems, when: (b) => b.kind === 'self',
       message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} lists itself as a blocker.`,
     }),
     rule<GenericRoot, BlockerFact>({
-      code: code('ac_blocker_missing'), select: (m) => m.graph.blockerProblems, when: (b) => b.kind !== 'self',
+      code: code('ac_blocker_missing'), waivable: false, select: (m) => m.graph.blockerProblems, when: (b) => b.kind !== 'self',
       message: (b) => `AC ${formatRef({ issue: b.issueId, ac: b.acId })} references ${b.refText}, which does not exist.`,
     }),
     rule<GenericRoot, CycleFact>({
-      code: code('ac_block_cycle'), select: (m) => m.graph.cycles,
+      code: code('ac_block_cycle'), waivable: false, select: (m) => m.graph.cycles,
       message: ({ cycle }) => `Blocking cycle: ${cycle.join(' → ')} → ${cycle[0]} can never be satisfied.`,
     }),
     rule<GenericRoot, CompletionFact>({
-      code: code('ac_blocked_by_unpassed'), select: (m) => m.graph.completionViolations,
+      code: code('ac_blocked_by_unpassed'), waivable: false, select: (m) => m.graph.completionViolations,
       message: ({ nodeKey, depKey, depStatus }) => `${nodeKey} is done but depends on ${depKey} (status "${depStatus}").`,
     }),
   ];

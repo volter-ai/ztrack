@@ -106,6 +106,11 @@ export interface Finding {
   issueId?: string;
   acId?: string;
   evidenceId?: string;
+  // false ⇒ a waiver may NOT downgrade this finding. Structural-integrity violations (a
+  // block cycle, a duplicate id, a checkbox/status contradiction) can never be coherent no
+  // matter who signs off, so they stay errors even on a waived issue. Default (absent) =
+  // waivable (readiness/acceptance findings the authority can accept).
+  waivable?: boolean;
 }
 export interface Context {
   now?: string;
@@ -233,6 +238,7 @@ export interface RuleRecord<R extends CoreRoot, Item extends Located = Located> 
   phase?: 'gate' | 'transition';
   category?: RuleCategory;
   depth?: RuleDepth;
+  waivable?: boolean;  // false ⇒ a waiver can't downgrade this finding (structural invariants)
   select: (m: DerivedModel<R>) => Item[];
   when?: (item: Item, m: DerivedModel<R>) => boolean;
   message: (item: Item, m: DerivedModel<R>) => string;
@@ -367,6 +373,7 @@ function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: Derive
       ...(item.issueId ? { issueId: item.issueId } : {}),
       ...(item.acId ? { acId: item.acId } : {}),
       ...(item.evidenceId ? { evidenceId: item.evidenceId } : {}),
+      ...(r.waivable === false ? { waivable: false } : {}),
     }));
 }
 
@@ -415,7 +422,9 @@ function applyWaivers<R extends CoreRoot>(findings: Finding[], model: DerivedMod
     downgrade.set(issueId, w.approvedBy.trim());
   }
   if (!downgrade.size && !extra.length) return findings;
-  const adjusted = findings.map((f): Finding => (f.issueId && f.severity === 'error' && downgrade.has(f.issueId))
+  // A waiver downgrades a waived issue's `error` findings — EXCEPT structural invariants
+  // (waivable === false), which stay errors no matter who signs off.
+  const adjusted = findings.map((f): Finding => (f.issueId && f.severity === 'error' && f.waivable !== false && downgrade.has(f.issueId))
     ? { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${downgrade.get(f.issueId)})` }
     : f);
   return [...adjusted, ...extra];
@@ -437,7 +446,7 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
     try {
       return evalRecord(r, model);
     } catch (error) {
-      return [{ code: 'rule_threw', severity: 'error', message: `Rule '${r.code}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
+      return [{ code: 'rule_threw', severity: 'error', waivable: false, message: `Rule '${r.code}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
     }
   });
   const waived = applyWaivers(findings, model);
