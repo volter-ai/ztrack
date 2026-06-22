@@ -90,5 +90,21 @@ ok "$(yn "$(grep -c '#compdef ztrack' "$d/c.zsh")")" Y "zsh completion script ha
 zexit="$( ( cd "$d" && npx ztrack completions fish >/dev/null 2>&1 ); echo $? )"
 ok "$zexit" 1 "an unsupported shell exits nonzero with a clear error"
 
+echo "## zero-config: ztrack example + check <file.md> (no init/backend/team) — the front door"
+d="$tmp/zeroconf"; mkdir -p "$d"; ( cd "$d"
+  git init -q; git config user.email ci@x.com; git config user.name "check e2e"
+  echo "# z" > README.md; git add README.md; git commit -q -m init
+  npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null )   # installed, but NOT inited
+( cd "$d" && npx ztrack example >/dev/null 2>&1 )
+ok "$( [ -f "$d/example-issue.md" ] && echo Y || echo N )" Y "ztrack example writes example-issue.md with no init"
+red_rc="$( ( cd "$d" && npx ztrack check example-issue.md >/dev/null 2>&1 ); echo $? )"
+red_out="$( cd "$d" && npx ztrack check example-issue.md 2>&1 || true )"
+ok "$red_rc" 1 "check <file.md> on the fabricated-commit example exits nonzero (no init)"
+ok "$(yn "$(has "$red_out" 'basic_checked_ac_commit_hash_missing')")" Y "and it reports the fabricated commit (commit_hash_missing)"
+zsha="$(cd "$d" && git rev-parse --short HEAD)"
+( cd "$d" && sed "s/deadbeef/$zsha/" example-issue.md > _f.md && mv _f.md example-issue.md )
+green_rc="$( ( cd "$d" && npx ztrack check example-issue.md >/dev/null 2>&1 ); echo $? )"
+ok "$green_rc" 0 "citing a real commit turns it green (red→green, zero config)"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "check-e2e: ALL PASS"; else echo "check-e2e: $fails FAIL"; exit 1; fi

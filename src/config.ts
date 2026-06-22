@@ -57,7 +57,7 @@ function presetBooleans(preset: InitTrackerPreset): Record<string, string> {
   };
 }
 
-function installedPresetTemplate(preset: InitTrackerPreset): string {
+export function installedPresetTemplate(preset: InitTrackerPreset): string {
   let text = presetTemplate();
   for (const [token, value] of Object.entries(presetBooleans(preset))) {
     text = text.replaceAll(token, value);

@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkTracker } from './check.ts';
 import { exportTrackerRoot } from './export.ts';
@@ -135,6 +135,42 @@ async function main(): Promise<void> {
       `  ${ui.dim(`backend set to "markdown" in ${configPath}`)}`,
       '',
       ui.dim('Verify with `ztrack check`, then delete the old tracker.sqlite when satisfied.'),
+      '',
+    ].join('\n'));
+    return;
+  }
+
+  if (args[0] === 'example') {
+    const out = optionValue(args, '--out');
+    const target = out ? resolve(out) : resolve(process.cwd(), 'example-issue.md');
+    const body = [
+      '# Example: add a /health endpoint',
+      '',
+      'A demo issue for `ztrack check`. The acceptance criterion below is marked done and',
+      'cites a commit — but the SHA is fake, so the check fails. That is the whole point:',
+      'ztrack verifies the claim against real git history instead of trusting the checkbox.',
+      '',
+      '## Acceptance Criteria',
+      '',
+      '- [x] dev/01 status: passed GET /health returns 200. commit: deadbeef [E1]',
+      '',
+      '## Evidence',
+      '',
+      '- [E1] type: pr ac: dev/01 repo: your-org/your-repo number: 1 head: main justification: PR adds the endpoint and a passing test.',
+      '',
+    ].join('\n');
+    writeFileSync(target, body);
+    const shortSha = (() => { try { return git(process.cwd(), ['rev-parse', '--short', 'HEAD']) || '<real-sha>'; } catch { return '<real-sha>'; } })();
+    process.stdout.write([
+      `${statusMark('pass')} ${heading('Wrote example issue', target)}`,
+      '',
+      ui.bold('See ztrack catch a fabricated commit'),
+      stackedCommand(1, 'Run the check', `${command} check ${basename(target)}`, 'Fails: the AC cites commit deadbeef, which is not in git.'),
+      '',
+      ui.bold('Then make it pass — cite a real commit'),
+      `  ${ui.dim(`replace "deadbeef" with a real SHA (e.g. ${shortSha}) in ${basename(target)}, then re-run the check.`)}`,
+      '',
+      ui.dim('No init, backend, or team key needed — check reads the file directly.'),
       '',
     ].join('\n'));
     return;
@@ -365,6 +401,10 @@ async function main(): Promise<void> {
     return;
   }
 
+  // `check`/`export` resolve their own project (and `check <file.md>` needs none) — dispatch
+  // before createTrackerClient so zero-config file mode doesn't trip the no-config error.
+  if (await handleCheckCommand(args)) return;
+
   const client = createTrackerClient();
   if (args[0] === 'api') {
     const action = args[1];
@@ -494,8 +534,6 @@ GraphQL-shaped query against the local tracker store.
     process.stdout.write(`${JSON.stringify({ issue: issueId, acId, changed: result.changed, dryRun: args.includes('--dry-run'), itemAfter: result.itemAfter }, null, 2)}\n`);
     return;
   }
-
-  if (await handleCheckCommand(args)) return;
 
   let forwardArgs = args;
   if (args[0] === 'issue' && args[1] === 'edit') {

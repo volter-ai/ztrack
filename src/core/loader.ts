@@ -36,7 +36,7 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' 
 // Render one backend row into a self-contained, parseable issue markdown document:
 // the body markdown plus the metadata (id/title/state/assignee/labels) the backend
 // keeps in columns. This is the "issue markdown" the preset's parser consumes.
-function renderIssueMarkdown(row: Row): { id: string; body: string } {
+export function renderIssueMarkdown(row: Row): { id: string; body: string } {
   const id = str(row.identifier) || str(row.id) || str(row.number);
   const title = str(row.title);
   const body = str(row.body) || str(row.description);

@@ -43,16 +43,43 @@ screenshots, videos, approvals, and source systems.
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
-## Quickstart (under a minute)
+## Quickstart (15 seconds, zero config)
 
-> **Prerequisites:** Node ≥ 20 and `git`. That's it — issues are stored as plain
-> markdown files (pure JS, no database or Python). The `ztrack visualizer`
-> additionally needs [Bun](https://bun.sh).
->
+> **Prerequisites:** Node ≥ 20 and `git`. That's it — no database, no Python. The
+> `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+
+Watch ztrack catch a fabricated commit. No `init`, no backend, no config — like
+`eslint file.js`, you point it at a markdown file:
+
+```bash
+npx ztrack example                  # writes example-issue.md (a checked AC citing a fake SHA)
+npx ztrack check example-issue.md   # ✗ the commit it cites isn't in git
+```
+
+```text
+$ ztrack check example-issue.md
+
+✗ ztrack check failed     issues 1 • errors 1 • warnings 0
+
+CHECK-1
+╰─  ✗ error  basic_checked_ac_commit_hash_missing
+   └─ Checked AC dev/01 cites missing commit deadbeef.
+
+✗ exit 1  — the checkbox says done. the commit doesn't exist.
+```
+
+Replace `deadbeef` with a real commit SHA and it passes. That's the whole idea: a
+checked acceptance criterion must cite proof that actually exists. Point it at your
+own issue files the same way — `ztrack check path/to/issue.md`.
+
 > **Package managers:** verified on Node 20+ under **npm, pnpm, yarn (classic + Berry +
-> PnP), and bun** (`init` + `check`, library `import()` from CommonJS, and
-> `ztrack/package.json` access). The pure-JS store needs no subprocess, so Yarn PnP
-> works with no extra configuration.
+> PnP), and bun**. The pure-JS store needs no subprocess, so Yarn PnP works with no
+> extra configuration.
+
+## Adopt it into your repo
+
+When you're ready to track real work (a local issue store + a committed, editable
+validation preset + CI/MCP/agent gates), initialize a project:
 
 ```bash
 npx ztrack init --preset basic
@@ -61,21 +88,8 @@ npx ztrack issue create --title "First verified task" --label type:case --state 
 npx ztrack check
 ```
 
-Cite a fake SHA in a checked AC → exit 1. Replace it with a real commit and an
-evidence row → pass.
-
-```text
-$ ztrack check
-
-  ✓ DEMO-2  auth middleware           2 ACs, evidence rows ok
-  ✓ DEMO-3  rate limiter              1 AC, evidence rows ok
-  ✗ DEMO-1  "API returns 200"
-      basic_checked_ac_commit_hash_missing
-      cites a1b2c3d — not found in git
-
-✗ 1 error  — the agent said done. the commit doesn't exist.
-exit 1
-```
+See [Adopting ztrack](docs/ADOPTING.md) for the full path (CI gate, committed
+validated root, MCP, and the agent stop-hook loop).
 
 ## How it works
 

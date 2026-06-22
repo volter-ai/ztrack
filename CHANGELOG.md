@@ -2,6 +2,21 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.10.0
+
+- **`ztrack check <file.md>` — zero-config, eslint-style.** Point it at any issue-markdown
+  file and it validates with the bundled `basic` preset: no `init`, no backend, no team
+  key. Commit citations are verified against the current git repo, so the red→green moment
+  works out of the box. The bundled preset is compiled in-process (no on-disk install). With
+  no file argument, `check` still validates the live tracker project as before.
+- **`ztrack example`** — writes a self-contained `example-issue.md` whose checked AC cites a
+  *fabricated* commit, plus the one-liner to run it. `ztrack check example-issue.md` → red;
+  replace the fake SHA with a real one → green. The 15-second first-run demo.
+- **README quickstart rewritten value-first**: it now opens with the zero-config
+  `example` → `check <file>` red→green, and demotes the `init`/team/backend flow to an
+  "Adopt it into your repo" section. New `example` command added to help, completions, and
+  the e2e gate.
+
 ## 0.9.0
 
 - **The Python/SQLite `local` backend is removed.** ztrack is now pure JS end to end —

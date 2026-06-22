@@ -4,7 +4,7 @@
 
 // Top-level commands worth completing (the resource/action surface a user types first).
 const TOP_LEVEL = [
-  'init', 'check', 'export', 'issue', 'loop', 'waiver', 'preset', 'fmt', 'lint',
+  'example', 'init', 'migrate-local', 'check', 'export', 'issue', 'loop', 'waiver', 'preset', 'fmt', 'lint',
   'tx', 'ac', 'evidence', 'visualizer', 'mcp', 'completions',
 ];
 

@@ -14,6 +14,11 @@ export function printHelp(): void {
 ${ui.bold('Usage')}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
+${helpSection('top', 'Try it (zero config)', [
+    [`${command} example`, 'write a demo issue file'],
+    [`${command} check <file.md>`, 'validate a file — no init/backend'],
+  ])}
+
 ${helpSection('top', 'Core', [
     [`${command} init [--team KEY] [--preset basic|simple-sdlc|simple-spec|speckit]`, 'create local config'],
     [`${command} check [--issues A-1,A-2]`, 'verify checked claims'],
@@ -33,7 +38,7 @@ ${helpSection('bottom', 'Data', [
   ])}
 
 ${ui.bold('Resources')}
-  init, migrate-local, issue, project, search, view, api, check, export
+  example, init, migrate-local, issue, project, search, view, api, check, export
   fmt, lint, tx, evidence, ac, mcp, visualizer, loop, waiver, preset, completions
 
 ${ui.dim(`Shell completion:  source <(${command} completions bash)   # or zsh`)}
