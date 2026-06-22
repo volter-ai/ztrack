@@ -1,5 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { TrackerConfig } from './types.ts';
 
@@ -51,6 +53,13 @@ export function trackerValidationEntrypointPath(projectRoot: string): string {
   return join(projectRoot, stateDirName(), 'tracker', 'validation', 'preset.cjs');
 }
 
+// The pristine copy of the installed template, recorded at init so `ztrack preset
+// upgrade` can 3-way merge new upstream rules into an edited preset without clobbering
+// edits. Committed (not gitignored) so the merge base is reproducible.
+export function trackerValidationBasePath(projectRoot: string): string {
+  return join(projectRoot, stateDirName(), 'tracker', 'validation', '.preset.base.cjs');
+}
+
 function presetBooleans(preset: InitTrackerPreset): Record<string, string> {
   return {
     __ZTRACK_PRESET_NAME__: preset,
@@ -72,8 +81,62 @@ function installedPresetTemplate(preset: InitTrackerPreset): string {
 function installPreset(projectRoot: string, preset: InitTrackerPreset): string {
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
   mkdirSync(dirname(entrypoint), { recursive: true });
-  if (!existsSync(entrypoint)) writeFileSync(entrypoint, `${installedPresetTemplate(preset)}\n`);
+  const rendered = `${installedPresetTemplate(preset)}\n`;
+  if (!existsSync(entrypoint)) writeFileSync(entrypoint, rendered);
+  // record the pristine base for `ztrack preset upgrade`'s 3-way merge.
+  const basePath = trackerValidationBasePath(projectRoot);
+  if (!existsSync(basePath)) writeFileSync(basePath, rendered);
   return entrypoint;
+}
+
+export interface UpgradePresetResult {
+  status: 'updated' | 'up-to-date' | 'conflicts' | 'no-base';
+  entrypoint: string;
+  installedFrom: InitTrackerPreset;
+  conflicts: number;
+}
+
+// 3-way merge: apply the diff `base` -> `theirs` (new upstream) onto `ours` (the edited
+// file), via `git merge-file`. Returns the merged text and conflict count (0 = clean).
+function threeWayMerge(ours: string, base: string, theirs: string): { text: string; conflicts: number } {
+  const dir = mkdtempSync(join(tmpdir(), 'ztrack-preset-merge-'));
+  try {
+    const o = join(dir, 'ours'); const b = join(dir, 'base'); const t = join(dir, 'theirs');
+    writeFileSync(o, ours); writeFileSync(b, base); writeFileSync(t, theirs);
+    const r = spawnSync('git', ['merge-file', '-p', '-L', 'your edits', '-L', 'installed base', '-L', 'new upstream', o, b, t], { encoding: 'utf8' });
+    if (r.error) throw new Error(`git merge-file unavailable: ${r.error.message}`);
+    const status = r.status ?? 0;
+    if (status < 0) throw new Error(`git merge-file failed: ${r.stderr || 'unknown error'}`);
+    return { text: r.stdout, conflicts: status };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Upgrade the repo-local preset: 3-way merge the current bundled template (for the
+ * variant this repo installed) into the edited preset.cjs, preserving local edits.
+ * Conflicts are written as `<<<<<<<` markers for a human/agent to resolve. The pristine
+ * base advances to the new upstream on a clean OR conflicted merge.
+ */
+export function upgradeTrackerPreset(projectRoot: string): UpgradePresetResult {
+  const config = loadTrackerConfig(projectRoot);
+  const installedFrom = config.validation?.installedFrom;
+  const entrypoint = trackerValidationEntrypointPath(projectRoot);
+  if (!installedFrom || !(INIT_TRACKER_PRESETS as readonly string[]).includes(installedFrom) || !existsSync(entrypoint)) {
+    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <basic|simple-sdlc|simple-spec|speckit>`.");
+  }
+  const variant = installedFrom as InitTrackerPreset;
+  const basePath = trackerValidationBasePath(projectRoot);
+  if (!existsSync(basePath)) return { status: 'no-base', entrypoint, installedFrom: variant, conflicts: 0 };
+  const base = readFileSync(basePath, 'utf8');
+  const upstream = `${installedPresetTemplate(variant)}\n`;
+  if (base === upstream) return { status: 'up-to-date', entrypoint, installedFrom: variant, conflicts: 0 };
+  const ours = readFileSync(entrypoint, 'utf8');
+  const merged = threeWayMerge(ours, base, upstream);
+  writeFileSync(entrypoint, merged.text);
+  writeFileSync(basePath, upstream);
+  return { status: merged.conflicts > 0 ? 'conflicts' : 'updated', entrypoint, installedFrom: variant, conflicts: merged.conflicts };
 }
 
 /**

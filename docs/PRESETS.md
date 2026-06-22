@@ -74,6 +74,16 @@ sets the inline flags. Most teams edit the records in that file instead of creat
 new package. (The typed factory those records mirror is `createGenericPreset`;
 `src/presetInstall.test.ts` guards that the installed file stays equivalent to it.)
 
+### Upgrading
+
+`ztrack init` also records a pristine copy of the template at
+`.volter/tracker/validation/.preset.base.cjs` (commit it). When a newer ztrack ships
+improved rules, `ztrack preset upgrade` **3-way merges** the new upstream rules into
+your edited `preset.cjs`, preserving your edits — overlapping changes are written as
+`<<<<<<<` conflict markers for you (or an agent) to resolve, then `ztrack check`. The
+engine that runs the merge is your installed ztrack, so the upgrade only moves when your
+lockfile does.
+
 A preset defines validation as ONE typed pipeline: the loader (the only impure
 boundary) reads the backend and calls the preset's own `loadContext` to gather
 its observed facts → an mdast parser produces a candidate `root` →

@@ -11,7 +11,7 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyAcMutation } from './mutate.ts';
 import type { AcStatus } from './mutate.ts';
-import { initTrackerPresets, initTrackerProject, projectRootFrom } from './config.ts';
+import { initTrackerPresets, initTrackerProject, projectRootFrom, upgradeTrackerPreset } from './config.ts';
 import { serveMcp } from './mcp.ts';
 import { serveTrackerApi } from './server.ts';
 import { createTrackerClient } from './sdk.ts';
@@ -81,6 +81,33 @@ async function main(): Promise<void> {
       '',
     ].join('\n'));
     return;
+  }
+
+  if (args[0] === 'preset') {
+    const action = args[1];
+    if (!action || action === '--help' || action === '-h' || action === 'help') {
+      process.stdout.write(
+        `Usage: ${command} preset upgrade\n\n` +
+        `upgrade  3-way merge new upstream preset rules into your edited\n` +
+        `         .volter/tracker/validation/preset.cjs, preserving your edits. Conflicts are\n` +
+        `         written as <<<<<<< markers to resolve; then run '${command} check'.\n`);
+      return;
+    }
+    if (action === 'upgrade') {
+      const result = upgradeTrackerPreset(projectRootFrom());
+      if (result.status === 'up-to-date') {
+        process.stdout.write(`${statusMark('pass')} ${ui.green('Preset is up to date')} ${ui.dim(`with the installed ztrack (${result.installedFrom})`)}\n`);
+      } else if (result.status === 'no-base') {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow('No pristine base recorded')} ${ui.dim("— this repo was init'd before upgrade support.")}\n  ${ui.dim('Seed')} ${ui.dim(result.entrypoint.replace('preset.cjs', '.preset.base.cjs'))} ${ui.dim('from the ztrack version you installed, then re-run.')}\n`);
+      } else if (result.status === 'updated') {
+        process.stdout.write(`${statusMark('pass')} ${ui.green('Merged new upstream rules')} ${ui.dim(`into ${result.entrypoint} (no conflicts)`)}\n  ${ui.dim(`Review the diff, then run '${command} check'.`)}\n`);
+      } else {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`Merged with ${result.conflicts} conflict(s)`)} ${ui.dim(`in ${result.entrypoint}`)}\n  ${ui.dim(`Resolve the <<<<<<< markers, then run '${command} check'.`)}\n`);
+        process.exitCode = 1;
+      }
+      return;
+    }
+    throw new Error(`ztrack preset: unknown action '${action}'. Try '${command} preset upgrade'.`);
   }
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {
