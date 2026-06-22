@@ -280,4 +280,18 @@ assert "ztrack:reviewing" not in rows["AUTO-4"].get("labels", []), rows
 PY
 printf 'autonomous profile setup ok\n'
 
+repo="$(new_repo "require-esm-guard")"
+cd "$repo"
+real_sha="$(git rev-parse --short HEAD)"
+npx ztrack init --team APP --preset basic >/dev/null
+npx ztrack issue scaffold --title "Guard" > body.md
+mark_first_ac_passed basic "$real_sha"
+npx ztrack issue create --title "Guard" --label type:case --state "In Progress" --assignee dry-run --body-file body.md >/dev/null
+# The installed preset.cjs does `require('ztrack/preset-kit')`; ztrack is ESM, so without a
+# CJS `require` export condition this is `require()` of an ES module — which Node <22.12 and
+# Yarn PnP reject. Disabling native require(esm) reproduces that environment; this must pass.
+NODE_OPTIONS="--no-experimental-require-module" npx ztrack check --json > require-esm.json
+test "$(json_field require-esm.json summary.status)" = "pass"
+printf 'require(esm) guard ok (preset loads without native require-esm)\n'
+
 printf 'fresh-project dry run complete\n'

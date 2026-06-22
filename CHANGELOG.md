@@ -2,6 +2,21 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.7.1
+
+- **Fix: `ztrack check` failed on Node < 22.12 and under Yarn PnP** with `require() of ES
+  Module … not supported`. ztrack is ESM (`"type": "module"`), and the installed
+  `preset.cjs` does `require('ztrack/preset-kit')` — a `require()` of an ES module, which
+  only Node ≥ 22.12 supports natively and Yarn PnP never does. ztrack promises Node ≥ 20, so
+  this was broken on its own minimum. The `./preset-kit` export now has a `require` condition
+  pointing at a self-contained CommonJS bundle (`dist/preset-kit.cjs`), so `require()` gets
+  real CJS. Verified under pnpm, Yarn PnP, and with native `require(esm)` disabled (Node-20
+  behavior); guarded in CI (`fresh-project-dry-run.sh` runs a check with
+  `--no-experimental-require-module`).
+- **Docs:** note that under Yarn PnP you should use `backend: "markdown"` (the default Python
+  backend's helper script isn't reachable from inside PnP's zip store) or `nodeLinker:
+  node-modules`.
+
 ## 0.7.0
 
 - **New: `ztrack completions <bash|zsh>`** — prints a shell completion script for the CLI

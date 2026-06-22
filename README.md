@@ -48,6 +48,10 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 > **Prerequisites:** Node ≥ 20, `git`, and `python3` on PATH (the default local
 > backend is a small Python/SQLite program; or set `backend: "markdown"` to avoid
 > Python). The `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+>
+> **Yarn PnP:** ztrack works under Plug'n'Play — use `backend: "markdown"` (PnP's
+> zip store can't expose the Python backend's helper script to a subprocess), or set
+> `nodeLinker: node-modules`. npm and pnpm work out of the box.
 
 ```bash
 npx ztrack init --preset basic

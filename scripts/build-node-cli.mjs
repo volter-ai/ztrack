@@ -72,3 +72,18 @@ if (vizCore.status !== 0) {
   process.stderr.write(vizCore.stderr || vizCore.stdout || 'visualizer core bundle failed\n');
   process.exit(vizCore.status ?? 1);
 }
+
+// A self-contained CommonJS bundle of preset-kit. The installed preset.cjs does
+// `require('ztrack/preset-kit')`, and the package is ESM (`"type": "module"`), so the
+// `./preset-kit` export's `require` condition must point at REAL CommonJS — otherwise it's a
+// `require()` of an ES module, which only Node >=22.12 supports natively and Yarn PnP never
+// does (ztrack promises Node >=20). Bundling zod/mdast in keeps it free of external ESM.
+const kitCjs = spawnSync(
+  'bun',
+  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter-ai-dev/twin', '--outfile=dist/preset-kit.cjs'],
+  { cwd: packageRoot, encoding: 'utf8' },
+);
+if (kitCjs.status !== 0) {
+  process.stderr.write(kitCjs.stderr || kitCjs.stdout || 'preset-kit CJS bundle failed\n');
+  process.exit(kitCjs.status ?? 1);
+}
