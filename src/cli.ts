@@ -23,6 +23,7 @@ import { optionValue } from './cliArgs.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
+import { handleCompletionsCommand } from './cliCompletions.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 
 async function readStdinIfPiped(): Promise<string | undefined> {
@@ -65,6 +66,9 @@ async function main(): Promise<void> {
     printHelp();
     return;
   }
+
+  // `completions` is tracker-independent — handle it before anything touches config/client.
+  if (handleCompletionsCommand(args, command)) return;
 
   if (
     args[0] === 'issue' &&

@@ -79,5 +79,16 @@ out="$(check_out "$d")"
 ok "$(has "$out" 'case_missing_assignee')" 0 "canceled: no missing-assignee finding"
 ok "$(has "$out" 'case_missing_acceptance_criteria')" 0 "canceled: no missing-AC finding"
 
+echo "## shell completions — the generated scripts are valid and cover the commands"
+d="$(new_repo completions)"
+( cd "$d" && npx ztrack completions bash > c.bash 2>/dev/null )
+ok "$( bash -n "$d/c.bash" >/dev/null 2>&1 && echo Y || echo N )" Y "bash completion script is syntactically valid (bash -n)"
+ok "$(yn "$(grep -c 'complete -F' "$d/c.bash")")" Y "bash script registers a completion function"
+ok "$(yn "$(grep -cE '\bloop\b.*\bwaiver\b|\bwaiver\b.*\bloop\b' "$d/c.bash")")" Y "completes the loop + waiver commands"
+( cd "$d" && npx ztrack completions zsh > c.zsh 2>/dev/null )
+ok "$(yn "$(grep -c '#compdef ztrack' "$d/c.zsh")")" Y "zsh completion script has a #compdef header"
+zexit="$( ( cd "$d" && npx ztrack completions fish >/dev/null 2>&1 ); echo $? )"
+ok "$zexit" 1 "an unsupported shell exits nonzero with a clear error"
+
 echo
 if [ "$fails" -eq 0 ]; then echo "check-e2e: ALL PASS"; else echo "check-e2e: $fails FAIL"; exit 1; fi
