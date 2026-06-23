@@ -69,6 +69,10 @@ export const DefaultIssueSchema = z.object({
   labels: z.array(z.string().min(1)).optional(),               // primitive
   relations: z.array(DefaultRelationSchema).optional(),         // primitive
   children: z.array(z.string().min(1)).optional(),             // primitive
+  // unknown `## X` body sections (not Acceptance Criteria / Waivers) are CARRIED verbatim so
+  // a patch/fmt round-trip never silently drops human-authored prose. (This preset CHOOSES to
+  // carry; another could reject.) Each entry is the raw `## …` section markdown.
+  notes: z.array(z.string().min(1)).optional(),
 }).strict();
 
 export const DefaultRootSchema = z.object({ issues: z.array(DefaultIssueSchema) }).strict();
@@ -99,16 +103,39 @@ function parseAcLine(line: string): { id: string; version?: number; text: string
   return noV ? { id: noV[1]!, text: noV[2]!.trim() } : { id: line, text: line };
 }
 
+// Carve out unknown top-level `## X` sections (anything but Acceptance Criteria / the core
+// Waivers section) so the known structure parses normally and the rest round-trips verbatim.
+function splitNotes(body: string): { known: string; notes: string[] } {
+  const known: string[] = [];
+  const notes: string[] = [];
+  let cur: string[] | null = null;
+  for (const line of body.split('\n')) {
+    const h = /^##\s+(.+?)\s*$/.exec(line);
+    if (h) {
+      if (cur) { notes.push(cur.join('\n').trim()); cur = null; }
+      const name = h[1]!.toLowerCase();
+      if (/^acceptance criteria/.test(name) || /^waivers\b/.test(name)) { known.push(line); continue; }
+      cur = [line]; // start carrying an unknown section
+      continue;
+    }
+    if (cur) cur.push(line); else known.push(line);
+  }
+  if (cur) notes.push(cur.join('\n').trim());
+  return { known: known.join('\n'), notes: notes.filter(Boolean) };
+}
+
 function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
   // Metadata comes STRUCTURED from the record's columns; only the content (summary, pr,
   // relations, ACs) is parsed out of the body markdown. id/title/status/assignee/labels are
-  // never re-derived from synthesized markdown.
+  // never re-derived from synthesized markdown. Unknown `## X` sections are carried verbatim.
   const issue: Record<string, unknown> = {
     id: record.id, title: record.title, status: record.status || 'draft',
     assignee: record.assignee ?? '', summary: '', acceptanceCriteria: [],
     ...(record.labels?.length ? { labels: record.labels } : {}),
   };
-  const tree = toMdast(record.body);
+  const { known, notes } = splitNotes(record.body);
+  if (notes.length) issue.notes = notes;
+  const tree = toMdast(known);
   let inAc = false;
 
   for (const node of tree.children ?? []) {
@@ -209,6 +236,7 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
     if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
     if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
   }
+  for (const note of issue.notes ?? []) out.push('', note);
   const columns: IssueColumns = {
     title: issue.title, status: issue.status,
     ...(issue.assignee ? { assignee: issue.assignee } : {}),

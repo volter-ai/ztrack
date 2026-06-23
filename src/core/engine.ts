@@ -550,6 +550,14 @@ export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecor
 /** Validate an already-parsed Root (the exported, validated model) against the same
  *  schema + rules — the entry point for `check --input <root.json>` and CI. */
 export function checkRoot<R extends CoreRoot>(preset: Preset<R>, root: unknown, ctx: Context = {}): CheckResult<R> {
+  // Tolerate the exported `{ issues, waivers }` shape (see exportTrackerRoot): lift the
+  // waivers into the context — where applyWaivers honors them — and validate only `issues`
+  // against the strict per-preset root schema.
+  if (root && typeof root === 'object' && Array.isArray((root as { waivers?: unknown }).waivers)) {
+    const { waivers, ...rest } = root as { waivers: WaiverDirective[] } & Record<string, unknown>;
+    const merged: Context = { ...ctx, waivers: [...(ctx.waivers ?? []), ...waivers] };
+    return validateAndRun(preset, merged, rest, true);
+  }
   return validateAndRun(preset, ctx, root, true);
 }
 

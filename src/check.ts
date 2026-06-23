@@ -51,18 +51,13 @@ export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptio
   const observed = preset.loadContext
     ? await preset.loadContext({ projectRoot, verifyCommits: options.verifyCommits, root: root as CoreRoot })
     : {};
-  // A committed root may carry the `## Waivers` directives alongside `issues` (see
-  // exportTrackerRoot). Lift them into the context — where checkRoot already applies
-  // them — and validate only the issues against the strict per-preset root schema.
-  const rootObj = root && typeof root === 'object' ? root as Record<string, unknown> : undefined;
-  const waivers = rootObj && Array.isArray(rootObj.waivers) ? rootObj.waivers as Context['waivers'] : undefined;
-  const rootForCheck = waivers ? { issues: rootObj!.issues } : root;
   const context: Context = {
     ...observed,
-    ...(waivers ? { waivers } : {}),
     ...(options.categories ? { categories: options.categories } : {}),
     ...(options.now ? { now: options.now } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
   };
-  return checkRoot(preset, rootForCheck, context);
+  // A committed root may carry the `## Waivers` directives alongside `issues` (see
+  // exportTrackerRoot); checkRoot lifts them into the context and validates only `issues`.
+  return checkRoot(preset, root, context);
 }
