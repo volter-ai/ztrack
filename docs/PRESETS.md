@@ -153,7 +153,7 @@ PATCH the typed model and the preset re-serializes:
 # the JSON fields are the preset's SCHEMA shape — run `ztrack issue view` to see it
 ztrack ac patch <issue> <acId> --json '{"status":"passed"}'
 ztrack issue patch <issue> --json '{"status":"in-review"}'
-ztrack fmt                                  # canonicalize through the preset's serialize
+ztrack fmt --issue <issue>                  # canonicalize that issue through the preset's serialize
 ```
 
 Mutation is `parse → edit the typed object → serialize`, so the file always

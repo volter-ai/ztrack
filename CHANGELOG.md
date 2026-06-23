@@ -2,6 +2,16 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.19.2
+
+- **Audited every taught command line + fixed stale help.** Running the whole taught surface
+  caught: `ac --help` taught a removed DSL (`ac check|uncheck|set-status` — "unsupported
+  command"; the real command is `ac patch`); `check --help` showed a short stale usage that
+  **shadowed** the real target-grammar help; `issue --help` omitted `patch`; and docs taught bare
+  `ztrack fmt` (it needs `--issue`/`--input`). All fixed. The cookbook e2e now exercises the full
+  surface (issue list/view/patch, ac patch, export, lint, fmt, loop, waiver, completions, sync
+  error, server-command recognition) and asserts the help matches reality, so it can't drift.
+
 ## 0.19.1
 
 - **Cookbook-tested the documented recipes.** A new black-box cookbook e2e runs the README

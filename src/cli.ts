@@ -436,7 +436,7 @@ async function main(): Promise<void> {
   // NEVER the Stop-hook gate (`--auto-scope`), which must not hit the API mid-loop, and never a
   // file check (`<x>.md`) which isn't tracker-bound. (check is read-only, so before suffices.)
   if (args[0] === 'check') {
-    const userCheck = !args.includes('--auto-scope') && !args.slice(1).some((a) => a.endsWith('.md'));
+    const userCheck = !args.includes('--auto-scope') && !args.slice(1).some((a) => a.endsWith('.md') || a === '--help' || a === '-h' || a === 'help');
     let root = '';
     try { root = projectRootFrom(); } catch { /* no project: nothing to sync */ }
     if (userCheck && root) await githubSync.syncLinked(root, { pull: true, push: true }).catch(() => {});

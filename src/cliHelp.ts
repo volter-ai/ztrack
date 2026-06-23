@@ -103,8 +103,9 @@ export function printResourceHelp(resource: string): boolean {
   if (resource === 'issue') {
     process.stdout.write(`Usage: ${command} issue <action> [args...]
 
-Actions: scaffold, list, view, get, create, edit, close, comment, comments,
+Actions: scaffold, list, view, get, create, edit, patch, close, comment, comments,
 history, relate, relations, unrelate.
+  ${command} issue patch <issue> --json '{...}'   overlay the preset's schema fields (see \`issue view\`)
 `);
     return true;
   }
@@ -116,14 +117,8 @@ history, relate, relations, unrelate.
     process.stdout.write(`Usage: ${command} ${resource} <text-or-name> [args...]\n`);
     return true;
   }
-  if (resource === 'check' || resource === 'export') {
-    process.stdout.write(`Usage: ${command} check [--input root.json] [--issues A-1,A-2] [--categories name=N,...] [--verify-commits] [--fail-on-warning] [--json]
-       ${command} export [--out root.json] [--issues A-1,A-2]
-
-check validates the tracker (or a committed validated root via --input); export writes the validated root.
-`);
-    return true;
-  }
+  // `check`/`export --help` fall through to handleCheckCommand, the single source of truth for
+  // their (target-grammar-aware) usage — do NOT shadow it with a short stale copy here.
   if (resource === 'visualizer' || resource === 'viz') {
     process.stdout.write(`Usage: ${command} visualizer [--preset default|speckit] [--port n] [--project dir]
 
@@ -143,7 +138,11 @@ Examples:
     return true;
   }
   if (resource === 'ac') {
-    process.stdout.write(`Usage: ${command} ac <check|uncheck|set-status> <issue> <acId> [--commit sha] [--evidence E1,E2] [--proof P1] [--status s] [--dry-run]\n`);
+    process.stdout.write(`Usage: ${command} ac patch <issue> <acId> --json '{...}' [--dry-run]
+
+Overlays the preset's AC schema fields onto one acceptance criterion (run \`${command} issue view\`
+to see the shape), then re-serializes through the preset — e.g. \`{"checked":true,"status":"passed"}\`.
+`);
     return true;
   }
   if (resource === 'sync') {

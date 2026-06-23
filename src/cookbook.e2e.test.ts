@@ -58,3 +58,64 @@ describe('cookbook: the documented local getting-started recipe', () => {
     expect(r.out).toMatch(/deadbeef/);
   });
 });
+
+// Every command line we TEACH (README + help + docs) must actually run and the help must match
+// reality — caught `ac --help` teaching the removed check/uncheck/set-status DSL and `check --help`
+// shadowing the real target-grammar usage with a stale copy.
+describe('cookbook: the full taught command surface', () => {
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-surface-'));
+    mkdirSync(join(root, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    expect(zt(['init']).code).toBe(0);
+    writeFileSync(join(root, 'body.md'), zt(['issue', 'scaffold', '--title', 'First case']).out);
+    expect(zt(['issue', 'create', '--title', 'First case', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'body.md']).code).toBe(0);
+  });
+  afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+
+  test('help matches reality (no stale/shadowed usage)', () => {
+    const ac = zt(['ac', '--help']).out;
+    expect(ac).toMatch(/ac patch/);
+    expect(ac).not.toMatch(/check\|uncheck\|set-status/);   // the removed DSL
+    const check = zt(['check', '--help']).out;
+    expect(check).toMatch(/<issue-id> \| <file\.md>/);       // the real target grammar, not the stale short copy
+    expect(check).toMatch(/--auto-scope/);
+    expect(zt(['issue', '--help']).out).toMatch(/patch/);
+  }, 30_000);
+
+  test('read commands run', () => {
+    for (const args of [['issue', 'list'], ['issue', 'view', 'LOCAL-1'], ['export'], ['export', '--out', 'root.json'], ['lint'], ['completions', 'bash']]) {
+      expect(zt(args).code, `\`ztrack ${args.join(' ')}\` should run`).toBe(0);
+    }
+    expect(zt(['completions', 'bash']).out.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  test('loop lifecycle runs', () => {
+    expect(zt(['loop', 'start', 'LOCAL-1']).code).toBe(0);
+    expect(zt(['loop', 'status']).code).toBe(0);
+    expect(zt(['loop', 'stop']).code).toBe(0);
+  });
+
+  test('sync with no link errors helpfully (not a crash)', () => {
+    const r = zt(['sync', 'github']);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toMatch(/--repo|init --sync/);
+  });
+
+  test('server commands are recognized (not "unknown command") — help is testable; the servers aren\'t', () => {
+    // mcp serve / visualizer are long-running; assert they are KNOWN commands via their help.
+    expect(zt(['visualizer', '--help']).code).toBe(0);
+    expect(zt(['visualizer', '--help']).out).toMatch(/visualizer/);
+    expect(zt(['mcp', '--help']).out).not.toMatch(/unknown/i);
+  }, 30_000);
+
+  test('mutation commands run (last — they dirty the issue): patch, ac patch, fmt, waiver', () => {
+    expect(zt(['issue', 'patch', 'LOCAL-1', '--json', '{"status":"ready"}']).code).toBe(0);
+    expect(zt(['ac', 'patch', 'LOCAL-1', 'dev/01', '--json', '{"checked":true,"status":"passed"}']).code).toBe(0);
+    expect(zt(['fmt', '--issue', 'LOCAL-1']).code).toBe(0);
+    // a checked AC with no evidence now fails check; `waiver sign` (taught in the README) records
+    // an acknowledgement for one finding code, then `waiver status` lists it.
+    expect(zt(['waiver', 'sign', 'LOCAL-1', '--code', 'checked_ac_no_evidence', '--reason', 'demo']).code).toBe(0);
+    expect(zt(['waiver', 'status', 'LOCAL-1']).code).toBe(0);
+  }, 30_000);
+});
