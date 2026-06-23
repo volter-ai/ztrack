@@ -156,14 +156,22 @@ export function ensureTrackerGitignore(root: string): void {
   const gitignorePath = resolve(root, '.gitignore');
   const ignoreMarker = '# ztrack (added by ztrack init)';
   const stateDir = stateDirName();
+  // The issue store is COMMITTED for a local-only tracker (so clones, CI, and git worktrees see
+  // the issues — `ztrack check` in CI must not silently pass an empty tracker, and a per-worktree
+  // gate needs the issues present), but IGNORED for a tracker LINKED to GitHub (there the provider
+  // is the source of truth and `ztrack sync` repopulates the local cache). The twin/sync runtime
+  // (event log, poll cursors, bindings/base/conflicts) is always machine-local cache.
+  const linked = (() => { try { return !!loadTrackerConfig(root).sync; } catch { return false; } })();
   const managed = [
     ignoreMarker,
     `${stateDir}/tracker/tracker.sqlite`,
     `${stateDir}/tracker/tracker.sqlite-*`,
     `${stateDir}/tracker/tracker.sqlite.lock`,
     `${stateDir}/tracker/local-store.json`,
-    `${stateDir}/tracker/markdown/`,
+    ...(linked ? [`${stateDir}/tracker/markdown/`] : []),
     `${stateDir}/agent-dispatch/`,
+    `${stateDir}/github/`,
+    `${stateDir}/sync/`,
     `${stateDir}/.ztrack-loop.json`,
     `${stateDir}/.ztrack-loop-iter-*`,
     `${stateDir}/.ztrack-loop-exempt-*`,

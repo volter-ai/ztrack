@@ -2,6 +2,18 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.20.0
+
+- **The issue store is now committed for a local tracker** (and still ignored for a linked one).
+  Testing the real dev workflows found `.volter/tracker/markdown/` was always gitignored, so a
+  git **worktree, a fresh clone, and CI all saw an EMPTY tracker** — the per-worktree gate the
+  Stop hook advertises was broken, and `ztrack check` in CI on a fresh clone was a silent
+  false-green. Now `ztrack init` commits the store (clones/CI/worktrees verify the real issues),
+  while `ztrack init --sync github` keeps it ignored (GitHub is the source of truth; `ztrack sync`
+  repopulates the local cache). The sync runtime (`.volter/github/`, `.volter/sync/`) is always
+  ignored. Verified: branch-scoped check/loop in a real git repo; a fresh clone of a local
+  tracker sees + verifies the issues; a linked init still ignores the store.
+
 ## 0.19.2
 
 - **Audited every taught command line + fixed stale help.** Running the whole taught surface

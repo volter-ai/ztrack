@@ -6,7 +6,9 @@
 # issue THIS checkout is for — resolved from the git branch/worktree name. Other
 # issues are surfaced as informational, not blocking. Unresolved scope fails closed
 # (gates everything). Drop the same hook into N worktrees and each scopes itself —
-# no shared marker file, no coordination.
+# no shared marker file, no coordination. (A worktree sees the issues only when the
+# store is committed — the default for a LOCAL tracker. A tracker LINKED to GitHub
+# gitignores the store, so run `ztrack sync` in the worktree first to populate it.)
 #
 # IMPORTANT: the repo-local preset (.volter/tracker/validation/preset.mts) imports ztrack
 # via `import 'ztrack/preset-kit'`, so ztrack must be an INSTALLED dependency of this
