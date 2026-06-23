@@ -42,6 +42,7 @@ function issueEditArgs(identifier: string, input: TrackerIssueUpdate): string[] 
   if (input.title) args.push('--title', input.title);
   if (input.body !== undefined) args.push('--body', input.body);
   if (input.state) args.push('--state', input.state);
+  if (input.assignee !== undefined) args.push('--assignee', input.assignee);
   if (input.project) args.push('--project', input.project);
   if (input.removeProject) args.push('--remove-project');
   if (input.parent) args.push('--parent', input.parent);

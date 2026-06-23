@@ -10,7 +10,8 @@ import { lintIssueBody } from './lint.ts';
 import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
-import { framedFromView } from './core/loader.ts';
+import { viewToRecord, columnsToEdit } from './core/loader.ts';
+import type { IssueRecord } from './core/engine.ts';
 import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
@@ -42,14 +43,6 @@ async function activePresetScaffold(title: string): Promise<string | undefined> 
   } catch {
     return undefined;
   }
-}
-
-// `fmt` = the preset's OWN grammar, both directions: parse -> validate -> serialize.
-// There is no second canonicalizer; a read-only adapter preset (no serialize) can't fmt.
-async function presetCanonicalize(text: string): Promise<string> {
-  const root = projectRootFrom();
-  const preset = await resolveTrackerValidation(loadTrackerConfig(root), root);
-  return canonicalizeBody(preset, text);
 }
 
 // The issue's `## Waivers` section is a list of located waiver directives, one per row:
@@ -314,18 +307,21 @@ async function main(): Promise<void> {
     const issueId = optionValue(args, '--issue');
     const write = args.includes('--write');
     const checkOnly = args.includes('--check');
-    let text: string;
+    const projRoot = projectRootFrom();
+    const preset = await resolveTrackerValidation(loadTrackerConfig(projRoot), projRoot);
+    const fmtClient = (issueId !== '') ? createTrackerClient() : null;
+    let record: IssueRecord;
     if (inputPath) {
-      text = readFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), 'utf8');
+      // a standalone file carries no columns; canonicalize the body content with a placeholder
+      record = { id: 'fmt', title: 'fmt', status: 'draft', body: readFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), 'utf8') };
     } else if (issueId) {
-      const fmtClient = createTrackerClient();
-      const issue = await fmtClient.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,body' });
-      text = framedFromView(issue as Record<string, unknown>, issueId);
+      const issue = await fmtClient!.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
+      record = viewToRecord(issue as Record<string, unknown>, issueId);
     } else {
       throw new Error("tracker fmt: provide --issue <id> or --input <file> (plus --write to apply, --check to verify)");
     }
-    const formatted = await presetCanonicalize(text);
-    const canonical = text === formatted;
+    const result = canonicalizeBody(preset, record);
+    const canonical = result.body === record.body;
     if (checkOnly) {
       process.stdout.write(canonical ? 'canonical\n' : 'NOT canonical (run tracker fmt --write)\n');
       process.exitCode = canonical ? 0 : 1;
@@ -334,16 +330,15 @@ async function main(): Promise<void> {
     if (write) {
       if (canonical) { process.stdout.write('already canonical\n'); return; }
       if (issueId) {
-        const fmtClient = createTrackerClient();
-        await fmtClient.issue.edit(issueId, { body: formatted });
+        await fmtClient!.issue.edit(issueId, columnsToEdit(result.body, result.columns, record));
         process.stdout.write(`formatted ${issueId}\n`);
       } else {
-        writeFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), formatted);
+        writeFileSync(isAbsolute(inputPath!) ? inputPath! : resolve(process.cwd(), inputPath!), result.body);
         process.stdout.write(`formatted ${inputPath}\n`);
       }
       return;
     }
-    process.stdout.write(formatted);
+    process.stdout.write(result.body);
     return;
   }
 
@@ -483,13 +478,16 @@ GraphQL-shaped query against the local tracker store.
     }
     let patch: Record<string, unknown>;
     try { patch = JSON.parse(json) as Record<string, unknown>; }
-    catch { throw new Error('tracker patch: --json must be a JSON object'); }
-    const issue = await client.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,body' });
-    const framed = framedFromView(issue as Record<string, unknown>, issueId);
+    catch { throw new Error('tracker patch: --json must be valid JSON'); }
+    if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
+      throw new Error('tracker patch: --json must be a JSON object (the preset schema fields to overlay)');
+    }
+    const issue = await client.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
+    const record = viewToRecord(issue as Record<string, unknown>, issueId);
     const root = projectRootFrom();
     const preset = await resolveTrackerValidation(loadTrackerConfig(root), root);
-    const result = applyModelPatch(preset, framed, { ...(acId ? { acId } : {}), patch });
-    if (!args.includes('--dry-run') && result.changed) await client.issue.edit(issueId, { body: result.body });
+    const result = applyModelPatch(preset, record, { ...(acId ? { acId } : {}), patch });
+    if (!args.includes('--dry-run') && result.changed) await client.issue.edit(issueId, columnsToEdit(result.body, result.columns, record));
     process.stdout.write(`${JSON.stringify({ issue: issueId, ...(acId ? { acId } : {}), changed: result.changed, dryRun: args.includes('--dry-run') }, null, 2)}\n`);
     return;
   }

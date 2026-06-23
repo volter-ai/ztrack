@@ -9,8 +9,9 @@
 
 import { createTrackerClient } from '../sdk.ts';
 import { buildIssueBundle } from './bundle.ts';
-import type { Context, CoreRoot, Preset } from './engine.ts';
+import type { Context, CoreRoot, IssueColumns, IssueRecord, Preset } from './engine.ts';
 import type { RuleCategory } from '../checkRules.ts';
+import type { TrackerIssueUpdate } from '../types.ts';
 
 export interface LoadOptions {
   projectRoot: string;
@@ -25,62 +26,67 @@ export interface LoadOptions {
 }
 
 export interface LoadedInput {
-  bundle: string;
-  bodies: Array<{ id: string; body: string }>;
+  records: IssueRecord[];
   context: Context;
 }
 
 type Row = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
+const strList = (v: unknown): string[] => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
 
-// Render one backend row into a self-contained, parseable issue markdown document:
-// the body markdown plus the metadata (id/title/state/assignee/labels) the backend
-// keeps in columns. This is the "issue markdown" the preset's parser consumes.
-// Frame the backend metadata (id/title/state/assignee/labels) as the `# id: title` + field
-// header the preset's parser reads, then append the body. IDEMPOTENT: a body that already
-// carries its own top-level `# ` heading is self-contained (it was written by a preset's
-// `serialize` through `ac patch`/`fmt`), so it is used as-is — the framing is not duplicated.
-export type IssueMeta = { id: string; title: string; body: string; state?: string; stateType?: string; assignee?: string; labels?: string[] };
-export function frameIssueMarkdown(meta: IssueMeta): string {
-  if (/^\s*#\s+\S/.test(meta.body)) return meta.body.endsWith('\n') ? meta.body : `${meta.body}\n`;
-  const head: string[] = [`# ${meta.id}: ${meta.title}`, ''];
-  if (meta.state) head.push(`Status: ${meta.state}`);
-  if (meta.stateType) head.push(`StateType: ${meta.stateType}`);
-  if (meta.assignee) head.push(`Assignee: ${meta.assignee}`);
-  if (meta.labels?.length) head.push(`Labels: ${meta.labels.join(', ')}`);
-  head.push('');
-  return `${head.join('\n')}\n${meta.body}\n`;
+// Read one backend row into the structured IssueRecord the preset consumes: metadata straight
+// from the columns, content from the body. Core NEVER synthesizes metadata-as-markdown — the
+// metadata stays structured all the way to the preset, so there is no body↔column split-brain.
+export function rowToRecord(row: Row): IssueRecord {
+  return {
+    id: str(row.identifier) || str(row.id) || str(row.number),
+    title: str(row.title),
+    status: str(row.state),
+    ...(str(row.assignee) ? { assignee: str(row.assignee) } : {}),
+    ...(Array.isArray(row.labels) ? { labels: strList(row.labels) } : {}),
+    ...(Array.isArray(row.children) ? { children: strList(row.children) } : {}),
+    body: str(row.body) || str(row.description),
+  };
 }
 
-export function renderIssueMarkdown(row: Row): { id: string; body: string } {
-  const id = str(row.identifier) || str(row.id) || str(row.number);
-  return { id, body: frameIssueMarkdown({
-    id, title: str(row.title), body: str(row.body) || str(row.description),
-    state: str(row.state), stateType: str(row.stateType), assignee: str(row.assignee),
-    labels: Array.isArray(row.labels) ? row.labels.map(String) : [],
-  }) };
-}
-
-// Frame a single issue from an `issue view --json` result. `view` returns the nested
+// Read one issue's `issue view --json` result into an IssueRecord. `view` returns the nested
 // GraphQL shape (`state:{name}`, `assignee:{name}`, `labels:{nodes:[{name}]}`), unlike the
-// loader's flattened list rows — so unwrap both. Used by the write path (`ac patch`/`fmt`)
-// so the preset's parser sees the same framed body the loader produces for validation.
-export function framedFromView(view: Record<string, unknown>, fallbackId: string): string {
+// loader's flattened list rows — so unwrap both. Used by the write path (`ac patch`/`fmt`).
+export function viewToRecord(view: Record<string, unknown>, fallbackId: string): IssueRecord {
   const name = (v: unknown): string => typeof v === 'string' ? v : (v && typeof v === 'object' ? str((v as { name?: unknown; identifier?: unknown }).name) || str((v as { identifier?: unknown }).identifier) : '');
   const nodeNames = (v: unknown): string[] => v && typeof v === 'object' && Array.isArray((v as { nodes?: unknown[] }).nodes)
     ? (v as { nodes: unknown[] }).nodes.map(name).filter(Boolean)
     : Array.isArray(v) ? v.map(name).filter(Boolean) : [];
   const assignee = name(view.assignee) || nodeNames(view.assignees)[0] || '';
   const labels = nodeNames(view.labels);
-  return frameIssueMarkdown({
-    id: str(view.identifier) || fallbackId, title: str(view.title), body: str(view.body),
-    ...(name(view.state) ? { state: name(view.state) } : {}),
+  const children = nodeNames(view.children);
+  return {
+    id: str(view.identifier) || fallbackId,
+    title: str(view.title),
+    status: name(view.state),
     ...(assignee ? { assignee } : {}),
     ...(labels.length ? { labels } : {}),
-  });
+    ...(children.length ? { children } : {}),
+    body: str(view.body),
+  };
 }
 
-/** Load the tracker into one ValidationInput-ready bundle + typed Context. */
+// Build the backend edit input that persists a serialize() result: the content body plus the
+// CHANGED metadata columns (status->state, assignee, label add/remove diff vs the record).
+export function columnsToEdit(body: string, columns: IssueColumns, record: IssueRecord): TrackerIssueUpdate {
+  const cur = record.labels ?? [];
+  return {
+    body,
+    ...(columns.title !== undefined && columns.title !== record.title ? { title: columns.title } : {}),
+    ...(columns.status !== undefined && columns.status !== record.status ? { state: columns.status } : {}),
+    ...((columns.assignee ?? '') !== (record.assignee ?? '') ? { assignee: columns.assignee ?? '' } : {}),
+    ...(columns.labels !== undefined
+      ? { addLabels: columns.labels.filter((l) => !cur.includes(l)), removeLabels: cur.filter((l) => !columns.labels!.includes(l)) }
+      : {}),
+  };
+}
+
+/** Load the tracker into the structured issue records + the typed Context. */
 export async function loadValidationInput<R extends CoreRoot>(
   preset: Preset<R>,
   opts: LoadOptions,
@@ -89,23 +95,20 @@ export async function loadValidationInput<R extends CoreRoot>(
   const rows = await client.issue.list({
     state: 'all',
     limit: opts.limit ?? 5000,
-    json: 'identifier,title,body,description,state,stateType,assignee,labels',
+    json: 'identifier,title,body,description,state,stateType,assignee,labels,children',
   });
-  const list = Array.isArray(rows) ? (rows as Row[]) : [];
+  const all = Array.isArray(rows) ? (rows as Row[]) : [];
   const wanted = opts.issues ? new Set(opts.issues.map(String)) : null;
-  const bodies = list
-    .filter((row) => !wanted || wanted.has(str(row.identifier) || str(row.id)))
-    .map(renderIssueMarkdown)
-    .filter((b) => b.id);
-  const bundle = buildIssueBundle(bodies);
-  return { bundle, bodies, context: await buildContext(preset, bundle, opts) };
+  const records = all.map(rowToRecord).filter((r) => r.id && (!wanted || wanted.has(r.id)));
+  return { records, context: await buildContext(preset, records, opts) };
 }
 
-// Build the typed Context: the preset gathers its OWN observed facts via
-// loadContext (git/world/services — preset-owned, like its schema); a preset that
-// declares no loadContext needs no observed facts. The loader only overlays the
-// universal run selectors (now/phase/categories) the CLI passes.
-export async function buildContext<R extends CoreRoot>(preset: Preset<R>, bundle: string, opts: LoadOptions): Promise<Context> {
+// Build the typed Context: the preset gathers its OWN observed facts via loadContext
+// (git/world/services — preset-owned, like its schema). loadContext still receives a markdown
+// `bundle` for its body-level facts (e.g. PR branches), built here from the records' CONTENT
+// bodies. The loader overlays the universal run selectors (now/phase/categories).
+export async function buildContext<R extends CoreRoot>(preset: Preset<R>, records: IssueRecord[], opts: LoadOptions): Promise<Context> {
+  const bundle = buildIssueBundle(records.map((r) => ({ id: r.id, body: r.body })));
   const observed = preset.loadContext
     ? await preset.loadContext({ projectRoot: opts.projectRoot, verifyCommits: opts.verifyCommits, bundle })
     : {};

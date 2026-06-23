@@ -63,6 +63,28 @@ export interface CoreIssue {
 }
 export interface CoreRoot { issues: CoreIssue[] }
 
+// The backend's STRUCTURED view of one issue: the metadata it keeps in columns (id, title,
+// status, assignee, labels, children) plus the content `body` markdown. The preset's `parse`
+// reads metadata from these fields and content from `body` (mdast) — core NEVER synthesizes
+// metadata-as-markdown for the parser to read back (that round-trip caused the body↔column
+// split-brain). `IssueColumns` is the inverse: the metadata `serialize` writes to the columns.
+export interface IssueRecord {
+  id: string;
+  title: string;
+  status: string;        // the tracker state name = the issue's lifecycle status
+  assignee?: string;
+  labels?: string[];
+  children?: string[];
+  body: string;          // content markdown only (no synthesized `# id: title`/Status/… header)
+}
+export interface IssueColumns {
+  title?: string;
+  status?: string;
+  assignee?: string;
+  labels?: string[];
+  children?: string[];
+}
+
 // A WAIVER is an eslint-`disable`-style directive: a LOCATED, finding-specific acknowledgment
 // that one particular check finding on an issue (optionally a specific AC) is knowingly
 // accepted — NOT a blanket "this whole issue is fine." It is parsed by the CORE (universal,
@@ -302,14 +324,21 @@ export interface Preset<R extends CoreRoot> {
   // overlays the universal run selectors (now/phase/categories) over the result.
   // Omit when the preset's rules need no observed facts.
   loadContext?: (input: PresetContextInput) => Context | Promise<Context>;
-  parse: (markdown: string) => unknown; // mdast -> candidate object (validated by `schema`)
-  // The declared INVERSE of `parse`: render the validated root back to canonical markdown.
-  // Present iff the preset OWNS its issue markdown (read-WRITE): the grammar is then one
-  // definition running both directions — `fmt` is serialize(parse(x)) and a mutation is
-  // serialize(edit(parse(x))), with no second write-grammar. A preset that merely ADAPTS an
-  // external source-of-truth (e.g. speckit over Spec-Kit's own files) is read-ONLY and omits
-  // it; `fmt` and the structured-mutation tools are then unavailable for that preset by design.
-  serialize?: (root: R) => string;
+  // Parse the structured issue records into the candidate root: read each issue's metadata
+  // (id/title/status/assignee/labels/children) straight from its record fields, and content
+  // (summary, ACs, evidence, proof, …) from `record.body` via mdast. Takes ALL records so a
+  // preset can do cross-issue work (e.g. classify bare blocking refs once the whole tracker is
+  // known). Core supplies the metadata structured — the parser never re-derives it from
+  // synthesized markdown.
+  parse: (records: IssueRecord[]) => unknown; // -> the root candidate (validated by `schema`)
+  // The declared INVERSE of `parse`: render ONE validated issue back to its STORED form — the
+  // content `body` markdown plus the metadata `columns` to persist. The grammar is one
+  // definition running both directions (`fmt` = serialize∘parse; a mutation = serialize∘edit∘
+  // parse) with no second write-grammar, and metadata round-trips through the columns, never
+  // the body. Present iff the preset OWNS its issues (read-WRITE); a preset that merely ADAPTS
+  // an external source-of-truth (e.g. speckit over Spec-Kit's own files) is read-ONLY and
+  // omits it, so `fmt` and the structured-mutation tools are unavailable for it by design.
+  serialize?: (issue: R['issues'][number]) => { body: string; columns: IssueColumns };
   rules: Rule<R>[];
   // Preset-specific analyzed facts: given the engine's core DerivedModel, return extra
   // fact lists (keyed by name) for this preset's rules to `select` over. This is where
@@ -421,19 +450,23 @@ function stableStringify(value: unknown): string {
 // Parse waivers UNIVERSALLY (core, never per-preset) from each issue's `## Waivers` section.
 // Each row is a located directive: `- code: <finding-code> [ac: <acId>] reason: <text> by: <signer>`.
 // The issue id comes from the body's `# <id>: <title>` head (robust for single-issue and bundle).
-export function parseWaivers(markdown: string): WaiverDirective[] {
+export function parseWaivers(records: IssueRecord[]): WaiverDirective[] {
   const out: WaiverDirective[] = [];
-  for (const { body } of splitIssueBundle(markdown)) {
-    const issueId = /^#\s+(\S+?):/m.exec(body)?.[1];
-    if (!issueId) continue;
+  for (const { id: issueId, body } of records) {
     const section = /(?:^|\n)##\s+waivers\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|$)/i.exec(body);
     if (!section) continue;
     for (const line of section[1]!.split('\n')) {
       const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
       if (!code) continue;
       const acId = /\bac:\s*(\S+)/i.exec(line)?.[1];
-      const reason = /\breason:\s*(.+?)\s*(?=\s+by:|$)/i.exec(line)?.[1]?.trim() ?? '';
-      const approvedBy = /\bby:\s*(.+?)\s*$/i.exec(line)?.[1]?.trim() ?? '';
+      // `by:` is the trailing field; split on its LAST occurrence so a reason that itself
+      // contains "by:" is not truncated (and the signer is not mis-attributed).
+      const rm = /\breason:\s*/i.exec(line);
+      const reasonStart = rm ? rm.index + rm[0].length : -1;
+      const byIdx = line.toLowerCase().lastIndexOf(' by:');
+      const reasonEnd = byIdx > reasonStart ? byIdx : line.length;
+      const reason = reasonStart >= 0 ? line.slice(reasonStart, reasonEnd).trim() : '';
+      const approvedBy = byIdx > reasonStart ? line.slice(byIdx + ' by:'.length).trim() : '';
       out.push({ issueId, code, reason, approvedBy, ...(acId ? { acId } : {}) });
     }
   }
@@ -499,16 +532,17 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
 /** The one entry point: parse -> ValidationInputSchema.parse({context, root}) ->
  *  pure rules. The validated Root is the export; nothing downstream re-parses or
  *  re-derives. */
-export function check<R extends CoreRoot>(preset: Preset<R>, markdown: string, ctx: Context = {}): CheckResult<R> {
+export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecord[], ctx: Context = {}): CheckResult<R> {
   let candidate: unknown;
   try {
-    candidate = preset.parse(markdown);
+    candidate = preset.parse(records);
   } catch (error) {
     return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error) }] };
   }
-  // Waivers are parsed by the CORE from the raw markdown (universal, preset-agnostic) and
-  // merged into the context — `applyWaivers` then downgrades the findings they name.
-  const parsed = parseWaivers(markdown);
+  // Waivers are core-parsed from each record's `## Waivers` body section (universal,
+  // preset-agnostic) and merged into the context — `applyWaivers` then downgrades the
+  // findings they name. The issue id comes from the record, not a synthesized heading.
+  const parsed = parseWaivers(records);
   const merged: Context = parsed.length ? { ...ctx, waivers: [...(ctx.waivers ?? []), ...parsed] } : ctx;
   return validateAndRun(preset, merged, candidate, false);
 }

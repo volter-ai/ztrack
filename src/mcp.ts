@@ -6,7 +6,7 @@ import { checkTracker } from './check.ts';
 import { summarizeResult } from './cliStyle.ts';
 import { initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom } from './config.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
-import { framedFromView } from './core/loader.ts';
+import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
 
@@ -106,21 +106,22 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
         ...(args.labels ? { labels: args.labels } : {}),
       });
     case 'tracker_patch': {
-      const issue = await client.issue.view(String(args.issue), { json: 'identifier,title,state,stateType,assignee,labels,body' });
-      const framed = framedFromView(issue as Record<string, unknown>, String(args.issue));
+      const issue = await client.issue.view(String(args.issue), { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
+      const record = viewToRecord(issue as Record<string, unknown>, String(args.issue));
       const preset = await resolveTrackerValidation(loadTrackerConfig(projectRoot), projectRoot);
-      const patch = (args.patch && typeof args.patch === 'object') ? args.patch as Record<string, unknown> : {};
-      const result = applyModelPatch(preset, framed, { ...(args.acId ? { acId: String(args.acId) } : {}), patch });
-      if (result.changed) await client.issue.edit(String(args.issue), { body: result.body });
+      const patch = (args.patch && typeof args.patch === 'object' && !Array.isArray(args.patch)) ? args.patch as Record<string, unknown> : {};
+      const result = applyModelPatch(preset, record, { ...(args.acId ? { acId: String(args.acId) } : {}), patch });
+      if (result.changed) await client.issue.edit(String(args.issue), columnsToEdit(result.body, result.columns, record));
       return { issue: args.issue, ...(args.acId ? { acId: args.acId } : {}), changed: result.changed };
     }
     case 'tracker_fmt': {
-      const issue = await client.issue.view(String(args.issue), { json: 'identifier,title,state,stateType,assignee,labels,body' });
-      const body = framedFromView(issue as Record<string, unknown>, String(args.issue));
+      const issue = await client.issue.view(String(args.issue), { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
+      const record = viewToRecord(issue as Record<string, unknown>, String(args.issue));
       const preset = await resolveTrackerValidation(loadTrackerConfig(projectRoot), projectRoot);
-      const formatted = canonicalizeBody(preset, body);
-      if (args.write && formatted !== body) await client.issue.edit(String(args.issue), { body: formatted });
-      return { issue: args.issue, canonical: formatted === body, ...(args.write ? { written: formatted !== body } : { preview: formatted }) };
+      const result = canonicalizeBody(preset, record);
+      const canonical = result.body === record.body;
+      if (args.write && !canonical) await client.issue.edit(String(args.issue), columnsToEdit(result.body, result.columns, record));
+      return { issue: args.issue, canonical, ...(args.write ? { written: !canonical } : { preview: result.body }) };
     }
     default:
       throw new Error(`unknown tool: ${name}`);

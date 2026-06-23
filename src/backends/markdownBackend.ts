@@ -135,6 +135,7 @@ export class MarkdownBackend implements TrackerBackend {
       const t = flagVal(args, 'title'); if (t) c.title = t;
       const b = bodyArg(args); if (b !== undefined) c.body = b;
       const s = flagVal(args, 'state'); if (s) { c.state = s; c.stateType = stateTypeOf(s); }
+      const asg = flagVal(args, 'assignee'); if (asg !== undefined) c.assignees = asg ? [asg] : [];
       const p = flagVal(args, 'project'); if (p) c.project = p; if (args.includes('--remove-project')) c.project = null;
       const pa = flagVal(args, 'parent'); if (pa) c.parent = pa; if (args.includes('--remove-parent')) c.parent = null;
       for (const l of flagAll(args, 'add-label')) if (!c.labels.includes(l)) c.labels.push(l);

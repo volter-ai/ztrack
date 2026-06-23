@@ -65,10 +65,6 @@
       "types": "./dist/src/presets.d.ts",
       "default": "./dist/src/presets.js"
     },
-    "./mutate": {
-      "types": "./dist/src/mutate.d.ts",
-      "default": "./dist/src/mutate.js"
-    },
     "./mcp": {
       "types": "./dist/src/mcp.d.ts",
       "default": "./dist/src/mcp.js"

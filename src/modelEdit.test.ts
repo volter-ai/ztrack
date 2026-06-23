@@ -1,23 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
-import { frameIssueMarkdown, framedFromView } from './core/loader.ts';
-import DefaultPreset, { DefaultRootSchema, parseDefault } from '../boilerplates/presets/default.ts';
+import DefaultPreset from '../boilerplates/presets/default.ts';
 import SpeckitPreset from '../boilerplates/presets/speckit.ts';
-import type { CoreRoot, Preset } from './core/engine.ts';
+import type { CoreRoot, IssueRecord, Preset } from './core/engine.ts';
 
 const def = DefaultPreset as unknown as Preset<CoreRoot>;
 const speckit = SpeckitPreset as unknown as Preset<CoreRoot>;
 
-const PENDING = `# APP-1: A case
-
-Summary: do it
-Status: draft
-
-## Acceptance Criteria
-
-- [ ] dev/01 v1 Build the thing
-  - status: pending
-`;
+// The structured record: metadata in fields, body is CONTENT-ONLY (no `# id: title`, no Status: line).
+const PENDING: IssueRecord = {
+  id: 'APP-1', title: 'A case', status: 'draft',
+  body: 'Summary: do it\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Build the thing\n  - status: pending\n',
+};
 
 describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => {
   test('ac patch overlays a typed fragment and re-serializes in the preset grammar', () => {
@@ -34,6 +28,8 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
     expect(body).toContain('  - evidence ev1: image=s.png commit=abc1234 acv=1');
     expect(body).toContain('  - proof: "ev1 shows it" -> ev1');
     expect(body).not.toMatch(/AC-Version|## Evidence|\[E1\]/);
+    // body is CONTENT-ONLY: no synthesized metadata header (no `# APP-1`, no Status: line)
+    expect(body).not.toMatch(/^# |^Status:/m);
   });
 
   test('a patch that violates the hard schema fails loudly (no silently-misparsing body)', () => {
@@ -46,45 +42,34 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
       .toThrow(/AC dev\/99 not found/);
   });
 
-  test('issue-level patch overlays the issue', () => {
-    const { body } = applyModelPatch(def, PENDING, { patch: { status: 'ready' } });
-    expect(body).toContain('Status: ready');
+  test('issue-level status patch surfaces in columns.status, never in the body', () => {
+    const { body, columns } = applyModelPatch(def, PENDING, { patch: { status: 'ready' } });
+    expect(columns.status).toBe('ready');
+    // status is a column (metadata), not body content — the body carries no Status: line
+    expect(body).not.toMatch(/^Status:/m);
   });
 
   test('canonicalizeBody round-trips through the preset (fmt)', () => {
-    const messy = '#   APP-1: A case\n\n\nSummary: do it\nStatus: draft\n\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Build the thing   \n  - status: pending\n';
-    expect(canonicalizeBody(def, messy)).toBe(PENDING);
+    const messy: IssueRecord = {
+      id: 'APP-1', title: 'A case', status: 'draft',
+      body: 'Summary: do it\n\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Build the thing   \n  - status: pending\n',
+    };
+    const { body, columns } = canonicalizeBody(def, messy);
+    expect(body).toBe(PENDING.body);
+    expect(columns.status).toBe('draft');
+    expect(columns.title).toBe('A case');
   });
 
   test('the universal `## Waivers` section survives a patch (core markdown, not in the schema)', () => {
-    const withWaiver = `${PENDING}\n## Waivers\n\n- code: evidence_commit_not_found reason: known flaky by: alice\n`;
+    const withWaiver: IssueRecord = {
+      ...PENDING,
+      body: `${PENDING.body}\n## Waivers\n\n- code: evidence_commit_not_found reason: known flaky by: alice\n`,
+    };
     const { body } = applyModelPatch(def, withWaiver, { acId: 'dev/01', patch: { status: 'failed' } });
     expect(body).toContain('- [ ] dev/01 v1 Build the thing');
     expect(body).toContain('  - status: failed');
     expect(body).toContain('## Waivers');
     expect(body).toContain('- code: evidence_commit_not_found reason: known flaky by: alice');
-  });
-
-  test('framing is idempotent: a self-contained body (already has a # heading) is not re-framed', () => {
-    const selfContained = '# APP-1: Title\n\nStatus: draft\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 x\n  - status: pending\n';
-    // content-only body gets framed with the metadata header
-    const framed = frameIssueMarkdown({ id: 'APP-1', title: 'Title', body: '## Acceptance Criteria\n\n- [ ] dev/01 v1 x\n  - status: pending\n', state: 'draft' });
-    expect(framed.startsWith('# APP-1: Title')).toBe(true);
-    // a body that already carries its heading is returned as-is (no duplicate heading)
-    expect(frameIssueMarkdown({ id: 'APP-1', title: 'Title', body: selfContained })).toBe(selfContained);
-  });
-
-  test('framedFromView unwraps the nested GraphQL view shape (state/assignee/labels)', () => {
-    const view = {
-      identifier: 'APP-1', title: 'T', body: '## Acceptance Criteria\n\n- [ ] dev/01 v1 x\n  - status: pending\n',
-      state: { name: 'ready', type: 'open' }, assignee: { name: 'dev' }, labels: { nodes: [{ name: 'type:case' }] },
-    };
-    const framed = framedFromView(view, 'APP-1');
-    expect(framed).toContain('Status: ready');     // not "[object Object]"
-    expect(framed).toContain('Assignee: dev');
-    expect(framed).toContain('Labels: type:case');
-    // and it parses cleanly against the preset (the write path's precondition)
-    expect(DefaultRootSchema.parse(parseDefault(framed)).issues[0]!.id).toBe('APP-1');
   });
 
   test('a read-only adapter preset (no serialize) refuses patch and fmt', () => {

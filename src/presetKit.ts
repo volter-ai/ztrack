@@ -16,7 +16,7 @@ export { rule, definePreset, check, checkRoot, deriveCoreModel } from './core/en
 export { z } from 'zod';
 export type {
   Preset, Rule, RuleRecord, DerivedModel, Located, Finding, Severity, Context, PresetContextInput,
-  BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot,
+  BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot, IssueRecord, IssueColumns,
 } from './core/engine.ts';
 export { gitWorld } from './core/gitWorld.ts';
 export { formatRef, BlockRefSchema } from './core/ref.ts';

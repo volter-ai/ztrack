@@ -24,16 +24,16 @@ export async function exportTrackerRoot(options: TrackerExportOptions = {}): Pro
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = loadTrackerConfig(projectRoot);
   const preset = await resolveTrackerValidation(config, projectRoot);
-  const { bundle, context } = await loadValidationInput(preset, {
+  const { records, context } = await loadValidationInput(preset, {
     projectRoot,
     ...(options.issues ? { issues: options.issues } : {}),
     ...(options.limit ? { limit: options.limit } : {}),
   });
-  const result = check(preset, bundle, context);
+  const result = check(preset, records, context);
   if (!result.export) {
     throw new Error(`Cannot export: the tracker does not satisfy the ${preset.name} schema:\n${result.findings.map((f) => `  - ${f.code}: ${f.message}`).join('\n')}`);
   }
-  const waivers = parseWaivers(bundle);
+  const waivers = parseWaivers(records);
   return waivers.length ? { ...result.export, waivers } : result.export;
 }
 

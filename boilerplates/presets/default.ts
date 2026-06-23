@@ -20,15 +20,15 @@
 import {
   z, toMdast, nodeText, type MdNode,
   check as runCheck, rule, gitWorld, formatRef, BlockRefSchema,
-  splitIssueBundle, normalizeBlockRefs, parseBlockToken,
+  normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
-  type DerivedModel, type Preset, type PresetContextInput, type RawBlockRef,
+  type DerivedModel, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
 } from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
   id: z.string().min(1),                              // core
-  image: z.string().min(1),                           // preset: evidence is an image
+  image: z.string().regex(/^\S+$/, 'image must be a single whitespace-free token'), // serialized as image=<tok>, so no spaces
   commit: z.string().regex(/^[0-9a-f]{7,40}$/),       // preset: captured at this commit
   acVersion: z.number().int().min(1),                 // preset: against this AC version
 }).strict();
@@ -99,32 +99,26 @@ function parseAcLine(line: string): { id: string; version?: number; text: string
   return noV ? { id: noV[1]!, text: noV[2]!.trim() } : { id: line, text: line };
 }
 
-function parseDefaultIssue(markdown: string): Record<string, unknown> | null {
-  const tree = toMdast(markdown);
-  const issue: Record<string, unknown> = { id: '', title: '', summary: '', status: 'draft', assignee: '', acceptanceCriteria: [] };
+function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
+  // Metadata comes STRUCTURED from the record's columns; only the content (summary, pr,
+  // relations, ACs) is parsed out of the body markdown. id/title/status/assignee/labels are
+  // never re-derived from synthesized markdown.
+  const issue: Record<string, unknown> = {
+    id: record.id, title: record.title, status: record.status || 'draft',
+    assignee: record.assignee ?? '', summary: '', acceptanceCriteria: [],
+    ...(record.labels?.length ? { labels: record.labels } : {}),
+  };
+  const tree = toMdast(record.body);
   let inAc = false;
 
   for (const node of tree.children ?? []) {
-    if (node.type === 'heading' && node.depth === 1) {
-      // first H1 is the issue id/title; a later H1 in the body is just content
-      if (!issue.id) { const { id, title } = splitIdTitle(nodeText(node)); issue.id = id; issue.title = title; }
-      inAc = false;
-      continue;
-    }
     if (node.type === 'heading') { inAc = /acceptance criteria/i.test(nodeText(node)); continue; }
     if (node.type === 'paragraph') {
       const text = nodeText(node);
-      const status = /^Status:\s*(.+)$/im.exec(text)?.[1]?.trim();
-      if (status) issue.status = status;
       const summary = /^Summary:\s*(.+)$/im.exec(text)?.[1]?.trim();
       if (summary) issue.summary = summary;
-      const assignee = /^Assignee:\s*(.+)$/im.exec(text)?.[1]?.trim();
-      if (assignee) issue.assignee = assignee;
       const pr = /^PR:\s*(\S+)/im.exec(text)?.[1]?.trim();
       if (pr) issue.pr = { url: pr };
-      // ── optional primitives (designated lines) ──
-      const labels = /^Labels:\s*(.+)$/im.exec(text)?.[1];
-      if (labels) issue.labels = splitList(labels);
       const children = /^Children:\s*(.+)$/im.exec(text)?.[1];
       if (children) issue.children = splitList(children);
       const relations: unknown[] = [];
@@ -154,8 +148,9 @@ function parseDefaultIssue(markdown: string): Record<string, unknown> | null {
           if (st) { status = st.toLowerCase(); continue; }
           const ev = /^evidence\s+(\S+):\s*image=(\S+)\s+commit=([0-9a-fA-F]+)\s+acv=(\d+)/i.exec(line);
           if (ev) { evidence.push({ id: ev[1], image: ev[2], commit: ev[3]!.toLowerCase(), acVersion: Number(ev[4]) }); continue; }
-          // proof: "<explanation>" -> ev1, ev2
-          const pf = /^proof:\s*(.+?)\s*->\s*(.+)$/i.exec(line);
+          // proof: "<explanation>" -> ev1, ev2 — match the QUOTED explanation greedily so a
+          // '->' (or a quote) inside the explanation survives; fall back to an unquoted form.
+          const pf = /^proof:\s*"(.*)"\s*->\s*(.+)$/i.exec(line) ?? /^proof:\s*(.+?)\s*->\s*(.+)$/i.exec(line);
           if (pf) { proof = { explanation: pf[1]!.trim().replace(/^"|"$/g, ''), evidenceRefs: splitList(pf[2]!) }; continue; }
           // blocking: bare id (this issue's AC, or an issue) or `issue:ac`, comma-listed
           const bb = /^blocked-by:\s*(.+)$/i.exec(line);
@@ -175,33 +170,34 @@ function parseDefaultIssue(markdown: string): Record<string, unknown> | null {
       issue.acceptanceCriteria = acs;
     }
   }
-  return issue.id ? issue : null;
+  return issue;
 }
 
-// The multi-issue root: the loader frames every tracker issue into one bundle;
-// a single-issue document (no envelope) still parses to a one-issue root.
-export function parseDefault(markdown: string): unknown {
-  const issues = splitIssueBundle(markdown).map((s) => parseDefaultIssue(s.body)).filter((i): i is Record<string, unknown> => i !== null);
-  normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]); // classify bare refs now the whole tracker is known
+// The root: each issue's metadata is structured (its record's columns); content is parsed
+// from its body. Takes all records so bare blocking refs are classified once the whole
+// tracker is known.
+export function parseDefault(records: IssueRecord[]): unknown {
+  const issues = records.map(parseDefaultIssue);
+  normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]);
   return { issues };
 }
 
-// ── serialize: the schema shape -> canonical markdown (inverse of parse) ─────
-// Mutations parse -> change the object -> serialize -> write, so the file always
-// conforms to the template the parser reads. One issue per file.
-export function serializeIssue(issue: DefaultRoot['issues'][number]): string {
-  const out: string[] = [`# ${issue.id}: ${issue.title}`, ''];
-  if (issue.assignee) out.push(`Assignee: ${issue.assignee}`);
+// ── serialize: the validated issue -> its STORED form (inverse of parse) ─────
+// The metadata (id/title/status/assignee/labels) goes to the backend `columns`; only the
+// content (summary, pr, relations, children, ACs) is rendered into the `body`. Mutations
+// parse -> change the object -> serialize -> write {body, columns}, so the body never carries
+// a duplicate copy of the metadata (no split-brain) and the columns stay authoritative.
+export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: string; columns: IssueColumns } {
+  const out: string[] = [];
   if (issue.summary) out.push(`Summary: ${issue.summary}`);
-  out.push(`Status: ${issue.status}`);
   if (issue.pr) out.push(`PR: ${issue.pr.url}`);
-  if (issue.labels?.length) out.push(`Labels: ${issue.labels.join(', ')}`);
   if (issue.children?.length) out.push(`Children: ${issue.children.join(', ')}`);
   const rel = (t: string) => (issue.relations ?? []).filter((r) => r.type === t).map((r) => r.issueId);
   if (rel('blocks').length) out.push(`Blocks: ${rel('blocks').join(', ')}`);
   if (rel('blocked-by').length) out.push(`Blocked by: ${rel('blocked-by').join(', ')}`);
   if (rel('relates').length) out.push(`Relates: ${rel('relates').join(', ')}`);
-  out.push('', '## Acceptance Criteria', '');
+  if (out.length) out.push('');
+  out.push('## Acceptance Criteria', '');
   for (const ac of issue.acceptanceCriteria) {
     out.push(`- [${ac.checked ? 'x' : ' '}] ${ac.id} v${ac.version} ${ac.text}`);
     out.push(`  - status: ${ac.status}`);
@@ -213,10 +209,12 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): string {
     if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
     if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
   }
-  return out.join('\n') + '\n';
-}
-export function serializeDefault(root: DefaultRoot): string {
-  return root.issues.map(serializeIssue).join('\n');
+  const columns: IssueColumns = {
+    title: issue.title, status: issue.status,
+    ...(issue.assignee ? { assignee: issue.assignee } : {}),
+    ...(issue.labels ? { labels: issue.labels } : {}),
+  };
+  return { body: out.join('\n') + '\n', columns };
 }
 
 // ── rules: declarative records over the engine's derived model ───────────────
@@ -391,8 +389,9 @@ const DEFAULT_RULES = [
 // The default SDLC's PR branches: each issue's `PR:` value (a local branch name).
 // Used by this preset's loadContext to ask the git world for branch heads.
 export function prBranchesFrom(markdown: string): string[] {
-  const parsed = DefaultRootSchema.safeParse(parseDefault(markdown));
-  return parsed.success ? parsed.data.issues.map((i) => i.pr?.url).filter((u): u is string => !!u) : [];
+  // PR is body content, so the loader's content bundle carries every `PR:` line — scan it
+  // directly (no full parse, which now needs structured records).
+  return [...markdown.matchAll(/^PR:\s*(\S+)/gim)].map((m) => m[1]!).filter(Boolean);
 }
 function defaultPrBranches(input: PresetContextInput): string[] {
   if (input.root) return (input.root as unknown as DefaultRoot).issues.map((i) => i.pr?.url).filter((u): u is string => !!u);
@@ -405,7 +404,7 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   // this preset's observed facts: the git world (commits + PR head/merged).
   loadContext: (input) => gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits }),
   parse: parseDefault,
-  serialize: serializeDefault, // the inverse of parse (one grammar, both directions)
+  serialize: serializeIssue, // issue -> { body, columns }; the inverse of parse
   // an AC-less issue counts as done (for the block graph's completion gate) only at the terminal state.
   isIssueDone: (i) => i.status === 'done',
   // relation reciprocity + dangling proof refs; the block graph + id aggregates are core.
@@ -422,8 +421,8 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   },
 };
 
-export function checkDefault(markdown: string, ctx?: Context) {
-  return runCheck(DefaultPreset, markdown, ctx);
+export function checkDefault(records: IssueRecord[], ctx?: Context) {
+  return runCheck(DefaultPreset, records, ctx);
 }
 
 // The installed entrypoint: the resolver reads the preset off `default`.

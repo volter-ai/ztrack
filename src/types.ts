@@ -105,6 +105,7 @@ export interface TrackerIssueUpdate {
   title?: string;
   body?: string;
   state?: string;
+  assignee?: string;
   addLabels?: string[];
   removeLabels?: string[];
   project?: string;

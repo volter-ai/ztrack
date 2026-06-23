@@ -26,6 +26,10 @@ runs:
         python-version: '3.12'
     - shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        # Pass the `root` input through the environment, never interpolated into the
+        # script body — `${{ inputs.root }}` spliced into `run:` is a shell-injection sink.
+        ROOT: ${{ inputs.root }}
       run: |
         set -euo pipefail
         AP="$GITHUB_ACTION_PATH"
@@ -37,9 +41,9 @@ runs:
           [ -d "$AP/node_modules" ] || (cd "$AP" && bun install --frozen-lockfile >/dev/null)
           ZTRACK=(bun "$AP/src/cli.ts")
         fi
-        if [ -n "${{ inputs.root }}" ]; then
+        if [ -n "$ROOT" ]; then
           # Safe path: validate a committed root; the repo's preset.mts is NOT executed.
-          "${ZTRACK[@]}" check --input "${{ inputs.root }}" --verify-commits
+          "${ZTRACK[@]}" check --input "$ROOT" --verify-commits
         else
           if [ ! -f .volter/tracker-config.json ]; then
             echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2

@@ -5,18 +5,15 @@
 // when an unrelated issue is red.
 import { describe, expect, test } from 'bun:test';
 import { checkDefault } from '../boilerplates/presets/default.ts';
-import { buildIssueBundle } from './core/bundle.ts';
+import type { IssueRecord } from './core/engine.ts';
 import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
 
 const HEAD = 'cafe1234beef';
 const PR = 'https://github.com/volter-ai/x/pull/5';
 const ctx = { git: { existingCommits: [HEAD], prs: { [PR]: { headSha: HEAD, merged: false } } } };
 
-const clean = (id: string) => ({ id, body: `# ${id}: Appointment search
-
-Assignee: otto
-Summary: members find appointments fast
-Status: in-review
+// metadata (id/title/status/assignee) is structured on the record; only content is in `body`.
+const clean = (id: string): IssueRecord => ({ id, title: 'Appointment search', status: 'in-review', assignee: 'otto', body: `Summary: members find appointments fast
 PR: ${PR}
 
 ## Acceptance Criteria
@@ -27,17 +24,13 @@ PR: ${PR}
   - proof: "ev1 shows the status filter applied" -> ev1
 ` });
 
-const broken = (id: string) => ({ id, body: `# ${id}: Half-authored
-
-Assignee: otto
-Summary: not ready yet
-Status: in-review
+const broken = (id: string): IssueRecord => ({ id, title: 'Half-authored', status: 'in-review', assignee: 'otto', body: `Summary: not ready yet
 
 ## Acceptance Criteria
 ` });
 
-function scoped(issues: Array<{ id: string; body: string }>, branch: string) {
-  const whole = checkDefault(buildIssueBundle(issues), ctx);
+function scoped(issues: IssueRecord[], branch: string) {
+  const whole = checkDefault(issues, ctx);
   const issueIds = (whole.export?.issues ?? []).map((i) => i.id);
   const { issueId } = resolveActiveIssue({ branch, issueIds });
   return { whole, active: issueId, ...partitionFindings(whole.findings, issueId) };

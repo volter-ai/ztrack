@@ -36,8 +36,8 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
   const preset = await resolveTrackerValidation(config, projectRoot);
-  const { bundle, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
-  return check(preset, bundle, context);
+  const { records, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
+  return check(preset, records, context);
 }
 
 /** Validate an already-exported, validated root (committed CI artifact / `--input`).

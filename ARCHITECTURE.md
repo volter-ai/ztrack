@@ -172,7 +172,7 @@ parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 ### Module format (ESM-first)
 
 ztrack is published as **ESM** (`"type": "module"`); every library subpath
-(`ztrack/check`, `ztrack/sdk`, `ztrack/export`, `ztrack/mutate`, `ztrack/mcp`, …) is an ES
+(`ztrack/check`, `ztrack/sdk`, `ztrack/export`, `ztrack/mcp`, …) is an ES
 module. Consume it with `import`, or — from a CommonJS file — with **dynamic
 `await import('ztrack/check')`**, which works on every Node ≥ 12 (including under Yarn PnP).
 We deliberately do **not** ship a CommonJS build of the whole library: ztrack's parser deps

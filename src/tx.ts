@@ -12,7 +12,7 @@
 import { createHash } from 'node:crypto';
 import { checkTracker } from './check.ts';
 import { loadTrackerConfig } from './config.ts';
-import { framedFromView } from './core/loader.ts';
+import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import { applyModelPatch } from './modelEdit.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
@@ -102,10 +102,10 @@ export async function applyTx(
     } else if (edit.op === 'set-body') {
       await client.issue.edit(edit.issue, { body: edit.body });
     } else {
-      const view = await client.issue.view(edit.issue, { json: 'identifier,title,state,stateType,assignee,labels,body' });
-      const framed = framedFromView(view as Record<string, unknown>, edit.issue);
-      const result = applyModelPatch(preset, framed, { ...(edit.ac ? { acId: edit.ac } : {}), patch: edit.patch });
-      await client.issue.edit(edit.issue, { body: result.body });
+      const view = await client.issue.view(edit.issue, { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
+      const record = viewToRecord(view as Record<string, unknown>, edit.issue);
+      const result = applyModelPatch(preset, record, { ...(edit.ac ? { acId: edit.ac } : {}), patch: edit.patch });
+      await client.issue.edit(edit.issue, columnsToEdit(result.body, result.columns, record));
     }
     touched.add(edit.issue);
   }

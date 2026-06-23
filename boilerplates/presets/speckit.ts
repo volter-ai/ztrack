@@ -29,7 +29,7 @@
 // A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
 import {
   z, toMdast, check as runCheck, rule, gitWorld,
-  type Context, type DerivedModel, type Preset, type Rule,
+  type Context, type DerivedModel, type IssueRecord, type Preset, type Rule,
 } from 'ztrack/preset-kit';
 
 // ── hard schema (core + speckit-specific, all strict) ───────────────────────
@@ -241,16 +241,19 @@ function titleFromSpec(tree: Md, slug: string): string {
   return t && t !== '[FEATURE NAME]' ? t : slug;
 }
 
-export function parseSpeckit(bundle: string): unknown {
-  const files = splitBundle(bundle).map((f) => ({ ...f, path: norm(f.path) }));
+// One speckit feature = one IssueRecord. The feature's id/title/status come STRUCTURED from the
+// record's fields; the multi-file `===FILE===` content (spec.md, tasks.md, plan.md, …) lives in
+// `record.body`. File-derived metadata (Feature Branch/Created/Input + the spec's own Status text)
+// is parsed from the body and kept in `metadata`, but the issue's LIFECYCLE status is the record's.
+function parseOneFeature(record: IssueRecord): Record<string, unknown> {
+  const files = splitBundle(record.body).map((f) => ({ ...f, path: norm(f.path) }));
   const specFile = files.find((f) => slugFromSpec(f.path)) ?? files.find((f) => /spec\.md$/.test(f.path)) ?? files[0];
-  if (!specFile) return { issues: [] };
-  const slug = slugFromSpec(specFile.path) ?? (specFile.path.replace(/\W+/g, '-').replace(/^-|-$/g, '') || 'feature');
+  const slug = (specFile && slugFromSpec(specFile.path)) ?? record.id;
   const find = (re: RegExp) => files.find((f) => re.test(f.path));
   const tasksFile = find(/tasks\.md$/);
   const planFile = find(/plan\.md$/);
   const constitutionFile = find(/constitution\.md$/);
-  const specTree = parseMd(specFile.content); // mdast
+  const specTree = specFile ? parseMd(specFile.content) : parseMd(''); // mdast
 
   const requirements = extractRequirements(specTree, 'FR');
   const successCriteria = extractRequirements(specTree, 'SC');
@@ -289,23 +292,30 @@ export function parseSpeckit(bundle: string): unknown {
     contracts: files.filter((f) => /\/contracts\//.test(f.path)).map((f) => f.path),
   };
 
+  // The lifecycle status is the record's column value; fall back to the command pipeline derived
+  // from the artifacts when the record carries no explicit status.
   const anyClar = requirements.some((r) => r.needsClarification) || successCriteria.some((c) => c.needsClarification) || acs.some((a) => a.needsClarification);
   const doneStories = acs.filter((a) => a.status === 'done').length;
   let status: string;
-  if (anyClar) status = 'specifying';
+  if (record.status) status = record.status;
+  else if (anyClar) status = 'specifying';
   else if (!plan.present) status = 'planning';
   else if (!tasksFile) status = 'tasking';
   else if (acs.length > 0 && doneStories === acs.length) status = 'done';
   else status = 'in-progress';
 
   return {
-    issues: [{
-      id: slug, title: titleFromSpec(specTree, slug), summary: '', status,
-      acceptanceCriteria: acs, slug,
-      files: { spec: specFile.path, ...(planFile ? { plan: planFile.path } : {}), ...(tasksFile ? { tasks: tasksFile.path } : {}) },
-      metadata, requirements, successCriteria, keyEntities, edgeCases, assumptions, clarifications, phases, plan, constitution, artifacts,
-    }],
+    id: record.id, title: record.title || (specFile ? titleFromSpec(specTree, slug) : slug), summary: '', status,
+    acceptanceCriteria: acs, slug,
+    files: { spec: specFile?.path ?? 'spec.md', ...(planFile ? { plan: planFile.path } : {}), ...(tasksFile ? { tasks: tasksFile.path } : {}) },
+    metadata, requirements, successCriteria, keyEntities, edgeCases, assumptions, clarifications, phases, plan, constitution, artifacts,
   };
+}
+
+// The root: each record is ONE feature. Metadata (id/title/status) is structured; the rest is
+// parsed from the record's `===FILE===` body bundle.
+export function parseSpeckit(records: IssueRecord[]): unknown {
+  return { issues: records.map(parseOneFeature) };
 }
 
 // ── rules: declarative records over the engine's derived model ───────────────
@@ -452,6 +462,6 @@ export const SpeckitPreset: Preset<SpeckitRoot> = {
 // The installed entrypoint: the resolver reads the preset off `default`.
 export default SpeckitPreset;
 
-export function checkSpeckit(bundle: string, ctx?: Context) {
-  return runCheck(SpeckitPreset, bundle, ctx);
+export function checkSpeckit(records: IssueRecord[], ctx?: Context) {
+  return runCheck(SpeckitPreset, records, ctx);
 }

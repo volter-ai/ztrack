@@ -10,8 +10,8 @@
 // A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
 import {
   z, toMdast, nodeText, type MdNode,
-  check as runCheck, rule, gitWorld, splitIssueBundle,
-  type Context, type Preset,
+  check as runCheck, rule, gitWorld,
+  type Context, type IssueColumns, type IssueRecord, type Preset,
 } from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
@@ -47,38 +47,26 @@ function firstParagraphText(item: MdNode): string {
   return p ? nodeText(p).split('\n')[0]!.trim() : '';
 }
 
-// designated-position parses (the title line, the AC line, the evidence line) —
-// not free-prose mining.
-function splitIdTitle(headingText: string): { id: string; title: string } {
-  const m = /^(\S+):\s*(.+)$/.exec(headingText.trim());
-  return m ? { id: m[1]!, title: m[2]!.trim() } : { id: headingText.trim(), title: headingText.trim() };
-}
+// designated-position parses (the AC line, the evidence line) — not free-prose mining.
 function splitAcIdText(line: string): { id: string; text: string } {
   const m = /^(\S+)\s+(.+)$/.exec(line);
   return m ? { id: m[1]!, text: m[2]!.trim() } : { id: line, text: line };
 }
 
-function parseSpecIssue(markdown: string): Record<string, unknown> | null {
-  const tree = toMdast(markdown);
-  const nodes = tree.children ?? [];
-  const issue: Record<string, unknown> = { id: '', title: '', summary: '', status: 'draft', acceptanceCriteria: [] };
+function parseSpecIssue(record: IssueRecord): Record<string, unknown> {
+  // id/title/status come STRUCTURED from the record's columns; only summary + ACs are
+  // parsed from the body.
+  const issue: Record<string, unknown> = { id: record.id, title: record.title, status: record.status || 'draft', summary: '', acceptanceCriteria: [] };
+  const tree = toMdast(record.body);
   let inAc = false;
 
-  for (const node of nodes) {
-    if (node.type === 'heading' && node.depth === 1) {
-      if (!issue.id) { const { id, title } = splitIdTitle(nodeText(node)); issue.id = id; issue.title = title; }
-      inAc = false;
-      continue;
-    }
+  for (const node of tree.children ?? []) {
     if (node.type === 'heading') {
       inAc = /acceptance criteria/i.test(nodeText(node));
       continue;
     }
     if (node.type === 'paragraph') {
-      const text = nodeText(node);
-      const status = /^Status:\s*(.+)$/im.exec(text)?.[1]?.trim();
-      if (status) issue.status = status;
-      const summary = /^Summary:\s*(.+)$/im.exec(text)?.[1]?.trim();
+      const summary = /^Summary:\s*(.+)$/im.exec(nodeText(node))?.[1]?.trim();
       if (summary) issue.summary = summary;
       continue;
     }
@@ -99,30 +87,26 @@ function parseSpecIssue(markdown: string): Record<string, unknown> | null {
       issue.acceptanceCriteria = acs;
     }
   }
-  return issue.id ? issue : null;
+  return issue;
 }
 
-// The multi-issue root: one bundle of every tracker issue (a single-issue document
-// with no envelope still parses to a one-issue root).
-export function parseSpec(markdown: string): unknown {
-  return { issues: splitIssueBundle(markdown).map((s) => parseSpecIssue(s.body)).filter((i): i is Record<string, unknown> => i !== null) };
+// The root: each issue's metadata is structured (its record's columns); content from body.
+export function parseSpec(records: IssueRecord[]): unknown {
+  return { issues: records.map(parseSpecIssue) };
 }
 
-// ── serialize: the schema shape -> canonical markdown (the declared inverse of parse) ──
+// ── serialize: the validated issue -> its STORED form (content body + metadata columns) ──
 // The evidence id is positional (`<acId>/ev<n>`), so it isn't emitted — re-parsing
 // regenerates it. A passed AC is the checked box; pending/failed are unchecked.
-export function serializeSpecIssue(issue: SpecRoot['issues'][number]): string {
-  const out: string[] = [`# ${issue.id}: ${issue.title}`, ''];
-  if (issue.summary) out.push(`Summary: ${issue.summary}`);
-  out.push(`Status: ${issue.status}`, '', '## Acceptance Criteria', '');
+export function serializeSpecIssue(issue: SpecRoot['issues'][number]): { body: string; columns: IssueColumns } {
+  const out: string[] = [];
+  if (issue.summary) out.push(`Summary: ${issue.summary}`, '');
+  out.push('## Acceptance Criteria', '');
   for (const ac of issue.acceptanceCriteria) {
     out.push(`- [${ac.status === 'passed' ? 'x' : ' '}] ${ac.id} ${ac.text}`);
     for (const ev of ac.evidence) out.push(`  - commit: ${ev.commit}`);
   }
-  return out.join('\n') + '\n';
-}
-export function serializeSpec(root: SpecRoot): string {
-  return root.issues.map(serializeSpecIssue).join('\n');
+  return { body: out.join('\n') + '\n', columns: { title: issue.title, status: issue.status } };
 }
 
 // ── rules: declarative records over the engine's derived model ──────────────
@@ -160,15 +144,15 @@ export const SpecPreset: Preset<SpecRoot> = {
   // observed facts: commit existence (no PR model in this preset).
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpec,
-  serialize: serializeSpec, // the inverse of parse (one grammar, both directions)
+  serialize: serializeSpecIssue, // issue -> { body, columns }; the inverse of parse
   rules: SPEC_RULES,
   // `ztrack issue scaffold` starter: a pending AC (green to begin). Mark it [x] + cite a
   // `- commit: <sha>` once the behavior is implemented.
   scaffold: (_title) => `Summary: A short spec of the behavior.\n\n## Acceptance Criteria\n\n- [ ] AC-1 Describe one observable acceptance criterion.\n`,
 };
 
-export function checkSpec(markdown: string, ctx?: Context) {
-  return runCheck(SpecPreset, markdown, ctx);
+export function checkSpec(records: IssueRecord[], ctx?: Context) {
+  return runCheck(SpecPreset, records, ctx);
 }
 
 // The installed entrypoint: the resolver reads the preset off `default`.
