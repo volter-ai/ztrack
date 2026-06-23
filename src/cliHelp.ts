@@ -29,12 +29,13 @@ ${helpSection('middle', 'Workflow', [
 ${helpSection('bottom', 'Data', [
     [`${command} export [--out f.json]`, 'write the validated root'],
     [`${command} lint [--fail-on-warn]`, 'flag weak claims'],
+    [`${command} sync github --repo o/n`, 'two-way sync issues with GitHub'],
     [`${command} visualizer [--preset p] [--port n]`, 'open the web visualizer'],
   ])}
 
 ${ui.bold('Resources')}
   init, migrate-local, issue, project, search, view, api, check, export
-  fmt, lint, tx, evidence, ac, mcp, visualizer, loop, waiver, preset, completions
+  fmt, lint, tx, evidence, ac, mcp, sync, visualizer, loop, waiver, preset, completions
 
 ${ui.dim(`Shell completion:  source <(${command} completions bash)   # or zsh`)}
 ${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}
@@ -143,6 +144,16 @@ Examples:
   }
   if (resource === 'ac') {
     process.stdout.write(`Usage: ${command} ac <check|uncheck|set-status> <issue> <acId> [--commit sha] [--evidence E1,E2] [--proof P1] [--status s] [--dry-run]\n`);
+    return true;
+  }
+  if (resource === 'sync') {
+    process.stdout.write(`Usage: ${command} sync github --repo <owner/name> [--pull | --push] [--json]
+
+Two-way issue sync with GitHub through the twin (incremental + idempotent — never
+a full re-read/re-write). Default syncs both directions (pull then push); --pull
+or --push limits it. A synced issue IS the GitHub issue (identity binding stored
+at .volter/sync/github.json). Auth uses the gh CLI or GITHUB_TOKEN — no prompted PAT.
+`);
     return true;
   }
   return false;

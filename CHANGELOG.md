@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.12.0
+
+Two-way GitHub issue sync, through the twin.
+
+- **`ztrack sync github --repo <owner/name>`** — syncs tracker issues with GitHub
+  issues in both directions (default pull-then-push; `--pull`/`--push` to limit). A
+  synced issue *is* the GitHub issue (an identity binding, stored at
+  `.volter/sync/github.json`, not a `linkedIssue` field). Fine local lifecycle states
+  (draft/ready/in-progress/in-review) stay local; only title/body/done-ness round-trip.
+- **Incremental + idempotent — never a full re-read/re-write.** PULL folds real GitHub
+  into the twin (`syncGithubFromReal`, delta-only) and writes only the issues that
+  actually changed; PUSH morphs the twin per changed issue and flushes through the twin's
+  egress idempotency ledger (`pushPendingGithubActions`), so an unchanged issue is never
+  re-PATCHed and a re-push replays zero API calls.
+- **Auth is the gh CLI or `GITHUB_TOKEN`** — never a prompted PAT.
+- **Standalone provider module** at `src/sync/github/` (transport, mapping, identity
+  bindings, pull/push orchestration). ztrack keeps no universal sync engine: the twin is
+  the shared event-sourced substrate, and each provider is self-contained (mirroring the
+  standalone presets). Future providers get their own `src/sync/<provider>/`.
+
 ## 0.11.0
 
 Standalone-preset rearchitecture. This release removes the universal/generic model

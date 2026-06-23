@@ -116,6 +116,16 @@ them and only validates the claims agents or humans make there.
 | ztrack visualizer | local web view of issues, acceptance criteria, and findings |
 | GitHub Action | repository gate with `uses: volter-ai/ztrack@v0` |
 
+Two-way sync with GitHub Issues is built in — a synced issue *is* the GitHub issue:
+
+```bash
+ztrack sync github --repo owner/name        # pull then push (incremental + idempotent)
+ztrack sync github --repo owner/name --pull # GitHub → tracker only
+```
+
+It syncs through the [twin](#how-it-works) (delta folds + an egress idempotency ledger), so
+it never does a full re-read/re-write. Auth uses the `gh` CLI or `GITHUB_TOKEN`.
+
 ## Agent workflows
 
 - **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`

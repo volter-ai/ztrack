@@ -200,6 +200,7 @@ ztrack can use a **mirrored world** of the SaaS systems your code talks to
 |---|---|
 | `worldAnnotations.ts` | tracker annotations over twin events (`source`/`noise`/`duplicate`), quote-resolved into the event; stored at `.volter/world/<svc>/annotations.jsonl` |
 | `worldSourceBooks.ts` | adapter: twin events → "source books" the loader feeds into `Context` |
+| `sync/<provider>/` | two-way issue sync (e.g. `sync/github/`: `execute`/`map`/`bindings`/`sync`). A **standalone provider module** — ztrack has no universal sync engine; the twin is the shared event-sourced substrate that makes pull/push incremental + idempotent. `ztrack sync github` is the user surface; identity bindings live at `.volter/sync/<provider>.json` |
 
 `@volter/twin` is an **optional** peer dependency distributed through GitHub
 Packages under `volter-ai`. Without it installed, the validation pipeline works
