@@ -31,7 +31,7 @@ export function initTrackerPresets(): readonly InitTrackerPreset[] {
 export type InitTrackerProjectOptions = {
   preset?: InitTrackerPreset;
   /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
-  sync?: { provider: 'github'; repo: string };
+  sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
 };
 
 // The standalone preset's editable source, shipped at `boilerplates/presets/<preset>.ts`.

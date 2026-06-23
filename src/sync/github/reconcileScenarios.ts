@@ -79,7 +79,19 @@ export async function runReconcileScenarios() {
     return { conflicts: r.conflicts.length, fields: r.conflicts[0]?.fields ?? [], ghTitle: gh.issues.get(1)!.title, trackerTitle: view.title };
   });
 
-  // 3) a settled sync is idempotent
+  // 3) hub-wins: a same-field collision auto-resolves to GitHub (no conflict surfaced)
+  results.hubWins = await withProject(async ({ client, gh, opts }) => {
+    await gh.execute.request('POST /repos/{owner}/{repo}/issues', { title: 'Title', body: 'Body' });
+    await reconcileSync(opts(), 'hub-wins');
+    const id = String((await client.issue.list({ state: 'all', json: 'identifier,title' }) as Array<Record<string, unknown>>).find((r) => r.title === 'Title')!.identifier);
+    await client.issue.edit(id, { title: 'Title FROM LOCAL' });
+    gh.ghEdit(1, { title: 'Title FROM REMOTE' });
+    const r = await reconcileSync(opts(), 'hub-wins');
+    const view = await client.issue.view(id, { json: 'title' }) as Record<string, unknown>;
+    return { conflicts: r.conflicts.length, ghTitle: gh.issues.get(1)!.title, trackerTitle: view.title };
+  });
+
+  // 4) a settled sync is idempotent
   results.idempotent = await withProject(async ({ gh, opts }) => {
     await gh.execute.request('POST /repos/{owner}/{repo}/issues', { title: 'Title', body: 'Body' });
     await reconcileSync(opts());

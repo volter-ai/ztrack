@@ -12,4 +12,4 @@
 //   resolveGithubExecute  the transport (gh CLI / token), never a prompted PAT
 export { pull, push, reconcileSync, type SyncOpts, type PullResult, type PushResult, type ReconcileResult } from './sync.ts';
 export { resolveGithubExecute, resolveGithubToken } from './execute.ts';
-export { syncLinked, linkedRepo } from './linked.ts';
+export { syncLinked, linkedRepo, linkedPolicy } from './linked.ts';

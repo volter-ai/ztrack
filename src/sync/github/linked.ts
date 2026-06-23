@@ -5,6 +5,7 @@
 // auth) never breaks the underlying command — ztrack must keep working without the network.
 import { loadTrackerConfig } from '../../config.ts';
 import { createTrackerClient } from '../../sdk.ts';
+import type { ReconcilePolicy } from '@volter-ai-dev/twin';
 import { resolveGithubExecute } from './execute.ts';
 import { pull, push, reconcileSync } from './sync.ts';
 
@@ -16,6 +17,11 @@ export function linkedRepo(projectRoot: string): string | null {
   } catch { return null; }
 }
 
+/** The configured reconcile policy for the link (default `merge`). */
+export function linkedPolicy(projectRoot: string): ReconcilePolicy {
+  try { return loadTrackerConfig(projectRoot).sync?.policy ?? 'merge'; } catch { return 'merge'; }
+}
+
 /** Pull and/or push the linked GitHub repo. No-op when the project has no github link. */
 export async function syncLinked(projectRoot: string, dir: { pull?: boolean; push?: boolean }): Promise<void> {
   const repo = linkedRepo(projectRoot);
@@ -24,7 +30,7 @@ export async function syncLinked(projectRoot: string, dir: { pull?: boolean; pus
   if (!owner || !name) return;
   const o = { projectRoot, owner, repo: name, execute: resolveGithubExecute(), client: createTrackerClient({ projectRoot }), occurredAt: new Date().toISOString() };
   // Both directions → the three-way reconcile (conflict-aware). A single direction → one-way.
-  if (dir.pull && dir.push) await reconcileSync(o);
+  if (dir.pull && dir.push) await reconcileSync(o, linkedPolicy(projectRoot));
   else if (dir.pull) await pull(o);
   else if (dir.push) await push(o);
 }

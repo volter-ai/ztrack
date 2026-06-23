@@ -17,7 +17,14 @@ export interface TrackerConfig {
    * best-effort sync the tracker with it (the Stop-hook gate never does — it must not hammer
    * the API mid-loop). Only `github` today; the provider lives at `src/sync/<provider>/`.
    */
-  sync?: { provider: 'github'; repo: string };
+  sync?: {
+    provider: 'github';
+    repo: string;
+    /** Three-way reconcile policy for the bidirectional sync. Default `merge` (field-level:
+     *  non-overlapping concurrent edits merge, a same-field collision is surfaced). `hub-wins`
+     *  = GitHub authoritative on collision; `twin-wins` = the local tracker authoritative. */
+    policy?: 'hub-wins' | 'twin-wins' | 'merge';
+  };
   /**
    * Preferred validation architecture: ztrack loads one repo-local validation
    * entrypoint after init. The entrypoint owns parser/schema/render semantics.

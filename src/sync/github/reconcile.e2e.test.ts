@@ -10,6 +10,7 @@ const out = spawnSync('bun', ['run', join(import.meta.dir, 'reconcileScenarios.t
 const results = (() => { try { return JSON.parse(out.stdout); } catch { return null; } })() as null | {
   merge: { conflicts: number; ghTitle: string; ghBody: string; trackerTitle: string; trackerBody: string };
   conflict: { conflicts: number; fields: string[]; ghTitle: string; trackerTitle: string };
+  hubWins: { conflicts: number; ghTitle: string; trackerTitle: string };
   idempotent: { pulled: number; pushed: number; conflicts: number };
 };
 
@@ -31,6 +32,12 @@ describe('reconcileSync — three-way merge (no silent clobber)', () => {
     expect(results!.conflict.fields).toContain('title');
     expect(results!.conflict.ghTitle).toBe('Title FROM REMOTE'); // neither side overwritten
     expect(results!.conflict.trackerTitle).toBe('Title FROM LOCAL');
+  });
+
+  test('the policy is honored: hub-wins auto-resolves the collision to GitHub', () => {
+    expect(results!.hubWins.conflicts).toBe(0);                 // not surfaced — policy resolves it
+    expect(results!.hubWins.ghTitle).toBe('Title FROM REMOTE');  // GitHub authoritative
+    expect(results!.hubWins.trackerTitle).toBe('Title FROM REMOTE'); // local overwritten to match
   });
 
   test('a settled sync is idempotent: nothing pulled/pushed, no conflicts', () => {

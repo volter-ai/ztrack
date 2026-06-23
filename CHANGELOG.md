@@ -2,6 +2,14 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.16.0
+
+- **Configurable reconcile policy.** `config.sync.policy` (`merge` | `hub-wins` | `twin-wins`,
+  default `merge`) chooses how a same-field collision resolves: `merge` surfaces it untouched,
+  `hub-wins` takes GitHub, `twin-wins` takes the local tracker. Set it with
+  `ztrack init --sync github --repo o/n --policy hub-wins`, or override per run with
+  `ztrack sync github --policy <p>`. Non-overlapping field edits still always merge.
+
 ## 0.15.0
 
 Two-way GitHub sync is now a three-way merge — a concurrent edit no longer silently clobbers.

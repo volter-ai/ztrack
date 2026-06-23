@@ -115,12 +115,14 @@ async function main(): Promise<void> {
     }
     // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`.
     const syncProvider = optionValue(args, '--sync');
-    let sync: { provider: 'github'; repo: string } | undefined;
+    let sync: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' } | undefined;
     if (syncProvider) {
       if (syncProvider !== 'github') throw new Error(`ztrack init: --sync only supports 'github' today (got '${syncProvider}')`);
       const repo = optionValue(args, '--repo');
       if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("ztrack init --sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
-      sync = { provider: 'github', repo };
+      const policy = optionValue(args, '--policy');
+      if (policy && !['hub-wins', 'twin-wins', 'merge'].includes(policy)) throw new Error(`ztrack init: --policy must be merge | hub-wins | twin-wins (got '${policy}')`);
+      sync = { provider: 'github', repo, ...(policy ? { policy: policy as 'hub-wins' | 'twin-wins' | 'merge' } : {}) };
     }
     const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset: preset as any, ...(sync ? { sync } : {}) });
     if (result.alreadyInitialized) {
@@ -502,7 +504,7 @@ GraphQL-shaped query against the local tracker store.
   // prompted PAT. A synced issue IS the GitHub issue (binding in .volter/sync/github.json).
   if (args[0] === 'sync') {
     if (args[1] !== 'github') {
-      throw new Error("usage: tracker sync github [--repo <owner/name>] [--pull | --push]   (default: pull then push; --repo defaults to the linked repo from `init --sync`)");
+      throw new Error("usage: tracker sync github [--repo <owner/name>] [--pull | --push] [--policy merge|hub-wins|twin-wins]   (default: bidirectional reconcile; --repo + --policy default to the `init --sync` link)");
     }
     // --repo is optional once the project is linked (`init --sync github --repo o/n`).
     const repo = optionValue(args, '--repo') || githubSync.linkedRepo(projectRootFrom()) || '';
@@ -522,8 +524,12 @@ GraphQL-shaped query against the local tracker store.
       process.stdout.write(`${statusMark('pass')} push: ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
     } else {
       // default: bidirectional three-way merge (concurrent non-overlapping edits merge; a
-      // same-field collision is surfaced, never silently clobbered).
-      const r = await githubSync.reconcileSync(o); out.reconcile = r;
+      // same-field collision is surfaced, never silently clobbered). Policy: --policy overrides
+      // the linked config (default merge).
+      const policyFlag = optionValue(args, '--policy');
+      if (policyFlag && !['hub-wins', 'twin-wins', 'merge'].includes(policyFlag)) throw new Error(`tracker sync: --policy must be merge | hub-wins | twin-wins (got '${policyFlag}')`);
+      const policy = (policyFlag as 'hub-wins' | 'twin-wins' | 'merge') || githubSync.linkedPolicy(o.projectRoot);
+      const r = await githubSync.reconcileSync(o, policy); out.reconcile = r;
       process.stdout.write(`${statusMark('pass')} sync: ${r.pulled.length} pulled, ${r.pushed.length} pushed, ${r.created.length} created\n`);
       for (const c of r.conflicts) {
         process.stdout.write(`${statusMark('warn')} ${ui.yellow(`conflict on ${c.issue}`)} ${ui.dim(`(both sides changed: ${c.fields.join(', ')} — left untouched; edit one side and re-sync)`)}\n`);
