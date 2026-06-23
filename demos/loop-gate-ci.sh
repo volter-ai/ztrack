@@ -2,11 +2,8 @@
 # Deterministic CI coverage for the ztrack loop — everything in demos/loop-e2e.sh that does
 # NOT need a live agent. It drives the real Stop hook (plugins/ztrack-gate/hooks/stop-loop.sh)
 # with crafted session_id payloads and asserts on its exit codes, and exercises the real
-# `ztrack waiver` CLI round-trip. No model calls, so it runs in CI.
-#
-# (The live-agent cases — that an agent is actually held/released/self-exempts — stay a
-#  manual demo in loop-e2e.sh. Descope is covered by the engine unit tests in
-#  src/presetKit.test.ts; it has no novel CLI surface, just normal issue authoring.)
+# `ztrack waiver` CLI round-trip (the eslint-`disable`-style per-finding waiver). No model
+# calls, so it runs in CI. Uses the `default` preset.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -19,10 +16,10 @@ new_repo() { # $1=name [$2=preset] -> echoes dir; fresh git repo with ztrack ins
     git init -q; git config user.email ci@example.com; git config user.name "loop ci"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset "${2:-basic}" >/dev/null )
+    npx ztrack init --team APP --preset "${2:-default}" >/dev/null )
   printf '%s' "$d"
 }
-mk_issue() { printf '%s' "$2" > "$1/body.md"; ( cd "$1" && npx ztrack issue create --title Task --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null ); }
+mk_issue() { local body="${2//COMMIT/$(cd "$1" && git rev-parse HEAD)}"; printf '%s' "$body" > "$1/body.md"; ( cd "$1" && npx ztrack issue create --title Task --label type:case --state ready --assignee t --body-file body.md >/dev/null ); }
 arm()  { ( cd "$1" && npx ztrack loop start APP-1 --max "${2:-5}" >/dev/null ); }
 # helpers that CAPTURE a non-zero exit (so `set -e` doesn't abort): cmd && rc=0 || rc=$?
 fire() { local rc; ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$hook" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
@@ -32,8 +29,11 @@ chk()  { local rc; ( cd "$1" && npx ztrack check >/dev/null 2>&1 ) && rc=0 || rc
 armed(){ [ -f "$1/.volter/.ztrack-loop.json" ] && echo YES || echo NO; }
 greps(){ ( cd "$1" && npx ztrack check 2>&1 ) | grep -c "$2" || true; }
 
-red=$'# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n'    # checked, no commit/evidence -> red
-green=$'# Task\n\n## Acceptance Criteria\n\n- [ ] AC-01 do the thing\n\n## Evidence\n'   # pending -> green
+# default grammar: a passed AC with REAL-commit evidence but NO proof -> exactly one
+# (waivable) finding, `passed_ac_missing_proof` (COMMIT is substituted with the repo HEAD by
+# mk_issue, so evidence_commit_not_found stays quiet). A pending AC -> no findings (green).
+red=$'## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: image=s.png commit=COMMIT acv=1\n'
+green=$'## Acceptance Criteria\n\n- [ ] dev/01 v1 do the thing\n  - status: pending\n'
 
 fails=0
 ok() { if [ "$1" = "$2" ]; then echo "  ok: $3"; else echo "  FAIL: $3 (got '$1' want '$2')"; fails=$((fails+1)); fi; }
@@ -61,23 +61,42 @@ fire "$d" CAP >/dev/null; fire "$d" CAP >/dev/null   # iterations 1,2 (held)
 ok "$(fire "$d" CAP)" 0 "the iteration past --max trips the cap and releases"
 ok "$(armed "$d")" NO "hitting the cap disarms the loop"
 
-echo "## waiver CLI round-trip (sign-off = git identity; AC-only freshness)"
+echo "## waiver CLI round-trip (eslint-disable-style: per-finding, signed off as git identity)"
 d="$(new_repo waiver)"; mk_issue "$d" "$red"
-ok "$(chk "$d")" 1 "the unwaived issue is red"
-( cd "$d" && npx ztrack waiver sign APP-1 --reason "infra gap, tracked separately" >/dev/null )
-ok "$(chk "$d")" 0 "a fresh signed waiver -> acknowledged -> passes"
+ok "$(chk "$d")" 1 "the unwaived issue is red (passed AC, no proof)"
+( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof is in the linked PR" >/dev/null )
+ok "$(chk "$d")" 0 "a signed waiver for that finding -> acknowledged -> passes"
 ( cd "$d" && git commit --allow-empty -q -m "unrelated work" )
-ok "$(chk "$d")" 0 "an unrelated commit does NOT stale it (anchored to the ACs, not HEAD)"
-( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null \
-  | python3 -c "import json,sys;print(json.load(sys.stdin)['body'].replace('do the thing','do a DIFFERENT thing'))" > edited.md \
-  && npx ztrack issue edit APP-1 --body-file edited.md >/dev/null )
-ok "$(chk "$d")" 1 "editing the acceptance criterion stales the waiver"
+ok "$(chk "$d")" 0 "an unrelated commit does NOT affect it (the waiver tracks the finding, not HEAD)"
+
+d="$(new_repo unused)"; mk_issue "$d" "$green"
+( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "preemptive" >/dev/null )
+ok "$([ "$(greps "$d" waiver_unused)" -ge 1 ] && echo YES || echo NO)" YES "a waiver that matches no finding reports waiver_unused"
+ok "$(chk "$d")" 0 "but waiver_unused is a warning — check still passes"
 
 d="$(new_repo unreasoned)"; mk_issue "$d" "$red"
-printf '# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n\n## Waiver\n\nby: someone\nac-version: acw_deadbeef00\n' > "$d/u.md"
-( cd "$d" && npx ztrack issue edit APP-1 --body-file u.md >/dev/null )
+( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null \
+  | python3 -c "import json,sys;print(json.load(sys.stdin)['body'].rstrip()+'\n\n## Waivers\n\n- code: passed_ac_missing_proof by: someone\n')" > u.md \
+  && npx ztrack issue edit APP-1 --body-file u.md >/dev/null )
 ok "$(chk "$d")" 1 "an unreasoned waiver does not pass"
 ok "$([ "$(greps "$d" waiver_missing_reason)" -ge 1 ] && echo YES || echo NO)" YES "and it reports waiver_missing_reason"
+
+echo "## review-fix regressions — through the REAL packed+installed ztrack CLI (not just unit tests)"
+
+echo "# H1: exactly one missing-blocker (dev/99); a real blocker on dev/01 is resolved, not a phantom"
+d="$(new_repo h1)"
+printf '## Acceptance Criteria\n\n- [ ] dev/01 v1 First.\n  - status: pending\n- [ ] dev/02 v1 Wait.\n  - status: pending\n  - blocked-by: dev/01\n- [ ] dev/03 v1 Y.\n  - status: pending\n  - blocked-by: dev/99\n' > "$d/body.md"
+( cd "$d" && npx ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
+ok "$(greps "$d" 'ac_blocker_missing')" 1 "exactly one missing-blocker (dev/99); dev/01 is resolved, not a phantom"
+
+echo "# H2: a per-finding waiver clears a readiness error but NOT a structural self-block"
+d="$(new_repo h2)"
+printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: image=s.png commit=deadbeef acv=1\n- [ ] dev/02 v1 Loop.\n  - status: pending\n  - blocked-by: dev/02\n' > "$d/body.md"
+( cd "$d" && npx ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
+ok "$(chk "$d")" 1 "unwaived: red (missing proof + self-block)"
+( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof in PR" >/dev/null )
+ok "$(chk "$d")" 1 "after waiving the proof finding: STILL red — the self-block is non-waivable"
+ok "$([ "$(greps "$d" 'ac_self_block')" -ge 1 ] && echo YES || echo NO)" YES "ac_self_block is still reported (not acknowledged) post-waiver"
 
 echo "## R1: the self-exempt path is offered only past the half-way point of the budget"
 d="$(new_repo r1)"; mk_issue "$d" "$red"; arm "$d" 6
@@ -107,32 +126,6 @@ d="$(new_repo r3stop)"; mk_issue "$d" "$red"; arm "$d" 5
 : > "$d/.volter/.ztrack-loop-iter-X"; : > "$d/.volter/.ztrack-loop-exempt-X"
 ( cd "$d" && npx ztrack loop stop >/dev/null )
 ok "$(count_state "$d")" 0 "loop stop sweeps stray iter/exempt files"
-
-echo "## review-fix regressions — through the REAL packed+installed ztrack CLI (not just unit tests)"
-
-echo "# H1: a real blocker on a line that also carries reason: isn't lost / isn't a phantom-missing"
-d="$(new_repo h1)"
-# dev/02 blocks on the real dev/01 (with a reason: on the line); dev/03 blocks on a missing dev/99.
-printf '# Task\n\n## Acceptance Criteria\n\n- [ ] dev/01 status: pending First.\n- [ ] dev/02 status: pending Wait. blocked-by: dev/01 reason: deferred\n- [ ] dev/03 status: pending Y. blocked-by: dev/99 reason: gone\n\n## Evidence\n' > "$d/body.md"
-( cd "$d" && npx ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null )
-# Exactly ONE missing-blocker (dev/99). With the bug, dev/01's ref was corrupted too → 2.
-ok "$(greps "$d" 'ac_blocker_missing')" 1 "exactly one missing-blocker (dev/99); dev/01-with-reason is resolved, not a phantom"
-
-echo "# H2: a waiver clears a readiness error but NOT a structural self-block"
-d="$(new_repo h2)"
-printf '# Task\n\n## Acceptance Criteria\n\n- [x] dev/01 do the thing\n- [ ] dev/02 status: pending Loop. blocked-by: dev/02\n\n## Evidence\n' > "$d/body.md"
-( cd "$d" && npx ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null )
-ok "$(chk "$d")" 1 "unwaived: red (readiness + self-block)"
-( cd "$d" && npx ztrack waiver sign APP-1 --reason "accept the readiness gap" >/dev/null )
-ok "$(chk "$d")" 1 "after a fresh waiver: STILL red — the self-block is non-waivable"
-ok "$([ "$(greps "$d" 'ac_self_block')" -ge 1 ] && echo YES || echo NO)" YES "ac_self_block is still reported (not acknowledged) post-waiver"
-
-echo "# M3: a done case with EVERY AC descoped is red (needs >=1 actually passed) — via simple-sdlc"
-d="$(new_repo m3 simple-sdlc)"
-printf '# Task\n\n## Acceptance Criteria\n\n- [ ] dev/01 status: descoped reason: cut from v1 [1]\n- [ ] dev/02 status: descoped reason: cut from v1 [1]\n\n## Sources\n\n[1] r\n\n## Evidence\n' > "$d/body.md"
-( cd "$d" && npx ztrack issue create --title T --label type:case --state "Done" --assignee t --body-file body.md >/dev/null )
-ok "$(chk "$d")" 1 "all-descoped done issue is red"
-ok "$([ "$(greps "$d" 'done_with_unpassed')" -ge 1 ] && echo YES || echo NO)" YES "and it reports done_with_unpassed"
 
 echo "# gitignore migration: loop start re-adds the ignore patterns on a repo that lacked them"
 d="$(new_repo gi)"

@@ -35,6 +35,49 @@ describe('check() runner', () => {
     expect(seen?.context.now).toBe('2026-01-01');
   });
 
+  test('per-state gating: a state-tagged rule runs only on issues in that state; untagged runs always', () => {
+    const issues = [
+      { id: 'R-1', title: 't', summary: '', status: 'ready', acceptanceCriteria: [] },
+      { id: 'D-1', title: 't', summary: '', status: 'draft', acceptanceCriteria: [] },
+      { id: 'X-1', title: 't', summary: '', status: 'Done', acceptanceCriteria: [] },
+    ];
+    const preset: Preset<R> = {
+      name: 'gated', schema: RootSchema, parse: () => ({ issues }),
+      rules: [
+        rule<R, { issueId?: string }>({ code: 'always', select: (m) => m.issues, message: (i) => `always ${i.issueId}` }),
+        rule<R, { issueId?: string }>({ code: 'ready_only', state: 'ready', select: (m) => m.issues, message: (i) => `ready ${i.issueId}` }),
+        rule<R, { issueId?: string }>({ code: 'ready_or_done', state: ['ready', 'DONE'], select: (m) => m.issues, message: (i) => `rd ${i.issueId}` }),
+      ],
+    };
+    const f = check(preset, 'x').findings;
+    const codesFor = (id: string): string[] => f.filter((x) => x.issueId === id).map((x) => x.code).sort();
+    expect(codesFor('R-1')).toEqual(['always', 'ready_only', 'ready_or_done']); // in 'ready'
+    expect(codesFor('D-1')).toEqual(['always']);                                 // 'draft' → only the invariant
+    expect(codesFor('X-1')).toEqual(['always', 'ready_or_done']);                // case-insensitive: 'DONE' tag ↔ 'Done'
+  });
+
+  test('waivers: an eslint-style `## Waivers` directive downgrades the matching finding; unused/unreasoned are reported', () => {
+    const preset: Preset<R> = {
+      name: 'w', schema: RootSchema,
+      // the markdown is irrelevant to the parse (fixed root); waivers are parsed by the CORE from it.
+      parse: () => ({ issues: [{ id: 'A-1', title: 't', summary: '', status: 'open', acceptanceCriteria: [{ id: 'AC-1', status: 'pending', evidence: [] }] }] }),
+      rules: [rule<R, { issueId?: string; acId?: string }>({ code: 'needs_work', select: (m) => m.acs, message: () => 'AC needs work' })],
+    };
+    // a located waiver for exactly the firing finding → downgraded to acknowledged (non-gating)
+    const r = check(preset, '# A-1: t\n\n## Waivers\n\n- code: needs_work ac: AC-1 reason: tracked elsewhere by: Otto\n');
+    expect(r.findings.find((x) => x.code === 'needs_work')?.severity).toBe('acknowledged');
+    expect(r.ok).toBe(true);
+    // a waiver naming a code that did not fire → waiver_unused (warning); the real finding stands
+    const r2 = check(preset, '# A-1: t\n\n## Waivers\n\n- code: never_fires reason: x by: Otto\n');
+    expect(r2.findings.some((x) => x.code === 'waiver_unused' && x.severity === 'warning')).toBe(true);
+    expect(r2.findings.some((x) => x.code === 'needs_work' && x.severity === 'error')).toBe(true);
+    expect(r2.ok).toBe(false);
+    // a waiver with no reason → waiver_missing_reason (error), downgrades nothing
+    const r3 = check(preset, '# A-1: t\n\n## Waivers\n\n- code: needs_work ac: AC-1 by: Otto\n');
+    expect(r3.findings.some((x) => x.code === 'waiver_missing_reason')).toBe(true);
+    expect(r3.findings.find((x) => x.code === 'needs_work')?.severity).toBe('error');
+  });
+
   test('an unknown context key is rejected by the strict ValidationInputSchema', () => {
     const preset: Preset<R> = { name: 'p', schema: RootSchema, parse: () => ({ issues: [] }), rules: [] };
     // @ts-expect-error — bogus context field must not be accepted

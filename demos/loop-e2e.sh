@@ -14,18 +14,22 @@ model="${LOOP_E2E_MODEL:-haiku}"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 tarball="$(cd "$repo_root" && npm pack --pack-destination "$tmp" --silent)"
 
-# a checked AC with no commit/evidence is RED for the basic preset; an unchecked AC is GREEN.
-red_body=$'# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n'
-green_body=$'# Task\n\n## Acceptance Criteria\n\n- [ ] AC-01 do the thing\n\n## Evidence\n'
+# default grammar: a passed AC with image evidence (at a REAL commit) but NO proof is RED —
+# exactly one waivable finding, passed_ac_missing_proof. `COMMIT` is substituted with the repo
+# HEAD per-repo so evidence_commit_not_found stays quiet (the default check verifies commit
+# existence). A pending (unchecked) AC is GREEN (nothing is claimed yet).
+red_body=$'# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: image=s.png commit=COMMIT acv=1\n'
+green_body=$'# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 do the thing\n  - status: pending\n'
 
 setup() { # $1=name $2=red|green $3=arm|noarm  -> echoes the repo dir
   local d="$tmp/$1"; mkdir -p "$d"; ( cd "$d"
     git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset basic >/dev/null
-    [ "$2" = red ] && printf '%s' "$red_body" > body.md || printf '%s' "$green_body" > body.md
-    npx ztrack issue create --title "Task" --label type:case --state "In Progress" --assignee tester --body-file body.md >/dev/null
+    npx ztrack init --team APP --preset default >/dev/null
+    local head; head="$(git rev-parse HEAD)"
+    [ "$2" = red ] && printf '%s' "${red_body//COMMIT/$head}" > body.md || printf '%s' "$green_body" > body.md
+    npx ztrack issue create --title "Task" --label type:case --state in-progress --assignee tester --body-file body.md >/dev/null
     [ "$3" = arm ] && npx ztrack loop start APP-1 --max 2 >/dev/null
   )
   printf '%s' "$d"
@@ -36,9 +40,10 @@ setup_multi() { # $1=name $2=arm-issue  -> APP-1 green, APP-2 red; arms $2; echo
     git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset basic >/dev/null
-    printf '%s' "$green_body" > g.md; npx ztrack issue create --title G --label type:case --state "In Progress" --assignee tester --body-file g.md >/dev/null
-    printf '%s' "$red_body"   > r.md; npx ztrack issue create --title R --label type:case --state "In Progress" --assignee tester --body-file r.md >/dev/null
+    npx ztrack init --team APP --preset default >/dev/null
+    local head; head="$(git rev-parse HEAD)"
+    printf '%s' "$green_body" > g.md; npx ztrack issue create --title G --label type:case --state in-progress --assignee tester --body-file g.md >/dev/null
+    printf '%s' "${red_body//COMMIT/$head}" > r.md; npx ztrack issue create --title R --label type:case --state in-progress --assignee tester --body-file r.md >/dev/null
     npx ztrack loop start "$2" --max 2 >/dev/null
   )
   printf '%s' "$d"
@@ -78,11 +83,12 @@ d="$tmp/converge"; mkdir -p "$d"; ( cd "$d"
   git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
   echo "# c" > README.md; git add README.md; git commit -q -m init
   npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-  npx ztrack init --team APP --preset basic >/dev/null
-  printf '# Task\n\n## Acceptance Criteria\n\n- [ ] AC-01 do the thing status: passed\n\n## Evidence\n' > body.md
-  npx ztrack issue create --title "Task" --label type:case --state "In Progress" --assignee tester --body-file body.md >/dev/null
+  npx ztrack init --team APP --preset default >/dev/null
+  # a passed AC with no evidence -> RED (passed_ac_missing_evidence)
+  printf '# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n' > body.md
+  npx ztrack issue create --title "Task" --label type:case --state in-progress --assignee tester --body-file body.md >/dev/null
   npx ztrack loop start APP-1 --max 6 >/dev/null )
-fix_prompt="The ztrack check is failing on issue APP-1 with a checkbox/status mismatch. In this directory, edit the file body.md so the acceptance-criteria line reads exactly \"- [ ] AC-01 do the thing\" (remove the trailing \" status: passed\"), then run \"npx ztrack issue edit APP-1 --body-file body.md\". Do it now."
+fix_prompt="The ztrack check is failing on issue APP-1: a passed acceptance criterion has no evidence. In this directory, edit the file body.md so the AC is no longer claimed as passed — change the line \"- [x] dev/01 v1 do the thing\" to \"- [ ] dev/01 v1 do the thing\" AND change its \"  - status: passed\" line to \"  - status: pending\". Then run \"npx ztrack issue edit APP-1 --body-file body.md\". Do it now."
 out="$(run "$d" "$fix_prompt")"
 green_exit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"
 disarmed="$( [ -f "$d/.volter/.ztrack-loop.json" ] && echo NO || echo YES )"
@@ -122,12 +128,12 @@ v="$( { [ "$exempted" = YES ] && [ "$armed_after" = YES ] && [ "$foreign" = 2 ];
 echo "   live agent self-exempted=$exempted (want YES), loop still armed=$armed_after (want YES), foreign session held (hook exit=$foreign, want 2)  $v"
 [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
-echo "=== I. durable waiver: a fresh waiver, signed off as the git identity, releases the loop ==="
-# The committer acknowledges the red state via the real CLI (sign-off = git identity, no
-# free-text name); the engine downgrades the issue's errors to 'acknowledged' so the check
-# passes and the armed agent is released.
+echo "=== I. per-finding waiver: a signed waiver for the firing code releases the loop ==="
+# The committer acknowledges the firing finding by its code via the real CLI (eslint-disable
+# model, sign-off = git identity); the engine downgrades that finding to 'acknowledged' so the
+# check passes and the armed agent is released.
 d="$(setup waiver red arm)"
-( cd "$d" && npx ztrack waiver sign APP-1 --reason "known infra gap, tracked separately" >/dev/null )
+( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "evidence is in the linked PR" >/dev/null )
 wexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # acknowledged → 0
 wby="$( (cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null) | grep -c 'by: loop e2e' )"  # git user.name stamped, not a typed name
 out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"
@@ -135,21 +141,20 @@ v="$( { [ "$wexit" = 0 ] && [ "${t:-0}" -eq 1 ] && [ "${wby:-0}" -ge 1 ]; } && e
 echo "   signed waiver → check exit=$wexit (want 0), signed-off-as-git-identity=$wby (want ≥1), agent released num_turns=$t (want 1)  $v"
 [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
-echo "=== J. the waiver AUTO-STALES on a CRITERIA change, but NOT on an unrelated commit ==="
-# AC-only anchor: an unrelated commit must keep the waiver fresh; editing the AC must stale it.
+echo "=== J. the waiver tracks the finding, not HEAD: an unrelated commit does NOT disturb it ==="
+# Per-finding (eslint-disable) model: the waiver is anchored to the code/AC, so unrelated work
+# leaves it honored. (There is no commit-anchored auto-stale in the default model.)
 ( cd "$d" && git commit --allow-empty -q -m "unrelated work moved HEAD" )
-j_commit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # unrelated commit → still fresh → 0
-( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['body'].replace('do the thing','do a DIFFERENT thing'))" > edited.md && npx ztrack issue edit APP-1 --body-file edited.md >/dev/null )
-j_edit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"     # criteria changed → stale → 1
-jstale="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_stale )"
-v="$( { [ "$j_commit" = 0 ] && [ "$j_edit" = 1 ] && [ "${jstale:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
-echo "   unrelated commit → exit=$j_commit (want 0, still fresh); AC edited → exit=$j_edit (want 1), waiver_stale=$jstale (want ≥1)  $v"
+j_commit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # unrelated commit → still honored → 0
+v="$( [ "$j_commit" = 0 ] && echo PASS || echo FAIL )"
+echo "   unrelated commit → exit=$j_commit (want 0, waiver still honored)  $v"
 [ "$v" = PASS ] || fails=$((fails+1))
 
 echo "=== K. an unreasoned waiver is ITSELF an error (it can't silently mute the check) ==="
 d="$(setup unreasoned red noarm)"
-printf '# Task\n\n## Acceptance Criteria\n\n- [x] AC-01 do the thing\n\n## Evidence\n\n## Waiver\n\nby: someone\nac-version: acw_deadbeef00\n' > "$d/unreasoned.md"
-( cd "$d" && npx ztrack issue edit APP-1 --body-file unreasoned.md >/dev/null )
+( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null \
+  | python3 -c "import json,sys;print(json.load(sys.stdin)['body'].rstrip()+'\n\n## Waivers\n\n- code: passed_ac_missing_proof by: someone\n')" > unreasoned.md \
+  && npx ztrack issue edit APP-1 --body-file unreasoned.md >/dev/null )
 kexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"
 kmiss="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_missing_reason )"
 v="$( { [ "$kexit" = 1 ] && [ "${kmiss:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"

@@ -8,12 +8,12 @@ import { join } from 'node:path';
 import { initTrackerProject, trackerValidationBasePath, trackerValidationEntrypointPath, upgradeTrackerPreset } from './config.ts';
 
 // a line the current bundled template contains, vs an older form of it.
-const NEW = "message: () => 'Non-canceled cases must have an assignee.'";
-const OLD = "message: () => 'Cases need an assignee.'";
+const NEW = "code: 'issue_missing_assignee'";
+const OLD = "code: 'issue_needs_assignee'";
 
 function tempProject(): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrack-upgrade-'));
-  initTrackerProject(root, 'APP', { preset: 'simple-sdlc' });
+  initTrackerProject(root, 'APP', { preset: 'default' });
   return root;
 }
 
@@ -46,7 +46,7 @@ describe('ztrack preset upgrade (3-way merge)', () => {
       const old = current.replace(NEW, OLD);
       writeFileSync(bp, old);
       // local edit (non-overlapping): append a project-owned rule record.
-      const ours = `${old}\nmodule.exports.rules.push(rule({ code: 'custom_demo', select: (m) => m.issues, message: () => 'x' }));\n`;
+      const ours = `${old}\n// custom_demo — a project-owned rule appended below the upstream records\n`;
       writeFileSync(ep, ours);
 
       const r = upgradeTrackerPreset(root);
@@ -69,7 +69,7 @@ describe('ztrack preset upgrade (3-way merge)', () => {
       const current = readFileSync(ep, 'utf8');
       const old = current.replace(NEW, OLD);
       writeFileSync(bp, old);                                       // base: OLD
-      writeFileSync(ep, old.replace(OLD, "message: () => 'Assignee required by policy.'")); // ours edited the same line
+      writeFileSync(ep, old.replace(OLD, "code: 'assignee_required_by_policy'")); // ours edited the same line
 
       const r = upgradeTrackerPreset(root);
       expect(r.status).toBe('conflicts');

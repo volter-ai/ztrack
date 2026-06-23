@@ -38,16 +38,16 @@ runs:
           ZTRACK=(bun "$AP/src/cli.ts")
         fi
         if [ -n "${{ inputs.root }}" ]; then
-          # Safe path: validate a committed root; the repo's preset.cjs is NOT executed.
+          # Safe path: validate a committed root; the repo's preset.mts is NOT executed.
           "${ZTRACK[@]}" check --input "${{ inputs.root }}" --verify-commits
         else
           if [ ! -f .volter/tracker-config.json ]; then
             echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2
             exit 2
           fi
-          # SECURITY: this path executes the repo's .volter/tracker/validation/preset.cjs.
+          # SECURITY: this path executes the repo's .volter/tracker/validation/preset.mts.
           # On fork-PR events that is untrusted code on your runner — prefer the `root`
           # input (a committed validated root) for pull_request_target / fork PRs.
-          echo "::warning title=ztrack::Live 'ztrack check' executes this repo's validation preset (preset.cjs). For untrusted/fork PRs, pass the 'root' input (a committed validated root) instead."
+          echo "::warning title=ztrack::Live 'ztrack check' executes this repo's validation preset (preset.mts). For untrusted/fork PRs, pass the 'root' input (a committed validated root) instead."
           "${ZTRACK[@]}" check
         fi

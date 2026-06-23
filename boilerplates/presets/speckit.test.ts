@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { buildSpeckitBundle, checkSpeckit, parseSpeckit, SpeckitPreset, SpeckitRootSchema } from './speckitCore.ts';
-import { checkRoot } from '../core/engine.ts';
+import { buildSpeckitBundle, checkSpeckit, parseSpeckit, SpeckitPreset, SpeckitRootSchema } from './speckit.ts';
+import { checkRoot } from 'ztrack/preset-kit';
 
 const HEAD = 'cafe1234beef';
 const SPEC = `# Feature Specification: Appointment Search

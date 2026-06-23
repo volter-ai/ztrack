@@ -59,8 +59,8 @@ durable they are, none of which silently lies about "done":
   work, correct an over-specified AC, fix a false-positive rule, or — when a criterion is
   genuinely out of scope — **descope the AC** (`- [ ] AC-03 status: descoped reason: …`),
   which is a recorded, in-the-open scope decision rather than an acknowledged failure.
-  (Descope counts toward "done" only on presets that gate done-ness — `simple-sdlc` and
-  other SDLC-gated presets; the default `basic` preset doesn't gate done-ness, so there the
+  (Descope counts toward "done" only on presets that gate done-ness — `default` and other
+  SDLC-gated presets; the lighter `spec` preset doesn't gate done-ness, so there the
   waiver is the durable escape.)
 
 ## Trust boundary — cooperative, not a sandbox

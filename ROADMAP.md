@@ -51,8 +51,8 @@ each lands, with the proof that shows it.
   references v5; the next publish run carries no Node 20 deprecation annotation. ✅
 - [x] **R5 — Document the trust boundary and the descope scope.** Added a "Trust boundary —
   cooperative, not a sandbox" section to `plugins/ztrack-gate/README.md` and noted that
-  descope counts toward done only on SDLC-gated presets (under `basic` the waiver is the
-  durable escape). *Proof:* the doc sections exist. ✅
+  descope counts toward done only on SDLC-gated presets (under the lighter `spec` preset the
+  waiver is the durable escape). *Proof:* the doc sections exist. ✅
 - [x] **R6 — Ship.** Released **0.6.0**: changelog + version bump, tagged `v0.6.0`. *Proof:*
   the publish workflow is green (typecheck, tests, consumer-path, loop-gate, then npm
   publish) and `npm view ztrack@0.6.0` resolves. ✅

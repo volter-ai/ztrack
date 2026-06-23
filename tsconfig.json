@@ -4,10 +4,14 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "ztrack/preset-kit": ["./src/presetKit.ts"]
+    },
     "strict": true,
     "skipLibCheck": true,
     "types": ["node", "bun"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "types/**/*.d.ts"]
+  "include": ["src/**/*.ts", "boilerplates/presets/*.ts", "types/**/*.d.ts"]
 }

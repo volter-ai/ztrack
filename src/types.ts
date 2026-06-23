@@ -18,7 +18,7 @@ export interface TrackerConfig {
    * migrated with `ztrack init --preset <starter>`.
    */
   validation?: {
-    /** Path relative to project root, for example ".volter/tracker/validation/preset.cjs". */
+    /** Path relative to project root, for example ".volter/tracker/validation/preset.mts". */
     entrypoint?: string;
     /** Starter/template used to install the entrypoint, e.g. "basic" or "speckit". */
     installedFrom?: string;
@@ -28,11 +28,9 @@ export interface TrackerConfig {
     /**
      * @deprecated Legacy named selector. New repos must use validation.entrypoint
      * installed by `ztrack init --preset <starter>`, which resolves to a core
-     * preset (`createGenericPreset`). Configs with only this field are rejected.
+     * preset (a standalone `Preset`). Configs with only this field are rejected.
      */
     validationPreset?: string;
-    /** Regex sources (no flags) for external issue keys cited in issue bodies/sources, e.g. "APP-\\d+". */
-    linkedIssuePatterns?: string[];
     /** Per-system browse URL templates with an {id} placeholder, e.g. jira: "https://example.atlassian.net/browse/{id}". */
     externalBrowseUrls?: Record<string, string>;
     /**

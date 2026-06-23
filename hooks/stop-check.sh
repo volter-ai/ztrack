@@ -8,8 +8,8 @@
 # (gates everything). Drop the same hook into N worktrees and each scopes itself —
 # no shared marker file, no coordination.
 #
-# IMPORTANT: the repo-local preset (.volter/tracker/validation/preset.cjs) imports ztrack
-# via `require('ztrack/preset-kit')`, so ztrack must be an INSTALLED dependency of this
+# IMPORTANT: the repo-local preset (.volter/tracker/validation/preset.mts) imports ztrack
+# via `import 'ztrack/preset-kit'`, so ztrack must be an INSTALLED dependency of this
 # repo — and the check must run THAT installed copy, the same engine the preset imports
 # (binary == library). This hook invokes the LOCAL binary and never `npx --yes ztrack`,
 # which could fetch a different "latest" version and then fail the preset's require.

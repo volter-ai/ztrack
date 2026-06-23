@@ -7,7 +7,7 @@ gates fail. This doc maps the pieces of the single validation pipeline and how d
 > **TL;DR**
 > - **One typed pipeline.** Validation is a single pass: a loader reads issue markdown and, through the active preset's `loadContext`, gathers that preset's observed facts into a typed `Context`; the preset parses markdown to an mdast-backed `root`; `ValidationInputSchema.parse({ context, root })` types the whole input; pure rules run; the validated `root` **is** the export. There is no separate snapshot model assembled after validation.
 > - **One impure boundary.** `src/core/loader.ts` is the only place that does I/O (tracker backend, git, time). Everything downstream — schema, rules, export — is pure and operates over the typed `Context` and `root`.
-> - **One installed preset.** `ztrack init` writes `.volter/tracker/validation/preset.cjs` as real editable code: it rents the engine + parser + schema from `ztrack/preset-kit` and declares its rules as declarative records over the engine's derived model, wrapped in `definePreset({...})` — editable with no build step. `ztrack check`/`init` run that preset through the same pipeline. (The typed reference those records mirror is `createGenericPreset`.)
+> - **Presets are standalone — there is NO universal model.** Each preset (`default`/`spec`/`speckit`) brings its OWN strict schema, its OWN markdown parser, and its OWN rules. They share **no schema, no parser, and no rule set** with each other. The only shared layer is the engine *mechanism* (`core/engine.ts`: the minimal `CoreRoot` contract + the `Rule`-record evaluation / derived model) plus generic dev utilities (mdast, zod) and types. `ztrack init` installs the chosen preset's real, editable source. There is **no generic/universal preset factory, no shared parser or schema, no flag-toggled mega-preset, and no shared "rule library" presets compose from** — those are the legacy this architecture exists to forbid (see the invariant in §3).
 
 ---
 
@@ -37,14 +37,13 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 |---|---|
 | `core/loader.ts` | the **only impure boundary**: reads issue markdown from the backend, frames issues into one bundle, then calls the active preset's `loadContext` to gather its observed facts and overlays the universal run selectors (`now`/`phase`/`categories`) into the typed `Context` |
 | `core/bundle.ts` | `buildIssueBundle` — frames every issue into ONE markdown bundle (`===ISSUE <id>===` envelope) the preset parses |
-| `core/engine.ts` | the contract: `Preset { name, schema, parse, rules, loadContext?, contextSchema?, primitives?, scaffold? }`, `check(preset, markdown, ctx)` and `checkRoot(preset, root, ctx)`, the strict `ValidationInputSchema`/`makeValidationInputSchema`, `Rule.run = (input: ValidationInput) => Finding[]` (pure — no I/O, git, time, raw markdown; optional `category`/`depth`), returning `{ ok, findings, export: root }` |
-| `core/registry.ts` | internal reference catalog resolved by name |
-| `core/mutate.ts` | mutation affordances: parse → change one item → serialize → write + append audit |
+| `core/engine.ts` | the contract: `Preset { name, schema, parse, serialize?, rules, loadContext?, contextSchema?, derive?, isIssueDone?, primitives?, scaffold? }`, `check(preset, markdown, ctx)` and `checkRoot(preset, root, ctx)`, the strict `ValidationInputSchema`/`makeValidationInputSchema`, `Rule.run = (input: ValidationInput) => Finding[]` (pure — no I/O, git, time, raw markdown; optional `category`/`depth`), returning `{ ok, findings, export: root }` |
+| `modelEdit.ts` | the one mutation: parse → overlay a typed fragment → re-validate → the preset's `serialize` (`ac patch`/`issue patch`/`tracker_patch`). No universal write-grammar. |
 | `core/audit.ts` | append-only audit log (`.audit.jsonl`); timestamps derived; `observeChanges` catches external edits |
 | `core/gitWorld.ts` | preset-agnostic git facts (commits, PR/branch heads) a preset's `loadContext` calls — it knows nothing about any preset's schema |
 | `core/ref.ts` | universal node addressing: the derived colon-delimited id (`issue`/`issue:ac`/`issue:ac:evidence`/`issue:ac:proof`) used by cross-tree references like blocking |
 | `core/blocking.ts` | the unified blocking graph — a derived projection over the root that folds AC `blocked-by`/`blocks` and issue `relations` (every direction and level) into one dependency DAG; powers cycle detection, the out-of-order completion gate, and the transitive blocked/actionable view (`blockStatuses`) |
-| `presets/default.ts`, `spec.ts`, `speckitCore.ts` | internal/reference strict schemas + mdast parsers + pure rules per SDLC |
+| `boilerplates/presets/{default,spec,speckit}.ts` | the standalone reference presets — each its OWN strict schema + mdast parser + serialize + pure rules per SDLC; installed verbatim as `preset.mts` |
 | `backends/markdown.ts` | canonical-issue ⇄ markdown (de)serializer |
 | `backends/markdownBackend.ts` | the `markdown` peer `TrackerBackend` (issue verbs over the `.md` store) |
 | `presets/issueMarkdown.ts`, `markdownModel.ts` | the lenient issue-markdown parser/model (mdast tree-walk); `markdown-model` re-exports it |
@@ -83,24 +82,49 @@ See `PRESET-GUIDE.md` for how to build or review a core preset.
 ## 3. The installed preset — what `ztrack check` runs
 
 `ztrack check` and `ztrack init` run **the** pipeline from §2 against the live tracker.
-The active rulebook is the repo-local `.volter/tracker/validation/preset.cjs` that init
-writes:
+The active rulebook is the repo-local preset that init installs — the chosen preset's own
+real, editable source.
 
-```js
-const { definePreset, rule, gitWorld, genericParser, genericSchema } = require('ztrack/preset-kit');
-const rules = [ rule({ code, select: (m) => m.acs, when, message }), /* ...editable records... */ ];
-module.exports = definePreset({ name, schema: genericSchema, parse: genericParser, rules /* , derive, ... */ });
+> **INVARIANT — presets are standalone; there is NO universal model.**
+> A preset is a self-contained `Preset { name, schema, parse, rules, ... }`: its OWN strict
+> Zod schema, its OWN mdast parser, its OWN rules. `default`, `spec`, and `speckit` share
+> NONE of these with each other — only the engine *mechanism* (`core/engine.ts`: the minimal
+> `CoreRoot` contract + `Rule`-record evaluation).
+>
+> **The `CoreRoot` contract is the SPINE.** It's the minimal shared shape (`issues >
+> acceptanceCriteria > evidence` + a `status` string) that every preset plugs into and the
+> engine evaluates over — the one thing that *must* be shared for the system to cohere. The
+> spine is thin on purpose. The test for "does this belong in core?": it belongs ONLY if it's
+> structural spine the engine needs to link presets together. A full schema, a parser, or a
+> rule set is per-preset flesh that hangs off the spine — putting any of it in the shared
+> layer is "thickening the spine," which is exactly the universal-model anti-pattern.
+> **Forbidden** (this is the legacy that keeps getting reintroduced): a shared
+> universal schema or parser, a generic preset factory that emits N presets from flags, a
+> shared "rule library" a preset picks records from (`rules: [...sharedGroup]`), or any
+> "universal model" presets extend. A shared rule menu or a shared parser is the same
+> anti-pattern in new syntax. If you reach for one, stop and author the preset's own.
+
+```ts
+// A standalone preset imports ONLY the engine mechanism + dev utilities — never a shared model.
+import { z, rule, gitWorld, type Preset } from 'ztrack/preset-kit';
+const MyRootSchema = z.object({ issues: z.array(MyIssueSchema) }).strict(); // this preset's OWN schema
+function parseMine(bundle: string): unknown { /* this preset's OWN mdast parser → MyRootSchema shape */ }
+function serializeMine(root): string { /* the declared inverse of parseMine */ }
+const MyPreset: Preset<MyRoot> = {
+  name: 'default', schema: MyRootSchema, parse: parseMine, serialize: serializeMine,
+  rules: [ rule({ code, select, when, message }) /* this preset's OWN rules */ ],
+};
+export default MyPreset;
 ```
 
-This is a **real core `Preset`** — it rents the parser + schema and declares its rules as
-declarative records over the engine's derived model, not a separate runtime. It is editable
-with no build step. (The typed factory those records mirror is `createGenericPreset`, guarded
-by `src/presetInstall.test.ts`.)
+It is editable with no build step (installed as `.mts`). The reference standalone presets
+(the bar) are `boilerplates/presets/{default,spec,speckit}.ts` — each with its own schema,
+parser, serialize, and rules.
 
 | file | role |
 |---|---|
-| `presetKit.ts` | exports `createGenericPreset({...})` → a core `Preset<CoreRoot>` |
-| `presetRegistry.ts` | `resolveTrackerValidation(config)` loads the repo-local `validation.entrypoint` file and returns a `Preset<CoreRoot>`; missing or legacy-only configs fail with init guidance |
+| `presetKit.ts` | the public `ztrack/preset-kit` mechanism a standalone preset imports (engine `check`/`rule`, mdast helpers, `gitWorld`, root-schema constructor, types) — no shared model |
+| `presetRegistry.ts` | `resolveTrackerValidation(config)` loads the repo-local `validation.entrypoint` file (the installed `preset.mts`) and returns its `Preset`; missing or legacy-only configs fail with init guidance |
 | `core/loader.ts` | the impure boundary that builds the typed `Context` from backend + world + git + time |
 | `core/bundle.ts` | `buildIssueBundle` — frames issues into the `===ISSUE <id>===` markdown bundle |
 | `export.ts` | `exportTrackerRoot()` → runs the pipeline and emits the validated `root` |
@@ -129,8 +153,8 @@ CI artifact is exactly that validated root JSON (`{ issues: [...] }`), re-valida
 
 A repo selects its rulebook with `validation.entrypoint`. Legacy configs that only set
 `organization.validationPreset` are rejected with migration guidance. The public init
-presets are `basic`, `simple-sdlc`, `simple-spec`, and `speckit`; all four resolve to
-`createGenericPreset({...})` and become editable repo-local presets after installation.
+presets are `default`, `spec`, and `speckit`; each is a standalone preset (its own schema,
+parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 
 ---
 
@@ -155,11 +179,10 @@ We deliberately do **not** ship a CommonJS build of the whole library: ztrack's 
 (`mdast-*`) are ESM-only, so a CJS build would have to *bundle* each subpath self-contained
 (~17× the package), and `import()` already covers CJS callers correctly.
 
-The **one** exception is `ztrack/preset-kit`: the installed `preset.cjs` is loaded by a
-synchronous `require()` (the loader can't be async per resolve), so it must `require()` the
-kit. That subpath therefore has a `require` export condition pointing at a self-contained
-CommonJS bundle (`dist/preset-kit.cjs`) so it works on Node ≥ 20 and Yarn PnP. See the 0.7.1
-changelog.
+The installed preset is `.volter/tracker/validation/preset.mts` — an ES module that imports
+`ztrack/preset-kit`. The `.mts` extension means it loads under Node's type-stripping even
+inside a CommonJS consumer repo, so it works on Node ≥ 24 across npm, pnpm, yarn (classic +
+Berry + PnP), and bun with no build step.
 
 > **Note** — `ztrack snapshot project-manager` is an **unrelated** feature: a PM status
 > report generated from the backend. It is not part of validation and shares no code with
@@ -189,7 +212,7 @@ world-backed preset.
 ## 6. Do-not-confuse cheat sheet
 
 - **The store is a local markdown folder — never a SaaS.** GitHub/Jira/Slack are world sync spokes, not backends.
-- **Validation is one pipeline.** `core/engine.ts` (`check`/`checkRoot`) over the repo-local `createGenericPreset` preset is all there is; the "export" is just `check().export` (the validated `Root`). There is no separate snapshot model.
-- **The write-side layer is not validation.** `mutate.ts`, `markdownModel.ts`, `lint.ts`, and `presets.ts`'s `parseRawIssueMarkdown`/`renderPresetCanonicalIssueMarkdown` edit/format issue bodies; the validation pipeline does not import them. Distinct from those, `core/mutate.ts` is the store + audit affordance (the engine's reference mutation path).
+- **Validation is one pipeline.** `core/engine.ts` (`check`/`checkRoot`) over the repo-local standalone `preset.mts` is all there is; the "export" is just `check().export` (the validated `Root`). There is no separate snapshot model.
+- **The write-side layer is not validation.** `modelEdit.ts` (parse → edit the typed model → the preset's `serialize` — the one mutation path), `markdownModel.ts`, and `lint.ts` edit/format issue bodies; the validation pipeline does not import them.
 - **`markdownModel.ts` re-exports `presets/issueMarkdown.ts`** — the same lenient issue-markdown model under both names.
 - **`ztrack snapshot project-manager`** is a backend PM status report, unrelated to validation — the only place "snapshot" appears in ztrack.

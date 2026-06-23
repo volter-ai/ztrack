@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { checkDefault, DefaultPreset, DefaultRootSchema, parseDefault, serializeDefault } from './default.ts';
-import { buildIssueBundle } from '../core/bundle.ts';
+import { buildIssueBundle } from '../../src/core/bundle.ts';
 
 const HEAD = 'cafe1234beef';
 const PR = 'https://github.com/volter-ai/x/pull/5';
@@ -140,8 +140,6 @@ Children: D-2, D-3
 Blocks: D-4
 Blocked by: D-5
 Relates: D-6
-Linked: jira PEAK-12 https://jira/PEAK-12
-
 ## Acceptance Criteria
 
 - [ ] AC-1 v1 a
@@ -155,11 +153,10 @@ Linked: jira PEAK-12 https://jira/PEAK-12
       { type: 'blocked-by', issueId: 'D-5' },
       { type: 'relates', issueId: 'D-6' },
     ]);
-    expect(issue.linkedIssues).toEqual([{ system: 'jira', key: 'PEAK-12', url: 'https://jira/PEAK-12' }]);
   });
 
   test('the preset declares which primitives it implements', () => {
-    expect(DefaultPreset.primitives).toMatchObject({ proof: true, labels: true, relations: true, linkedIssues: true, children: true, blocking: true, sources: false, category: false });
+    expect(DefaultPreset.primitives).toMatchObject({ proof: true, labels: true, relations: true, children: true, blocking: true, sources: false, category: false });
   });
 
   test('serialize is the inverse of parse (structured round-trip)', () => {
@@ -174,8 +171,6 @@ Children: D-2, D-3
 Blocks: D-4
 Blocked by: D-5
 Relates: D-6
-Linked: jira PEAK-12 https://jira/PEAK-12
-
 ## Acceptance Criteria
 
 - [x] AC-1 v2 first criterion

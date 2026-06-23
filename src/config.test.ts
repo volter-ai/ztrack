@@ -9,18 +9,18 @@ function tempProject(): string {
 }
 
 describe('initTrackerProject', () => {
-  test('init without --preset installs the basic repo-local preset', () => {
+  test('init without --preset installs the default repo-local preset', () => {
     const root = tempProject();
     try {
       const result = initTrackerProject(root, 'app');
       const entrypoint = trackerValidationEntrypointPath(root);
-      expect(result).toMatchObject({ alreadyInitialized: false, teamKey: 'APP', preset: 'basic', validationEntrypoint: entrypoint });
+      expect(result).toMatchObject({ alreadyInitialized: false, teamKey: 'APP', preset: 'default', validationEntrypoint: entrypoint });
       expect(loadTrackerConfig(root)).toMatchObject({
         backend: 'markdown',
         local: { teamKey: 'APP' },
         validation: {
-          entrypoint: '.volter/tracker/validation/preset.cjs',
-          installedFrom: 'basic',
+          entrypoint: '.volter/tracker/validation/preset.mts',
+          installedFrom: 'default',
         },
       });
       expect(readFileSync(join(root, '.gitignore'), 'utf8')).toBe('# ztrack (added by ztrack init)\n.volter/tracker/tracker.sqlite\n.volter/tracker/tracker.sqlite-*\n.volter/tracker/tracker.sqlite.lock\n.volter/tracker/local-store.json\n.volter/tracker/markdown/\n.volter/agent-dispatch/\n.volter/.ztrack-loop.json\n.volter/.ztrack-loop-iter-*\n.volter/.ztrack-loop-exempt-*\n.volter/.ztrack-loop-capped.json\n');
@@ -50,48 +50,29 @@ describe('initTrackerProject', () => {
     }
   });
 
-  test('named init installs an editable repo-local validation entrypoint', () => {
+  test('named init installs the standalone preset .ts as the editable entrypoint', () => {
     const root = tempProject();
     try {
-      const result = initTrackerProject(root, 'app', { preset: 'simple-sdlc' });
+      const result = initTrackerProject(root, 'app', { preset: 'spec' });
       const entrypoint = trackerValidationEntrypointPath(root);
-      expect(result).toMatchObject({ alreadyInitialized: false, teamKey: 'APP', preset: 'simple-sdlc', validationEntrypoint: entrypoint });
+      expect(result).toMatchObject({ alreadyInitialized: false, teamKey: 'APP', preset: 'spec', validationEntrypoint: entrypoint });
       expect(loadTrackerConfig(root)).toMatchObject({
         backend: 'markdown',
         local: { teamKey: 'APP' },
         validation: {
-          entrypoint: '.volter/tracker/validation/preset.cjs',
-          installedFrom: 'simple-sdlc',
+          entrypoint: '.volter/tracker/validation/preset.mts',
+          installedFrom: 'spec',
         },
       });
-      // The installed entrypoint is REAL editable records that rent ztrack as a library
-      // (engine + parser + schema), not a config shim. Runtime behavior is proven against
-      // createGenericPreset in presetInstall.test.ts; here we assert the install wiring.
+      // The installed entrypoint is the STANDALONE preset's real, editable source — its OWN
+      // schema/parser/rules, importing only `ztrack/preset-kit` (no generic model). Runtime
+      // behavior is proven in boilerplates/presets/spec.test.ts; here we assert the wiring.
       const text = readFileSync(entrypoint, 'utf8');
-      expect(text).toContain('Repo-local ztrack validation preset');
-      expect(text).toContain("require('ztrack/preset-kit')");
-      expect(text).toContain('definePreset(');
-      expect(text).toContain('rule({');
-      expect(text).toContain("const name = 'simple-sdlc'");
-      expect(text).toContain("const requireSdlcGates = 'true' === 'true'");
-      expect(text).toContain("const requireSourceMarker = 'true' === 'true'");
+      expect(text).toContain("from 'ztrack/preset-kit'");
+      expect(text).toContain('export const SpecPreset');
+      expect(text).toContain('export default SpecPreset');
     } finally {
       rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test('simple-spec and speckit stamp their section-gate flags into the entrypoint', () => {
-    const flag = { 'simple-spec': 'requireSpecSections', speckit: 'requireSpeckitSections' } as const;
-    for (const presetName of ['simple-spec', 'speckit'] as const) {
-      const root = tempProject();
-      try {
-        initTrackerProject(root, 'app', { preset: presetName });
-        const text = readFileSync(trackerValidationEntrypointPath(root), 'utf8');
-        expect(text).toContain(`const name = '${presetName}'`);
-        expect(text).toContain(`const ${flag[presetName]} = 'true' === 'true'`);
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-      }
     }
   });
 });

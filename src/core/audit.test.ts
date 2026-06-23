@@ -1,11 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendAudit, observeChanges, readAudit, timestampsFor } from './audit.ts';
-import { DefaultRootSchema, parseDefault } from '../presets/default.ts';
-
-const MUTATE = new URL('./mutate.ts', import.meta.url).pathname;
 
 function tmpRepo(): string {
   const d = mkdtempSync(join(tmpdir(), 'audit-'));
@@ -45,27 +42,5 @@ describe('change observation (universal audit, any preset / any edit source)', (
     expect(readAudit(repo, 'A-1').length).toBe(3);
     // no change -> nothing new
     expect(observeChanges(repo, [issue('in-review', 'passed', 1)])).toEqual([]);
-  });
-});
-
-describe('mutation affordances', () => {
-  test('create + ac-add + set-status edits the markdown AND logs audit', () => {
-    const repo = tmpRepo();
-    const run = (...args: string[]) => {
-      const r = Bun.spawnSync(['bun', MUTATE, ...args, '--repo', repo]);
-      if (r.exitCode !== 0) throw new Error(new TextDecoder().decode(r.stderr));
-    };
-    run('create', 'D-1', '--title', 'Test', '--assignee', 'otto');
-    run('ac-add', 'D-1', 'AC-1', '--text', 'do it', '--version', '1');
-    run('set-status', 'D-1', 'ready');
-
-    const md = readFileSync(join(repo, 'tracker', 'D-1.md'), 'utf8');
-    const issue = DefaultRootSchema.parse(parseDefault(md)).issues[0]!;
-    expect(issue).toMatchObject({ id: 'D-1', title: 'Test', assignee: 'otto', status: 'ready' });
-    expect(issue.acceptanceCriteria[0]).toMatchObject({ id: 'AC-1', text: 'do it', version: 1 });
-
-    const log = readAudit(repo, 'D-1');
-    expect(log.map((e) => e.op)).toEqual(['create', 'ac.add', 'status']);
-    expect(log.find((e) => e.op === 'status')).toMatchObject({ from: 'draft', to: 'ready' });
   });
 });

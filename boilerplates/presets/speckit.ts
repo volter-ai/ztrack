@@ -26,12 +26,11 @@
 // VERIFICATION LAYER (explicit extension beyond stock Spec Kit): a task may cite
 // `(commit: <sha>)`; those are the story's evidence and are checked for existence.
 
-import { z } from 'zod';
-import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfm } from 'micromark-extension-gfm';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, rule, type Context, type DerivedModel, type Preset, type Rule } from '../core/engine.ts';
-import { gitWorld } from '../core/gitWorld.ts';
+// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
+import {
+  z, toMdast, check as runCheck, rule, gitWorld,
+  type Context, type DerivedModel, type Preset, type Rule,
+} from 'ztrack/preset-kit';
 
 // ── hard schema (core + speckit-specific, all strict) ───────────────────────
 export const SpeckitEvidenceSchema = z.object({
@@ -114,7 +113,7 @@ const hasClarification = (t: string) => /\[NEEDS CLARIFICATION(?::|\])/i.test(t)
 // markers (**…**, `…`) are already stripped from node text. ────────────────────
 type Md = { type: string; depth?: number; checked?: boolean | null; children?: Md[]; value?: string };
 function parseMd(content: string): Md {
-  return fromMarkdown(content, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as Md;
+  return toMdast(content) as Md;
 }
 function nodeText(n: Md): string { return typeof n.value === 'string' ? n.value : (n.children ?? []).map(nodeText).join(''); }
 // First line of the item's paragraph: the single-line task/story regexes can't span a
@@ -439,13 +438,19 @@ export const SpeckitPreset: Preset<SpeckitRoot> = {
   schema: SpeckitRootSchema,
   // observed facts: commit existence for task verification (no PR model).
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
+  // `ztrack issue scaffold` starter — a minimal Spec-Kit feature shape (real features usually
+  // come from Spec-Kit tooling). Fill in stories/requirements/tasks; cite `(commit: <sha>)` on tasks.
+  scaffold: (title) => `# ${title}\n\n**Status**: Draft\n\n## User Scenarios & Testing\n\n### User Story 1 - Describe it (Priority: P1)\n\nAs a user, I can do something valuable.\n\n## Requirements\n\n### Functional Requirements\n\n- **FR-001**: The system MUST do something concrete.\n\n## Tasks\n\n## Phase 1: User Story 1 (Priority: P1)\n\n- [ ] T001 [US1] Implement the first task.\n`,
   parse: parseSpeckit,
   derive: deriveSpeckit,
   rules: SPECKIT_RULES,
   // audit is core/always-on (recorded automatically via change observation), so
   // it is NOT declared here; speckit implements none of the OPT-IN primitives.
-  primitives: { proof: false, category: false, labels: false, relations: false, linkedIssues: false, children: false, sources: false },
+  primitives: { proof: false, category: false, labels: false, relations: false, children: false, sources: false },
 };
+
+// The installed entrypoint: the resolver reads the preset off `default`.
+export default SpeckitPreset;
 
 export function checkSpeckit(bundle: string, ctx?: Context) {
   return runCheck(SpeckitPreset, bundle, ctx);

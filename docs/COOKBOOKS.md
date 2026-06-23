@@ -10,12 +10,11 @@ copy-pasteable, deterministic, and honest about what ztrack can verify locally.
 | Local red/green loop | Any first-time user | `init`, `issue create`, fake SHA failure, real SHA pass | Ready |
 | Full dev cycle | Maintainers before release | packed install, realistic app, planning, implementation, review gate, rework, CI/MCP/SDK/clone validation | Ready in `demos/full-dev-cycle.sh` |
 | Real project cycle | Release readiness | generated multi-package workspace, project-specific validation, review/rework/release, CI/MCP/SDK/clone validation | Ready in `demos/real-project-cycle.sh` |
-| Autonomous profile setup | Agent-run projects | one script creates/adopts a repo, installs preset + profile, installs scheduler config, seeds issues, dispatches first agent | Ready in `demos/autonomous-profile-setup.sh` |
 | Existing repo adoption | Maintainers and agents | install, first issue, first gate, CI/MCP | Ready in `docs/ADOPTING.md` |
-| Preset selection | Maintainers and agents | choosing `basic`, `simple-sdlc`, `simple-spec`, or `speckit` | Ready in `docs/PRESETS.md` |
-| Installed preset shape | Teams with their own SDLC | editable rule records over the derived model (rented engine/parser/schema) + repo-local edit path | Starter in `demos/installed-preset/` |
+| Preset selection | Maintainers and agents | choosing `default`, `spec`, or `speckit` | Ready in `docs/PRESETS.md` |
+| Installed preset shape | Teams with their own SDLC | editable standalone preset (own schema/parser/serialize/rules over the derived model) + repo-local edit path | Starter in `demos/installed-preset/` |
 | CI validated-root gate | OSS maintainers | committed `.volter/root.json` + GitHub Action | Ready in `docs/EXAMPLES.md` |
-| MCP agent loop | Agent users | `tracker_check`, evidence-first AC mutation | Ready in `docs/EXAMPLES.md` |
+| MCP agent loop | Agent users | `tracker_check`, evidence-first `tracker_patch` | Ready in `docs/EXAMPLES.md` |
 | SDK/API integration | Tool builders | `createTrackerClient` issue CRUD | Ready in `demos/sdk-api/` |
 | Visualize the tracker | Anyone reviewing state | `ztrack visualizer` web view of issues, ACs, findings | Ready (`ztrack visualizer`) |
 
@@ -31,15 +30,15 @@ From this repository:
 bash demos/local-red-green.sh
 ```
 
-The demo creates a temporary git repository, initializes ztrack with `basic`,
-creates one issue, runs a red check with `commit: deadbee`, then edits the issue
-to cite the real temp-repo commit and runs a green check.
+The demo creates a temporary git repository, initializes ztrack with `default`,
+creates one issue, runs a red check whose evidence cites `commit: deadbee`, then
+edits the issue to cite the real temp-repo commit and runs a green check.
 
 Expected shape:
 
 ```text
 red exit: 1
-red finding: basic_checked_ac_commit_hash_missing
+red finding: evidence_commit_not_found
 green exit: 0
 green status: pass
 ```
@@ -55,10 +54,10 @@ bash demos/fresh-project-dry-run.sh
 It packs the current checkout, installs that tarball into new temporary
 projects, and proves:
 
-- all four public presets produce a fake-SHA failure and real-SHA pass;
+- all three public presets produce a fake-SHA failure and real-SHA pass;
 - the committed validated-root CI gate works with `--verify-commits`;
-- the MCP server can initialize, create an issue, add evidence, check an AC, and
-  return a passing `tracker_check` report;
+- the MCP server can initialize, create an issue, patch an AC, and return a
+  passing `tracker_check` report;
 - the SDK can create, view, and list issues through `createTrackerClient`.
 
 ## Full Dev Cycle
@@ -70,8 +69,8 @@ bash demos/full-dev-cycle.sh
 ```
 
 It builds a realistic temporary library project, creates several implementation
-commits, installs ztrack from the packed tarball, adopts `simple-sdlc`, creates
-four issues with source markers and evidence, blocks a premature Done transition,
+commits, installs ztrack from the packed tarball, adopts `default`, creates
+four issues with evidence and proof, blocks a premature Done transition,
 proves one fake-SHA failure, fixes it, exports a CI validated root, exercises SDK
 and MCP access, commits the intended adoption files, clones the project fresh,
 and validates the committed root from that clone.
@@ -86,25 +85,10 @@ bash demos/real-project-cycle.sh
 
 It generates a multi-package `northwind-ops` workspace with inventory, API,
 admin, docs, runbooks, ADRs, and Node tests. It installs ztrack from the packed
-tarball, adopts `simple-sdlc`, edits the installed preset to add a
+tarball, adopts `default`, edits the installed preset to add a
 project-specific API rollout rule, creates four issues, exercises planning,
 implementation, review, rework, custom-rule failure, fake-SHA failure, release
 validated root, SDK, MCP, committed workflow files, and a fresh clone validation.
-
-## Autonomous Profile Setup
-
-To exercise the same setup path an agent should use for a repo-level operating
-profile, run:
-
-```bash
-bash demos/autonomous-profile-setup.sh
-```
-
-It packs ztrack, creates a new repository, installs the `simple-sdlc` preset,
-copies the `simple-sdlc` profile, installs the scheduler config, creates
-starter tracker issues, runs an explicitly configured PM tick, and verifies that
-the dispatch prompt points at the profile skills and standards.
-
 
 ## Visualize The Tracker
 

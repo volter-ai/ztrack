@@ -1,7 +1,6 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
 import { checkTracker, checkTrackerRoot, type TrackerCheckResult } from './check.ts';
-import { checkMarkdownFiles } from './checkFile.ts';
 import { exportTrackerRoot } from './export.ts';
 import { optionValue } from './cliArgs.ts';
 import { projectRootFrom } from './config.ts';
@@ -42,43 +41,9 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<file.md> ...] [--input root.json] [--issues a,b] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\nPass one or more markdown files to validate them directly with the bundled `basic` preset — no init, backend, or team key (eslint-style; try `ztrack example`). With no file, checks the live tracker project.\n--phase gate runs only the ongoing-gate rules (excludes transition/promotion-time authoring checks); default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the issue this git checkout is for (resolved from the branch/worktree name); other issues become informational. Unresolved scope fails closed (gates everything). Built for per-worktree Stop-hook gates.\n');
+      : 'Usage: ztrack check [--input root.json] [--issues a,b] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\nChecks the live tracker project against the installed preset (run `ztrack init` first).\n--phase gate runs only the ongoing-gate rules (excludes transition/promotion-time authoring checks); default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the issue this git checkout is for (resolved from the branch/worktree name); other issues become informational. Unresolved scope fails closed (gates everything). Built for per-worktree Stop-hook gates.\n');
     return true;
   }
-  // Zero-config file mode: `ztrack check <file.md> [more.md]` validates raw issue-markdown
-  // with the bundled `basic` preset — no init/backend/team. Triggered by a positional path
-  // arg (commits are verified against the cwd git repo, so red→green works out of the box).
-  if (action === 'check') {
-    const valueFlags = new Set(['--input', '--issues', '--case', '--categories', '--phase', '--output', '--max-findings']);
-    const files = flagArgs.filter((t, i) => !t.startsWith('--') && !(i > 0 && valueFlags.has(flagArgs[i - 1]!)));
-    if (files.length) {
-      const absFiles = files.map((f) => {
-        const abs = isAbsolute(f) ? f : resolve(process.cwd(), f);
-        if (!existsSync(abs) || !statSync(abs).isFile()) {
-          throw new Error(`ztrack check: no such file '${f}'. Pass an issue-markdown file (run 'ztrack example' for a ready-made one).`);
-        }
-        return abs;
-      });
-      const gitRoot = git(process.cwd(), ['rev-parse', '--show-toplevel']) || process.cwd();
-      const result = await checkMarkdownFiles(absFiles, {
-        projectRoot: gitRoot,
-        ...(flagArgs.includes('--verify-commits') ? { verifyCommits: true } : {}),
-      });
-      const errorsOnly = flagArgs.includes('--errors-only');
-      const rawMaxF = optionValue(flagArgs, '--max-findings');
-      const pmF = Number(rawMaxF);
-      const maxFindingsF = rawMaxF && Number.isInteger(pmF) && pmF >= 0 ? pmF : 120;
-      const failedF = !result.ok || (flagArgs.includes('--fail-on-warning') && result.findings.length > 0);
-      if (flagArgs.includes('--json')) {
-        process.stdout.write(`${JSON.stringify({ ok: result.ok, summary: summarizeResult(result), findings: result.findings }, null, 2)}\n`);
-      } else {
-        process.stdout.write(renderCheckReport(result, { errorsOnly, maxFindings: maxFindingsF }));
-      }
-      process.exitCode = failedF ? 1 : 0;
-      return true;
-    }
-  }
-
   const allowed = KNOWN_FLAGS[action]!;
   const unknown = flagArgs.filter((t) => t.startsWith('--') && !allowed.has(t));
   if (unknown.length) throw new Error(`ztrack ${action}: unknown flag(s) ${unknown.join(', ')}. Valid flags: ${[...allowed].join(' ')}`);

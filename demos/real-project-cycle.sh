@@ -32,6 +32,8 @@ print(data)
 PY
 }
 
+# default grammar: a 3-AC issue (dev/01, dev/02, proc/01), all pending to start (planning is
+# green — nothing is claimed yet). $7 = issue id, $8 = extra Labels line (may be empty).
 write_issue() {
   local path="$1"
   local title="$2"
@@ -39,28 +41,28 @@ write_issue() {
   local ac1="$4"
   local ac2="$5"
   local ac3="$6"
+  local id="$7"
+  local labels="${8:-}"
   cat > "$path" <<EOF
-# $title
+# $id: $title
 
-## Summary
-
-$source [1]
+Summary: $source
+Status: in-progress
+Assignee: maintainer
+${labels:+Labels: $labels}
 
 ## Acceptance Criteria
 
-- [ ] dev/01 status: pending $ac1 [1]
-- [ ] dev/02 status: pending $ac2 [1]
-- [ ] proc/01 status: pending $ac3 [1]
-
-## Sources
-
-[1] Requirement:
-$source
-
-## Evidence
+- [ ] dev/01 v1 $ac1
+  - status: pending
+- [ ] dev/02 v1 $ac2
+  - status: pending
+- [ ] proc/01 v1 $ac3
+  - status: pending
 EOF
 }
 
+# Flip one AC from pending -> passed, attaching image+commit evidence and a proof.
 pass_ac() {
   local file="$1"
   local ac="$2"
@@ -75,29 +77,27 @@ path, ac, text, sha, evidence = sys.argv[1:]
 p = Path(path)
 body = p.read_text()
 body = body.replace(
-    f"- [ ] {ac} status: pending {text} [1]",
-    f"- [x] {ac} status: passed {text} commit: {sha} [{evidence}]",
+    f"- [ ] {ac} v1 {text}\n  - status: pending\n",
+    f"- [x] {ac} v1 {text}\n  - status: passed\n"
+    f"  - evidence {evidence}: image=s.png commit={sha} acv=1\n"
+    f'  - proof: "{evidence} demonstrates {ac}" -> {evidence}\n',
 )
-body += f"\n- [{evidence}] type: pr ac: {ac} repo: northwind/ops number: {evidence[1:]} head: main justification: Verified by tests, code review, and release notes.\n"
 p.write_text(body)
 PY
 }
 
-append_rollout_plan() {
+# Project policy: an API case carries the rollout-plan label once it advances.
+add_rollout_label() {
   local file="$1"
   python3 - "$file" <<'PY'
 from pathlib import Path
 import sys
 
 p = Path(sys.argv[1])
-p.write_text(p.read_text() + """
-
-## Rollout Plan
-
-- Deploy behind the inventory-write feature flag.
-- Monitor reservation conflict rate for one business day.
-- Roll back by disabling the flag; data writes are idempotent.
-""")
+text = p.read_text()
+if "Labels:" in text:
+    text = text.replace("Labels: area:api", "Labels: area:api, rollout-plan")
+p.write_text(text)
 PY
 }
 
@@ -105,6 +105,7 @@ cd "$app"
 git init -q
 git config user.email cycle@example.com
 git config user.name "Northwind Ops"
+git checkout -q -b main 2>/dev/null || git branch -q -M main
 
 mkdir -p packages/inventory/src packages/api/src apps/admin/src test docs/adr docs/runbooks .github/workflows scripts
 cat > package.json <<'EOF'
@@ -274,19 +275,20 @@ git commit -q -m "document reservation rollout"
 docs_sha="$(git rev-parse --short HEAD)"
 
 npm install -D "$tarball" >/dev/null
-npx ztrack init --team INV --preset simple-sdlc >/dev/null
+npx ztrack init --team INV --preset default >/dev/null
 
-# Project-specific policy: completed API cases must include a Rollout Plan.
-# Add a rule RECORD to the installed preset (`rule` is already in scope in that file).
-cat >> .volter/tracker/validation/preset.cjs <<'EOF'
+# Project-specific policy: an API case (label area:api) that has advanced past in-progress
+# must carry the `rollout-plan` label. Append the rule to the installed ESM preset; mutating
+# DefaultPreset.rules after the default export is visible at load time (live binding).
+cat >> .volter/tracker/validation/preset.mts <<'EOF'
 
-module.exports.rules.push(rule({
-  code: 'northwind_api_done_missing_rollout_plan',
+DefaultPreset.rules.push(rule({
+  code: 'northwind_api_missing_rollout_plan',
   select: (m) => m.issues,
   when: ({ issue }) => (issue.labels || []).includes('area:api')
-    && ['completed', 'done'].includes(String(issue.stateType || issue.status || '').toLowerCase())
-    && !issue.sections.includes('Rollout Plan'),
-  message: () => 'Done API cases must include ## Rollout Plan.',
+    && ['in-review', 'done'].includes(String(issue.status))
+    && !(issue.labels || []).includes('rollout-plan'),
+  message: ({ issue }) => `API issue ${issue.id} must carry the rollout-plan label.`,
 }));
 EOF
 
@@ -294,86 +296,100 @@ write_issue inventory.md "Reserve inventory units" \
   "Warehouse operators need reservations to prevent overselling during checkout." \
   "Store reserves available units." \
   "Store rejects over-reservation without mutation." \
-  "Tests cover reserve and release behavior."
-npx ztrack issue create --title "Reserve inventory units" --label type:case --label area:inventory --state "In Progress" --assignee dev-a --body-file inventory.md >/dev/null
+  "Tests cover reserve and release behavior." \
+  INV-1 "area:inventory"
+npx ztrack issue create --title "Reserve inventory units" --label type:case --label area:inventory --state in-progress --assignee dev-a --body-file inventory.md >/dev/null
 
 write_issue api.md "Expose reservation API" \
   "Checkout callers need an API response that distinguishes success from stock conflicts." \
   "API returns success for available reservations." \
   "API returns conflict for insufficient stock." \
-  "Rollout plan covers monitoring and rollback."
-npx ztrack issue create --title "Expose reservation API" --label type:case --label area:api --state "In Progress" --assignee dev-b --body-file api.md >/dev/null
+  "Rollout plan covers monitoring and rollback." \
+  INV-2 "area:api"
+npx ztrack issue create --title "Expose reservation API" --label type:case --label area:api --state in-progress --assignee dev-b --body-file api.md >/dev/null
 
 write_issue admin.md "Show reservations in admin" \
   "Operations needs a quick way to inspect reserved inventory from the admin surface." \
   "Admin summary renders reserved and on-hand counts." \
   "Summary works with multiple SKUs." \
-  "Docs identify who owns the admin view."
-npx ztrack issue create --title "Show reservations in admin" --label type:case --label area:admin --state "In Progress" --assignee dev-c --body-file admin.md >/dev/null
+  "Docs identify who owns the admin view." \
+  INV-3 "area:admin"
+npx ztrack issue create --title "Show reservations in admin" --label type:case --label area:admin --state in-progress --assignee dev-c --body-file admin.md >/dev/null
 
 write_issue docs.md "Document inventory rollout" \
   "Release managers need rollout instructions before enabling reservation writes." \
   "Runbook explains monitoring." \
   "ADR records conflict semantics." \
-  "Release notes link to the runbook."
-npx ztrack issue create --title "Document inventory rollout" --label type:case --label area:docs --state "In Progress" --assignee tech-writer --body-file docs.md >/dev/null
+  "Release notes link to the runbook." \
+  INV-4 "area:docs"
+npx ztrack issue create --title "Document inventory rollout" --label type:case --label area:docs --state in-progress --assignee tech-writer --body-file docs.md >/dev/null
 
-# Planning state: sourced, assigned, and pending work should be valid.
+# Planning state: assigned, pending work should be valid (nothing is claimed yet).
 npx ztrack check --json > planning.json
 test "$(json_field planning.json summary.status)" = "pass"
 
+# Review gate: advancing INV-1 to in-review while proc/01 is still pending must be blocked.
 pass_ac inventory.md dev/01 "Store reserves available units." "$reserve_sha" E1
 pass_ac inventory.md dev/02 "Store rejects over-reservation without mutation." "$reserve_sha" E2
-npx ztrack issue edit INV-1 --body-file inventory.md --state Done >/dev/null
+python3 -c "from pathlib import Path;p=Path('inventory.md');p.write_text(p.read_text().replace('Status: in-progress','Status: in-review'))"
+npx ztrack issue edit INV-1 --state in-review --body-file inventory.md >/dev/null
 set +e
 npx ztrack check --json > review-red.json
 review_exit=$?
 set -e
 test "$review_exit" -eq 1
-test "$(json_field review-red.json findings.0.code)" = "simple-sdlc_done_with_unpassed_acceptance_criteria"
+python3 -c 'import json;cs=" ".join(f["code"] for f in json.load(open("review-red.json"))["findings"]);import sys;sys.exit(0 if "review_requires_all_acs_passed" in cs else 1)'
 pass_ac inventory.md proc/01 "Tests cover reserve and release behavior." "$reserve_sha" E3
-npx ztrack issue edit INV-1 --body-file inventory.md >/dev/null
+python3 -c "from pathlib import Path;p=Path('inventory.md');p.write_text(p.read_text().replace('Status: in-review','Status: in-progress'))"
+npx ztrack issue edit INV-1 --state in-progress --body-file inventory.md >/dev/null
 npx ztrack check --json > review-green.json
 test "$(json_field review-green.json summary.status)" = "pass"
 
+# Project-policy gate: an API case advanced to in-review without the rollout-plan label is
+# blocked by the appended custom rule (alongside the built-in review gates); adding the label
+# clears the policy violation. We assert the policy code is present, then settle back to
+# in-progress with the label in place.
 pass_ac api.md dev/01 "API returns success for available reservations." "$api_sha" E1
 pass_ac api.md dev/02 "API returns conflict for insufficient stock." "$api_sha" E2
 pass_ac api.md proc/01 "Rollout plan covers monitoring and rollback." "$docs_sha" E3
-npx ztrack issue edit INV-2 --body-file api.md --state Done >/dev/null
+python3 -c "from pathlib import Path;p=Path('api.md');p.write_text(p.read_text().replace('Status: in-progress','Status: in-review'))"
+npx ztrack issue edit INV-2 --state in-review --body-file api.md >/dev/null
 set +e
 npx ztrack check --json > rollout-red.json
 rollout_exit=$?
 set -e
 test "$rollout_exit" -eq 1
-test "$(json_field rollout-red.json findings.0.code)" = "northwind_api_done_missing_rollout_plan"
-append_rollout_plan api.md
-npx ztrack issue edit INV-2 --body-file api.md >/dev/null
+python3 -c 'import json;cs=" ".join(f["code"] for f in json.load(open("rollout-red.json"))["findings"]);import sys;sys.exit(0 if "northwind_api_missing_rollout_plan" in cs else 1)'
+add_rollout_label api.md
+python3 -c "from pathlib import Path;p=Path('api.md');p.write_text(p.read_text().replace('Status: in-review','Status: in-progress'))"
+npx ztrack issue edit INV-2 --state in-progress --body-file api.md >/dev/null
 npx ztrack check --json > rollout-green.json
 test "$(json_field rollout-green.json summary.status)" = "pass"
 
+# A fabricated commit on an evidence line is caught under --verify-commits, then fixed.
 pass_ac admin.md dev/01 "Admin summary renders reserved and on-hand counts." "$admin_sha" E1
-pass_ac admin.md dev/02 "Summary works with multiple SKUs." deadbee E2
+pass_ac admin.md dev/02 "Summary works with multiple SKUs." deadbeef E2
 pass_ac admin.md proc/01 "Docs identify who owns the admin view." "$docs_sha" E3
 npx ztrack issue edit INV-3 --body-file admin.md >/dev/null
 set +e
-npx ztrack check --json > bad-sha-red.json
+npx ztrack check --verify-commits --json > bad-sha-red.json
 sha_exit=$?
 set -e
 test "$sha_exit" -eq 1
-test "$(json_field bad-sha-red.json findings.0.code)" = "simple-sdlc_checked_ac_commit_hash_missing"
+python3 -c 'import json;cs=" ".join(f["code"] for f in json.load(open("bad-sha-red.json"))["findings"]);import sys;sys.exit(0 if "evidence_commit_not_found" in cs else 1)'
 python3 - "$admin_sha" <<'PY'
 from pathlib import Path
 import sys
 p = Path('admin.md')
-p.write_text(p.read_text().replace('commit: deadbee', f'commit: {sys.argv[1]}'))
+p.write_text(p.read_text().replace('commit=deadbeef', f'commit={sys.argv[1]}'))
 PY
 npx ztrack issue edit INV-3 --body-file admin.md >/dev/null
 
 pass_ac docs.md dev/01 "Runbook explains monitoring." "$docs_sha" E1
 pass_ac docs.md dev/02 "ADR records conflict semantics." "$docs_sha" E2
 pass_ac docs.md proc/01 "Release notes link to the runbook." "$docs_sha" E3
-npx ztrack issue edit INV-4 --body-file docs.md --state Done >/dev/null
-npx ztrack check --json > final-check.json
+npx ztrack issue edit INV-4 --body-file docs.md >/dev/null
+npx ztrack check --verify-commits --json > final-check.json
 test "$(json_field final-check.json summary.status)" = "pass"
 test "$(json_field final-check.json summary.issues)" -eq 4
 
@@ -408,7 +424,7 @@ const cases = await client.issue.list({ label: 'type:case', limit: 20, json: 'id
 if (!Array.isArray(cases) || cases.length !== 4) throw new Error(`expected 4 cases, got ${Array.isArray(cases) ? cases.length : 'non-array'}`);
 const api = cases.find((issue) => issue.identifier === 'INV-2');
 const viewed = await client.issue.view('INV-2', { json: 'identifier,title,body' });
-if (!api || !String(viewed.body || '').includes('## Rollout Plan')) throw new Error('API rollout plan not visible through SDK');
+if (!api || !String(viewed.body || '').includes('rollout-plan')) throw new Error('API rollout-plan label not visible through SDK');
 console.log(JSON.stringify({ cases: cases.length, api: api.identifier }));
 EOF
 node sdk-cycle.mjs > sdk-cycle.json
@@ -426,18 +442,18 @@ responses = [json.loads(line) for line in open("mcp-cycle.jsonl") if line.strip(
 if not any(tool["name"] == "tracker_check" for tool in responses[1]["result"]["tools"]):
     raise SystemExit("tracker_check missing")
 view = json.loads(responses[2]["result"]["content"][0]["text"])
-if "Rollout Plan" not in view.get("body", ""):
-    raise SystemExit("MCP issue view did not expose rollout plan")
+if "rollout-plan" not in view.get("body", ""):
+    raise SystemExit("MCP issue view did not expose rollout-plan label")
 report = json.loads(responses[-1]["result"]["content"][0]["text"])
 if report["summary"]["status"] != "pass":
     raise SystemExit(report)
 PY
 
-git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json packages apps test docs scripts README.md
+git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages apps test docs scripts README.md
 git commit -q -m "adopt ztrack for inventory release lifecycle"
 
 status="$(git status --short --ignored=no)"
-if printf '%s\n' "$status" | rg '^\?\? \.volter/tracker/' >/dev/null; then
+if printf '%s\n' "$status" | grep -E '^\?\? \.volter/tracker/validation/' >/dev/null; then
   printf 'unexpected ztrack local state:\n%s\n' "$status" >&2
   exit 1
 fi

@@ -21,6 +21,7 @@ import { z } from 'zod';
 import type { RuleCategory, RuleDepth } from '../checkRules.ts';
 import { blockCycles, blockerRefProblems, completionViolations, nodeIndex } from './blocking.ts';
 import { formatRef } from './ref.ts';
+import { splitIssueBundle } from './bundle.ts';
 
 // ── optional task-management primitives ─────────────────────────────────────
 // Standard shapes every task system has. They are NOT required: a preset opts
@@ -28,7 +29,6 @@ import { formatRef } from './ref.ts';
 // rest are simply "not implemented". The core defines the SHAPE so the CLI and
 // visualizer hook into them uniformly across presets.
 export interface Relation { type: 'blocks' | 'blocked-by' | 'relates'; issueId: string }
-export interface LinkedIssue { system: string; key: string; url?: string }
 export interface Source { id: string; kind: string; ref?: string; content?: string }
 // Proof: evidence without an explanation of how it demonstrates the criterion is
 // incomplete. A proof ties an AC's claim to the evidence that backs it.
@@ -41,7 +41,7 @@ export interface Proof { explanation: string; evidenceRefs: string[] }
 // unified dependency graph these feed.
 export interface BlockRef { issue: string; ac?: string }
 
-export const PRIMITIVES = ['labels', 'relations', 'linkedIssues', 'children', 'sources', 'category', 'proof', 'blocking', 'audit'] as const;
+export const PRIMITIVES = ['labels', 'relations', 'children', 'sources', 'category', 'proof', 'blocking', 'audit'] as const;
 export type PrimitiveName = (typeof PRIMITIVES)[number];
 
 // ── system-required core (the CLI hooks into exactly these fields) ──────────
@@ -57,28 +57,27 @@ export interface CoreIssue {
   id: string; title: string; summary: string; status: string; acceptanceCriteria: CoreAC[];
   labels?: string[];            // primitive
   relations?: Relation[];       // primitive
-  linkedIssues?: LinkedIssue[]; // primitive
   children?: string[];          // primitive
   sources?: Source[];           // primitive
-  waiver?: Waiver;              // an authority's freshness-anchored acknowledgment (see Waiver)
+  // (waivers are NOT a primitive on the issue — they live in context.waivers; see WaiverDirective)
 }
 export interface CoreRoot { issues: CoreIssue[] }
 
-// A WAIVER is a durable, honest escape hatch: an authority records that an issue's
-// failing state is knowingly accepted, WITHOUT silently muting the check forever. It
-// is anchored to the work it was signed against — a fingerprint of the acceptance
-// criteria (`acFingerprint`) — so it AUTO-STALES the moment those criteria drift, at
-// which point the underlying findings apply again. A valid (reasoned + signed-off +
-// fresh) waiver downgrades that issue's `error` findings to `acknowledged` (non-gating);
-// a stale or malformed one does not. Unlike the per-session loop exemption, this lives
-// in the tracker and survives sessions — but it cannot rot silently, because freshness
-// is structural (the criteria themselves), not a date someone forgets to revisit. We
-// anchor to the ACs, NOT the commit: an unrelated commit elsewhere must not invalidate a
-// waiver, and a change to the criteria being waived must.
-export interface Waiver {
-  reason: string;         // why the failing state is acceptable (required; empty → error)
-  approvedBy: string;     // the authority who signed off — the git identity (required; empty → error)
-  acFingerprint: string;  // fingerprint of the ACs when signed (the freshness anchor)
+// A WAIVER is an eslint-`disable`-style directive: a LOCATED, finding-specific acknowledgment
+// that one particular check finding on an issue (optionally a specific AC) is knowingly
+// accepted — NOT a blanket "this whole issue is fine." It is parsed by the CORE (universal,
+// never per-preset) from each issue's `## Waivers` section into `context.waivers`, then
+// applied as a post-filter: it downgrades the matching `error` finding to `acknowledged`, and
+// a waiver that matches NOTHING is itself reported (`waiver_unused`) — the self-cleaning
+// staleness signal (eslint's `--report-unused-disable-directives`), so it can't silently rot.
+// `reason` and `by` (the git-identity sign-off) are required. Structural invariants
+// (`waivable === false`) can never be waived no matter who signs off.
+export interface WaiverDirective {
+  issueId: string;       // the issue the finding is on
+  code: string;          // the finding code it accepts (e.g. 'evidence_commit_not_found')
+  reason: string;        // why the failing state is acceptable (required; empty → error)
+  approvedBy: string;    // the authority who signed off — the git identity (required; empty → error)
+  acId?: string;         // optional: scope to one AC's finding; absent = any AC / issue-level
 }
 
 // ── audit (a derived primitive): a separate append-only log, written on every
@@ -147,6 +146,9 @@ export interface Context {
   // run). Absent = run every rule. This is the typed replacement for the old
   // `--categories` / organization.check.categories selector.
   categories?: Partial<Record<RuleCategory, number>>;
+  // waivers parsed by the CORE from each issue's `## Waivers` section (see WaiverDirective) —
+  // a post-filter applied to findings; preset-agnostic, never on the issue itself.
+  waivers?: WaiverDirective[];
 }
 
 // The Context schema — the contract requires context to be typed AND validated as
@@ -165,12 +167,18 @@ const WorldAnnotationSchema = z.object({
   id: z.string(), service: z.string().optional(), eventId: z.string(),
   classification: z.enum(['source', 'noise', 'duplicate']), quote: z.string().optional(),
 }).strict();
+// Waivers are core-parsed from each issue's `## Waivers` section into the context (universal,
+// preset-agnostic) and applied as a post-filter — see WaiverDirective.
+const WaiverDirectiveSchema = z.object({
+  issueId: z.string(), code: z.string(), reason: z.string(), approvedBy: z.string(), acId: z.string().optional(),
+}).strict();
 export const CoreContextSchema = z.object({
   now: z.string().optional(),
   phase: z.enum(['all', 'gate']).optional(),
   git: GitContextSchema.optional(),
   world: z.object({ events: z.array(WorldEventSchema).optional(), annotations: z.array(WorldAnnotationSchema).optional() }).strict().optional(),
   categories: z.record(z.string(), z.number()).optional(),
+  waivers: z.array(WaiverDirectiveSchema).optional(),
 }).strict();
 
 /** The ONE top-level schema: ValidationInput = { context, root }, both strict. A
@@ -236,6 +244,14 @@ export interface RuleRecord<R extends CoreRoot, Item extends Located = Located> 
   code: string;
   severity?: Severity; // default 'error'
   phase?: 'gate' | 'transition';
+  // The issue lifecycle state(s) this rule gates, matched (case-insensitive) against the
+  // owning issue's `status`. Absent = an always-on invariant that runs in EVERY state —
+  // the "well-formed" rules. A state-tagged rule runs ONLY against items whose issue is
+  // currently in one of these states. The gating mechanism is universal (here); the rule
+  // content and which state it gates are the preset's. Moving an issue between states
+  // stays MANUAL — a preset may layer a real state machine (auto-promotion, legal-
+  // transition enforcement) on top, but core never moves an issue on its own.
+  state?: string | string[];
   category?: RuleCategory;
   depth?: RuleDepth;
   waivable?: boolean;  // false ⇒ a waiver can't downgrade this finding (structural invariants)
@@ -287,6 +303,13 @@ export interface Preset<R extends CoreRoot> {
   // Omit when the preset's rules need no observed facts.
   loadContext?: (input: PresetContextInput) => Context | Promise<Context>;
   parse: (markdown: string) => unknown; // mdast -> candidate object (validated by `schema`)
+  // The declared INVERSE of `parse`: render the validated root back to canonical markdown.
+  // Present iff the preset OWNS its issue markdown (read-WRITE): the grammar is then one
+  // definition running both directions — `fmt` is serialize(parse(x)) and a mutation is
+  // serialize(edit(parse(x))), with no second write-grammar. A preset that merely ADAPTS an
+  // external source-of-truth (e.g. speckit over Spec-Kit's own files) is read-ONLY and omits
+  // it; `fmt` and the structured-mutation tools are then unavailable for that preset by design.
+  serialize?: (root: R) => string;
   rules: Rule<R>[];
   // Preset-specific analyzed facts: given the engine's core DerivedModel, return extra
   // fact lists (keyed by name) for this preset's rules to `select` over. This is where
@@ -363,8 +386,15 @@ export function deriveCoreModel<R extends CoreRoot>(root: R, context: Context, i
 
 // Evaluate one record: select a list off the model, keep the matches, describe each.
 // Location (issueId/acId/evidenceId) is read off the selected item, not authored.
-function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: DerivedModel<R>): Finding[] {
+function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: DerivedModel<R>, statusById: Map<string, string>): Finding[] {
+  // A state-tagged rule applies only to items whose owning issue is currently in one of
+  // those states (looked up by issueId — every model fact carries one). Absent tag =
+  // always-on invariant: no filter. Universal gating; the state vocabulary is the preset's.
+  const gateStates = r.state === undefined ? null
+    : (Array.isArray(r.state) ? r.state : [r.state]).map((s) => s.toLowerCase());
   return r.select(model)
+    .filter((item) => gateStates === null
+      || (item.issueId !== undefined && gateStates.includes((statusById.get(item.issueId) ?? '').toLowerCase())))
     .filter((item) => (r.when ? r.when(item, model) : true))
     .map((item): Finding => ({
       code: r.code,
@@ -388,45 +418,56 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value ?? null);
 }
 
-/** The acceptance-criteria fingerprint a waiver anchors to. Computed identically at
- *  sign time (`ztrack waiver sign`) and check time, so a waiver stays fresh only while
- *  the criteria it was signed against are byte-for-byte the same. */
-export function issueAcFingerprint(issue: CoreIssue): string {
-  return `acw_${createHash('sha256').update(stableStringify(issue.acceptanceCriteria)).digest('hex').slice(0, 12)}`;
-}
-
-function waiverFresh(w: Waiver, issue: CoreIssue): boolean {
-  return w.acFingerprint === issueAcFingerprint(issue);
-}
-
-// Post-process: a valid (reasoned + signed-off + fresh) waiver downgrades its issue's
-// `error` findings to `acknowledged`. A waiver missing a reason or sign-off is itself an
-// error (and never downgrades); a stale waiver is a non-gating warning that leaves the
-// underlying findings in force. This is core machinery — every preset gets it for free;
-// presets only decide how a waiver is parsed from their markdown.
-function applyWaivers<R extends CoreRoot>(findings: Finding[], model: DerivedModel<R>): Finding[] {
-  const extra: Finding[] = [];
-  const downgrade = new Map<string, string>(); // issueId -> approvedBy
-  for (const { issueId, issue } of model.issues) {
-    const w = (issue as CoreIssue).waiver;
-    if (!w) continue;
-    const hasReason = !!w.reason?.trim();
-    const hasSignoff = !!w.approvedBy?.trim();
-    if (!hasReason) extra.push({ code: 'waiver_missing_reason', severity: 'error', issueId, message: `Issue ${issueId} carries a waiver with no reason. A waiver must state why the failing state is acceptable.` });
-    if (!hasSignoff) extra.push({ code: 'waiver_missing_signoff', severity: 'error', issueId, message: `Issue ${issueId} carries a waiver with no sign-off (\`by:\`). A waiver must name the authority who accepted it.` });
-    if (!hasReason || !hasSignoff) continue; // malformed → never downgrades
-    if (!waiverFresh(w, issue)) {
-      extra.push({ code: 'waiver_stale', severity: 'warning', issueId, message: `Issue ${issueId}'s waiver is stale — the acceptance criteria changed since ${w.approvedBy} signed it. Re-sign to re-acknowledge; until then the findings below apply.` });
-      continue; // stale → no downgrade, the real findings stand
+// Parse waivers UNIVERSALLY (core, never per-preset) from each issue's `## Waivers` section.
+// Each row is a located directive: `- code: <finding-code> [ac: <acId>] reason: <text> by: <signer>`.
+// The issue id comes from the body's `# <id>: <title>` head (robust for single-issue and bundle).
+export function parseWaivers(markdown: string): WaiverDirective[] {
+  const out: WaiverDirective[] = [];
+  for (const { body } of splitIssueBundle(markdown)) {
+    const issueId = /^#\s+(\S+?):/m.exec(body)?.[1];
+    if (!issueId) continue;
+    const section = /(?:^|\n)##\s+waivers\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|$)/i.exec(body);
+    if (!section) continue;
+    for (const line of section[1]!.split('\n')) {
+      const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
+      if (!code) continue;
+      const acId = /\bac:\s*(\S+)/i.exec(line)?.[1];
+      const reason = /\breason:\s*(.+?)\s*(?=\s+by:|$)/i.exec(line)?.[1]?.trim() ?? '';
+      const approvedBy = /\bby:\s*(.+?)\s*$/i.exec(line)?.[1]?.trim() ?? '';
+      out.push({ issueId, code, reason, approvedBy, ...(acId ? { acId } : {}) });
     }
-    downgrade.set(issueId, w.approvedBy.trim());
   }
-  if (!downgrade.size && !extra.length) return findings;
-  // A waiver downgrades a waived issue's `error` findings — EXCEPT structural invariants
-  // (waivable === false), which stay errors no matter who signs off.
-  const adjusted = findings.map((f): Finding => (f.issueId && f.severity === 'error' && f.waivable !== false && downgrade.has(f.issueId))
-    ? { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${downgrade.get(f.issueId)})` }
-    : f);
+  return out;
+}
+
+// Post-process (eslint `disable`-style): each waiver downgrades the ONE matching `error`
+// finding to `acknowledged`. A waiver missing a reason or sign-off is itself an error and
+// downgrades nothing; a waiver that matches NO finding is reported `waiver_unused` (warning)
+// — the self-cleaning staleness signal. Structural invariants (waivable === false) never
+// downgrade. Universal core machinery — waivers live in `context.waivers`, never on a preset.
+function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[] {
+  if (!waivers.length) return findings;
+  const extra: Finding[] = [];
+  const loc = (w: WaiverDirective) => `${w.issueId}${w.acId ? ` (${w.acId})` : ''} for '${w.code}'`;
+  const valid = waivers.filter((w) => {
+    const ok = !!w.reason?.trim() && !!w.approvedBy?.trim();
+    if (!w.reason?.trim()) extra.push({ code: 'waiver_missing_reason', severity: 'error', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} has no reason. A waiver must state why the failing state is acceptable.` });
+    if (!w.approvedBy?.trim()) extra.push({ code: 'waiver_missing_signoff', severity: 'error', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} has no sign-off (\`by:\`). A waiver must name the authority who accepted it.` });
+    return ok;
+  });
+  // Downgrade each error finding a valid, non-structural waiver matches; track which fired.
+  const fired = new Set<WaiverDirective>();
+  const adjusted = findings.map((f): Finding => {
+    if (f.severity !== 'error' || f.waivable === false || !f.issueId) return f;
+    const w = valid.find((v) => v.issueId === f.issueId && v.code === f.code && (v.acId === undefined || v.acId === f.acId));
+    if (!w) return f;
+    fired.add(w);
+    return { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${w.approvedBy.trim()})` };
+  });
+  // A valid waiver that suppressed nothing is stale — surface it (eslint's unused-directive).
+  for (const w of valid) {
+    if (!fired.has(w)) extra.push({ code: 'waiver_unused', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} matched no finding — remove it (or fix the code/ac). A waiver that suppresses nothing is stale.` });
+  }
   return [...adjusted, ...extra];
 }
 
@@ -440,16 +481,18 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
   const active = preset.rules
     .filter((r) => (ctx.phase === 'gate' ? r.phase !== 'transition' : true))
     .filter((r) => ruleEnabled(r, ctx.categories));
+  // The owning issue's current lifecycle state, by id — what per-state rule gating reads.
+  const statusById = new Map<string, string>(input.root.issues.map((i) => [i.id, String(i.status ?? '')]));
   // A rule is contracted pure, but Rule is a public extension point: a buggy rule's
   // select/when/message must surface as a finding, not crash the whole check.
   const findings = active.flatMap((r) => {
     try {
-      return evalRecord(r, model);
+      return evalRecord(r, model, statusById);
     } catch (error) {
       return [{ code: 'rule_threw', severity: 'error', waivable: false, message: `Rule '${r.code}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
     }
   });
-  const waived = applyWaivers(findings, model);
+  const waived = applyWaivers(findings, ctx.waivers ?? []);
   return { ok: !waived.some((f) => f.severity === 'error'), findings: waived, export: input.root };
 }
 
@@ -463,7 +506,11 @@ export function check<R extends CoreRoot>(preset: Preset<R>, markdown: string, c
   } catch (error) {
     return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error) }] };
   }
-  return validateAndRun(preset, ctx, candidate, false);
+  // Waivers are parsed by the CORE from the raw markdown (universal, preset-agnostic) and
+  // merged into the context — `applyWaivers` then downgrades the findings they name.
+  const parsed = parseWaivers(markdown);
+  const merged: Context = parsed.length ? { ...ctx, waivers: [...(ctx.waivers ?? []), ...parsed] } : ctx;
+  return validateAndRun(preset, merged, candidate, false);
 }
 
 /** Validate an already-parsed Root (the exported, validated model) against the same

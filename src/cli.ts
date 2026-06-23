@@ -4,16 +4,13 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkTracker } from './check.ts';
 import { exportTrackerRoot } from './export.ts';
-import { issueAcFingerprint } from './core/engine.ts';
 import { git } from './core/gitWorld.ts';
-import { canonicalizeIssueMarkdown } from './markdownModel.ts';
 import { lintIssueBody } from './lint.ts';
 import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
-import { applyAcMutation } from './mutate.ts';
-import type { AcStatus } from './mutate.ts';
+import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
+import { framedFromView } from './core/loader.ts';
 import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
@@ -38,26 +35,56 @@ async function readStdinIfPiped(): Promise<string | undefined> {
 // `issue scaffold` produces a starter body. Prefer the active preset's OWN scaffold so
 // the body satisfies that preset's rules (required sections, source markers, AC ids);
 // fall back to the generic body when no preset is configured or it defines none.
-function activePresetScaffold(title: string): string | undefined {
+async function activePresetScaffold(title: string): Promise<string | undefined> {
   try {
     const root = projectRootFrom();
-    return resolveTrackerValidation(loadTrackerConfig(root), root).scaffold?.(title);
+    return (await resolveTrackerValidation(loadTrackerConfig(root), root)).scaffold?.(title);
   } catch {
     return undefined;
   }
 }
 
-// Remove an existing `## Waiver` section (heading + body up to the next `## ` or EOF)
-// so `waiver sign` re-stamps a single canonical block and `waiver clear` drops it.
-function stripWaiverSection(body: string): string {
+// `fmt` = the preset's OWN grammar, both directions: parse -> validate -> serialize.
+// There is no second canonicalizer; a read-only adapter preset (no serialize) can't fmt.
+async function presetCanonicalize(text: string): Promise<string> {
+  const root = projectRootFrom();
+  const preset = await resolveTrackerValidation(loadTrackerConfig(root), root);
+  return canonicalizeBody(preset, text);
+}
+
+// The issue's `## Waivers` section is a list of located waiver directives, one per row:
+// `- code: <finding-code> [ac: <acId>] reason: <text> by: <signer>` (parsed identically by the
+// core in engine.parseWaivers). These helpers read/strip/re-render it for `waiver sign|clear`.
+type WaiverRow = { code: string; acId?: string; reason: string; approvedBy: string };
+function parseWaiverRows(body: string): WaiverRow[] {
+  const m = /(?:^|\n)##\s+waivers\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|$)/i.exec(body);
+  if (!m) return [];
+  const rows: WaiverRow[] = [];
+  for (const line of m[1]!.split('\n')) {
+    const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
+    if (!code) continue;
+    const acId = /\bac:\s*(\S+)/i.exec(line)?.[1];
+    const reason = /\breason:\s*(.+?)\s*(?=\s+by:|$)/i.exec(line)?.[1]?.trim() ?? '';
+    const approvedBy = /\bby:\s*(.+?)\s*$/i.exec(line)?.[1]?.trim() ?? '';
+    rows.push({ code, reason, approvedBy, ...(acId ? { acId } : {}) });
+  }
+  return rows;
+}
+function stripWaiversSection(body: string): string {
   const out: string[] = [];
   let skipping = false;
   for (const line of body.split('\n')) {
-    if (/^##\s+waiver\b/i.test(line)) { skipping = true; continue; }
+    if (/^##\s+waivers\b/i.test(line)) { skipping = true; continue; }
     if (skipping && /^##\s+/.test(line)) skipping = false;
     if (!skipping) out.push(line);
   }
-  return `${out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '')}\n`;
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '');
+}
+function withWaivers(body: string, rows: WaiverRow[]): string {
+  const base = stripWaiversSection(body);
+  if (!rows.length) return `${base}\n`;
+  const render = (w: WaiverRow) => `- code: ${w.code}${w.acId ? ` ac: ${w.acId}` : ''} reason: ${w.reason} by: ${w.approvedBy}`;
+  return `${base}\n\n## Waivers\n\n${rows.map(render).join('\n')}\n`;
 }
 
 async function main(): Promise<void> {
@@ -86,7 +113,7 @@ async function main(): Promise<void> {
 
   if (args[0] === 'init') {
     const root = resolve(optionValue(args, '--root') || process.cwd());
-    const preset = optionValue(args, '--preset', 'basic');
+    const preset = optionValue(args, '--preset', 'default');
     if (!initTrackerPresets().includes(preset as any)) {
       throw new Error(`ztrack init: --preset must be one of ${initTrackerPresets().join(', ')}`);
     }
@@ -105,7 +132,7 @@ async function main(): Promise<void> {
       ui.bold('Next steps'),
       stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
       '',
-      stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state "In Progress" --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
+      stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state draft --assignee me --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
       '',
       stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
       '',
@@ -140,49 +167,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (args[0] === 'example') {
-    const out = optionValue(args, '--out');
-    const target = out ? resolve(out) : resolve(process.cwd(), 'example-issue.md');
-    const body = [
-      '# Example: add a /health endpoint',
-      '',
-      'A demo issue for `ztrack check`. The acceptance criterion below is marked done and',
-      'cites a commit — but the SHA is fake, so the check fails. That is the whole point:',
-      'ztrack verifies the claim against real git history instead of trusting the checkbox.',
-      '',
-      '## Acceptance Criteria',
-      '',
-      '- [x] dev/01 status: passed GET /health returns 200. commit: deadbeef [E1]',
-      '',
-      '## Evidence',
-      '',
-      '- [E1] type: pr ac: dev/01 repo: your-org/your-repo number: 1 head: main justification: PR adds the endpoint and a passing test.',
-      '',
-    ].join('\n');
-    writeFileSync(target, body);
-    const shortSha = (() => { try { return git(process.cwd(), ['rev-parse', '--short', 'HEAD']) || '<real-sha>'; } catch { return '<real-sha>'; } })();
-    process.stdout.write([
-      `${statusMark('pass')} ${heading('Wrote example issue', target)}`,
-      '',
-      ui.bold('See ztrack catch a fabricated commit'),
-      stackedCommand(1, 'Run the check', `${command} check ${basename(target)}`, 'Fails: the AC cites commit deadbeef, which is not in git.'),
-      '',
-      ui.bold('Then make it pass — cite a real commit'),
-      `  ${ui.dim(`replace "deadbeef" with a real SHA (e.g. ${shortSha}) in ${basename(target)}, then re-run the check.`)}`,
-      '',
-      ui.dim('No init, backend, or team key needed — check reads the file directly.'),
-      '',
-    ].join('\n'));
-    return;
-  }
-
   if (args[0] === 'preset') {
     const action = args[1];
     if (!action || action === '--help' || action === '-h' || action === 'help') {
       process.stdout.write(
         `Usage: ${command} preset upgrade\n\n` +
         `upgrade  3-way merge new upstream preset rules into your edited\n` +
-        `         .volter/tracker/validation/preset.cjs, preserving your edits. Conflicts are\n` +
+        `         .volter/tracker/validation/preset.mts, preserving your edits. Conflicts are\n` +
         `         written as <<<<<<< markers to resolve; then run '${command} check'.\n`);
       return;
     }
@@ -191,7 +182,7 @@ async function main(): Promise<void> {
       if (result.status === 'up-to-date') {
         process.stdout.write(`${statusMark('pass')} ${ui.green('Preset is up to date')} ${ui.dim(`with the installed ztrack (${result.installedFrom})`)}\n`);
       } else if (result.status === 'no-base') {
-        process.stdout.write(`${statusMark('warn')} ${ui.yellow('No pristine base recorded')} ${ui.dim("— this repo was init'd before upgrade support.")}\n  ${ui.dim('Seed')} ${ui.dim(result.entrypoint.replace('preset.cjs', '.preset.base.cjs'))} ${ui.dim('from the ztrack version you installed, then re-run.')}\n`);
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow('No pristine base recorded')} ${ui.dim("— this repo was init'd before upgrade support.")}\n  ${ui.dim('Seed')} ${ui.dim(result.entrypoint.replace('preset.mts', '.preset.base.mts'))} ${ui.dim('from the ztrack version you installed, then re-run.')}\n`);
       } else if (result.status === 'updated') {
         process.stdout.write(`${statusMark('pass')} ${ui.green('Merged new upstream rules')} ${ui.dim(`into ${result.entrypoint} (no conflicts)`)}\n  ${ui.dim(`Review the diff, then run '${command} check'.`)}\n`);
       } else {
@@ -262,14 +253,14 @@ async function main(): Promise<void> {
   }
 
   if (args[0] === 'waiver') {
-    // The DURABLE escape: an authority records that <issue>'s failing state is knowingly
-    // accepted. A valid (reasoned + signed-off + fresh) waiver downgrades the issue's
-    // errors to 'acknowledged' so `check` passes — but it is anchored to the commit + the
-    // acceptance-criteria fingerprint, so it auto-stales the moment either drifts.
+    // eslint-`disable`-style escape: an authority acknowledges ONE specific check finding (by
+    // its code, optionally scoped to an AC) on <issue>, recorded in the `## Waivers` section.
+    // The core downgrades the matching finding to 'acknowledged'; a waiver that matches nothing
+    // is reported (`waiver_unused`). Sign-off is the git identity, captured automatically.
     const action = args[1];
     const projectRoot = projectRootFrom();
     if (!action || ['--help', '-h', 'help'].includes(action)) {
-      process.stdout.write(`Usage: ${command} waiver <sign <issue> --reason "..." | clear <issue> | status <issue>>\n\nRecords a freshness-anchored acknowledgment on <issue>, signed off as your git identity. A valid waiver downgrades that issue's errors to 'acknowledged' so \`${command} check\` passes; it auto-stales when the acceptance criteria change, and an unreasoned waiver is itself an error. Prefer descoping an AC (\`status: descoped reason: …\`) when the criterion is genuinely out of scope.\n`);
+      process.stdout.write(`Usage: ${command} waiver <sign <issue> --code <finding-code> [--ac <acId>] --reason "..." | clear <issue> [--code <code>] | status <issue>>\n\nAcknowledges ONE check finding (by its code) on <issue>, signed off as your git identity, in the issue's \`## Waivers\` section. The core downgrades that finding to 'acknowledged' so \`${command} check\` passes; a waiver that matches no finding is reported (\`waiver_unused\`). Prefer fixing the issue — waive only a finding you knowingly accept.\n`);
       return;
     }
     const id = args[2];
@@ -277,45 +268,44 @@ async function main(): Promise<void> {
     const wClient = createTrackerClient();
     const issueView = await wClient.issue.view(id, { json: 'body' });
     const body = String((issueView as Record<string, unknown>).body ?? '');
+    const rows = parseWaiverRows(body);
     if (action === 'sign') {
       const reason = optionValue(args, '--reason');
+      const code = optionValue(args, '--code');
+      const acId = optionValue(args, '--ac');
+      if (!code) throw new Error(`${command} waiver sign: --code <finding-code> is required — the check finding you are accepting (e.g. evidence_commit_not_found).`);
       if (!reason) throw new Error(`${command} waiver sign: --reason "<why this failing state is acceptable>" is required`);
-      // Sign-off is the git identity, not a free-text name: a waiver records who actually
-      // signed it (the same identity that authors commits), captured automatically.
       const gitName = git(projectRoot, ['config', 'user.name']);
       const gitEmail = git(projectRoot, ['config', 'user.email']);
-      // `Name (email)`, not the git-canonical `Name <email>` — angle brackets get mangled
-      // by the markdown round-trip (treated as an autolink), parens survive cleanly.
+      // `Name (email)`, not git's `Name <email>` — angle brackets get mangled by the markdown
+      // round-trip; parens survive. The signer is the git identity (authors commits too).
       const approvedBy = gitName && gitEmail ? `${gitName} (${gitEmail})` : (gitName || gitEmail);
       if (!approvedBy) throw new Error(`${command} waiver sign: no git identity configured. Set one (\`git config user.name\` / \`user.email\`) — a waiver must record who signed it.`);
-      const root = await exportTrackerRoot({ projectRoot, issues: [id] });
-      const issue = root.issues.find((i) => i.id === id);
-      if (!issue) throw new Error(`${command} waiver sign: issue ${id} not found in the tracker`);
-      const fingerprint = issueAcFingerprint(issue);
-      const section = `## Waiver\n\nreason: ${reason}\nby: ${approvedBy}\nac-version: ${fingerprint}\n`;
-      const newBody = `${stripWaiverSection(body).replace(/\s+$/, '')}\n\n${section}`;
-      await wClient.issue.edit(id, { body: newBody });
-      process.stdout.write(`${statusMark('pass')} ${ui.green('waiver signed')} ${ui.dim(`→ ${id} by ${approvedBy}, anchored to the acceptance criteria (${fingerprint}). It auto-stales if those criteria change.`)}\n`);
+      const next = rows.filter((w) => !(w.code === code && (w.acId ?? '') === (acId ?? '')));  // replace a same code+ac waiver
+      next.push({ code, reason, approvedBy, ...(acId ? { acId } : {}) });
+      await wClient.issue.edit(id, { body: withWaivers(body, next) });
+      process.stdout.write(`${statusMark('pass')} ${ui.green('waiver signed')} ${ui.dim(`→ ${id}${acId ? ` (${acId})` : ''} for '${code}' by ${approvedBy}. Honored only while '${code}' actually fires — otherwise check reports waiver_unused.`)}\n`);
       return;
     }
     if (action === 'clear') {
-      await wClient.issue.edit(id, { body: stripWaiverSection(body) });
-      process.stdout.write(`${statusMark('pass')} ${ui.dim(`waiver cleared on ${id}`)}\n`);
+      const code = optionValue(args, '--code');
+      const next = code ? rows.filter((w) => w.code !== code) : [];
+      await wClient.issue.edit(id, { body: withWaivers(body, next) });
+      process.stdout.write(`${statusMark('pass')} ${ui.dim(code ? `waiver for '${code}' cleared on ${id}` : `all waivers cleared on ${id}`)}\n`);
       return;
     }
     if (action === 'status') {
-      const has = /^##\s+waiver\b/im.test(body);
-      process.stdout.write(has
-        ? `${statusMark('info')} ${ui.bold(`${id} carries a waiver`)} ${ui.dim(`(run \`${command} check\` to see whether it is fresh and honored)`)}\n`
-        : `${statusMark('info')} ${ui.dim(`${id} has no waiver`)}\n`);
+      process.stdout.write(rows.length
+        ? `${statusMark('info')} ${ui.bold(`${id} carries ${rows.length} waiver${rows.length === 1 ? '' : 's'}`)}\n${rows.map((w) => `  ${ui.dim(`${w.code}${w.acId ? ` (${w.acId})` : ''} — ${w.reason} [${w.approvedBy}]`)}`).join('\n')}\n`
+        : `${statusMark('info')} ${ui.dim(`${id} has no waivers`)}\n`);
       return;
     }
-    throw new Error(`${command} waiver: unknown action '${action}'. Try 'sign <issue> --reason ... --by ...', 'clear <issue>', or 'status <issue>'.`);
+    throw new Error(`${command} waiver: unknown action '${action}'. Try 'sign <issue> --code <code> --reason "..."', 'clear <issue> [--code <code>]', or 'status <issue>'.`);
   }
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {
     const title = optionValue(args, '--title') || 'New case';
-    process.stdout.write(activePresetScaffold(title) ?? scaffoldCaseBody(title));
+    process.stdout.write((await activePresetScaffold(title)) ?? (await scaffoldCaseBody(title)));
     return;
   }
 
@@ -329,12 +319,12 @@ async function main(): Promise<void> {
       text = readFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), 'utf8');
     } else if (issueId) {
       const fmtClient = createTrackerClient();
-      const issue = await fmtClient.issue.view(issueId, { json: 'body' });
-      text = String((issue as Record<string, unknown>).body ?? '');
+      const issue = await fmtClient.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,body' });
+      text = framedFromView(issue as Record<string, unknown>, issueId);
     } else {
       throw new Error("tracker fmt: provide --issue <id> or --input <file> (plus --write to apply, --check to verify)");
     }
-    const formatted = canonicalizeIssueMarkdown(text);
+    const formatted = await presetCanonicalize(text);
     const canonical = text === formatted;
     if (checkOnly) {
       process.stdout.write(canonical ? 'canonical\n' : 'NOT canonical (run tracker fmt --write)\n');
@@ -474,64 +464,33 @@ GraphQL-shaped query against the local tracker store.
     throw new Error('ztrack annotations requires the optional @volter-ai-dev/twin peer dependency and a mirrored world store.');
   }
 
-  if (await handleEvidenceCommand(args, client)) return;
+  if (await handleEvidenceCommand(args)) return;
 
-  if (args[0] === 'ac') {
-    const action = args[1];
+  // The one model edit: parse -> overlay a typed fragment -> validate -> serialize.
+  //   tracker ac patch <issue> <acId> --json '{"checked":true,"status":"passed", ...}'
+  //   tracker issue patch <issue>     --json '{"status":"done"}'
+  // The patch fields are the active preset's SCHEMA shape (run `issue view` to see it); the
+  // preset owns the grammar and renders it. The claim is then verified by `ztrack check`.
+  if ((args[0] === 'ac' || args[0] === 'issue') && args[1] === 'patch') {
+    const isAc = args[0] === 'ac';
     const issueId = args[2];
-    const acId = args[3];
-    if (!action || !issueId || !acId || !['check', 'uncheck', 'set-status', 'block', 'unblock'].includes(action)) {
-      throw new Error('usage: tracker ac <check|uncheck|set-status|block|unblock> <issue> <acId> [refs...] [--commit sha] [--evidence E1,E2] [--proof P1] [--status s] [--blocks] [--no-anchor] [--dry-run]');
+    const acId = isAc ? args[3] : undefined;
+    const json = optionValue(args, '--json');
+    if (!issueId || (isAc && !acId) || !json) {
+      throw new Error(isAc
+        ? "usage: tracker ac patch <issue> <acId> --json '{...}'  (fields = the preset's AC schema shape; see `issue view`)"
+        : "usage: tracker issue patch <issue> --json '{...}'  (fields = the preset's issue schema shape; see `issue view`)");
     }
-    const issue = await client.issue.view(issueId, { json: 'body' });
-    const body = String((issue as Record<string, unknown>).body ?? '');
-    const evidence = optionValue(args, '--evidence').split(',').map((s) => s.trim()).filter(Boolean);
-    const proof = optionValue(args, '--proof').split(',').map((s) => s.trim()).filter(Boolean);
-    // for block/unblock: positional refs after the acId; --blocks selects the forward edge.
-    const blockField = args.includes('--blocks') ? 'blocks' as const : 'blocked-by' as const;
-    const refs = args.slice(4).filter((a) => !a.startsWith('--'));
-    const result = action === 'check'
-      ? applyAcMutation(body, {
-          op: 'check', acId,
-          ...(optionValue(args, '--commit') ? { commit: optionValue(args, '--commit') } : {}),
-          ...(evidence.length ? { evidence } : {}),
-          ...(proof.length ? { proof } : {}),
-          anchor: !args.includes('--no-anchor'),
-        })
-      : action === 'uncheck'
-        ? applyAcMutation(body, { op: 'uncheck', acId })
-      : action === 'block'
-        ? applyAcMutation(body, { op: 'block', acId, field: blockField, refs })
-      : action === 'unblock'
-        ? applyAcMutation(body, { op: 'unblock', acId, field: blockField, ...(refs.length ? { refs } : {}) })
-        : applyAcMutation(body, { op: 'set-status', acId, status: optionValue(args, '--status') as AcStatus });
-    const willBePassed = action === 'check'
-      || (action === 'set-status' && optionValue(args, '--status') === 'passed');
-    if (!args.includes('--dry-run')) {
-      const gate = willBePassed && result.changed;
-      const gateRoot = gate ? projectRootFrom() : '';
-      const errorSig = (f: { code: string; issueId?: string; acId?: string }): string =>
-        `${f.code}|${f.issueId ?? ''}|${f.acId ?? ''}`;
-      const errorsBefore = gate
-        ? new Set((await checkTracker({ projectRoot: gateRoot, issues: [issueId], verifyCommits: true }))
-            .findings.filter((f) => f.severity === 'error').map(errorSig))
-        : new Set<string>();
-      await client.issue.edit(issueId, { body: result.body });
-      if (gate) {
-        const after = await checkTracker({ projectRoot: gateRoot, issues: [issueId], verifyCommits: true });
-        const introduced = after.findings
-          .filter((f) => f.severity === 'error' && !errorsBefore.has(errorSig(f)));
-        if (introduced.length > 0) {
-          await client.issue.edit(issueId, { body }); // revert — the bad state must not persist
-          throw new Error(
-            `Refusing to mark ${acId} on ${issueId} passed: the check introduces validation errors (checked without the evidence its rule requires).\n`
-            + introduced.map((f) => `  - ${f.code}: ${f.message}`).join('\n')
-            + `\nSupply the evidence (e.g. --commit <sha> --evidence E1 --proof P1, or add the required Evidence entry first), then re-run.`,
-          );
-        }
-      }
-    }
-    process.stdout.write(`${JSON.stringify({ issue: issueId, acId, changed: result.changed, dryRun: args.includes('--dry-run'), itemAfter: result.itemAfter }, null, 2)}\n`);
+    let patch: Record<string, unknown>;
+    try { patch = JSON.parse(json) as Record<string, unknown>; }
+    catch { throw new Error('tracker patch: --json must be a JSON object'); }
+    const issue = await client.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,body' });
+    const framed = framedFromView(issue as Record<string, unknown>, issueId);
+    const root = projectRootFrom();
+    const preset = await resolveTrackerValidation(loadTrackerConfig(root), root);
+    const result = applyModelPatch(preset, framed, { ...(acId ? { acId } : {}), patch });
+    if (!args.includes('--dry-run') && result.changed) await client.issue.edit(issueId, { body: result.body });
+    process.stdout.write(`${JSON.stringify({ issue: issueId, ...(acId ? { acId } : {}), changed: result.changed, dryRun: args.includes('--dry-run') }, null, 2)}\n`);
     return;
   }
 

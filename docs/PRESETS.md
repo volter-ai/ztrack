@@ -1,92 +1,134 @@
 # Preset Reference
 
 A ztrack preset is the repo-local rulebook for what "done" means. `ztrack init`
-always installs one editable preset at:
+always installs one editable, **standalone** preset at:
 
 ```text
-.volter/tracker/validation/preset.cjs
+.volter/tracker/validation/preset.mts
 ```
 
-After installation, that file belongs to the target repository. Teams should
-edit it as their workflow becomes more specific.
+After installation, that file belongs to the target repository. It is real,
+editable code — its OWN strict schema, its OWN markdown parser, its OWN
+`serialize`, and its OWN rules, importing only the mechanism from
+`ztrack/preset-kit`. There is no shared/generic model: the three presets share
+nothing with each other except the engine. Teams edit the installed preset as
+their workflow becomes more specific.
 
 ## Install Presets
 
 | Preset | Use When | What It Enforces |
 |---|---|---|
-| `basic` | Unknown or early-stage repos | checked ACs need commit + evidence refs; non-canceled cases need an assignee |
-| `simple-sdlc` | A small software lifecycle | `basic` plus source markers, at least one AC on active cases, and all ACs passed before done |
-| `simple-spec` | Repos that write issue-shaped specs | `simple-sdlc` evidence style plus required `## Requirements` and `## Acceptance Criteria` sections |
-| `speckit` | Repos following GitHub Spec Kit conventions | `simple-sdlc` evidence style plus required `## User Stories`, `## Functional Requirements`, and `## Tasks` sections |
+| `default` | a dev lifecycle (draft→ready→in-progress→in-review→done) | every issue assigned; passed ACs carry image+commit evidence and a proof; evidence fresh against the AC version and PR head; lifecycle gates (ready needs a dev AC, in-review needs a PR + all ACs passed, done needs a merged PR); blocking graph is acyclic |
+| `spec` | issue bodies are lightweight specs | passed ACs cite commit-backed evidence; cited commits exist; ids unique |
+| `speckit` | repos following GitHub Spec Kit conventions | a multi-file feature bundle with required User Scenarios/Stories, Functional Requirements, and Tasks; task commits exist; foundational tasks gate story completion; Constitution Check gate passes (read-only) |
 
 Install one with:
 
 ```bash
-npx ztrack init --team APP --preset basic
-npx ztrack init --team APP --preset simple-sdlc
-npx ztrack init --team APP --preset simple-spec
+npx ztrack init --team APP --preset default
+npx ztrack init --team APP --preset spec
 npx ztrack init --team APP --preset speckit
 ```
 
-Omitting `--preset` uses `basic`.
+Omitting `--preset` installs `default`. Node 24+ is required.
 
 ## Which Preset To Start With
 
-Use `basic` if you are adopting ztrack into an existing repo and do not yet have
-written workflow rules. It proves the core value quickly: checked work must cite
-real evidence.
+Use `default` when you are adopting ztrack into an existing repo. It is the
+primary preset and proves the core value: a passed acceptance criterion must
+cite image+commit evidence captured at a real commit, with a proof explaining
+how that evidence demonstrates the AC, and the issue's lifecycle gates must hold.
 
-Use `simple-sdlc` if the repo already treats tickets as lifecycle records and
-you want ztrack to block unsourced or AC-less active work.
-
-Use `simple-spec` if issues are the spec surface and should always carry
-requirements plus acceptance criteria.
+Use `spec` for the lighter spec style: issue bodies whose acceptance criteria are
+GFM task-list items, each carrying a commit-backed evidence sub-line. It is the
+minimal worked example of a standalone preset.
 
 Use `speckit` if the project already uses, or is adopting, GitHub Spec Kit style
-feature records.
+feature records. It is **read-only** (it defines no `serialize`, so it cannot be
+`fmt`'d or patched) and adapts a multi-file feature bundle
+(`specs/<slug>/spec.md` + `tasks.md` + `plan.md` + …).
 
 ## Installed Contract
 
-The installed file is plain CommonJS so a fresh repo can edit it without a build
-step. It is REAL editable code: it rents the engine, markdown parser, and root
-schema from `ztrack/preset-kit`, and declares its rules as records over the
-derived model:
+The installed file is an editable ES module (`.mts`) so a fresh repo can edit it
+without a build step, and so it loads in CommonJS consumer repos under Node
+type-stripping. It is REAL editable code: it imports the engine, the mdast
+mechanism, and the root schema constructor from `ztrack/preset-kit`, and declares
+its rules as records over the derived model.
 
-```js
-const { definePreset, rule, gitWorld, genericParser, genericSchema, genericScaffold } =
-  require("ztrack/preset-kit");
+A preset is a self-contained `Preset { name, schema, parse, serialize?, rules,
+loadContext?, derive?, primitives?, scaffold? }`. Here is the minimal real shape
+(`spec`), trimmed — its own strict schema, its own `parse`, its own `serialize`
+(the declared inverse of `parse`), and its own rules:
 
-const requireSdlcGates = "false" === "true";   // inline flags you can edit
-const rules = [
-  rule({
-    code: "basic_checkbox_status_mismatch",
-    select: (m) => m.acs,                       // a scope off the derived model
-    when: ({ ac }) => (ac.checked && ac.status !== "passed") || (!ac.checked && ac.status === "passed"),
-    message: ({ ac }) => `AC ${ac.id} checkbox disagrees with status "${ac.status}".`,
+```ts
+// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
+import {
+  z, toMdast, nodeText, type MdNode,
+  check as runCheck, rule, gitWorld, splitIssueBundle,
+  type Context, type Preset,
+} from 'ztrack/preset-kit';
+
+// ── this preset's OWN strict schema (core fields + preset-specific, all .strict()) ──
+const SpecEvidenceSchema = z.object({
+  id: z.string().min(1),                          // core
+  commit: z.string().regex(/^[0-9a-f]{7,40}$/),   // preset: evidence is commit-backed
+}).strict();
+const SpecAcSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(['pending', 'passed', 'failed']),
+  evidence: z.array(SpecEvidenceSchema),
+  text: z.string().min(1),
+}).strict();
+const SpecIssueSchema = z.object({
+  id: z.string().min(1), title: z.string().min(1), summary: z.string(),
+  status: z.enum(['draft', 'in-review', 'done']),
+  acceptanceCriteria: z.array(SpecAcSchema),
+}).strict();
+const SpecRootSchema = z.object({ issues: z.array(SpecIssueSchema) }).strict();
+type SpecRoot = z.infer<typeof SpecRootSchema>;
+
+// ── this preset's OWN mdast parser → the schema shape (structure from the AST) ──
+function parseSpec(markdown: string): unknown {
+  return { issues: splitIssueBundle(markdown).map(/* ...mdast walk... */) };
+}
+
+// ── this preset's OWN serialize → canonical markdown (the declared inverse of parse) ──
+function serializeSpec(root: SpecRoot): string {
+  return root.issues.map((issue) => /* ...emit `# id: title`, Status:, ACs... */ '').join('\n');
+}
+
+// ── this preset's OWN rules: declarative records over the engine's derived model ──
+type SpecAC = SpecRoot['issues'][number]['acceptanceCriteria'][number];
+const SPEC_RULES = [
+  rule<SpecRoot, { acId: string; ac: SpecAC }>({
+    code: 'passed_ac_missing_evidence', select: (m) => m.acs,
+    when: ({ ac }) => ac.status === 'passed' && ac.evidence.length === 0,
+    message: ({ ac }) => `AC ${ac.id} is passed but cites no commit-backed evidence.`,
   }),
-  // ...edit, add, or remove records directly
+  // ...evidence_commit_not_found, duplicate_ac_id, duplicate_issue_id
 ];
-module.exports = definePreset({ name: "basic", schema: genericSchema, parse: genericParser, rules /* , derive, isIssueDone, ... */ });
+
+const SpecPreset: Preset<SpecRoot> = {
+  name: 'spec', schema: SpecRootSchema,
+  loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
+  parse: parseSpec,
+  serialize: serializeSpec,   // the inverse of parse (one grammar, both directions)
+  rules: SPEC_RULES,
+  scaffold: (title) => `# ${title}\n\nSummary: …\n\n## Acceptance Criteria\n\n- [ ] AC-1 …\n`,
+};
+export default SpecPreset;
 ```
 
-The parser and schema are rented; the **rules are yours to edit**. Each `--preset`
-sets the inline flags. Most teams edit the records in that file instead of creating a
-new package. (The typed factory those records mirror is `createGenericPreset`;
-`src/presetInstall.test.ts` guards that the installed file stays equivalent to it.)
-
-### Upgrading
-
-`ztrack init` also records a pristine copy of the template at
-`.volter/tracker/validation/.preset.base.cjs` (commit it). When a newer ztrack ships
-improved rules, `ztrack preset upgrade` **3-way merges** the new upstream rules into
-your edited `preset.cjs`, preserving your edits — overlapping changes are written as
-`<<<<<<<` conflict markers for you (or an agent) to resolve, then `ztrack check`. The
-engine that runs the merge is your installed ztrack, so the upgrade only moves when your
-lockfile does.
+Each `--preset` installs that preset's whole source — schema, parser, serialize,
+and rules. Most teams edit the records and schema in that file directly instead
+of creating a new package. The reference standalone presets (the bar to copy)
+live in the repository at `boilerplates/presets/{default,spec,speckit}.ts` (see
+https://github.com/volter-ai/ztrack).
 
 A preset defines validation as ONE typed pipeline: the loader (the only impure
 boundary) reads the backend and calls the preset's own `loadContext` to gather
-its observed facts → an mdast parser produces a candidate `root` →
+its observed facts → the preset's mdast `parse` produces a candidate `root` →
 `ValidationInputSchema.parse({ context, root })` validates it (one top-level
 strict schema, every nested object `.strict()`) → pure rules run over the
 validated input → the validated `root` IS the export. The engine
@@ -100,85 +142,101 @@ validated pool of observed facts (`now`, `phase`, `git`, `world`, `categories`).
 Rules are pure `(input) => Finding[]`: they read only `input.root` /
 `input.context` — no file/git/network/time access, no mutation, no throw.
 
-### Authoring A Custom Preset
+## The Bidirectional Grammar — Parse, Serialize, Patch
 
-To go beyond the generic kit, replace `preset.cjs` with your own core `Preset`:
+Every owning preset (`default`, `spec`) defines `parse` AND `serialize` on the
+`Preset` contract: `serialize` is the declared inverse of `parse`, so the grammar
+is bidirectional. There is **no structured-mutation DSL**. To change an issue you
+PATCH the typed model and the preset re-serializes:
 
-```js
-const { z } = require("zod");
-
-module.exports = {
-  name: "my-sdlc",
-  // ONE strict schema; every nested object .strict(), no .passthrough()/any/unknown.
-  schema: z.object({
-    issues: z.array(z.object({
-      id: z.string(),
-      title: z.string(),
-      summary: z.string(),
-      status: z.enum(["pending", "active", "done"]),
-      acceptanceCriteria: z.array(z.object({
-        id: z.string(),
-        status: z.enum(["pending", "passed"]),
-        evidence: z.array(z.object({ id: z.string() }).strict()),
-      }).strict()),
-    }).strict()),
-  }).strict(),
-  // mdast -> candidate root (structure from the AST, regex only within node text).
-  parse(markdown) {
-    return { issues: [] };
-  },
-  // the preset's HALF of the impure loader: gather ONLY the observed facts this
-  // preset's rules read (git/world/services). Omit if rules need no context.
-  loadContext({ projectRoot }) {
-    return require("ztrack/preset-kit").gitWorld(projectRoot, []);
-  },
-  // pure rules over the validated { context, root }.
-  rules: [
-    {
-      name: "checked_ac_needs_evidence",
-      run({ root }) {
-        return root.issues.flatMap((issue) =>
-          issue.acceptanceCriteria
-            .filter((ac) => ac.status === "passed" && ac.evidence.length === 0)
-            .map((ac) => ({
-              code: "checked_ac_needs_evidence",
-              severity: "error",
-              message: `${issue.id}/${ac.id} is passed but cites no evidence`,
-            })));
-      },
-    },
-  ],
-};
+```bash
+# the JSON fields are the preset's SCHEMA shape — run `ztrack issue view` to see it
+ztrack ac patch <issue> <acId> --json '{"status":"passed"}'
+ztrack issue patch <issue> --json '{"status":"in-review"}'
+ztrack fmt                                  # canonicalize through the preset's serialize
 ```
 
-Reference core presets live in the repository at `src/presets/{default,spec,speckitCore}.ts`
-(see https://github.com/volter-ai/ztrack) — they're the worked examples to copy.
+Mutation is `parse → edit the typed object → serialize`, so the file always
+conforms to the template the parser reads. MCP exposes a single `tracker_patch`
+tool for the same edit. `ztrack export` writes the validated root (`{ issues,
+waivers? }`); `ztrack check --input root.json` re-checks that committed root.
 
-## Evidence Grammar
+The `speckit` preset is **read-only** — it defines no `serialize`, so it cannot
+be `fmt`'d or patched. Its features come from Spec Kit tooling and are edited as
+the Spec Kit files.
 
-Installed presets recognize checkbox acceptance criteria:
+## The `default` Grammar
+
+`default` is one issue per markdown file. The heading carries the id and title;
+designated metadata lines follow; then `## Acceptance Criteria` with one list
+item per AC and nested sub-lines for status, evidence, proof, and blocking:
 
 ```markdown
-- [ ] dev/01 status: pending Implement the behavior. [1]
-- [x] dev/02 status: passed Wire the API. commit: abc1234 [E1]
+# APP-1: Add the /health endpoint
+
+Assignee: alice
+Summary: One or two sentences describing the work.
+Status: in-review
+PR: feat/health
+Labels: backend, api
+Blocked by: APP-2
+
+## Acceptance Criteria
+
+- [x] dev/01 v1 GET /health returns 200
+  - status: passed
+  - evidence ev1: image=health.png commit=abc1234 acv=1
+  - proof: "screenshot shows a 200 response" -> ev1
+  - blocked-by: dev/00
+  - blocks: dev/02
 ```
 
-And evidence entries — each a GFM list item under `## Evidence` (one entry per
-list item, so the parser reads each as its own node):
+- Issue `Status:` is `draft | ready | in-progress | in-review | done`.
+- An AC line is `- [x] <id> v<version> <text>`, followed by nested
+  `- status: passed|pending|failed`, `- evidence <id>: image=<file>
+  commit=<sha> acv=<n>`, `- proof: "<why>" -> ev1`, and optional `- blocked-by:
+  <refs>` / `- blocks: <refs>`.
+- Issue-level relations are `Blocks:` / `Blocked by:` / `Relates:`; `Children:`
+  lists sub-issues.
+
+Rule codes (`default`): `issue_missing_assignee`,
+`ac_checkbox_status_mismatch`, `passed_ac_missing_evidence`,
+`passed_ac_missing_proof`, `evidence_commit_not_found`, `evidence_sha_stale`,
+`evidence_ac_version_stale`, `ready_requires_dev_ac`, `review_requires_pr`,
+`review_requires_all_acs_passed`, `done_requires_merged_pr`, `ac_self_block`,
+`ac_blocker_missing`, `ac_block_cycle` — plus the universal `duplicate_ac_id`,
+`duplicate_issue_id`, and the waiver codes (`waiver_unused`,
+`waiver_missing_reason`, `waiver_missing_signoff`).
+
+## The `spec` Grammar
+
+`spec` is lightweight. A `# SPEC-1: Title` heading, a `Summary:` and `Status:`
+(`draft | in-review | done`), then `## Acceptance Criteria` whose items are GFM
+task-list entries carrying a nested commit sub-line:
 
 ```markdown
-## Evidence
+# SPEC-1: Validate the import path
 
-- [E1] type: pr ac: dev/02 repo: owner/repo number: 12 head: abc1234 justification: Shows the implementation.
+Summary: A short spec of the behavior.
+Status: in-review
+
+## Acceptance Criteria
+
+- [x] AC-1 Imports resolve under Yarn PnP
+  - commit: abc1234
 ```
 
-Common checks:
+Rule codes (`spec`): `passed_ac_missing_evidence`,
+`evidence_commit_not_found`, `duplicate_ac_id`, `duplicate_issue_id`.
 
-- Non-canceled cases need an assignee.
-- Checked or `status: passed` ACs need a commit hash.
-- In a git repo, cited commits must exist.
-- Checked ACs need evidence refs.
-- Evidence refs must point to `[E...]` rows.
+## The `speckit` Grammar
+
+`speckit` adapts GitHub Spec Kit. A feature is a multi-file bundle
+(`specs/<slug>/spec.md` + `tasks.md` + optional `plan.md`,
+`constitution.md`, …). A user story is the testable AC unit; a story is done when
+all its `[US#]` tasks are checked, and a task may cite `(commit: <sha>)` as its
+evidence. Required sections: **User Scenarios / User Stories**, **Functional
+Requirements**, and **Tasks**. It is read-only.
 
 ## Universal Ids And Blocking
 
@@ -188,7 +246,7 @@ that names it absolutely:
 ```text
 APP-1                 an issue
 APP-1:dev/01          an acceptance criterion
-APP-1:dev/01:E1       a piece of evidence
+APP-1:dev/01:ev1      a piece of evidence
 APP-1:dev/01:proof    that AC's proof
 ```
 
@@ -197,35 +255,25 @@ ids never contain `:`, the separator is unambiguous at every level.
 
 Cross-references are written **relatively** by default and **absolutely** only
 when they must escape their scope. Inside an issue, a bare AC ref means "an AC in
-this issue"; to point at another issue's AC, qualify it. The parser resolves every
-ref to its absolute form, so the validated root only ever holds fully-qualified
-references.
+this issue"; to point at another issue's AC, qualify it (`APP-2:dev/01`). The
+parser resolves every ref to its absolute form, so the validated root only ever
+holds fully-qualified references.
 
-The `basic`, `simple-sdlc`, `simple-spec`, and `speckit` presets implement
-blocking with `blocked-by:` / `blocks:` on the checkbox line:
-
-```markdown
-- [ ] dev/03 status: pending Wire the UI. blocked-by: dev/02, APP-2:dev/01, APP-4 [1]
-```
-
-The default reference preset authors the same via sub-lines under the AC:
+The `default` preset authors blocking via sub-lines under the AC:
 
 ```markdown
-- [ ] AC-3 v1 Wire the UI
+- [ ] dev/03 v1 Wire the UI
   - status: pending
-  - blocked-by: AC-2, APP-2:dev/01, APP-4
-  - blocks: AC-4
+  - blocked-by: dev/02, APP-2:dev/01, APP-4
+  - blocks: dev/04
 ```
 
-Set blockers with a structured mutation rather than hand-editing the body:
-`ztrack ac block <issue> <acId> <refs…> [--blocks]` and `ztrack ac unblock …` (also the
-`tracker_ac_block` / `tracker_ac_unblock` MCP tools).
-
-A blocker targets either a **specific AC** (`APP-2:dev/01`, or a bare `dev/02` for
-this issue) or a **whole issue** (`APP-4` — satisfied when all of APP-4's ACs are).
-A bare token is read as a local AC if one exists, otherwise as an issue. Blocking
-therefore crosses levels freely: AC↔AC, AC↔issue, issue↔issue. Issue↔issue blocking
-is also authored at the issue level via `relations` (`Blocks:` / `Blocked by:`).
+A blocker targets either a **specific AC** (`APP-2:dev/01`, or a bare `dev/02`
+for this issue) or a **whole issue** (`APP-4` — satisfied when all of APP-4's ACs
+are). A bare token is read as a local AC if one exists, otherwise as an issue.
+Blocking therefore crosses levels freely: AC↔AC, AC↔issue, issue↔issue.
+Issue↔issue blocking is also authored at the issue level via `Blocks:` /
+`Blocked by:`.
 
 `blocked-by` and `blocks` are two ways to author the **same** dependency edge:
 `X blocked-by Y` and `Y blocks X` both mean "X depends on Y." Every direction and
@@ -234,21 +282,37 @@ validated root, never stored. Blocking checks (cross-tree, one pass):
 
 - Every blocker ref must resolve to a real node (`ac_blocker_missing`).
 - An AC may not list itself as a blocker (`ac_self_block`).
-- The graph must be acyclic — an impossible-to-satisfy loop, including a cross-level
-  deadlock, fails (`ac_block_cycle`).
-- A done node may not depend on an unfinished one, via any edge direction or level
-  (`ac_blocked_by_unpassed`).
+- The graph must be acyclic — an impossible-to-satisfy loop, including a
+  cross-level deadlock, fails (`ac_block_cycle`).
+- A done node may not depend on an unfinished one, via any edge direction or
+  level (`ac_blocked_by_unpassed`).
 
 The same graph powers a derived, transitive **blocked / actionable** view
 (`blockStatuses`): a node is *blocked* when anything in its upstream dependency
-closure is not yet satisfied, and *actionable* otherwise. A node is satisfied when an
-AC is passed, or when an issue's ACs are all passed (an AC-less issue, per its
-terminal status).
+closure is not yet satisfied, and *actionable* otherwise. A node is satisfied
+when an AC is passed, or when an issue's ACs are all passed (an AC-less issue,
+per its terminal status).
+
+## Waivers
+
+Waivers are universal and eslint-style — core-parsed, not per-preset. A `##
+Waivers` section per issue downgrades a matching finding to `acknowledged`:
+
+```bash
+ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
+ztrack waiver status
+ztrack waiver clear
+```
+
+A waiver that matches nothing emits `waiver_unused`; an unreasoned or unsigned
+waiver is itself an error. Sign-off is your git identity, captured automatically.
 
 ## Evolving The Preset
 
 There is no separate public `custom` preset. Customization is the normal state:
-install the closest starter, then edit `.volter/tracker/validation/preset.cjs`.
+install the closest standalone preset, then edit
+`.volter/tracker/validation/preset.mts` — its schema, parser, serialize, and
+rules are all yours to change.
 
 Before adding rules, write down:
 

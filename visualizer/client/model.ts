@@ -12,7 +12,7 @@ export interface Finding {
   code: string; severity: 'error' | 'warning' | 'acknowledged'; message: string;
   issueId?: string; acId?: string; evidenceId?: string;
 }
-export type PrimitiveName = 'labels' | 'relations' | 'linkedIssues' | 'children' | 'sources' | 'category' | 'proof' | 'audit';
+export type PrimitiveName = 'labels' | 'relations' | 'children' | 'sources' | 'category' | 'proof' | 'audit';
 export interface AuditEntry { ts: string; issueId: string; op: string; field?: string; from?: string; to?: string; actor?: string }
 export interface Timestamps { created?: string; updated?: string; stateSince?: string }
 export interface Payload {

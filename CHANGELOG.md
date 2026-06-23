@@ -2,6 +2,48 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.11.0
+
+Standalone-preset rearchitecture. This release removes the universal/generic model
+entirely: each preset is now a self-contained module, and grammar is owned by the preset
+in both directions.
+
+- **Three standalone presets — `default`, `spec`, `speckit`.** Each is its own module
+  (`boilerplates/presets/<name>.ts`) with its OWN strict Zod schema, `parse`, `serialize`,
+  and `rules`, importing only the mechanism from `ztrack/preset-kit`. The shared
+  generic system is gone: no `genericSchema`/`genericParser`/`createGenericPreset`, no
+  flag-toggled mega-preset, no "rule library". The only shared spine is the core engine
+  (`CoreRoot` contract + rule evaluation). **Removed presets: `basic`, `simple-sdlc`,
+  `simple-spec`.** `default` is installed when `--preset` is omitted.
+- **Init-first onboarding** (reverses 0.10.0's zero-config direction): `ztrack init
+  --team APP --preset default` → `ztrack issue scaffold` → `ztrack check`. Removed the
+  zero-config `ztrack check <file.md>` file mode and the `ztrack example` command.
+- **Bidirectional grammar.** Every owning preset defines `serialize` (the declared inverse
+  of `parse`) on the `Preset` contract. `ztrack fmt` is now `serialize(parse(x))` through
+  the active preset — there is no separate canonicalizer. A preset that adapts an external
+  source-of-truth (`speckit` over Spec Kit files) is read-only and omits `serialize`.
+- **Mutation is `parse → edit the typed model → serialize`.** The universal write-grammar
+  (`mutate.ts`) and the structured-mutation DSL are removed — gone are `ztrack ac
+  check/uncheck/set-status/block/unblock`, the `tracker_ac_*`/`tracker_evidence_add` MCP
+  tools, and the `## Evidence`/`[En]`/`AC-Version` apparatus. They are replaced by one
+  grammar-free primitive: `ztrack ac patch <issue> <acId> --json '{...}'` / `ztrack issue
+  patch` and the MCP `tracker_patch` tool (the patch is the preset's schema shape; the
+  preset re-serializes it). `ztrack evidence add` is now a content-addressed blob-put that
+  returns a `sha256:` ref to cite in a patch; DSSE/in-toto attestation is unchanged.
+- **Universal, eslint-style waivers.** A per-issue `## Waivers` section (core-parsed,
+  preset-agnostic) managed by `ztrack waiver sign/clear/status`; a waived finding is
+  downgraded to `acknowledged`, and a waiver that matches nothing emits `waiver_unused`.
+  `ztrack export` now carries the waivers in `root.json`, so `ztrack check --input` honors
+  them; `fmt`/patch preserve the `## Waivers` section across a model round-trip.
+- **No `linkedIssue` in core.** A synced issue *is* the external issue (identity, not
+  linking); the `linkedIssues` primitive was removed from the engine.
+- **Removed the autonomy-profile subsystem** — `profiles/`, the `ztrack-setup` and
+  `ztrack-profile-check` bins, `scripts/setup-ztrack-repo.mjs`, and the `core-sdlc`/
+  `speckit` source-only agent-loop examples — all flag-preset-era legacy coupled to the
+  deleted generic model.
+- Installed preset is `.mts` (ESM, so it loads under Node type-stripping in CommonJS
+  consumer repos). **Node floor raised to 24.**
+
 ## 0.10.0
 
 - **`ztrack check <file.md>` — zero-config, eslint-style.** Point it at any issue-markdown

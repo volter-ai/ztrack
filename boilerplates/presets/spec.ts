@@ -7,13 +7,12 @@
 // id) PLUS preset-specific strict fields (a status enum, AC `text`, evidence
 // `commit`). No passthrough, no unknown.
 
-import { z } from 'zod';
-import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfm } from 'micromark-extension-gfm';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, rule, type Context, type Preset } from '../core/engine.ts';
-import { splitIssueBundle } from '../core/bundle.ts';
-import { gitWorld } from '../core/gitWorld.ts';
+// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
+import {
+  z, toMdast, nodeText, type MdNode,
+  check as runCheck, rule, gitWorld, splitIssueBundle,
+  type Context, type Preset,
+} from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const SpecEvidenceSchema = z.object({
@@ -42,13 +41,7 @@ export const SpecRootSchema = z.object({ issues: z.array(SpecIssueSchema) }).str
 export type SpecRoot = z.infer<typeof SpecRootSchema>;
 
 // ── mdast parse: markdown -> the schema shape (structured, no prose mining) ──
-type MdNode = { type: string; depth?: number; checked?: boolean | null; children?: MdNode[]; value?: string };
-
-function nodeText(node: MdNode): string {
-  if (typeof node.value === 'string') return node.value;
-  return (node.children ?? []).map(nodeText).join('');
-}
-
+// MdNode / toMdast / nodeText are rented from the kit (shared mdast mechanism).
 function firstParagraphText(item: MdNode): string {
   const p = (item.children ?? []).find((c) => c.type === 'paragraph');
   return p ? nodeText(p).split('\n')[0]!.trim() : '';
@@ -66,7 +59,7 @@ function splitAcIdText(line: string): { id: string; text: string } {
 }
 
 function parseSpecIssue(markdown: string): Record<string, unknown> | null {
-  const tree = fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as MdNode;
+  const tree = toMdast(markdown);
   const nodes = tree.children ?? [];
   const issue: Record<string, unknown> = { id: '', title: '', summary: '', status: 'draft', acceptanceCriteria: [] };
   let inAc = false;
@@ -115,6 +108,23 @@ export function parseSpec(markdown: string): unknown {
   return { issues: splitIssueBundle(markdown).map((s) => parseSpecIssue(s.body)).filter((i): i is Record<string, unknown> => i !== null) };
 }
 
+// ── serialize: the schema shape -> canonical markdown (the declared inverse of parse) ──
+// The evidence id is positional (`<acId>/ev<n>`), so it isn't emitted — re-parsing
+// regenerates it. A passed AC is the checked box; pending/failed are unchecked.
+export function serializeSpecIssue(issue: SpecRoot['issues'][number]): string {
+  const out: string[] = [`# ${issue.id}: ${issue.title}`, ''];
+  if (issue.summary) out.push(`Summary: ${issue.summary}`);
+  out.push(`Status: ${issue.status}`, '', '## Acceptance Criteria', '');
+  for (const ac of issue.acceptanceCriteria) {
+    out.push(`- [${ac.status === 'passed' ? 'x' : ' '}] ${ac.id} ${ac.text}`);
+    for (const ev of ac.evidence) out.push(`  - commit: ${ev.commit}`);
+  }
+  return out.join('\n') + '\n';
+}
+export function serializeSpec(root: SpecRoot): string {
+  return root.issues.map(serializeSpecIssue).join('\n');
+}
+
 // ── rules: declarative records over the engine's derived model ──────────────
 // Duplicate-id detection is universal, so it arrives on the core model (m.duplicateAcIds
 // / m.duplicateIssueIds) — this preset writes no derive and uses no blocking graph.
@@ -150,9 +160,16 @@ export const SpecPreset: Preset<SpecRoot> = {
   // observed facts: commit existence (no PR model in this preset).
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpec,
+  serialize: serializeSpec, // the inverse of parse (one grammar, both directions)
   rules: SPEC_RULES,
+  // `ztrack issue scaffold` starter: a pending AC (green to begin). Mark it [x] + cite a
+  // `- commit: <sha>` once the behavior is implemented.
+  scaffold: (_title) => `Summary: A short spec of the behavior.\n\n## Acceptance Criteria\n\n- [ ] AC-1 Describe one observable acceptance criterion.\n`,
 };
 
 export function checkSpec(markdown: string, ctx?: Context) {
   return runCheck(SpecPreset, markdown, ctx);
 }
+
+// The installed entrypoint: the resolver reads the preset off `default`.
+export default SpecPreset;

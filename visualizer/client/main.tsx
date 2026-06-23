@@ -35,7 +35,6 @@ const errorsOf = (f: Finding[], id: string) => f.filter((x) => x.issueId === id 
 const warningsOf = (f: Finding[], id: string) => f.filter((x) => x.issueId === id && x.severity === 'warning');
 const acknowledgedOf = (f: Finding[], id: string) => f.filter((x) => x.issueId === id && x.severity === 'acknowledged');
 const labelsOf = (i: CoreIssue) => ((i as { labels?: string[] }).labels ?? []);
-const linkedOf = (i: CoreIssue) => ((i as { linkedIssues?: Array<{ system: string; key: string; url?: string }> }).linkedIssues ?? []);
 const childrenOf = (i: CoreIssue) => ((i as { children?: string[] }).children ?? []);
 const relsOf = (i: CoreIssue, t: string) => ((i as { relations?: Array<{ type: string; issueId: string }> }).relations ?? []).filter((r) => r.type === t).map((r) => r.issueId);
 
@@ -143,13 +142,6 @@ function FindingBadges({ findings, id }: { findings: Finding[]; id: string }) {
     {w > 0 && <span className="finding-badge finding-badge-warning">{w} warning{w === 1 ? '' : 's'}</span>}
   </>;
 }
-function LinkedPills({ issue }: { issue: CoreIssue }) {
-  const links = linkedOf(issue);
-  return <>
-    {links.slice(0, 3).map((l) => <a className={`linked-issue-pill ${l.system}`} key={l.key} href={l.url || '#'} target="_blank" rel="noreferrer" title={l.url || l.key}>{l.system}:{l.key}</a>)}
-    {links.length > 3 && <span className="linked-issue-pill more">+{links.length - 3}</span>}
-  </>;
-}
 
 // ── list view (the original 7-col grid) ──────────────────────────────────────
 function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, onSelect, onToggleGroup }: {
@@ -185,7 +177,6 @@ function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, o
                       <span className="issue-id">{i.id}</span>
                       <AssigneeAvatar assignee={ext.assignee?.(i)} />
                       <span className="issue-title">{i.title}</span>
-                      <LinkedPills issue={i} />
                     </span>
                     {i.summary && i.summary !== i.title && <span className="issue-summary">{i.summary}</span>}
                   </span>
@@ -274,12 +265,11 @@ function RelationPanel({ issue }: { issue: CoreIssue }) {
   );
 }
 function PrimitivesPanel({ issue }: { issue: CoreIssue }) {
-  const labels = labelsOf(issue), links = linkedOf(issue), kids = childrenOf(issue);
-  if (!labels.length && !links.length && !kids.length) return null;
+  const labels = labelsOf(issue), kids = childrenOf(issue);
+  if (!labels.length && !kids.length) return null;
   return (
     <div className="primitive-rows">
       {labels.length > 0 && <div className="primitive-row"><span className="primitive-key">labels</span><span className="chips">{labels.map((l) => <span key={l}>{l}</span>)}</span></div>}
-      {links.length > 0 && <div className="primitive-row"><span className="primitive-key">linked</span><span className="chips">{links.map((l) => l.url ? <a className="linked-issue-pill" key={l.key} href={l.url} target="_blank" rel="noreferrer">{l.system}:{l.key}</a> : <span className="linked-issue-pill" key={l.key}>{l.system}:{l.key}</span>)}</span></div>}
       {kids.length > 0 && <div className="primitive-row"><span className="primitive-key">children</span><span className="chips">{kids.map((c) => <span key={c}>{c}</span>)}</span></div>}
     </div>
   );
@@ -484,7 +474,7 @@ function App() {
         <div className={`health health-${payload ? (payload.ok ? 'pass' : 'fail') : 'pass'}`}><span>{payload ? (payload.ok ? 'PASS' : 'FAIL') : '…'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div>
         {payload && (
           <div className="primitives-strip"><div className="primitives-head">primitives</div>
-            {(['proof', 'labels', 'relations', 'linkedIssues', 'children', 'sources', 'category'] as const).map((p) => (
+            {(['proof', 'labels', 'relations', 'children', 'sources', 'category'] as const).map((p) => (
               <div className={`primitive-cap${payload.primitives[p] ? ' on' : ' off'}`} key={p}><span>{p}</span><span>{payload.primitives[p] ? '✓' : 'not impl'}</span></div>
             ))}
             <div className="primitive-cap on"><span>audit</span><span>✓ auto</span></div>

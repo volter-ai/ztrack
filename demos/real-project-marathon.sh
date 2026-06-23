@@ -40,30 +40,31 @@ print(data)
 PY
 }
 
+# default grammar: a 3-AC case (dev/01, dev/02, proc/01), all pending to start. $5 = issue id,
+# $6 = capability label area.
 write_case_body() {
   local file="$1"
   local title="$2"
   local source="$3"
   local capability="$4"
+  local id="$5"
+  local area="$6"
   cat > "$file" <<EOF
-# $title
+# $id: $title
 
-## Summary
-
-$source [1]
+Summary: $source
+Status: in-progress
+Assignee: dev-$area
+Labels: area:$area
 
 ## Acceptance Criteria
 
-- [ ] dev/01 status: pending Implement the $capability capability. [1]
-- [ ] dev/02 status: pending Cover $capability with automated tests. [1]
-- [ ] proc/01 status: pending Document operational behavior for $capability. [1]
-
-## Sources
-
-[1] Requirement:
-$source
-
-## Evidence
+- [ ] dev/01 v1 Implement the $capability capability.
+  - status: pending
+- [ ] dev/02 v1 Cover $capability with automated tests.
+  - status: pending
+- [ ] proc/01 v1 Document operational behavior for $capability.
+  - status: pending
 EOF
 }
 
@@ -81,10 +82,11 @@ path, ac, text, sha, evidence = sys.argv[1:]
 p = Path(path)
 body = p.read_text()
 body = body.replace(
-    f"- [ ] {ac} status: pending {text} [1]",
-    f"- [x] {ac} status: passed {text} commit: {sha} [{evidence}]",
+    f"- [ ] {ac} v1 {text}\n  - status: pending\n",
+    f"- [x] {ac} v1 {text}\n  - status: passed\n"
+    f"  - evidence {evidence}: image=s.png commit={sha} acv=1\n"
+    f'  - proof: "{evidence} demonstrates {ac}" -> {evidence}\n',
 )
-body += f"\n- [{evidence}] type: pr ac: {ac} repo: atlas/commerce number: {evidence[1:]} head: main justification: Verified in marathon cycle.\n"
 p.write_text(body)
 PY
 }
@@ -96,6 +98,7 @@ cd "$app"
 git init -q
 git config user.email marathon@example.com
 git config user.name "Atlas Commerce"
+git checkout -q -b main 2>/dev/null || git branch -q -M main
 
 mkdir -p packages/core/src packages/api/src packages/admin/src docs/runbooks docs/adr test scripts .github/workflows
 cat > package.json <<'EOF'
@@ -210,19 +213,20 @@ git add .
 git commit -q -m "bootstrap atlas commerce workspace"
 
 npm install -D "$tarball" >/dev/null
-npx ztrack init --team AC --preset simple-sdlc >/dev/null
+npx ztrack init --team AC --preset default >/dev/null
 
-# Project-specific policy: completed API cases must include a Rollout Plan.
-# Add a rule RECORD to the installed preset (`rule` is already in scope in that file).
-cat >> .volter/tracker/validation/preset.cjs <<'EOF'
+# Project-specific policy: an API case (label area:api) that advances to in-review must carry
+# the `rollout-plan` label. Append the rule to the installed ESM preset (mutating
+# DefaultPreset.rules after the default export is visible at load time).
+cat >> .volter/tracker/validation/preset.mts <<'EOF'
 
-module.exports.rules.push(rule({
-  code: 'atlas_api_done_missing_rollout_plan',
+DefaultPreset.rules.push(rule({
+  code: 'atlas_api_missing_rollout_plan',
   select: (m) => m.issues,
   when: ({ issue }) => (issue.labels || []).includes('area:api')
-    && ['done', 'completed'].includes(String(issue.stateType || issue.status || '').toLowerCase())
-    && !issue.sections.includes('Rollout Plan'),
-  message: () => 'Completed API cases must include ## Rollout Plan.',
+    && ['in-review', 'done'].includes(String(issue.status))
+    && !(issue.labels || []).includes('rollout-plan'),
+  message: ({ issue }) => `API issue ${issue.id} must carry the rollout-plan label.`,
 }));
 EOF
 
@@ -312,18 +316,20 @@ EOF
   feature_sha="$(git rev-parse --short HEAD)"
 
   body_file="$capability.md"
+  issue_id="AC-$cycle"
   write_case_body "$body_file" "Deliver $capability" \
     "The $area team needs $capability to support the staged commerce rollout." \
-    "$capability"
-  npx ztrack issue create --title "Deliver $capability" --label type:case --label "area:$area" --state "In Progress" --assignee "dev-$area" --body-file "$body_file" >/dev/null
-  issue_id="AC-$cycle"
+    "$capability" "$issue_id" "$area"
+  npx ztrack issue create --title "Deliver $capability" --label type:case --label "area:$area" --state in-progress --assignee "dev-$area" --body-file "$body_file" >/dev/null
 
   npx ztrack check --json > "planning-$cycle.json"
   test "$(json_field "planning-$cycle.json" summary.status)" = "pass"
 
+  # Review gate: advancing to in-review with proc/01 still pending must be blocked.
   pass_ac "$body_file" dev/01 "Implement the $capability capability." "$feature_sha" E1
   pass_ac "$body_file" dev/02 "Cover $capability with automated tests." "$feature_sha" E2
-  npx ztrack issue edit "$issue_id" --body-file "$body_file" --state Done >/dev/null
+  python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('Status: in-progress','Status: in-review'))"
+  npx ztrack issue edit "$issue_id" --state in-review --body-file "$body_file" >/dev/null
   set +e
   npx ztrack check --json > "done-red-$cycle.json"
   done_exit=$?
@@ -332,43 +338,33 @@ EOF
 
   pass_ac "$body_file" proc/01 "Document operational behavior for $capability." "$feature_sha" E3
   if [[ "$area" == "api" ]]; then
+    # Still in-review and still missing the rollout-plan label -> the project policy fires.
     npx ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
     set +e
     npx ztrack check --json > "rollout-red-$cycle.json"
     rollout_exit=$?
     set -e
     test "$rollout_exit" -eq 1
-    python3 - "$body_file" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-p.write_text(p.read_text() + "\n## Rollout Plan\n\n- Enable behind a flag.\n- Monitor API errors.\n- Roll back by disabling the flag.\n")
-PY
+    python3 -c 'import json,sys;cs=" ".join(f["code"] for f in json.load(open(sys.argv[1]))["findings"]);sys.exit(0 if "atlas_api_missing_rollout_plan" in cs else 1)' "rollout-red-$cycle.json"
+    python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('Labels: area:api','Labels: area:api, rollout-plan'))"
   fi
 
   if (( cycle % 7 == 0 )); then
-    python3 - "$body_file" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-p.write_text(p.read_text().replace('commit:', 'commit: deadbee # bad ', 1))
-PY
+    python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('commit=$feature_sha','commit=deadbeef',1))"
     npx ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
     set +e
-    npx ztrack check --json > "sha-red-$cycle.json"
+    npx ztrack check --verify-commits --json > "sha-red-$cycle.json"
     sha_exit=$?
     set -e
     test "$sha_exit" -eq 1
-    python3 - "$body_file" "$feature_sha" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-p.write_text(p.read_text().replace('commit: deadbee # bad ', 'commit: ', 1))
-PY
+    python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('commit=deadbeef','commit=$feature_sha',1))"
   fi
 
-  npx ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
-  npx ztrack check --json > "green-$cycle.json"
+  # Settle the issue back to in-progress (all ACs passed, no PR pin) so the committed root
+  # re-checks cleanly from a fresh clone.
+  python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('Status: in-review','Status: in-progress'))"
+  npx ztrack issue edit "$issue_id" --state in-progress --body-file "$body_file" >/dev/null
+  npx ztrack check --verify-commits --json > "green-$cycle.json"
   test "$(json_field "green-$cycle.json" summary.status)" = "pass"
 
   if (( cycle % 4 == 0 )); then
@@ -407,7 +403,7 @@ PY
   if (( cycle % 10 == 0 )); then
     rm -rf "$clone"
     npx ztrack export --out .volter/root.json >/dev/null
-    git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json packages test docs scripts README.md
+    git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages test docs scripts README.md
     git diff --cached --quiet || git commit -q -m "cycle $cycle adopt verified $capability"
     git clone -q "$app" "$clone"
     (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
@@ -419,7 +415,7 @@ done
 npx ztrack export --out .volter/root.json >/dev/null
 npx ztrack check --input .volter/root.json --verify-commits --json > final-root.json
 test "$(json_field final-root.json summary.status)" = "pass"
-git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json packages test docs scripts README.md
+git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages test docs scripts README.md
 git diff --cached --quiet || git commit -q -m "complete marathon verified lifecycle"
 
 note "marathon complete cycles=$cycle app=$app"

@@ -12,8 +12,7 @@ Start here when using or extending ztrack.
 
 ## Extend ztrack
 
-- [Preset reference](PRESETS.md): `basic`, `simple-sdlc`, `simple-spec`, and `speckit` install presets.
-- [Agent profiles](../profiles/README.md): PM/develop/review operating profiles after install.
+- [Preset reference](PRESETS.md): `default`, `spec`, and `speckit` install presets.
 - [Maintainer preset guide](../PRESET-GUIDE.md): how to design and review source-level preset internals.
 - [Architecture](../ARCHITECTURE.md): package internals and the validation pipeline.
 

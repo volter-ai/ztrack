@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="#quickstart-under-a-minute"><strong>Quickstart</strong></a> ·
+  <a href="#quickstart"><strong>Quickstart</strong></a> ·
   <a href="docs/ADOPTING.md"><strong>Adopt</strong></a> ·
   <a href="docs/EXAMPLES.md"><strong>Examples</strong></a> ·
   <a href="docs/COOKBOOKS.md"><strong>Cookbooks</strong></a> ·
@@ -28,68 +28,70 @@ commit it cited never existed. Your tracker stored the claim with perfect fideli
 verified nothing.
 
 **ztrack is a typechecker for your issue tracker.** With the installed presets,
-a checked acceptance criterion must cite a commit SHA that exists in git plus an
-evidence row in the issue. Teams can extend the installed preset to validate PRs,
-screenshots, videos, approvals, and source systems.
+a checked acceptance criterion must cite a commit SHA that exists in git plus the
+evidence and proof the preset requires. Teams can extend the installed preset to
+validate PRs, screenshots, videos, approvals, and source systems.
 
 ## What ztrack catches
 
 | Claim in the tracker | What ztrack verifies |
 |---|---|
 | "Implemented in commit `a1b2c3d`" | the SHA exists in the local git object database |
-| "This acceptance criterion is checked" | it cites a commit and an `[E...]` evidence row |
-| "This evidence proves it" | the evidence row exists and is linked from the checked AC |
-| "This ticket is ready/done" | the installed preset's required criteria and sections are internally consistent |
+| "This acceptance criterion is passed" | it cites evidence captured at a real commit, against the current AC version |
+| "This evidence proves it" | the AC carries a `proof:` that names the evidence it relies on |
+| "This ticket is ready/done" | the installed preset's lifecycle gates (PR exists/merged, every AC passed) hold |
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
-## Quickstart (15 seconds, zero config)
+## Quickstart
 
-> **Prerequisites:** Node ≥ 20 and `git`. That's it — no database, no Python. The
+> **Prerequisites:** Node ≥ 24 and `git`. That's it — no database, no Python. The
 > `ztrack visualizer` additionally needs [Bun](https://bun.sh).
 
-Watch ztrack catch a fabricated commit. No `init`, no backend, no config — like
-`eslint file.js`, you point it at a markdown file:
+Like `eslint --init` then `eslint`, you install a preset (your ruleset) and then check
+against it. Install one, create an issue whose acceptance criterion is marked done but
+cites a **fabricated** commit, and watch ztrack catch it:
 
 ```bash
-npx ztrack example                  # writes example-issue.md (a checked AC citing a fake SHA)
-npx ztrack check example-issue.md   # ✗ the commit it cites isn't in git
+npx ztrack init --preset default     # installs .volter/tracker/validation/preset.mts — real, editable code
+
+cat > body.md <<'EOF'
+Assignee: me
+Status: ready
+
+## Acceptance Criteria
+
+- [x] dev/01 v1 GET /health returns 200
+  - status: passed
+  - evidence ev1: image=health.png commit=deadbeef acv=1
+  - proof: "screenshot shows a 200 response" -> ev1
+EOF
+npx ztrack issue create --title "Add /health" --label type:case --state ready --assignee me --body-file body.md
+npx ztrack check --verify-commits    # ✗ the cited commit isn't in git
 ```
 
 ```text
-$ ztrack check example-issue.md
-
 ✗ ztrack check failed     issues 1 • errors 1 • warnings 0
 
-CHECK-1
-╰─  ✗ error  basic_checked_ac_commit_hash_missing
-   └─ Checked AC dev/01 cites missing commit deadbeef.
+ZT-1
+╰─  ✗ error  evidence_commit_not_found
+   └─ Evidence ev1 cites commit deadbeef, which does not exist.
 
-✗ exit 1  — the checkbox says done. the commit doesn't exist.
+✗ exit 1 — the checkbox says done. the commit doesn't exist.
 ```
 
-Replace `deadbeef` with a real commit SHA and it passes. That's the whole idea: a
-checked acceptance criterion must cite proof that actually exists. Point it at your
-own issue files the same way — `ztrack check path/to/issue.md`.
+Replace `deadbeef` with a real commit SHA (`git rev-parse HEAD`) and re-run — it passes.
+That's the whole idea: a checked acceptance criterion must cite proof that actually
+exists. The installed `preset.mts` is real, editable code — open it and change the rules.
 
-> **Package managers:** verified on Node 20+ under **npm, pnpm, yarn (classic + Berry +
+> **Package managers:** verified on Node 24+ under **npm, pnpm, yarn (classic + Berry +
 > PnP), and bun**. The pure-JS store needs no subprocess, so Yarn PnP works with no
 > extra configuration.
 
 ## Adopt it into your repo
 
-When you're ready to track real work (a local issue store + a committed, editable
-validation preset + CI/MCP/agent gates), initialize a project:
-
-```bash
-npx ztrack init --preset basic
-npx ztrack issue scaffold --title "First verified task" > body.md
-npx ztrack issue create --title "First verified task" --label type:case --state "In Progress" --assignee "$USER" --body-file body.md
-npx ztrack check
-```
-
-See [Adopting ztrack](docs/ADOPTING.md) for the full path (CI gate, committed
-validated root, MCP, and the agent stop-hook loop).
+For the full adoption path — a CI gate, a committed validated root, MCP, and the agent
+stop-hook loop — see [Adopting ztrack](docs/ADOPTING.md).
 
 ## How it works
 
@@ -147,23 +149,17 @@ If you are adding ztrack to an existing repository, start with
 [Adopting ztrack](docs/ADOPTING.md). If an AI agent is doing the setup, give it
 [the agent playbook](docs/AGENT-PLAYBOOK.md).
 
-To install validation plus an operating profile in one shot:
-
-```bash
-npx -p ztrack ztrack-setup --repo /path/to/repo --team APP --preset simple-sdlc --profile simple-sdlc
-```
-
 ## Install presets
 
-`ztrack init` installs one editable validation file into the target repo:
-`.volter/tracker/validation/preset.cjs`.
+`ztrack init --preset <name>` installs one editable, **standalone** preset into the
+target repo: `.volter/tracker/validation/preset.mts` — its own schema, parser, and rules,
+importing only `ztrack/preset-kit`. Edit it freely.
 
 | Preset | Use When |
 |---|---|
-| `basic` | first adoption or unknown workflow |
-| `simple-sdlc` | source-grounded work items with lifecycle gates |
-| `simple-spec` | issue bodies are specs with requirements and ACs |
-| `speckit` | GitHub Spec Kit style feature records |
+| `default` | a dev lifecycle (draft→ready→in-progress→in-review→done) with commit + image evidence and proof |
+| `spec` | issue bodies are specs whose ACs cite commit-backed evidence |
+| `speckit` | GitHub Spec Kit style feature records (user stories, tasks, phases) |
 
 See [Preset reference](docs/PRESETS.md) for the exact gates.
 
@@ -171,7 +167,7 @@ See [Preset reference](docs/PRESETS.md) for the exact gates.
 
 The installed preset is intentionally editable. Start with commit plus evidence
 row checks, then encode project-specific rules in
-`.volter/tracker/validation/preset.cjs`: source grounding, section gates,
+`.volter/tracker/validation/preset.mts`: source grounding, section gates,
 approval requirements, PR metadata, screenshot files, video evidence, or external
 world/source checks.
 
@@ -216,7 +212,6 @@ confirm there is a good fit.
 - [Cookbooks](docs/COOKBOOKS.md)
 - [Visualizer](visualizer/README.md) — local web view of tracker state
 - [Preset reference](docs/PRESETS.md)
-- [Agent profiles](profiles/README.md)
 - [AI agent playbook](docs/AGENT-PLAYBOOK.md)
 - [World integration](docs/WORLD-INTEGRATION.md) — advanced source-backed validation boundary
 - [Architecture](ARCHITECTURE.md)

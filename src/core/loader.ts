@@ -36,21 +36,48 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' 
 // Render one backend row into a self-contained, parseable issue markdown document:
 // the body markdown plus the metadata (id/title/state/assignee/labels) the backend
 // keeps in columns. This is the "issue markdown" the preset's parser consumes.
+// Frame the backend metadata (id/title/state/assignee/labels) as the `# id: title` + field
+// header the preset's parser reads, then append the body. IDEMPOTENT: a body that already
+// carries its own top-level `# ` heading is self-contained (it was written by a preset's
+// `serialize` through `ac patch`/`fmt`), so it is used as-is — the framing is not duplicated.
+export type IssueMeta = { id: string; title: string; body: string; state?: string; stateType?: string; assignee?: string; labels?: string[] };
+export function frameIssueMarkdown(meta: IssueMeta): string {
+  if (/^\s*#\s+\S/.test(meta.body)) return meta.body.endsWith('\n') ? meta.body : `${meta.body}\n`;
+  const head: string[] = [`# ${meta.id}: ${meta.title}`, ''];
+  if (meta.state) head.push(`Status: ${meta.state}`);
+  if (meta.stateType) head.push(`StateType: ${meta.stateType}`);
+  if (meta.assignee) head.push(`Assignee: ${meta.assignee}`);
+  if (meta.labels?.length) head.push(`Labels: ${meta.labels.join(', ')}`);
+  head.push('');
+  return `${head.join('\n')}\n${meta.body}\n`;
+}
+
 export function renderIssueMarkdown(row: Row): { id: string; body: string } {
   const id = str(row.identifier) || str(row.id) || str(row.number);
-  const title = str(row.title);
-  const body = str(row.body) || str(row.description);
-  const labels = Array.isArray(row.labels) ? row.labels.map(String) : [];
-  const head: string[] = [`# ${id}: ${title}`, ''];
-  const state = str(row.state);
-  const stateType = str(row.stateType);
-  const assignee = str(row.assignee);
-  if (state) head.push(`Status: ${state}`);
-  if (stateType) head.push(`StateType: ${stateType}`);
-  if (assignee) head.push(`Assignee: ${assignee}`);
-  if (labels.length) head.push(`Labels: ${labels.join(', ')}`);
-  head.push('');
-  return { id, body: `${head.join('\n')}\n${body}\n` };
+  return { id, body: frameIssueMarkdown({
+    id, title: str(row.title), body: str(row.body) || str(row.description),
+    state: str(row.state), stateType: str(row.stateType), assignee: str(row.assignee),
+    labels: Array.isArray(row.labels) ? row.labels.map(String) : [],
+  }) };
+}
+
+// Frame a single issue from an `issue view --json` result. `view` returns the nested
+// GraphQL shape (`state:{name}`, `assignee:{name}`, `labels:{nodes:[{name}]}`), unlike the
+// loader's flattened list rows — so unwrap both. Used by the write path (`ac patch`/`fmt`)
+// so the preset's parser sees the same framed body the loader produces for validation.
+export function framedFromView(view: Record<string, unknown>, fallbackId: string): string {
+  const name = (v: unknown): string => typeof v === 'string' ? v : (v && typeof v === 'object' ? str((v as { name?: unknown; identifier?: unknown }).name) || str((v as { identifier?: unknown }).identifier) : '');
+  const nodeNames = (v: unknown): string[] => v && typeof v === 'object' && Array.isArray((v as { nodes?: unknown[] }).nodes)
+    ? (v as { nodes: unknown[] }).nodes.map(name).filter(Boolean)
+    : Array.isArray(v) ? v.map(name).filter(Boolean) : [];
+  const assignee = name(view.assignee) || nodeNames(view.assignees)[0] || '';
+  const labels = nodeNames(view.labels);
+  return frameIssueMarkdown({
+    id: str(view.identifier) || fallbackId, title: str(view.title), body: str(view.body),
+    ...(name(view.state) ? { state: name(view.state) } : {}),
+    ...(assignee ? { assignee } : {}),
+    ...(labels.length ? { labels } : {}),
+  });
 }
 
 /** Load the tracker into one ValidationInput-ready bundle + typed Context. */

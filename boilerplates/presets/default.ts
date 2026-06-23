@@ -15,15 +15,15 @@
 //   in-review    — PR exists; every AC passed; every passed AC has fresh evidence
 //   done         — the PR is merged (review gates still hold)
 
-import { z } from 'zod';
-import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfm } from 'micromark-extension-gfm';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
-import { check as runCheck, rule, type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact, type DerivedModel, type Preset, type PresetContextInput } from '../core/engine.ts';
-import { splitIssueBundle } from '../core/bundle.ts';
-import { gitWorld } from '../core/gitWorld.ts';
-import { BlockRefSchema, formatRef } from '../core/ref.ts';
-import { normalizeBlockRefs, parseBlockToken, type RawBlockRef } from '../core/blocking.ts';
+// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`
+// (no `../core/*`, no `mdast-*`, no `zod`). Its OWN schema, parser, and rules live here.
+import {
+  z, toMdast, nodeText, type MdNode,
+  check as runCheck, rule, gitWorld, formatRef, BlockRefSchema,
+  splitIssueBundle, normalizeBlockRefs, parseBlockToken,
+  type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
+  type DerivedModel, type Preset, type PresetContextInput, type RawBlockRef,
+} from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
@@ -57,12 +57,6 @@ export const DefaultRelationSchema = z.object({
   type: z.enum(['blocks', 'blocked-by', 'relates']),
   issueId: z.string().min(1),
 }).strict();
-export const DefaultLinkedIssueSchema = z.object({
-  system: z.string().min(1),
-  key: z.string().min(1),
-  url: z.string().min(1).optional(),
-}).strict();
-
 export const DefaultIssueStatusSchema = z.enum(['draft', 'ready', 'in-progress', 'in-review', 'done']);
 export const DefaultIssueSchema = z.object({
   id: z.string().min(1),                              // core
@@ -74,7 +68,6 @@ export const DefaultIssueSchema = z.object({
   acceptanceCriteria: z.array(DefaultAcSchema),       // core
   labels: z.array(z.string().min(1)).optional(),               // primitive
   relations: z.array(DefaultRelationSchema).optional(),         // primitive
-  linkedIssues: z.array(DefaultLinkedIssueSchema).optional(),   // primitive
   children: z.array(z.string().min(1)).optional(),             // primitive
 }).strict();
 
@@ -82,12 +75,7 @@ export const DefaultRootSchema = z.object({ issues: z.array(DefaultIssueSchema) 
 export type DefaultRoot = z.infer<typeof DefaultRootSchema>;
 
 // ── mdast parse: markdown -> the schema shape (designated-position, no mining) ─
-type MdNode = { type: string; depth?: number; checked?: boolean | null; children?: MdNode[]; value?: string };
-
-function nodeText(node: MdNode): string {
-  if (typeof node.value === 'string') return node.value;
-  return (node.children ?? []).map(nodeText).join('');
-}
+// MdNode / toMdast / nodeText are rented from the kit (shared mdast mechanism).
 function firstParagraphText(item: MdNode): string {
   const p = (item.children ?? []).find((c) => c.type === 'paragraph');
   // Take the AC's first line only: the single-line `parseAcLine` regexes can't span a
@@ -112,7 +100,7 @@ function parseAcLine(line: string): { id: string; version?: number; text: string
 }
 
 function parseDefaultIssue(markdown: string): Record<string, unknown> | null {
-  const tree = fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] }) as MdNode;
+  const tree = toMdast(markdown);
   const issue: Record<string, unknown> = { id: '', title: '', summary: '', status: 'draft', assignee: '', acceptanceCriteria: [] };
   let inAc = false;
 
@@ -144,9 +132,6 @@ function parseDefaultIssue(markdown: string): Record<string, unknown> | null {
       for (const m of text.matchAll(/^Blocked by:\s*(.+)$/gim)) for (const id of splitList(m[1]!)) relations.push({ type: 'blocked-by', issueId: id });
       for (const m of text.matchAll(/^Relates:\s*(.+)$/gim)) for (const id of splitList(m[1]!)) relations.push({ type: 'relates', issueId: id });
       if (relations.length) issue.relations = relations;
-      const linked: unknown[] = [];
-      for (const m of text.matchAll(/^Linked:\s*(\S+)\s+(\S+)(?:\s+(\S+))?/gim)) linked.push({ system: m[1], key: m[2], ...(m[3] ? { url: m[3] } : {}) });
-      if (linked.length) issue.linkedIssues = linked;
       continue;
     }
     if (node.type === 'list' && inAc) {
@@ -216,7 +201,6 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): string {
   if (rel('blocks').length) out.push(`Blocks: ${rel('blocks').join(', ')}`);
   if (rel('blocked-by').length) out.push(`Blocked by: ${rel('blocked-by').join(', ')}`);
   if (rel('relates').length) out.push(`Relates: ${rel('relates').join(', ')}`);
-  for (const l of issue.linkedIssues ?? []) out.push(`Linked: ${l.system} ${l.key}${l.url ? ` ${l.url}` : ''}`);
   out.push('', '## Acceptance Criteria', '');
   for (const ac of issue.acceptanceCriteria) {
     out.push(`- [${ac.checked ? 'x' : ' '}] ${ac.id} v${ac.version} ${ac.text}`);
@@ -421,15 +405,19 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   // this preset's observed facts: the git world (commits + PR head/merged).
   loadContext: (input) => gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits }),
   parse: parseDefault,
+  serialize: serializeDefault, // the inverse of parse (one grammar, both directions)
   // an AC-less issue counts as done (for the block graph's completion gate) only at the terminal state.
   isIssueDone: (i) => i.status === 'done',
   // relation reciprocity + dangling proof refs; the block graph + id aggregates are core.
   derive: deriveDefault,
   rules: DEFAULT_RULES,
+  // `ztrack issue scaffold` starter: a draft issue with one pending dev AC (green to begin —
+  // nothing is claimed yet). Fill in the work, then mark it passed + cite evidence + proof.
+  scaffold: (_title) => `Summary: One or two sentences describing the work.\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Describe one observable, testable outcome.\n  - status: pending\n`,
   // which standard primitives this SDLC implements. (audit is NOT declared here:
   // it is a core, always-on capability — recorded automatically on any change.)
   primitives: {
-    proof: true, labels: true, relations: true, linkedIssues: true, children: true,
+    proof: true, labels: true, relations: true, children: true,
     blocking: true, sources: false, category: false,
   },
 };
@@ -437,3 +425,6 @@ export const DefaultPreset: Preset<DefaultRoot> = {
 export function checkDefault(markdown: string, ctx?: Context) {
   return runCheck(DefaultPreset, markdown, ctx);
 }
+
+// The installed entrypoint: the resolver reads the preset off `default`.
+export default DefaultPreset;

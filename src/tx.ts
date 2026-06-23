@@ -11,12 +11,15 @@
 // attempt+revert pair by design (an attempted tx is auditable history).
 import { createHash } from 'node:crypto';
 import { checkTracker } from './check.ts';
-import { applyAcMutation } from './mutate.ts';
-import type { AcMutation } from './mutate.ts';
+import { loadTrackerConfig } from './config.ts';
+import { framedFromView } from './core/loader.ts';
+import { applyModelPatch } from './modelEdit.ts';
+import { resolveTrackerValidation } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
 
 export type TxEdit =
-  | ({ issue: string } & AcMutation)
+  // a typed model patch (parse -> overlay -> serialize), targeting an issue or one AC by id
+  | { issue: string; op: 'patch'; ac?: string; patch: Record<string, unknown> }
   | { issue: string; op: 'set-state'; state: string }
   | { issue: string; op: 'set-body'; body: string };
 
@@ -43,11 +46,7 @@ function baseHash(issue: IssueState): string {
 function editDetail(edit: TxEdit): string {
   if (edit.op === 'set-state') return `state -> ${edit.state}`;
   if (edit.op === 'set-body') return `body replaced (${edit.body.length} chars)`;
-  if (edit.op === 'check') return `ac ${edit.acId} -> checked${edit.commit ? ` (commit ${edit.commit})` : ''}${edit.evidence?.length ? ` [${edit.evidence.join(',')}]` : ''}`;
-  if (edit.op === 'uncheck') return `ac ${edit.acId} -> unchecked`;
-  if (edit.op === 'block') return `ac ${edit.acId} -> ${edit.field} += ${edit.refs.join(', ')}`;
-  if (edit.op === 'unblock') return `ac ${edit.acId} -> ${edit.field} -= ${edit.refs?.join(', ') ?? 'all'}`;
-  return `ac ${edit.acId} -> status ${edit.status}`;
+  return `patch ${edit.ac ? `ac ${edit.ac}` : 'issue'} <- ${JSON.stringify(edit.patch)}`;
 }
 
 async function readIssue(client: ReturnType<typeof createTrackerClient>, issue: string): Promise<IssueState> {
@@ -94,6 +93,7 @@ export async function applyTx(
   for (const edit of edits) {
     if (!pre.has(edit.issue)) pre.set(edit.issue, await readIssue(client, edit.issue));
   }
+  const preset = await resolveTrackerValidation(loadTrackerConfig(options.projectRoot), options.projectRoot);
   const touched = new Set<string>();
   for (const edit of edits) {
     const current = await readIssue(client, edit.issue);
@@ -102,7 +102,9 @@ export async function applyTx(
     } else if (edit.op === 'set-body') {
       await client.issue.edit(edit.issue, { body: edit.body });
     } else {
-      const result = applyAcMutation(current.body, edit);
+      const view = await client.issue.view(edit.issue, { json: 'identifier,title,state,stateType,assignee,labels,body' });
+      const framed = framedFromView(view as Record<string, unknown>, edit.issue);
+      const result = applyModelPatch(preset, framed, { ...(edit.ac ? { acId: edit.ac } : {}), patch: edit.patch });
       await client.issue.edit(edit.issue, { body: result.body });
     }
     touched.add(edit.issue);

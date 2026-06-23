@@ -33,12 +33,12 @@ Reserved for complex pure logic, and for code the CLI can't reach:
 - the mdast parser's exact structured output and the waiver freshness-fingerprint / `waivable`
   logic and the parser regression edge cases (`src/presetKit.test.ts`) — **not** the
   rule-firing behaviors, which live in `check-e2e.sh`;
-- the install-parity guard that keeps the vendored `preset.cjs` byte-for-byte equivalent to
-  `createGenericPreset` (`src/presetInstall.test.ts`);
-- the standalone `default` / `spec` / `speckit` presets (`src/presets/*.test.ts`). `ztrack
-  check` always uses the installed generic `preset.cjs`; these are reached in the shipped
-  product only through the **visualizer** (`serverCore.ts` resolves them via the registry for
-  display), where E2E is impractical — so a unit test is their surgical coverage.
+- the install-parity guard that keeps the installed `preset.mts` byte-for-byte equivalent to
+  its source (`src/presetInstall.test.ts`);
+- the standalone `default` / `spec` / `speckit` presets (`boilerplates/presets/*.test.ts`).
+  `ztrack check` always uses the installed standalone `preset.mts`; these are reached in the
+  shipped product only through the **visualizer** (`serverCore.ts` resolves them via the
+  registry for display), where E2E is impractical — so a unit test is their surgical coverage.
 - markdown serialization + parser edges (`src/backends/markdown.test.ts`,
   `src/presets/issueMarkdown.test.ts`, `src/graphql.test.ts`): null-vs-empty, comment-block
   round-trips, fenced-code blocks, CRLF, `fmt` fixed-point — exactly the things a CLI E2E

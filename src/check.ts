@@ -35,7 +35,7 @@ function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
 export async function checkTracker(options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
-  const preset = resolveTrackerValidation(config, projectRoot);
+  const preset = await resolveTrackerValidation(config, projectRoot);
   const { bundle, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
   return check(preset, bundle, context);
 }
@@ -45,17 +45,24 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
 export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
-  const preset = resolveTrackerValidation(config, projectRoot);
+  const preset = await resolveTrackerValidation(config, projectRoot);
   // Observed facts are preset-owned (gathered via loadContext); no backend read is
   // needed for an already-exported root. A preset with no loadContext needs none.
   const observed = preset.loadContext
     ? await preset.loadContext({ projectRoot, verifyCommits: options.verifyCommits, root: root as CoreRoot })
     : {};
+  // A committed root may carry the `## Waivers` directives alongside `issues` (see
+  // exportTrackerRoot). Lift them into the context — where checkRoot already applies
+  // them — and validate only the issues against the strict per-preset root schema.
+  const rootObj = root && typeof root === 'object' ? root as Record<string, unknown> : undefined;
+  const waivers = rootObj && Array.isArray(rootObj.waivers) ? rootObj.waivers as Context['waivers'] : undefined;
+  const rootForCheck = waivers ? { issues: rootObj!.issues } : root;
   const context: Context = {
     ...observed,
+    ...(waivers ? { waivers } : {}),
     ...(options.categories ? { categories: options.categories } : {}),
     ...(options.now ? { now: options.now } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
   };
-  return checkRoot(preset, root, context);
+  return checkRoot(preset, rootForCheck, context);
 }

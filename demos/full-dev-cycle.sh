@@ -32,33 +32,32 @@ print(data)
 PY
 }
 
+# default grammar: one passed dev AC (image+commit evidence + proof) and one still-pending
+# dev AC. State `in-review` is GREEN only once every AC is passed, so this body starts the
+# issue in-review-blocked until dev/02 is filled in.
 write_body() {
   local path="$1"
   local title="$2"
-  local ac1="$3"
-  local ac2="$4"
-  local sha="$5"
-  local source="$6"
+  local id="$3"
+  local ac1="$4"
+  local ac2="$5"
+  local sha="$6"
+  local source="$7"
   cat > "$path" <<EOF
-# $title
+# $id: $title
 
-## Summary
-
-$source [1]
+Summary: $source
+Status: in-progress
+Assignee: maintainer
 
 ## Acceptance Criteria
 
-- [x] dev/01 status: passed $ac1 commit: $sha [E1]
-- [ ] dev/02 status: pending $ac2 [1]
-
-## Sources
-
-[1] Requirement:
-$source
-
-## Evidence
-
-- [E1] type: pr ac: dev/01 repo: example/taskflow-kit number: 1 head: main justification: Tests and implementation cover dev/01.
+- [x] dev/01 v1 $ac1
+  - status: passed
+  - evidence E1: image=s.png commit=$sha acv=1
+  - proof: "E1 demonstrates dev/01" -> E1
+- [ ] dev/02 v1 $ac2
+  - status: pending
 EOF
 }
 
@@ -66,6 +65,7 @@ cd "$app"
 git init -q
 git config user.email cycle@example.com
 git config user.name "ztrack Smoke"
+git checkout -q -b main 2>/dev/null || git branch -q -M main
 
 mkdir -p src test docs examples scripts
 cat > package.json <<'EOF'
@@ -226,73 +226,86 @@ git commit -q -m "document reporting"
 docs_sha="$(git rev-parse --short HEAD)"
 
 npm install -D "$tarball" >/dev/null
-npx ztrack init --team OSS --preset simple-sdlc >/dev/null
+npx ztrack init --team OSS --preset default >/dev/null
 
 write_body rename.md \
-  "Rename existing tasks" \
+  "Rename existing tasks" OSS-1 \
   "Users can rename an existing task while preserving id and tags." \
   "Renaming rejects blank titles." \
   "$rename_sha" \
   "Task maintainers need to correct task titles after import."
-npx ztrack issue create --title "Rename existing tasks" --label type:case --label area:store --state "In Progress" --assignee maintainer --body-file rename.md >/dev/null
+npx ztrack issue create --title "Rename existing tasks" --label type:case --label area:store --state in-progress --assignee maintainer --body-file rename.md >/dev/null
 
 write_body report.md \
-  "Report completion rate" \
+  "Report completion rate" OSS-2 \
   "Reports include total, status counts, tag counts, and completion rate." \
   "Documentation explains the reporting fields." \
   "$report_sha" \
   "Project dashboards need a completion-rate summary."
-npx ztrack issue create --title "Report completion rate" --label type:case --label area:reporting --state "In Progress" --assignee maintainer --body-file report.md >/dev/null
+npx ztrack issue create --title "Report completion rate" --label type:case --label area:reporting --state in-progress --assignee maintainer --body-file report.md >/dev/null
 
 write_body docs.md \
-  "Document reporting API" \
+  "Document reporting API" OSS-3 \
   "Usage docs describe reporting helpers." \
   "Examples show the reporting helper." \
   "$docs_sha" \
   "New OSS users need examples for the reporting API."
-npx ztrack issue create --title "Document reporting API" --label type:case --label area:docs --state "In Progress" --assignee maintainer --body-file docs.md >/dev/null
+npx ztrack issue create --title "Document reporting API" --label type:case --label area:docs --state in-progress --assignee maintainer --body-file docs.md >/dev/null
 
-# Review gate: a maintainer tries to close an issue while one AC is still
-# pending. The preset must block Done until every AC is passed.
-npx ztrack issue edit OSS-1 --state Done >/dev/null
+# Review gate: a maintainer tries to advance an issue to in-review while one AC is still
+# pending. The default lifecycle blocks in-review until every AC is passed.
+python3 <<'PY'
+from pathlib import Path
+p = Path("rename.md")
+p.write_text(p.read_text().replace("Status: in-progress", "Status: in-review"))
+PY
+npx ztrack issue edit OSS-1 --state in-review --body-file rename.md >/dev/null
 set +e
 npx ztrack check --json > done-red.json
 done_red_exit=$?
 set -e
 test "$done_red_exit" -eq 1
-test "$(json_field done-red.json findings.0.code)" = "simple-sdlc_done_with_unpassed_acceptance_criteria"
+codes="$(python3 -c 'import json;print(" ".join(f["code"] for f in json.load(open("done-red.json"))["findings"]))')"
+printf '%s' "$codes" | grep -q "review_requires_all_acs_passed"
+# Resolve by passing dev/02 (evidence + proof, cited at the rename commit) and dropping back to
+# in-progress: with every AC passed the issue is clean again (no PR/merge brittleness — the
+# committed root re-checks cleanly from any fresh clone).
 python3 - "$rename_sha" <<'PY'
 from pathlib import Path
 import sys
 
+sha = sys.argv[1]
 p = Path("rename.md")
 text = p.read_text()
+text = text.replace("Status: in-review", "Status: in-progress")
 text = text.replace(
-    "- [ ] dev/02 status: pending Renaming rejects blank titles. [1]",
-    f"- [x] dev/02 status: passed Renaming rejects blank titles. commit: {sys.argv[1]} [E2]",
+    "- [ ] dev/02 v1 Renaming rejects blank titles.\n  - status: pending\n",
+    "- [x] dev/02 v1 Renaming rejects blank titles.\n  - status: passed\n"
+    f"  - evidence E2: image=s.png commit={sha} acv=1\n"
+    "  - proof: \"E2 demonstrates dev/02\" -> E2\n",
 )
-text += "\n- [E2] type: pr ac: dev/02 repo: example/taskflow-kit number: 2 head: main justification: Rename validation throws on blank titles.\n"
 p.write_text(text)
 PY
-npx ztrack issue edit OSS-1 --body-file rename.md >/dev/null
+npx ztrack issue edit OSS-1 --state in-progress --body-file rename.md >/dev/null
 npx ztrack check --json > done-green.json
 test "$(json_field done-green.json summary.status)" = "pass"
 
 # A realistic red proof: one issue cites a fabricated commit, then gets fixed.
 write_body broken.md \
-  "Reject empty task titles" \
+  "Reject empty task titles" OSS-4 \
   "The store rejects empty task titles." \
   "The error message stays stable for callers." \
   "deadbee" \
   "Imported data can contain blank task titles."
-npx ztrack issue create --title "Reject empty task titles" --label type:bug --label area:store --state "In Progress" --assignee maintainer --body-file broken.md >/dev/null
+npx ztrack issue create --title "Reject empty task titles" --label type:bug --label area:store --state in-progress --assignee maintainer --body-file broken.md >/dev/null
 
 set +e
-npx ztrack check --json > red.json
+npx ztrack check --verify-commits --json > red.json
 red_exit=$?
 set -e
 test "$red_exit" -eq 1
-test "$(json_field red.json findings.0.code)" = "simple-sdlc_checked_ac_commit_hash_missing"
+codes="$(python3 -c 'import json;print(" ".join(f["code"] for f in json.load(open("red.json"))["findings"]))')"
+printf '%s' "$codes" | grep -q "evidence_commit_not_found"
 
 python3 - "$rename_sha" <<'PY'
 from pathlib import Path
@@ -301,7 +314,7 @@ p = Path("broken.md")
 p.write_text(p.read_text().replace("deadbee", sys.argv[1]))
 PY
 npx ztrack issue edit OSS-4 --body-file broken.md >/dev/null
-npx ztrack check --json > green.json
+npx ztrack check --verify-commits --json > green.json
 test "$(json_field green.json summary.status)" = "pass"
 test "$(json_field green.json summary.issues)" -eq 4
 
@@ -380,11 +393,11 @@ sdk-cycle.mjs
 *.md.tmp
 EOF
 
-git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json package.json package-lock.json src test docs examples README.md
+git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json src test docs examples README.md
 git commit -q -m "adopt ztrack with verified task evidence"
 
 status="$(git status --short --ignored=no)"
-if printf '%s\n' "$status" | rg '^\?\? \.volter/tracker/' >/dev/null; then
+if printf '%s\n' "$status" | grep -E '^\?\? \.volter/tracker/validation/' >/dev/null; then
   printf 'unexpected untracked ztrack local state:\n%s\n' "$status" >&2
   exit 1
 fi

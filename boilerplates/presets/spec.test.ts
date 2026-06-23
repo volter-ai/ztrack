@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { checkSpec, parseSpec, SpecRootSchema } from './spec.ts';
+import { checkSpec, parseSpec, serializeSpec, SpecRootSchema } from './spec.ts';
 
 const REAL = 'cafe1234beef';
 const ctx = { git: { existingCommits: [REAL] } };
@@ -32,6 +32,13 @@ describe('greenfield spec preset', () => {
     expect(r.ok).toBe(true);
     expect(r.findings).toEqual([]);
     expect(r.export!.issues[0]!.id).toBe('SPEC-1');
+  });
+
+  test('serialize is the inverse of parse (structured round-trip)', () => {
+    const root = SpecRootSchema.parse(parseSpec(DOC));
+    // re-parsing the serialized form yields the identical structured root
+    const reparsed = SpecRootSchema.parse(parseSpec(serializeSpec(root)));
+    expect(reparsed).toEqual(root);
   });
 
   test('rule: passed AC with no evidence fails', () => {

@@ -27,15 +27,15 @@ new_consumer() {
   echo "# consumer" > "$1/README.md"; git -C "$1" add README.md; git -C "$1" commit -q -m init
   git -C "$1" rev-parse --short HEAD
 }
-green_body() { printf '# T\n\n## Acceptance Criteria\n\n- [x] AC-01 do it commit: %s [E1]\n\n## Evidence\n\n[E1] type: pr\n' "$1" > body.md; }
+green_body() { printf 'Assignee: t\nStatus: ready\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: image=shot.png commit=%s acv=1\n  - proof: "ev1 proves it" -> ev1\n' "$1" > body.md; }
 
 echo "## pnpm (strict isolated store)"
 d="$tmp/pnpm"; sha="$(new_consumer "$d")"; cd "$d"; set +e
 $PNPM init >/dev/null 2>&1
 $PNPM add -D ./ztrack.tgz >/dev/null 2>&1
-$PNPM exec ztrack init --team APP --preset basic >/dev/null 2>&1
+$PNPM exec ztrack init --team APP --preset default >/dev/null 2>&1
 green_body "$sha"
-$PNPM exec ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null 2>&1
+$PNPM exec ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null 2>&1
 $PNPM exec ztrack check >/dev/null 2>&1; report $? "pnpm: init + green check"
 set -e; cd "$repo_root"
 
@@ -43,9 +43,9 @@ echo "## yarn classic (1.x)"
 d="$tmp/yarn1"; sha="$(new_consumer "$d")"; cd "$d"; set +e
 printf '{"name":"c","packageManager":"yarn@1.22.22"}\n' > package.json
 $YARN1 add -D ./ztrack.tgz >/dev/null 2>&1
-$YARN1 ztrack init --team APP --preset basic >/dev/null 2>&1
+$YARN1 ztrack init --team APP --preset default >/dev/null 2>&1
 green_body "$sha"
-$YARN1 ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null 2>&1
+$YARN1 ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null 2>&1
 $YARN1 ztrack check >/dev/null 2>&1; report $? "yarn-classic: init + green check"
 set -e; cd "$repo_root"
 
@@ -54,9 +54,9 @@ d="$tmp/pnp"; sha="$(new_consumer "$d")"; cd "$d"; set +e
 printf '{"name":"c","packageManager":"yarn@4.5.3"}\n' > package.json
 $YARN4 install >/dev/null 2>&1
 $YARN4 add ./ztrack.tgz >/dev/null 2>&1
-$YARN4 ztrack init --team APP --preset basic >/dev/null 2>&1
+$YARN4 ztrack init --team APP --preset default >/dev/null 2>&1
 green_body "$sha"
-$YARN4 ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null 2>&1
+$YARN4 ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null 2>&1
 $YARN4 ztrack check >/dev/null 2>&1; report $? "yarn-PnP+markdown: init + green check"
 set -e; cd "$repo_root"
 
@@ -64,9 +64,9 @@ echo "## bun"
 d="$tmp/bun"; sha="$(new_consumer "$d")"; cd "$d"; set +e
 printf '{"name":"c"}\n' > package.json
 bun add -D ./ztrack.tgz >/dev/null 2>&1
-./node_modules/.bin/ztrack init --team APP --preset basic >/dev/null 2>&1
+./node_modules/.bin/ztrack init --team APP --preset default >/dev/null 2>&1
 green_body "$sha"
-./node_modules/.bin/ztrack issue create --title T --label type:case --state "In Progress" --assignee t --body-file body.md >/dev/null 2>&1
+./node_modules/.bin/ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null 2>&1
 ./node_modules/.bin/ztrack check >/dev/null 2>&1; report $? "bun: init + green check"
 set -e; cd "$repo_root"
 

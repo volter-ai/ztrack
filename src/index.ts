@@ -6,8 +6,6 @@ export { exportTrackerRoot } from './export.ts';
 export type { TrackerExportOptions } from './export.ts';
 export { check, checkRoot } from './core/engine.ts';
 export type { CheckResult, Context, CoreRoot, Finding, Preset, Rule, ValidationInput } from './core/engine.ts';
-export { createGenericPreset } from './presetKit.ts';
-export type { GenericPresetConfig } from './presetKit.ts';
 export { parseRawIssueMarkdown, renderPresetCanonicalIssueMarkdown } from './presets.ts';
 export type { RawIssueMarkdown, RawIssueSection, RawIssueCheckboxRow } from './presets.ts';
 export { loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, trackerDatabasePath } from './config.ts';

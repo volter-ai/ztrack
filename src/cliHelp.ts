@@ -14,15 +14,10 @@ export function printHelp(): void {
 ${ui.bold('Usage')}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
-${helpSection('top', 'Try it (zero config)', [
-    [`${command} example`, 'write a demo issue file'],
-    [`${command} check <file.md>`, 'validate a file — no init/backend'],
-  ])}
-
-${helpSection('top', 'Core', [
-    [`${command} init [--team KEY] [--preset basic|simple-sdlc|simple-spec|speckit]`, 'create local config'],
-    [`${command} check [--issues A-1,A-2]`, 'verify checked claims'],
-    [`${command} check --json`, 'emit JSON report'],
+${helpSection('top', 'Start here', [
+    [`${command} init [--team KEY] [--preset default|spec|speckit]`, 'install a preset + config'],
+    [`${command} issue create`, 'add a verifiable issue'],
+    [`${command} check [--issues A-1,A-2]`, 'verify checked claims against evidence'],
   ])}
 
 ${helpSection('middle', 'Workflow', [
@@ -38,7 +33,7 @@ ${helpSection('bottom', 'Data', [
   ])}
 
 ${ui.bold('Resources')}
-  example, init, migrate-local, issue, project, search, view, api, check, export
+  init, migrate-local, issue, project, search, view, api, check, export
   fmt, lint, tx, evidence, ac, mcp, visualizer, loop, waiver, preset, completions
 
 ${ui.dim(`Shell completion:  source <(${command} completions bash)   # or zsh`)}
@@ -46,11 +41,11 @@ ${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help f
 `);
 }
 
-export function scaffoldCaseBody(title: string): string {
+export async function scaffoldCaseBody(title: string): Promise<string> {
   try {
     const projectRoot = projectRootFrom();
     const config = loadTrackerConfig(projectRoot);
-    const preset = resolveTrackerValidation(config, projectRoot);
+    const preset = await resolveTrackerValidation(config, projectRoot);
     const body = preset.scaffold?.(title);
     if (body) return body;
   } catch {

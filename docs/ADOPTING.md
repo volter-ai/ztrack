@@ -17,8 +17,8 @@ that ztrack can resolve.
 | `ztrack check` | Deterministic verification of checked claims |
 | CI / MCP / stop-hook | Where failures block agents or pull requests |
 
-Start with `basic` unless the repo already has written workflow rules that map
-cleanly to `simple-sdlc`, `simple-spec`, or `speckit`.
+Start with `default` unless the repo already has written workflow rules that map
+cleanly to the lighter `spec`, or to `speckit`.
 
 ## Agent Shortcut
 
@@ -28,45 +28,36 @@ If an AI coding agent is doing the adoption, point it at this guide and
 ```text
 Adopt ztrack in this repository. Read the ztrack README, docs/ADOPTING.md,
 docs/AGENT-PLAYBOOK.md, and docs/PRESETS.md first. Choose one install preset
-from basic, simple-sdlc, simple-spec, or speckit based on the repo's existing
-workflow. Prove one fake-SHA failure and one real-SHA pass, then run ztrack
-check before finishing.
-```
-
-For repos that should immediately run with a PM/develop/review operating
-profile, use the setup command:
-
-```bash
-npx -p ztrack ztrack-setup --repo /path/to/repo --team APP --preset simple-sdlc --profile simple-sdlc
+from default, spec, or speckit based on the repo's existing workflow. Prove one
+fake-SHA failure and one real-SHA pass, then run ztrack check before finishing.
 ```
 
 ## 1. Install
 
 ```bash
-npx ztrack init --team APP --preset basic
+npx ztrack init --team APP --preset default
 npx ztrack issue scaffold --title "First verified task" > body.md
 npx ztrack issue create \
   --title "First verified task" \
   --label type:case \
-  --state "In Progress" \
+  --state ready \
   --assignee "$USER" \
   --body-file body.md
 npx ztrack check
 ```
 
 The setup writes `.volter/tracker-config.json`, creates local tracker state
-under `.volter/tracker/`, and installs editable validation at
-`.volter/tracker/validation/preset.cjs`.
+under `.volter/tracker/`, and installs the editable, standalone preset at
+`.volter/tracker/validation/preset.mts`.
 
-Prerequisites: Node/npm for `npx` and a git repository — the issue store is plain
-markdown files (pure JS, no database). Commit verification can only see commits
-fetched into the local checkout.
+Prerequisites: Node ≥ 24 for `npx` and a git repository — the issue store is
+plain markdown files (pure JS, no database). Commit verification can only see
+commits fetched into the local checkout.
 
-Use a stricter starter when the repo already has that shape:
+Use a different starter when the repo already has that shape:
 
 ```bash
-npx ztrack init --team APP --preset simple-sdlc
-npx ztrack init --team APP --preset simple-spec
+npx ztrack init --team APP --preset spec
 npx ztrack init --team APP --preset speckit
 ```
 
@@ -76,20 +67,20 @@ Do not start by wiring every workflow rule. First prove the core gate catches a
 bad claim:
 
 1. Create or choose a real git commit.
-2. Edit one acceptance criterion from unchecked to checked.
-3. Cite a fake commit such as `commit: deadbee` and an evidence id such as
-   `[E1]`.
-4. Add a `- [E1]` list item in `## Evidence`.
-5. Run `npx ztrack check`.
+2. Edit one acceptance criterion from unchecked to passed (`[x]` + `status:
+   passed`).
+3. Cite a fake commit in its evidence sub-line, such as
+   `evidence ev1: image=shot.png commit=deadbee acv=1`, plus a `proof:` line.
+4. Run `npx ztrack check --verify-commits`.
 
-Expected with `basic`: `basic_checked_ac_commit_hash_missing` and exit code `1`.
+Expected with `default`: `evidence_commit_not_found` and exit code `1`.
 
 Then replace the fake SHA with a real commit SHA reachable in the repository.
 Expected: exit code `0`.
 
 The temporary files used during this proof, such as `body.md`, `red.json`, and
 `green.json`, do not need to be committed unless your project wants to keep them
-as fixtures. Commit the ztrack config, installed validation preset, and CI
+as fixtures. Commit the ztrack config, the installed `preset.mts`, and the CI
 validated root instead.
 
 From this repository, the same loop is executable:
@@ -112,9 +103,10 @@ Write this down before editing the installed preset:
 | Which rules run on every check? | commit existence, evidence refs, source refs |
 | What external systems are source material? | GitHub, Jira, Linear, Slack, docs |
 
-If the answer is only "checked ACs need commit + evidence", keep `basic`. If the
-answer includes workflow-specific states, AC families, source grounding, or
-approval chains, evolve the installed entrypoint into the project's rulebook.
+If the answer is only "passed ACs need commit-backed evidence", the lighter
+`spec` preset may be enough. If the answer includes workflow-specific states, AC
+families, source grounding, or approval chains, start from `default` and evolve
+the installed entrypoint into the project's rulebook.
 
 ## 4. Add CI
 
@@ -124,7 +116,7 @@ validation too; the validated root is checked against that rulebook.
 
 ```bash
 npx ztrack export --out .volter/root.json
-git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json
+git add .volter/tracker-config.json .volter/tracker/validation/preset.mts .volter/root.json
 ```
 
 Then use the action:
@@ -169,7 +161,7 @@ command and treat non-zero exit as incomplete work.
 ## 6. Evolve The Installed Preset
 
 The installed preset is the customization point. Edit
-`.volter/tracker/validation/preset.cjs` when your team needs ztrack to know
+`.volter/tracker/validation/preset.mts` when your team needs ztrack to know
 project-specific truth, for example:
 
 - `done` requires every `dev/NN`, `case/NN`, and `proc/NN` AC to pass.
@@ -182,13 +174,13 @@ Read [Preset Reference](PRESETS.md) before changing the rulebook.
 
 ## Agent Adoption Checklist
 
-- [ ] Run `npx ztrack init --team <KEY> --preset <basic|simple-sdlc|simple-spec|speckit>`.
+- [ ] Run `npx ztrack init --team <KEY> --preset <default|spec|speckit>`.
 - [ ] Create one issue from `ztrack issue scaffold`.
 - [ ] Run `ztrack check` before changing workflow rules.
 - [ ] Demonstrate one fake-SHA failure and one real-SHA pass.
 - [ ] Add a CI validated-root gate.
 - [ ] Add MCP or a stop-hook instruction requiring `tracker_check`.
-- [ ] Edit `.volter/tracker/validation/preset.cjs` only after writing the workflow contract.
+- [ ] Edit `.volter/tracker/validation/preset.mts` only after writing the workflow contract.
 - [ ] Add clean and failing fixtures for every project-specific rule.
 - [ ] Keep subjective guidance in `ztrack lint`; keep `ztrack check`
   deterministic.

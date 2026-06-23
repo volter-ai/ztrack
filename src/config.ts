@@ -20,9 +20,9 @@ export function trackerConfigPath(projectRoot: string): string {
   return join(projectRoot, stateDirName(), 'tracker-config.json');
 }
 
-export type InitTrackerPreset = 'basic' | 'simple-sdlc' | 'simple-spec' | 'speckit';
+export type InitTrackerPreset = 'default' | 'spec' | 'speckit';
 
-const INIT_TRACKER_PRESETS = ['basic', 'simple-sdlc', 'simple-spec', 'speckit'] as const;
+const INIT_TRACKER_PRESETS = ['default', 'spec', 'speckit'] as const;
 
 export function initTrackerPresets(): readonly InitTrackerPreset[] {
   return INIT_TRACKER_PRESETS;
@@ -32,47 +32,34 @@ export type InitTrackerProjectOptions = {
   preset?: InitTrackerPreset;
 };
 
-function presetTemplate(): string {
-  return readFileSync(fileURLToPath(new URL('../boilerplates/presets/preset.cjs', import.meta.url)), 'utf8');
+// The standalone preset's editable source, shipped at `boilerplates/presets/<preset>.ts`.
+// `ztrack init` copies it verbatim — it is REAL code (its OWN schema/parser/rules),
+// importing only `ztrack/preset-kit`. No template substitution, no flags.
+function presetTemplate(preset: InitTrackerPreset): string {
+  return readFileSync(fileURLToPath(new URL(`../boilerplates/presets/${preset}.ts`, import.meta.url)), 'utf8');
 }
 
 export function trackerValidationEntrypointPath(projectRoot: string): string {
-  return join(projectRoot, stateDirName(), 'tracker', 'validation', 'preset.cjs');
+  // `.mts` (not `.ts`): unambiguously ESM, so Node type-strips + loads it as a module even
+  // when the consuming project's package.json has no `"type": "module"`.
+  return join(projectRoot, stateDirName(), 'tracker', 'validation', 'preset.mts');
 }
 
-// The pristine copy of the installed template, recorded at init so `ztrack preset
-// upgrade` can 3-way merge new upstream rules into an edited preset without clobbering
-// edits. Committed (not gitignored) so the merge base is reproducible.
+// The pristine copy of the installed preset, recorded at init so `ztrack preset upgrade`
+// can 3-way merge new upstream rules into an edited preset without clobbering edits.
+// Committed (not gitignored) so the merge base is reproducible.
 export function trackerValidationBasePath(projectRoot: string): string {
-  return join(projectRoot, stateDirName(), 'tracker', 'validation', '.preset.base.cjs');
-}
-
-function presetBooleans(preset: InitTrackerPreset): Record<string, string> {
-  return {
-    __ZTRACK_PRESET_NAME__: preset,
-    __ZTRACK_REQUIRE_SOURCE_MARKER__: preset === 'basic' ? 'false' : 'true',
-    __ZTRACK_REQUIRE_SDLC_GATES__: preset === 'simple-sdlc' ? 'true' : 'false',
-    __ZTRACK_REQUIRE_SPEC_SECTIONS__: preset === 'simple-spec' ? 'true' : 'false',
-    __ZTRACK_REQUIRE_SPECKIT_SECTIONS__: preset === 'speckit' ? 'true' : 'false',
-  };
-}
-
-export function installedPresetTemplate(preset: InitTrackerPreset): string {
-  let text = presetTemplate();
-  for (const [token, value] of Object.entries(presetBooleans(preset))) {
-    text = text.replaceAll(token, value);
-  }
-  return text;
+  return join(projectRoot, stateDirName(), 'tracker', 'validation', '.preset.base.mts');
 }
 
 function installPreset(projectRoot: string, preset: InitTrackerPreset): string {
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
   mkdirSync(dirname(entrypoint), { recursive: true });
-  const rendered = `${installedPresetTemplate(preset)}\n`;
-  if (!existsSync(entrypoint)) writeFileSync(entrypoint, rendered);
+  const source = presetTemplate(preset);
+  if (!existsSync(entrypoint)) writeFileSync(entrypoint, source);
   // record the pristine base for `ztrack preset upgrade`'s 3-way merge.
   const basePath = trackerValidationBasePath(projectRoot);
-  if (!existsSync(basePath)) writeFileSync(basePath, rendered);
+  if (!existsSync(basePath)) writeFileSync(basePath, source);
   return entrypoint;
 }
 
@@ -102,7 +89,7 @@ function threeWayMerge(ours: string, base: string, theirs: string): { text: stri
 
 /**
  * Upgrade the repo-local preset: 3-way merge the current bundled template (for the
- * variant this repo installed) into the edited preset.cjs, preserving local edits.
+ * variant this repo installed) into the edited preset.ts, preserving local edits.
  * Conflicts are written as `<<<<<<<` markers for a human/agent to resolve. The pristine
  * base advances to the new upstream on a clean OR conflicted merge.
  */
@@ -111,13 +98,13 @@ export function upgradeTrackerPreset(projectRoot: string): UpgradePresetResult {
   const installedFrom = config.validation?.installedFrom;
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
   if (!installedFrom || !(INIT_TRACKER_PRESETS as readonly string[]).includes(installedFrom) || !existsSync(entrypoint)) {
-    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <basic|simple-sdlc|simple-spec|speckit>`.");
+    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <default|spec|speckit>`.");
   }
   const variant = installedFrom as InitTrackerPreset;
   const basePath = trackerValidationBasePath(projectRoot);
   if (!existsSync(basePath)) return { status: 'no-base', entrypoint, installedFrom: variant, conflicts: 0 };
   const base = readFileSync(basePath, 'utf8');
-  const upstream = `${installedPresetTemplate(variant)}\n`;
+  const upstream = presetTemplate(variant);
   if (base === upstream) return { status: 'up-to-date', entrypoint, installedFrom: variant, conflicts: 0 };
   const ours = readFileSync(entrypoint, 'utf8');
   const merged = threeWayMerge(ours, base, upstream);
@@ -138,7 +125,7 @@ export function initTrackerProject(
   options: InitTrackerProjectOptions = {},
 ): { configPath: string; alreadyInitialized: boolean; teamKey: string; preset: InitTrackerPreset; validationEntrypoint?: string } {
   const configPath = trackerConfigPath(root);
-  const preset = options.preset ?? 'basic';
+  const preset = options.preset ?? 'default';
   if (existsSync(configPath)) return { configPath, alreadyInitialized: true, teamKey, preset };
   const key = teamKey.toUpperCase();
   mkdirSync(dirname(configPath), { recursive: true });
@@ -147,7 +134,7 @@ export function initTrackerProject(
     backend: 'markdown',
     local: { teamKey: key },
     validation: {
-      entrypoint: `${stateDirName()}/tracker/validation/preset.cjs`,
+      entrypoint: `${stateDirName()}/tracker/validation/preset.mts`,
       installedFrom: preset,
     },
     organization: { check: { categories: { sourced: 1, code: 2 } } },

@@ -10,9 +10,9 @@ npx ztrack issue list
 npx ztrack check
 ```
 
-With the `basic` preset, a checked acceptance criterion needs evidence that can be
-verified against git and an evidence row in the issue. A fake commit SHA is a
-hard type error, not a warning.
+With the `default` preset, a passed acceptance criterion needs image+commit
+evidence that can be verified against git, plus a proof naming that evidence. A
+fake commit SHA is a hard type error, not a warning.
 
 ## CI Validated-Root Gate
 
@@ -22,7 +22,7 @@ validated root.
 
 ```bash
 npx ztrack export --out .volter/root.json
-git add .volter/tracker-config.json .volter/tracker/validation/preset.cjs .volter/root.json
+git add .volter/tracker-config.json .volter/tracker/validation/preset.mts .volter/root.json
 ```
 
 Then gate the validated root in GitHub Actions:
