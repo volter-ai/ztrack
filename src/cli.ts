@@ -12,6 +12,8 @@ import type { TxEdit } from './tx.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import * as githubSync from './sync/github/index.ts';
+import { positionalArgs, resolveTarget } from './cliTarget.ts';
+import { describeTarget } from './loopState.ts';
 import type { IssueRecord } from './core/engine.ts';
 import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
@@ -111,10 +113,30 @@ async function main(): Promise<void> {
     if (!initTrackerPresets().includes(preset as any)) {
       throw new Error(`ztrack init: --preset must be one of ${initTrackerPresets().join(', ')}`);
     }
-    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset: preset as any });
+    // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`.
+    const syncProvider = optionValue(args, '--sync');
+    let sync: { provider: 'github'; repo: string } | undefined;
+    if (syncProvider) {
+      if (syncProvider !== 'github') throw new Error(`ztrack init: --sync only supports 'github' today (got '${syncProvider}')`);
+      const repo = optionValue(args, '--repo');
+      if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("ztrack init --sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
+      sync = { provider: 'github', repo };
+    }
+    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset: preset as any, ...(sync ? { sync } : {}) });
     if (result.alreadyInitialized) {
       process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
       return;
+    }
+    // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
+    // a network/auth failure leaves init successful — `ztrack sync` retries later).
+    if (sync) {
+      process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to github ${sync.repo} — pulling issues…`)}\n`);
+      try {
+        const r = await githubSync.pull({ projectRoot: root, owner: sync.repo.split('/')[0]!, repo: sync.repo.split('/')[1]!, execute: githubSync.resolveGithubExecute(), client: createTrackerClient({ projectRoot: root }), occurredAt: new Date().toISOString() });
+        process.stdout.write(`${statusMark('pass')} ${ui.dim(`pulled ${r.total} GitHub issue(s) → ${r.created.length} created locally`)}\n`);
+      } catch (e) {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`initial pull skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim('— run `ztrack sync` once auth is set up')}\n`);
+      }
     }
     const configPath = result.configPath;
     const teamKey = result.teamKey;
@@ -204,20 +226,25 @@ async function main(): Promise<void> {
       }
     };
     if (!action || action === '--help' || action === '-h' || action === 'help') {
-      process.stdout.write(`Usage: ${command} loop <start <issue> [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate. While armed, the Stop hook keeps the agent going until <issue> passes \`${command} check\` (then it disarms), or the iteration cap trips (status then shows it capped). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
+      process.stdout.write(`Usage: ${command} loop <start [<issue>|<file.md>] [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate (a ralph loop). While armed, the Stop hook keeps the agent going until the target passes \`${command} check\` (then it disarms), or the iteration cap trips. The target uses the same grammar as \`check\`: an issue id, a markdown file, or — with no argument — this worktree's issue (resolved from the branch/worktree name). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
       return;
     }
     if (action === 'start') {
-      const issue = args[2];
-      if (!issue || issue.startsWith('-')) throw new Error(`${command} loop start: needs an issue id, e.g. \`${command} loop start ZT-1\``);
+      // Same target grammar as `check`: <issue id> | <file.md> | (bare) -> this branch's issue.
+      const positionals = positionalArgs(args.slice(2), new Set(['--max']));
+      const resolved = resolveTarget({ positionals, forceAuto: false, cwd: process.cwd() });
+      const target = resolved.kind === 'all' ? { kind: 'auto' as const } : resolved; // bare loop = ralph on the active branch
+      const label = describeTarget(target);
       const maxRaw = optionValue(args, '--max');
       const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
       mkdirSync(stateDir, { recursive: true });
       ensureTrackerGitignore(root); // so the loop's runtime/exempt files are ignored even on a repo init'd before the loop existed
       sweepRuntime();
       if (existsSync(cappedPath)) rmSync(cappedPath); // a fresh arm clears any prior cap breadcrumb
-      writeFileSync(marker, `${JSON.stringify({ issue, maxIterations, startedAt: new Date().toISOString() }, null, 2)}\n`);
-      process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${issue} (max ${maxIterations}); the Stop gate now holds the turn until ${issue} is green`)}\n`);
+      writeFileSync(marker, `${JSON.stringify({ target, maxIterations, startedAt: new Date().toISOString(), label }, null, 2)}\n`);
+      // Pull the latest from a linked tracker before the ralph loop starts (best-effort).
+      await githubSync.syncLinked(root, { pull: true }).catch(() => {});
+      process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); the Stop gate now holds the turn until ${label} is green`)}\n`);
       return;
     }
     if (action === 'stop') {
@@ -232,7 +259,8 @@ async function main(): Promise<void> {
       const readJson = (p: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>; } catch { return null; } };
       const m = existsSync(marker) ? readJson(marker) : null;
       if (m) {
-        process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${m.issue}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
+        const label = m.label ?? m.issue ?? 'target';
+        process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${label}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
         return;
       }
       const c = existsSync(cappedPath) ? readJson(cappedPath) : null;
@@ -389,7 +417,18 @@ async function main(): Promise<void> {
 
   // `check`/`export` resolve their own project (and `check <file.md>` needs none) — dispatch
   // before createTrackerClient so zero-config file mode doesn't trip the no-config error.
-  if (await handleCheckCommand(args)) return;
+  // A user-facing `check` on a LINKED tracker best-effort syncs around it (pull the latest,
+  // then push local changes) — but NEVER the Stop-hook gate (`--auto-scope`), which must not
+  // hit the API mid-loop, and never a file check (`<x>.md`) which isn't tracker-bound.
+  if (args[0] === 'check') {
+    const userCheck = !args.includes('--auto-scope') && !args.slice(1).some((a) => a.endsWith('.md'));
+    let root = '';
+    try { root = projectRootFrom(); } catch { /* no project: nothing to sync */ }
+    if (userCheck && root) await githubSync.syncLinked(root, { pull: true }).catch(() => {});
+    const handled = await handleCheckCommand(args);
+    if (userCheck && root) await githubSync.syncLinked(root, { push: true }).catch(() => {});
+    if (handled) return;
+  } else if (await handleCheckCommand(args)) return;
 
   const client = createTrackerClient();
   if (args[0] === 'api') {
@@ -464,11 +503,12 @@ GraphQL-shaped query against the local tracker store.
   // prompted PAT. A synced issue IS the GitHub issue (binding in .volter/sync/github.json).
   if (args[0] === 'sync') {
     if (args[1] !== 'github') {
-      throw new Error("usage: tracker sync github --repo <owner/name> [--pull | --push]   (default: pull then push)");
+      throw new Error("usage: tracker sync github [--repo <owner/name>] [--pull | --push]   (default: pull then push; --repo defaults to the linked repo from `init --sync`)");
     }
-    const repo = optionValue(args, '--repo');
+    // --repo is optional once the project is linked (`init --sync github --repo o/n`).
+    const repo = optionValue(args, '--repo') || githubSync.linkedRepo(projectRootFrom()) || '';
     if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
-      throw new Error("tracker sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
+      throw new Error("tracker sync github: no repo. Pass --repo <owner/name>, or link one with `ztrack init --sync github --repo <owner/name>`.");
     }
     const [owner, name] = repo.split('/');
     const o = { projectRoot: projectRootFrom(), owner: owner!, repo: name!, execute: githubSync.resolveGithubExecute(), client, occurredAt: new Date().toISOString() };

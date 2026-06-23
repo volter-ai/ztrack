@@ -11,7 +11,7 @@
 // no second issue, a pull brings a GitHub-made issue into the tracker, edits/closes round-trip.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -97,6 +97,20 @@ suite('ztrack sync github — live e2e', () => {
     expect(ztrack(root, ['issue', 'edit', target.identifier, '--title', 'Pushed from ztrack (edited)']).ok).toBe(true);
     expect(ztrack(root, ['sync', 'github', '--repo', repo, '--push']).ok).toBe(true);
     expect(ghIssues(repo).some((i) => i.title === 'Pushed from ztrack (edited)')).toBe(true);
+  });
+
+  test('init --sync links the repo: config records it, initial pull runs, sync needs no --repo', () => {
+    const linked = mkdtempSync(join(tmpdir(), 'ztrk-linked-'));
+    try {
+      const init = ztrack(linked, ['init', '--team', 'LK', '--sync', 'github', '--repo', repo]);
+      expect(init.ok).toBe(true);
+      const cfg = JSON.parse(readFileSync(join(linked, '.volter', 'tracker-config.json'), 'utf8')) as { sync?: unknown };
+      expect(cfg.sync).toEqual({ provider: 'github', repo });
+      // a bare `sync github` (no --repo) resolves the repo from the link
+      expect(ztrack(linked, ['sync', 'github', '--pull']).ok).toBe(true);
+    } finally {
+      rmSync(linked, { recursive: true, force: true });
+    }
   });
 
   test('done -> closed: marking the tracker issue done closes the GitHub issue', () => {

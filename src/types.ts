@@ -12,6 +12,13 @@ export interface TrackerConfig {
     store?: string;
   };
   /**
+   * A permanently-linked external task tracker. Set by `ztrack init --sync github --repo o/n`.
+   * When present, `ztrack sync` needs no `--repo`, and user-facing `check`/`loop start`
+   * best-effort sync the tracker with it (the Stop-hook gate never does — it must not hammer
+   * the API mid-loop). Only `github` today; the provider lives at `src/sync/<provider>/`.
+   */
+  sync?: { provider: 'github'; repo: string };
+  /**
    * Preferred validation architecture: ztrack loads one repo-local validation
    * entrypoint after init. The entrypoint owns parser/schema/render semantics.
    * Legacy configs that only set `organization.validationPreset` must be

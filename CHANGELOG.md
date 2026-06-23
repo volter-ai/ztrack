@@ -2,6 +2,27 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.13.0
+
+The two usage models — opportunistic `check` and the `loop` (ralph) — unified onto one target
+grammar, plus a permanently-linked tracker mode.
+
+- **One check/loop target grammar.** `ztrack check` and `ztrack loop start` now take the same
+  target: `<issue-id>` (one issue), `<file.md>` (a loose file validated as one issue),
+  `--issues a,b`, or nothing — which means the whole tracker, or, inside a worktree named for
+  an issue, just that issue (auto-scope, opportunistic). `ztrack check ./body.md` brings back
+  file-checking (removed in 0.11.0) as one format among several.
+- **Footgun fixed.** A positional that is neither a known issue nor a file is now rejected
+  instead of being silently dropped — `ztrack check ZT-9` on a missing id errors rather than
+  printing a false green.
+- **Loop drives the gate by target.** `ztrack loop start <id|file>` records the target; the
+  Stop-hook gate (`ztrack check --auto-scope`) holds the turn on THAT target (precedence:
+  `ZTRACK_ACTIVE_ISSUE` > the armed loop > the git branch/worktree).
+- **Linked-tracker init.** `ztrack init --sync github --repo o/n` records a permanent link in
+  `tracker-config.json` and pulls the repo's issues. Afterward `ztrack sync` needs no `--repo`,
+  and user-facing `check`/`loop start` best-effort sync the tracker with it (pull the latest,
+  push local changes) — the gate never does, so a ralph loop doesn't hammer the API.
+
 ## 0.12.0
 
 Two-way GitHub issue sync, through the twin.

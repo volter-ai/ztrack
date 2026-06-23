@@ -120,15 +120,21 @@ them and only validates the claims agents or humans make there.
 | ztrack visualizer | local web view of issues, acceptance criteria, and findings |
 | GitHub Action | repository gate with `uses: volter-ai/ztrack@v0` |
 
-Two-way sync with GitHub Issues is built in — a synced issue *is* the GitHub issue:
+Two-way sync with GitHub Issues is built in — a synced issue *is* the GitHub issue. Link it
+once at init and it stays synced, or sync on demand:
 
 ```bash
-ztrack sync github --repo owner/name        # pull then push (incremental + idempotent)
-ztrack sync github --repo owner/name --pull # GitHub → tracker only
+ztrack init --sync github --repo owner/name # link permanently (then `check`/`loop` stay synced)
+ztrack sync github                          # pull then push the linked repo (no --repo needed)
+ztrack sync github --repo owner/name --pull # or an explicit repo, one direction
 ```
 
-It syncs through the [twin](#how-it-works) (delta folds + an egress idempotency ledger), so
-it never does a full re-read/re-write. Auth uses the `gh` CLI or `GITHUB_TOKEN`.
+It syncs through the [twin](#how-it-works) (delta folds + an egress idempotency ledger), so it
+never does a full re-read/re-write. Auth uses the `gh` CLI or `GITHUB_TOKEN`.
+
+`ztrack check` (and `ztrack loop start`, the ralph loop) take the same target: nothing for the
+whole tracker, an **issue id** (`ztrack check ZT-1`), a **file** (`ztrack check ./body.md`), or —
+inside a worktree named for an issue — that issue automatically.
 
 ## Agent workflows
 

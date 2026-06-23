@@ -30,6 +30,8 @@ export function initTrackerPresets(): readonly InitTrackerPreset[] {
 
 export type InitTrackerProjectOptions = {
   preset?: InitTrackerPreset;
+  /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
+  sync?: { provider: 'github'; repo: string };
 };
 
 // The standalone preset's editable source, shipped at `boilerplates/presets/<preset>.ts`.
@@ -138,6 +140,7 @@ export function initTrackerProject(
       installedFrom: preset,
     },
     organization: { check: { categories: { sourced: 1, code: 2 } } },
+    ...(options.sync ? { sync: options.sync } : {}),
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   ensureTrackerGitignore(root);

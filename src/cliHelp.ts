@@ -15,9 +15,9 @@ ${ui.bold('Usage')}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
 ${helpSection('top', 'Start here', [
-    [`${command} init [--team KEY] [--preset default|spec|speckit]`, 'install a preset + config'],
+    [`${command} init [--team KEY] [--preset default|spec|speckit] [--sync github --repo o/n]`, 'install a preset + config (optionally link a tracker)'],
     [`${command} issue create`, 'add a verifiable issue'],
-    [`${command} check [--issues A-1,A-2]`, 'verify checked claims against evidence'],
+    [`${command} check [<issue-id> | <file.md>]`, 'verify completion (whole tracker, an issue, or a file)'],
   ])}
 
 ${helpSection('middle', 'Workflow', [

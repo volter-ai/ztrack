@@ -1,12 +1,14 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
-import { checkTracker, checkTrackerRoot, type TrackerCheckResult } from './check.ts';
+import { checkFile, checkTracker, checkTrackerRoot, type TrackerCheckResult } from './check.ts';
 import { exportTrackerRoot } from './export.ts';
 import { optionValue } from './cliArgs.ts';
 import { projectRootFrom } from './config.ts';
 import { renderCheckReport, renderScopedReport, summarizeResult } from './cliStyle.ts';
 import { git } from './core/gitWorld.ts';
 import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
+import { positionalArgs, resolveTarget } from './cliTarget.ts';
+import { readLoopMarker } from './loopState.ts';
 import type { RuleCategory } from './checkRules.ts';
 
 async function writeOutput(text: string, outPath: string): Promise<void> {
@@ -41,7 +43,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [--input root.json] [--issues a,b] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\nChecks the live tracker project against the installed preset (run `ztrack init` first).\n--phase gate runs only the ongoing-gate rules (excludes transition/promotion-time authoring checks); default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the issue this git checkout is for (resolved from the branch/worktree name); other issues become informational. Unresolved scope fails closed (gates everything). Built for per-worktree Stop-hook gates.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\nChecks against the installed preset (run `ztrack init` first). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -50,10 +52,10 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
 
   const projectRoot = projectRootFrom();
   const issuesFilter = optionValue(flagArgs, '--issues') || optionValue(flagArgs, '--case');
-  const issues = issuesFilter ? issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  const issuesFromFlag = issuesFilter ? issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   if (action === 'export') {
-    const root = await exportTrackerRoot({ projectRoot, ...(issues ? { issues } : {}) });
+    const root = await exportTrackerRoot({ projectRoot, ...(issuesFromFlag ? { issues: issuesFromFlag } : {}) });
     await writeOutput(`${JSON.stringify(root, null, 2)}\n`, optionValue(flagArgs, '--out'));
     return true;
   }
@@ -63,8 +65,38 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   const verifyCommits = flagArgs.includes('--verify-commits') ? true : undefined;
   const phaseRaw = optionValue(flagArgs, '--phase');
   if (phaseRaw && phaseRaw !== 'all' && phaseRaw !== 'gate') throw new Error(`ztrack check: --phase must be 'all' or 'gate' (got '${phaseRaw}')`);
-  const phase = phaseRaw === 'gate' || phaseRaw === 'all' ? phaseRaw : undefined;
+  const phase: 'all' | 'gate' | undefined = phaseRaw === 'gate' || phaseRaw === 'all' ? phaseRaw : undefined;
   const inputPath = optionValue(flagArgs, '--input');
+  const forceAuto = flagArgs.includes('--auto-scope');
+  const outputPath = optionValue(flagArgs, '--output');
+  const wantsJson = flagArgs.includes('--json');
+  const errorsOnly = flagArgs.includes('--errors-only');
+  const rawMax = optionValue(flagArgs, '--max-findings');
+  const parsedMax = Number(rawMax);
+  const maxFindings = rawMax && Number.isInteger(parsedMax) && parsedMax >= 0 ? parsedMax : 120;
+  const commonOpts = { projectRoot, ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), ...(verifyCommits !== undefined ? { verifyCommits } : {}) };
+
+  // Resolve the unified TARGET. `--input` (a committed root artifact) is its own path and
+  // ignores any positional; otherwise a positional/`--issues`/branch picks file|issues|auto|all.
+  const VALUE_FLAGS = new Set(['--input', '--issues', '--case', '--categories', '--phase', '--output', '--max-findings']);
+  const positionals = inputPath ? [] : positionalArgs(flagArgs, VALUE_FLAGS);
+  const target = inputPath ? null : resolveTarget({ positionals, ...(issuesFromFlag ? { issuesFlag: issuesFromFlag } : {}), forceAuto, cwd: process.cwd() });
+
+  // FILE target: validate a loose markdown file as one issue (plain report; not scoped).
+  if (target?.kind === 'file') {
+    const result = await checkFile(target.path, { ...commonOpts, failOnWarning });
+    return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
+  }
+
+  // GATE MODE (`--auto-scope`, run by the Stop hook): an armed loop's target wins over the
+  // branch. A FILE loop gates on that file directly (the file IS the whole gate).
+  const loop = forceAuto ? readLoopMarker(projectRoot) : null;
+  if (loop?.target.kind === 'file') {
+    const result = await checkFile(loop.target.path, { ...commonOpts, failOnWarning });
+    return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
+  }
+
+  const issues = target?.kind === 'issues' ? target.ids : undefined;
   let inputRoot: unknown;
   if (inputPath) {
     const abs = isAbsolute(inputPath) ? inputPath : resolve(projectRoot, inputPath);
@@ -76,49 +108,57 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     try { inputRoot = JSON.parse(raw); } catch (e) { throw new Error(`ztrack check: --input ${abs} is not valid JSON (${(e as Error).message}). It should be a validated root written by 'ztrack export'.`); }
   }
   const result: TrackerCheckResult = inputPath
-    ? await checkTrackerRoot(inputRoot, { projectRoot, ...(issues ? { issues } : {}), ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), ...(verifyCommits !== undefined ? { verifyCommits } : {}) })
-    : await checkTracker({ projectRoot, ...(issues ? { issues } : {}), ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), failOnWarning, ...(verifyCommits !== undefined ? { verifyCommits } : {}) });
+    ? await checkTrackerRoot(inputRoot, { ...commonOpts, ...(issues ? { issues } : {}) })
+    : await checkTracker({ ...commonOpts, ...(issues ? { issues } : {}), failOnWarning });
 
-  const outputPath = optionValue(flagArgs, '--output');
-  const wantsJson = flagArgs.includes('--json');
-  const errorsOnly = flagArgs.includes('--errors-only');
-  const rawMax = optionValue(flagArgs, '--max-findings');
-  const parsedMax = Number(rawMax);
-  const maxFindings = rawMax && Number.isInteger(parsedMax) && parsedMax >= 0 ? parsedMax : 120;
+  // ISSUE target not in the tracker: error rather than silently passing on an empty filter.
+  if (target?.kind === 'issues') {
+    const present = new Set((result.export?.issues ?? []).map((i) => i.id));
+    const missing = target.ids.filter((id) => !present.has(id));
+    if (missing.length) throw new Error(`ztrack check: issue(s) not found in the tracker: ${missing.join(', ')}. Run \`ztrack issue list\` to see ids, or pass a path ending in .md to check a file.`);
+  }
 
-  // --auto-scope: validate the whole tracker (so cross-issue rules stay correct),
-  // but gate (exit nonzero) only on ONE active issue — taken from ZTRACK_ACTIVE_ISSUE if
-  // set (the loop arms it that way), otherwise resolved from the git branch/worktree name.
-  // Git reads go through gitWorld's `git()`, the one sanctioned boundary; the rest is pure.
-  if (flagArgs.includes('--auto-scope')) {
+  // SCOPE: validate the whole tracker (so cross-issue rules stay correct) but gate only on the
+  // active issue — from ZTRACK_ACTIVE_ISSUE (the loop arms it), else the git branch/worktree.
+  // `--auto-scope` fails CLOSED when unresolved (gates everything, for the Stop hook); a bare
+  // `check` scopes OPPORTUNISTICALLY — only when the branch resolves, else a plain full report.
+  if (!inputPath && (forceAuto || target?.kind === 'auto' || target?.kind === 'all')) {
     const branch = git(projectRoot, ['rev-parse', '--abbrev-ref', 'HEAD']) || undefined;
     const top = git(projectRoot, ['rev-parse', '--show-toplevel']);
     const worktree = top ? basename(top) : undefined;
     const issueIds = (result.export?.issues ?? []).map((i) => i.id);
-    const explicit = process.env.ZTRACK_ACTIVE_ISSUE?.trim();
+    // Active issue precedence: explicit env override > armed loop target > branch/worktree.
+    const loopIssue = loop?.target.kind === 'issues' ? loop.target.ids[0] : undefined;
+    const explicit = process.env.ZTRACK_ACTIVE_ISSUE?.trim() || loopIssue;
     const { issueId, reason } = resolveActiveIssue({ ...(explicit ? { explicit } : {}), ...(branch ? { branch } : {}), ...(worktree ? { worktree } : {}), issueIds });
-    const { blocking, informational } = partitionFindings(result.findings, issueId);
-
-    const blockingErrors = blocking.some((f) => f.severity === 'error');
-    const scopedFailed = blockingErrors || (failOnWarning && blocking.length > 0);
-    const scopedPayload = {
-      ok: !blockingErrors,
-      activeIssue: issueId,
-      scope: { branch: branch ?? null, worktree: worktree ?? null, reason },
-      summary: summarizeResult({ ...result, findings: blocking }),
-      findings: blocking,
-      informational,
-    };
-    if (outputPath) writeFileSync(isAbsolute(outputPath) ? outputPath : resolve(projectRoot, outputPath), `${JSON.stringify(scopedPayload, null, 2)}\n`);
-    if (wantsJson) {
-      process.stdout.write(`${JSON.stringify(scopedPayload, null, 2)}\n`);
-    } else {
-      process.stdout.write(renderScopedReport(result, { activeIssue: issueId, reason, blocking, informational, errorsOnly, maxFindings }));
+    if (issueId || forceAuto) { // resolved, or forced (forced+unresolved => everything blocks)
+      const { blocking, informational } = partitionFindings(result.findings, issueId);
+      const blockingErrors = blocking.some((f) => f.severity === 'error');
+      const scopedFailed = blockingErrors || (failOnWarning && blocking.length > 0);
+      const scopedPayload = {
+        ok: !blockingErrors,
+        activeIssue: issueId,
+        scope: { branch: branch ?? null, worktree: worktree ?? null, reason },
+        summary: summarizeResult({ ...result, findings: blocking }),
+        findings: blocking,
+        informational,
+      };
+      if (outputPath) writeFileSync(isAbsolute(outputPath) ? outputPath : resolve(projectRoot, outputPath), `${JSON.stringify(scopedPayload, null, 2)}\n`);
+      if (wantsJson) process.stdout.write(`${JSON.stringify(scopedPayload, null, 2)}\n`);
+      else process.stdout.write(renderScopedReport(result, { activeIssue: issueId, reason, blocking, informational, errorsOnly, maxFindings }));
+      process.exitCode = scopedFailed ? 1 : 0;
+      return true;
     }
-    process.exitCode = scopedFailed ? 1 : 0;
-    return true;
+    // bare check, branch did not resolve -> fall through to the plain full-tracker report.
   }
 
+  return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
+}
+
+// Plain (un-scoped) check report: the whole result is the gate. Shared by the all/issues/file
+// targets so they render and exit identically.
+function emitPlain(result: TrackerCheckResult, o: { failOnWarning: boolean; outputPath: string; projectRoot: string; wantsJson: boolean; errorsOnly: boolean; maxFindings: number }): boolean {
+  const { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings } = o;
   const failed = !result.ok || (failOnWarning && result.findings.length > 0);
   const payload = { ok: result.ok, summary: summarizeResult(result), findings: result.findings };
   if (outputPath) writeFileSync(isAbsolute(outputPath) ? outputPath : resolve(projectRoot, outputPath), `${JSON.stringify(payload, null, 2)}\n`);
