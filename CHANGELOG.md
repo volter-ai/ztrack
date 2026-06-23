@@ -2,6 +2,23 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.14.0
+
+GitHub pull is now a real cursor-based incremental read — and stops dropping closed issues.
+
+- **Cursor connector.** The pull moves off the twin's snapshot fold (`syncGithubFromReal`) onto
+  the kernel's `runConnectorPoll` over a new `githubIssueConnector` (`src/sync/github/connector.ts`).
+  Each poll asks GitHub only for issues whose `updated_at` advanced past a persisted cursor
+  (`GET /issues?since=<cursor>&state=all&sort=updated`, paginated), shadow-diffs them, and saves
+  the cursor 1 ms behind the newest update under `.volter/github/cursors/<owner>-<repo>.json`.
+- **Bug fixed: closed issues now sync.** The old path defaulted to `state:'open'` and a single
+  un-paginated page of 30, so closed issues (and anything past 30) were silently dropped. The
+  connector reads `state:'all'` with pagination. Verified live against real GitHub.
+- The pull's `OBSERVED_AT` sentinel hack is gone — the connector gets idempotency from the
+  shadow-diff on real `updated_at`, so re-observing unchanged content is a genuine no-op.
+- This makes ztrack the first consumer of the twin's shared poll framework; the connector is
+  written to lift into `@volter-ai-dev/twin-github` unchanged.
+
 ## 0.13.0
 
 The two usage models — opportunistic `check` and the `loop` (ralph) — unified onto one target

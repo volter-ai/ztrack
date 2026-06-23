@@ -1,17 +1,18 @@
 // Two-way GitHub issue sync driven through the twin's EVENT-SOURCED engine — never a full
-// read + full rewrite. PULL folds real GitHub into the twin via `syncGithubFromReal` (deltas
-// only; re-pulling identical state appends nothing), then writes to the tracker ONLY the
-// issues whose folded twin resource actually differs from the local issue. PUSH morphs the
-// twin with `applyGithubWrite` (one pending LOCAL action per genuinely-changed issue) and then
+// read + full rewrite. PULL ingests real GitHub incrementally via the cursor connector
+// (`runConnectorPoll` over githubIssueConnector — a `since` poll that reads only issues changed
+// past the persisted cursor, closed ones included), then writes to the tracker ONLY the issues
+// whose folded twin resource actually differs from the local issue. PUSH morphs the twin with
+// `applyGithubWrite` (one pending LOCAL action per genuinely-changed issue) and then
 // `pushPendingGithubActions` flushes those pending actions to real GitHub through the egress
 // idempotency ledger — a re-push of an already-confirmed action calls the GitHub API ZERO
 // times, so an unchanged issue is never re-PATCHed. The identity binding ties each ztrack id to
 // the GitHub issue number it IS. v1 conflict policy is GitHub-wins (pull precedes push in a
-// full `sync`). The twin's per-repo state lives under <projectRoot>/.volter (alongside the
-// binding store), so its observed log persists between runs — that is what makes the fold
-// incremental rather than a cold full read every time.
-import { syncGithubFromReal, applyGithubWrite, pushPendingGithubActions, type GithubExecute } from '@volter-ai-dev/twin-github';
-import { currentResources, pendingActions } from '@volter-ai-dev/twin';
+// full `sync`). The twin's per-repo state + poll cursor live under <projectRoot>/.volter, so the
+// observed log persists between runs — that is what makes the read incremental, not a cold scan.
+import { applyGithubWrite, pushPendingGithubActions, type GithubExecute } from '@volter-ai-dev/twin-github';
+import { currentResources, pendingActions, runConnectorPoll } from '@volter-ai-dev/twin';
+import { githubIssueConnector } from './connector.ts';
 import type { TrackerClient } from '../../types.ts';
 import { issueResourceToRecordFields, statusToGithubState } from './map.ts';
 import { loadBindings, saveBindings, bind } from './bindings.ts';
@@ -20,15 +21,11 @@ export type SyncOpts = { projectRoot: string; owner: string; repo: string; execu
 export type PullResult = { created: string[]; updated: string[]; total: number };
 export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; total: number };
 
-// The twin treats an observed event's `occurredAt` as part of its identity (only `observedAt`
-// and `external.url` are stripped before the duplicate check). A folded issue's event id is
-// content-hashed, so RE-observing identical content must reuse the SAME occurredAt or the twin
-// rejects it as a "conflicting duplicate". We therefore stamp every content-bearing twin write
-// (the fold AND the push-confirm of the same content) with one STABLE sentinel: identical
-// content always dedups, changed content (new hash) appends a fresh event. This is what makes
-// re-syncing incremental — not a cold full rewrite — without minting conflicting re-observations.
-// (Conflict resolution between a concurrent external edit and a local edit stays v1 GitHub-wins;
-// see the file header.)
+// PUSH-side egress timestamp. The pull no longer needs a stable sentinel (the cursor connector
+// shadow-diffs on real `updated_at`, so re-observing identical content is a genuine no-op). The
+// push's local write-actions + their confirm events still take an occurredAt; a STABLE constant
+// keeps re-confirming the same content idempotent (the egress ledger keys on the action, and a
+// constant avoids minting a "new observation at a new time" that would conflict on a later poll).
 const OBSERVED_AT = '2020-01-01T00:00:00.000Z';
 
 // the tracker 'state'/'status' may arrive as a string or a nested { name }.
@@ -56,7 +53,7 @@ const asSyncResource = (r: IssueResource) => ({ type: 'issue', id: r.id, fields:
 export async function pull(o: SyncOpts): Promise<PullResult> {
   const repo = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repo);
-  await syncGithubFromReal(o.execute, { owner: o.owner, repo: o.repo, root: o.projectRoot, occurredAt: OBSERVED_AT });
+  await runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
   const resources = issueResources(o.projectRoot);
   const created: string[] = [];
   const updated: string[] = [];
@@ -90,7 +87,7 @@ export async function push(o: SyncOpts): Promise<PushResult> {
   const b = loadBindings(o.projectRoot, repo);
   // Fold first so the twin's observed state is the change-detection baseline (idempotent: if a
   // full `sync` already pulled this run, this fold appends nothing).
-  await syncGithubFromReal(o.execute, { owner: o.owner, repo: o.repo, root: o.projectRoot, occurredAt: OBSERVED_AT });
+  await runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
   const baseline = new Map(issueResources(o.projectRoot).map((r) => [r.number, r]));
   const rows = await o.client.issue.list({ state: 'all', limit: 5000, json: 'identifier,title,state,body' }) as Array<Record<string, unknown>>;
   const updated: string[] = [];

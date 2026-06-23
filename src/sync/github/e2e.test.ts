@@ -91,6 +91,22 @@ suite('ztrack sync github — live e2e', () => {
     expect(landed, `issue never propagated; last pull error: ${lastErr}`).toBe(true);
   }, 60_000);
 
+  test('the cursor connector PULLS A CLOSED GitHub issue (state=all, not the old open-only page)', () => {
+    const made = gh(['issue', 'create', '--repo', repo, '--title', 'Closed on GitHub', '--body', 'shut']);
+    expect(made.ok).toBe(true);
+    const num = Number(/\/(\d+)$/.exec(made.out)?.[1] ?? '0');
+    expect(gh(['issue', 'close', '--repo', repo, String(num)]).ok).toBe(true);
+    // poll past GitHub's REST list lag — the connector reads state=all, so a CLOSED issue lands.
+    let landed: { title: string } | undefined;
+    for (let i = 0; i < 10 && !landed; i++) {
+      expect(ztrack(root, ['sync', 'github', '--repo', repo, '--pull']).ok).toBe(true);
+      const list = JSON.parse(ztrack(root, ['issue', 'list', '--state', 'all', '--json', 'identifier,title']).out || '[]') as Array<{ title: string }>;
+      landed = list.find((it) => it.title === 'Closed on GitHub');
+      if (!landed) Bun.sleepSync(2500);
+    }
+    expect(landed, 'a closed GitHub issue must be pulled (the open-only-page bug)').toBeTruthy();
+  }, 60_000);
+
   test('edit round-trips: editing the tracker issue updates the GitHub issue title', () => {
     const list = JSON.parse(ztrack(root, ['issue', 'list', '--state', 'all', '--json', 'identifier,title']).out || '[]') as Array<{ identifier: string; title: string }>;
     const target = list.find((i) => i.title === 'Pushed from ztrack')!;
