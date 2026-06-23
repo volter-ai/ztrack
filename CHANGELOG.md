@@ -2,6 +2,15 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.19.0
+
+- **Onboarding reflects the actual scenarios.** `ztrack init` next-steps now adapt: a LOCAL
+  init walks scaffold -> create -> check; a LINKED init (`--sync github --repo`) goes straight to
+  check / loop / sync (your GitHub issues were already pulled), and both surface the check target
+  formats (`<id>`, `./file.md`, in-a-worktree auto-scope) + the ralph loop. The README adds a
+  "Two ways to start" block (local vs GitHub-linked) and shows `check`/`loop` as the daily verbs
+  over one target grammar.
+
 ## 0.18.0
 
 - **Conflicts render in the issue.** Alongside the gating `sync_conflict` finding, an unresolved

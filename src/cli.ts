@@ -142,20 +142,32 @@ async function main(): Promise<void> {
     }
     const configPath = result.configPath;
     const teamKey = result.teamKey;
+    // Next steps adapt to the scenario: a LINKED project already has its issues (pulled from
+    // the tracker), so it goes straight to verify/loop/sync; a LOCAL project authors one first.
+    const nextSteps = sync
+      ? [
+          stackedCommand(1, 'Verify an issue', `${command} check <issue-id>`, `${ui.dim('or')} ${command} check ${ui.dim('for the whole tracker — your GitHub issues were just pulled in.')}`),
+          '',
+          stackedCommand(2, 'Drive one to done in a loop', `${command} loop start <issue-id>`, 'The Stop-hook gate holds the turn until that issue passes check (a ralph loop).'),
+          '',
+          stackedCommand(3, 'Re-sync with GitHub', `${command} sync github`, 'Bidirectional + conflict-aware; no --repo needed (it uses the link).'),
+        ]
+      : [
+          stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
+          '',
+          stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state draft --assignee me --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
+          '',
+          stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
+        ];
     process.stdout.write([
-      `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey}`)}`,
+      `${statusMark('pass')} ${heading('Initialized ztrack', sync ? `team ${teamKey} • linked ${sync.repo}` : `team ${teamKey}`)}`,
       `  ${ui.dim(configPath)}`,
       ...(result.validationEntrypoint ? [`  ${ui.dim(`validation ${result.validationEntrypoint}`)}`] : []),
       '',
       ui.bold('Next steps'),
-      stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
+      ...nextSteps,
       '',
-      stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state draft --assignee me --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
-      '',
-      stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
-      '',
-      ui.dim('Recognized labels include type:case and type:bug.'),
-      ui.dim('Unrecognized checked work warns instead of passing silently.'),
+      ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
       ui.dim('Edit the installed validation preset to encode your project rules.'),
       '',
     ].join('\n'));

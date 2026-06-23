@@ -92,6 +92,29 @@ exists. The installed `preset.mts` is real, editable code — open it and change
 > PnP), and bun**. The pure-JS store needs no subprocess, so Yarn PnP works with no
 > extra configuration.
 
+### Two ways to start
+
+```bash
+# A) Local tracker — author and verify work locally
+npx ztrack init
+npx ztrack issue create --title "Add /health" --label type:case --state ready --body-file body.md
+npx ztrack check
+
+# B) Linked to GitHub Issues — your issues ARE the GitHub issues, synced both ways
+npx ztrack init --sync github --repo owner/name   # links + pulls existing issues
+npx ztrack check                                   # verifies; reconciles with GitHub around it
+```
+
+Either way, **`check` and `loop` are how you use it**, over one target:
+
+```bash
+ztrack check                 # the whole tracker
+ztrack check ZT-1            # one issue
+ztrack check ./body.md       # a loose markdown file, as an issue
+ztrack check                 # inside a worktree → auto-scopes to the branch's issue
+ztrack loop start ZT-1       # a ralph loop: the Stop hook holds the turn until ZT-1 is green
+```
+
 ## Adopt it into your repo
 
 For the full adoption path — a CI gate, a committed validated root, MCP, and the agent
