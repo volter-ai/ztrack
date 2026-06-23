@@ -6,7 +6,7 @@
 import { loadTrackerConfig } from '../../config.ts';
 import { createTrackerClient } from '../../sdk.ts';
 import { resolveGithubExecute } from './execute.ts';
-import { pull, push } from './sync.ts';
+import { pull, push, reconcileSync } from './sync.ts';
 
 /** The linked repo as `owner/name`, or null if this project has no github link. */
 export function linkedRepo(projectRoot: string): string | null {
@@ -23,6 +23,8 @@ export async function syncLinked(projectRoot: string, dir: { pull?: boolean; pus
   const [owner, name] = repo.split('/');
   if (!owner || !name) return;
   const o = { projectRoot, owner, repo: name, execute: resolveGithubExecute(), client: createTrackerClient({ projectRoot }), occurredAt: new Date().toISOString() };
-  if (dir.pull) await pull(o);
-  if (dir.push) await push(o);
+  // Both directions → the three-way reconcile (conflict-aware). A single direction → one-way.
+  if (dir.pull && dir.push) await reconcileSync(o);
+  else if (dir.pull) await pull(o);
+  else if (dir.push) await push(o);
 }

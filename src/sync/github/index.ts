@@ -10,6 +10,6 @@
 //   pull(opts)            fold real GitHub -> write only changed issues to the tracker
 //   push(opts)            morph the twin for changed issues -> idempotent egress to GitHub
 //   resolveGithubExecute  the transport (gh CLI / token), never a prompted PAT
-export { pull, push, type SyncOpts, type PullResult, type PushResult } from './sync.ts';
+export { pull, push, reconcileSync, type SyncOpts, type PullResult, type PushResult, type ReconcileResult } from './sync.ts';
 export { resolveGithubExecute, resolveGithubToken } from './execute.ts';
 export { syncLinked, linkedRepo } from './linked.ts';

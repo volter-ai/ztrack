@@ -417,17 +417,16 @@ async function main(): Promise<void> {
 
   // `check`/`export` resolve their own project (and `check <file.md>` needs none) — dispatch
   // before createTrackerClient so zero-config file mode doesn't trip the no-config error.
-  // A user-facing `check` on a LINKED tracker best-effort syncs around it (pull the latest,
-  // then push local changes) — but NEVER the Stop-hook gate (`--auto-scope`), which must not
-  // hit the API mid-loop, and never a file check (`<x>.md`) which isn't tracker-bound.
+  // A user-facing `check` on a LINKED tracker best-effort reconciles first (one bidirectional
+  // three-way merge: pull the latest, push local changes, merge non-conflicting edits) — but
+  // NEVER the Stop-hook gate (`--auto-scope`), which must not hit the API mid-loop, and never a
+  // file check (`<x>.md`) which isn't tracker-bound. (check is read-only, so before suffices.)
   if (args[0] === 'check') {
     const userCheck = !args.includes('--auto-scope') && !args.slice(1).some((a) => a.endsWith('.md'));
     let root = '';
     try { root = projectRootFrom(); } catch { /* no project: nothing to sync */ }
-    if (userCheck && root) await githubSync.syncLinked(root, { pull: true }).catch(() => {});
-    const handled = await handleCheckCommand(args);
-    if (userCheck && root) await githubSync.syncLinked(root, { push: true }).catch(() => {});
-    if (handled) return;
+    if (userCheck && root) await githubSync.syncLinked(root, { pull: true, push: true }).catch(() => {});
+    if (await handleCheckCommand(args)) return;
   } else if (await handleCheckCommand(args)) return;
 
   const client = createTrackerClient();
@@ -515,15 +514,20 @@ GraphQL-shaped query against the local tracker store.
     const onlyPull = args.includes('--pull') && !args.includes('--push');
     const onlyPush = args.includes('--push') && !args.includes('--pull');
     const out: Record<string, unknown> = { repo };
-    if (!onlyPush) {
-      const r = await githubSync.pull(o);
-      out.pull = r;
-      process.stdout.write(`${statusMark('pass')} pull: ${r.total} GitHub issue(s) → ${r.created.length} created, ${r.updated.length} updated locally\n`);
-    }
-    if (!onlyPull) {
-      const r = await githubSync.push(o);
-      out.push = r;
-      process.stdout.write(`${statusMark('pass')} push: ${r.total} tracker issue(s) → ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
+    if (onlyPull) {
+      const r = await githubSync.pull(o); out.pull = r;
+      process.stdout.write(`${statusMark('pass')} pull: ${r.created.length} created, ${r.updated.length} updated locally\n`);
+    } else if (onlyPush) {
+      const r = await githubSync.push(o); out.push = r;
+      process.stdout.write(`${statusMark('pass')} push: ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
+    } else {
+      // default: bidirectional three-way merge (concurrent non-overlapping edits merge; a
+      // same-field collision is surfaced, never silently clobbered).
+      const r = await githubSync.reconcileSync(o); out.reconcile = r;
+      process.stdout.write(`${statusMark('pass')} sync: ${r.pulled.length} pulled, ${r.pushed.length} pushed, ${r.created.length} created\n`);
+      for (const c of r.conflicts) {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`conflict on ${c.issue}`)} ${ui.dim(`(both sides changed: ${c.fields.join(', ')} — left untouched; edit one side and re-sync)`)}\n`);
+      }
     }
     if (args.includes('--json')) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
     return;

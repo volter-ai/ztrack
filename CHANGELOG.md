@@ -2,6 +2,22 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.15.0
+
+Two-way GitHub sync is now a three-way merge — a concurrent edit no longer silently clobbers.
+
+- **`reconcileSync` (the default `ztrack sync github` + auto-sync).** Drives the twin's pure
+  three-way `reconcile(base, fork, real)`: `base` = the last-synced common ancestor (now
+  persisted by ztrack at `.volter/sync/github-base.json`, since the fork is the markdown
+  tracker), `fork` = the tracker, `real` = a fresh incremental pull. Non-overlapping concurrent
+  edits MERGE field-by-field (local edits the title while GitHub edits the body → both survive);
+  only a same-field collision is surfaced as a **conflict** (default policy `merge`) and left
+  untouched on both sides for a human to resolve, instead of one side winning silently.
+- `ztrack sync github --pull` / `--push` stay one-way; the no-flag default is the reconcile.
+- Verified with the real twin engine (cursor connector + egress) against a stateful fake GitHub:
+  field-merge preserves both edits, a title/title collision surfaces as a conflict with neither
+  clobbered, and a settled sync is idempotent.
+
 ## 0.14.0
 
 GitHub pull is now a real cursor-based incremental read — and stops dropping closed issues.
