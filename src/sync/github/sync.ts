@@ -21,6 +21,7 @@ import type { TrackerClient } from '../../types.ts';
 import { githubStateToStatus, issueResourceToRecordFields, statusToGithubState } from './map.ts';
 import { loadBindings, saveBindings, bind, type GithubBindings } from './bindings.ts';
 import { loadBase, saveBase, type BaseFields } from './baseStore.ts';
+import { loadConflicts, saveConflicts } from '../conflicts.ts';
 
 export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
 export type PullResult = { created: string[]; updated: string[]; total: number };
@@ -221,8 +222,17 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
     if (row) baseStore.resources[ghId(c.number)] = { title: String(row.title ?? ''), body: String(row.body ?? ''), state: statusToGithubState(stateName(row.state)) };
   }
 
-  // surfaced conflicts (same field changed on both sides) — left untouched on both sides
+  // surfaced conflicts (same field changed on both sides) — left untouched on both sides, and
+  // RECORDED so `ztrack check` gates on them until resolved (cleared here once they converge).
   const conflicts = plan.subjects.filter((s) => s.conflicts.length).map((s) => ({ issue: b.byNumber[String(numberOf(s.id))] ?? s.id, number: numberOf(s.id), fields: s.conflicts.map((c) => c.field) }));
+  const conflictStore = loadConflicts(o.projectRoot);
+  for (const s of plan.subjects) {
+    const ztrackId = b.byNumber[String(numberOf(s.id))];
+    if (!ztrackId) continue;
+    if (s.conflicts.length) conflictStore.issues[ztrackId] = s.conflicts.map((c) => ({ field: c.field, local: String(c.fork ?? ''), remote: String(c.real ?? '') }));
+    else delete conflictStore.issues[ztrackId];
+  }
+  saveConflicts(o.projectRoot, conflictStore);
 
   // advance the base to the converged value (non-conflict fields only, so an unresolved conflict
   // stays detected next time instead of auto-resolving in one side's favour).

@@ -3,12 +3,15 @@
 // would otherwise leak a stub into this in-process twin user). Drives the REAL twin (cursor
 // connector + egress) + a REAL markdown tracker; only GitHub's HTTP boundary is a stateful fake
 // (with `updated_at`, which the cursor needs). Prints a JSON result the test asserts on.
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTrackerClient } from '../../sdk.ts';
 import { initTrackerProject } from '../../config.ts';
+import { checkTracker } from '../../check.ts';
 import { reconcileSync, type SyncOpts } from './sync.ts';
+
+const REPO = join(import.meta.dir, '..', '..', '..'); // src/sync/github -> repo root
 
 type GhIssue = { number: number; title: string; body: string; state: string; updated_at: string };
 
@@ -43,6 +46,8 @@ async function withProject<T>(fn: (ctx: { root: string; client: ReturnType<typeo
   const root = mkdtempSync(join(tmpdir(), 'ztrk-rec-'));
   try {
     initTrackerProject(root, 'ZT');
+    mkdirSync(join(root, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // so checkTracker's preset resolves 'ztrack/preset-kit'
     const client = createTrackerClient({ projectRoot: root });
     const gh = fakeGithub();
     const opts = (): SyncOpts => ({ root, projectRoot: root, owner: 'o', repo: 'r', execute: gh.execute, client, occurredAt: '2026-01-01T00:00:00Z' } as unknown as SyncOpts);
@@ -91,7 +96,22 @@ export async function runReconcileScenarios() {
     return { conflicts: r.conflicts.length, ghTitle: gh.issues.get(1)!.title, trackerTitle: view.title };
   });
 
-  // 4) a settled sync is idempotent
+  // 4) GATING: an unresolved conflict makes `ztrack check` emit sync_conflict; resolving
+  //    (a policy re-sync) converges and clears it, so the very next check goes clean.
+  results.gating = await withProject(async ({ root, client, gh, opts }) => {
+    await gh.execute.request('POST /repos/{owner}/{repo}/issues', { title: 'Title', body: 'Body' });
+    await reconcileSync(opts());
+    const id = String((await client.issue.list({ state: 'all', json: 'identifier,title' }) as Array<Record<string, unknown>>).find((r) => r.title === 'Title')!.identifier);
+    await client.issue.edit(id, { title: 'Title FROM LOCAL' });
+    gh.ghEdit(1, { title: 'Title FROM REMOTE' });
+    await reconcileSync(opts()); // merge → conflict recorded, neither applied
+    const withConflict = (await checkTracker({ projectRoot: root })).findings.some((f) => f.code === 'sync_conflict');
+    await reconcileSync(opts(), 'hub-wins'); // resolve: take GitHub → converges, clears the record
+    const afterResolve = (await checkTracker({ projectRoot: root })).findings.some((f) => f.code === 'sync_conflict');
+    return { withConflict, afterResolve };
+  });
+
+  // 5) a settled sync is idempotent
   results.idempotent = await withProject(async ({ gh, opts }) => {
     await gh.execute.request('POST /repos/{owner}/{repo}/issues', { title: 'Title', body: 'Body' });
     await reconcileSync(opts());

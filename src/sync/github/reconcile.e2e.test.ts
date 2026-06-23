@@ -11,6 +11,7 @@ const results = (() => { try { return JSON.parse(out.stdout); } catch { return n
   merge: { conflicts: number; ghTitle: string; ghBody: string; trackerTitle: string; trackerBody: string };
   conflict: { conflicts: number; fields: string[]; ghTitle: string; trackerTitle: string };
   hubWins: { conflicts: number; ghTitle: string; trackerTitle: string };
+  gating: { withConflict: boolean; afterResolve: boolean };
   idempotent: { pulled: number; pushed: number; conflicts: number };
 };
 
@@ -38,6 +39,11 @@ describe('reconcileSync — three-way merge (no silent clobber)', () => {
     expect(results!.hubWins.conflicts).toBe(0);                 // not surfaced — policy resolves it
     expect(results!.hubWins.ghTitle).toBe('Title FROM REMOTE');  // GitHub authoritative
     expect(results!.hubWins.trackerTitle).toBe('Title FROM REMOTE'); // local overwritten to match
+  });
+
+  test('an unresolved conflict GATES check (sync_conflict), and resolving clears it', () => {
+    expect(results!.gating.withConflict).toBe(true);   // check is red while the conflict stands
+    expect(results!.gating.afterResolve).toBe(false);  // a policy re-sync converges → check clean
   });
 
   test('a settled sync is idempotent: nothing pulled/pushed, no conflicts', () => {

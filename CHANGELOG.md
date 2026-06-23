@@ -2,6 +2,17 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.17.0
+
+- **Unresolved sync conflicts gate `check`.** A same-field collision (under `merge`) is now
+  recorded at `.volter/sync/conflicts.json` and `ztrack check` emits an unwaivable
+  `sync_conflict` error while it stands — so the gate stays red and the ralph loop keeps going
+  until it's resolved, instead of the conflict being a one-line warning you can walk past. This
+  is a cross-cutting core concern (like waivers), not a preset rule. Resolving is a natural
+  red→green step: pick a side and re-sync (`--policy hub-wins`/`twin-wins`, or edit + re-sync),
+  which converges both sides and clears the record. Scoped checks (`--issues`, `--auto-scope`)
+  only gate on their own issues' conflicts.
+
 ## 0.16.0
 
 - **Configurable reconcile policy.** `config.sync.policy` (`merge` | `hub-wins` | `twin-wins`,
