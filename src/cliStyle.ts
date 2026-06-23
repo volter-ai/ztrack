@@ -44,12 +44,14 @@ export function stackedCommand(index: number, title: string, command: string, de
   ].join('\n');
 }
 
-export function helpSection(position: 'top' | 'middle' | 'bottom', title: string, rows: Array<[string, string]>): string {
-  const width = 66;
-  const commandWidth = 31;
-  const descriptionWidth = width - commandWidth - 6;
+export function helpSection(_position: 'top' | 'middle' | 'bottom', title: string, rows: Array<[string, string]>): string {
+  // Size the box to its widest content so long command/description lines never overflow the
+  // border (padEnd only pads — it never truncates). Columns are derived from the rows.
   const headerText = ` ${title} `;
-  const header = `${ui.dim(`╭─${headerText}${'─'.repeat(width - headerText.length - 2)}╮`)}`;
+  const commandWidth = Math.max(...rows.map(([command]) => command.length));
+  const descriptionWidth = Math.max(...rows.map(([, description]) => description.length));
+  const width = Math.max(commandWidth + descriptionWidth + 6, headerText.length + 4);
+  const header = `${ui.dim(`╭─${headerText}${'─'.repeat(width - headerText.length - 3)}╮`)}`;
   const body = rows.map(([command, description]) =>
     `${ui.dim('│')}  ${ui.cyan(command.padEnd(commandWidth))} ${ui.dim(description.padEnd(descriptionWidth))} ${ui.dim('│')}`);
   return [header, ...body, ui.dim(`╰${'─'.repeat(width - 2)}╯`)].join('\n');

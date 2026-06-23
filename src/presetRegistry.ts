@@ -36,7 +36,23 @@ async function loadValidationEntrypoint(entrypoint: string, projectRoot: string)
   // Loaded via dynamic import so a preset can be a plain ESM `.ts`/`.js` module (no `.cjs`
   // bundle, no `require`). Dynamic import also loads CommonJS, so an existing `.cjs` preset
   // keeps resolving — the export is read off `default`.
-  const loaded = await import(pathToFileURL(absolutePath).href) as { default?: unknown; preset?: unknown };
+  let loaded: { default?: unknown; preset?: unknown };
+  try {
+    loaded = await import(pathToFileURL(absolutePath).href) as { default?: unknown; preset?: unknown };
+  } catch (err) {
+    // The installed preset imports `ztrack/preset-kit`; that bare specifier resolves from the
+    // PROJECT's node_modules. If ztrack isn't a dependency there (e.g. it was run via `npx`
+    // without being installed), the import fails — turn the raw resolver error into a fix.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/Cannot find package 'ztrack'|Cannot find module 'ztrack/.test(msg)) {
+      throw new Error(
+        `The validation preset (${entrypoint}) imports 'ztrack/preset-kit', but the 'ztrack' package isn't resolvable from this project. `
+        + `Install it as a dependency so the preset can load it:\n\n    npm install -D ztrack\n\n`
+        + `(ztrack works like eslint — the preset is your config and imports the mechanism from the installed package; a global or one-off 'npx' install is not enough.)`,
+      );
+    }
+    throw err;
+  }
   const candidate = loaded.preset ?? loaded.default ?? loaded;
   return assertCorePreset(candidate, absolutePath);
 }

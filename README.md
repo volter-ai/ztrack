@@ -49,10 +49,14 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 > `ztrack visualizer` additionally needs [Bun](https://bun.sh).
 
 Like `eslint --init` then `eslint`, you install a preset (your ruleset) and then check
-against it. Install one, create an issue whose acceptance criterion is marked done but
-cites a **fabricated** commit, and watch ztrack catch it:
+against it. ztrack is a project dev-dependency (the installed preset imports the mechanism
+from it, exactly like an eslint config imports its plugins — so a global or one-off `npx`
+install is not enough). Install one, create an issue whose acceptance criterion is marked
+done but cites a **fabricated** commit, and watch ztrack catch it:
 
 ```bash
+npm install -D ztrack                # add ztrack to the project (the preset imports it)
+
 npx ztrack init --preset default     # installs .volter/tracker/validation/preset.mts — real, editable code
 
 cat > body.md <<'EOF'
