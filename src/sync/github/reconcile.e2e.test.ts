@@ -11,7 +11,7 @@ const results = (() => { try { return JSON.parse(out.stdout); } catch { return n
   merge: { conflicts: number; ghTitle: string; ghBody: string; trackerTitle: string; trackerBody: string };
   conflict: { conflicts: number; fields: string[]; ghTitle: string; trackerTitle: string };
   hubWins: { conflicts: number; ghTitle: string; trackerTitle: string };
-  gating: { withConflict: boolean; afterResolve: boolean };
+  gating: { withConflict: boolean; afterResolve: boolean; bodyHasMarker: boolean; ghBodyClean: boolean; markerGone: boolean };
   idempotent: { pulled: number; pushed: number; conflicts: number };
 };
 
@@ -44,6 +44,12 @@ describe('reconcileSync — three-way merge (no silent clobber)', () => {
   test('an unresolved conflict GATES check (sync_conflict), and resolving clears it', () => {
     expect(results!.gating.withConflict).toBe(true);   // check is red while the conflict stands
     expect(results!.gating.afterResolve).toBe(false);  // a policy re-sync converges → check clean
+  });
+
+  test('the conflict renders as a LOCAL-ONLY ## Conflicts block: in the issue, never on GitHub, gone after resolve', () => {
+    expect(results!.gating.bodyHasMarker).toBe(true);  // both values visible where the agent edits
+    expect(results!.gating.ghBodyClean).toBe(true);    // stripped from the synced body — never pushed
+    expect(results!.gating.markerGone).toBe(true);     // removed once the conflict converges
   });
 
   test('a settled sync is idempotent: nothing pulled/pushed, no conflicts', () => {

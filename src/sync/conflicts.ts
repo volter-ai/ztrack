@@ -36,6 +36,31 @@ export function setIssueConflicts(projectRoot: string, issueId: string, conflict
   saveConflicts(projectRoot, store);
 }
 
+// The in-issue `## Conflicts` block is LOCAL-ONLY presentation (so the agent sees both values
+// where they edit). It must be STRIPPED from the body the sync reconciles/pushes, or the marker
+// itself becomes a change that fights the sync. Mirrors the core's `## Waivers` handling.
+export function stripConflictSection(body: string): string {
+  const out: string[] = [];
+  let skip = false;
+  for (const line of body.split('\n')) {
+    if (/^##\s+conflicts\b/i.test(line)) { skip = true; continue; }
+    if (skip && /^##\s+/.test(line)) skip = false;
+    if (!skip) out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '');
+}
+
+export function renderConflictSection(recs: ConflictRecord[]): string {
+  const rows = recs.map((r) => `- ${r.field}: local "${r.local}" | remote "${r.remote}"`);
+  return `## Conflicts\n\n<!-- ztrack: unresolved sync conflicts. Resolve a field, then re-sync — \`--policy twin-wins\` keeps local, \`--policy hub-wins\` takes remote; this section clears on its own once both sides agree. -->\n${rows.join('\n')}`;
+}
+
+/** Body with the conflict section refreshed (or removed when there are none). */
+export function withConflictSection(body: string, recs: ConflictRecord[]): string {
+  const clean = stripConflictSection(body);
+  return recs.length ? `${clean}\n\n${renderConflictSection(recs)}\n` : `${clean}\n`;
+}
+
 const trunc = (s: string) => (s.length > 60 ? `${s.slice(0, 57)}…` : s);
 
 /** Build the `sync_conflict` error findings for the in-scope issues (an unwaivable gate). */

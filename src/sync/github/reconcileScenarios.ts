@@ -106,9 +106,12 @@ export async function runReconcileScenarios() {
     gh.ghEdit(1, { title: 'Title FROM REMOTE' });
     await reconcileSync(opts()); // merge → conflict recorded, neither applied
     const withConflict = (await checkTracker({ projectRoot: root })).findings.some((f) => f.code === 'sync_conflict');
+    const bodyHasMarker = String((await client.issue.view(id, { json: 'body' }) as Record<string, unknown>).body ?? '').includes('## Conflicts');
+    const ghBodyClean = !gh.issues.get(1)!.body.includes('## Conflicts'); // marker never leaked to GitHub
     await reconcileSync(opts(), 'hub-wins'); // resolve: take GitHub → converges, clears the record
     const afterResolve = (await checkTracker({ projectRoot: root })).findings.some((f) => f.code === 'sync_conflict');
-    return { withConflict, afterResolve };
+    const markerGone = !String((await client.issue.view(id, { json: 'body' }) as Record<string, unknown>).body ?? '').includes('## Conflicts');
+    return { withConflict, afterResolve, bodyHasMarker, ghBodyClean, markerGone };
   });
 
   // 5) a settled sync is idempotent

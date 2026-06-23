@@ -2,6 +2,14 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.18.0
+
+- **Conflicts render in the issue.** Alongside the gating `sync_conflict` finding, an unresolved
+  conflict now writes a `## Conflicts` block into the issue body listing each field's local vs
+  remote value — so the agent sees both values right where it edits. The block is LOCAL-ONLY:
+  stripped from the body the sync reconciles/pushes (it never leaks to GitHub) and removed
+  automatically once the conflict converges. Mirrors the core's `## Waivers` handling.
+
 ## 0.17.0
 
 - **Unresolved sync conflicts gate `check`.** A same-field collision (under `merge`) is now

@@ -21,7 +21,7 @@ import type { TrackerClient } from '../../types.ts';
 import { githubStateToStatus, issueResourceToRecordFields, statusToGithubState } from './map.ts';
 import { loadBindings, saveBindings, bind, type GithubBindings } from './bindings.ts';
 import { loadBase, saveBase, type BaseFields } from './baseStore.ts';
-import { loadConflicts, saveConflicts } from '../conflicts.ts';
+import { loadConflicts, saveConflicts, stripConflictSection, withConflictSection, type ConflictRecord } from '../conflicts.ts';
 
 export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
 export type PullResult = { created: string[]; updated: string[]; total: number };
@@ -96,7 +96,7 @@ async function createOnGithub(o: SyncOpts, b: GithubBindings, rows: Array<{ ztra
 }
 
 const unboundForkRows = (rows: Array<Record<string, unknown>>, b: GithubBindings) =>
-  rows.map((row) => ({ id: String(row.identifier ?? ''), title: String(row.title ?? ''), body: String(row.body ?? ''), ghState: statusToGithubState(stateName(row.state)) }))
+  rows.map((row) => ({ id: String(row.identifier ?? ''), title: String(row.title ?? ''), body: stripConflictSection(String(row.body ?? '')), ghState: statusToGithubState(stateName(row.state)) }))
     .filter((r) => r.id && !b.byZtrack[r.id])
     .map((r) => ({ ztrack: r.id, title: r.title, body: r.body, closed: r.ghState === 'closed' }));
 
@@ -112,7 +112,7 @@ export async function pull(o: SyncOpts): Promise<PullResult> {
     if (!boundId) continue;
     const cur = await o.client.issue.view(boundId, { json: 'title,body,state' }) as Record<string, unknown>;
     const f = issueResourceToRecordFields(asSyncResource(res), stateName(cur.state));
-    const same = String(cur.title ?? '') === (f.title ?? '') && String(cur.body ?? '') === (f.body ?? '') && stateName(cur.state) === f.status;
+    const same = String(cur.title ?? '') === (f.title ?? '') && stripConflictSection(String(cur.body ?? '')) === (f.body ?? '') && stateName(cur.state) === f.status;
     if (!same) { await o.client.issue.edit(boundId, { title: f.title, body: f.body, state: f.status }); updated.push(boundId); }
   }
   const created = await createInTracker(o, b, resources);
@@ -134,7 +134,7 @@ export async function push(o: SyncOpts): Promise<PushResult> {
     const number = id ? b.byZtrack[id] : undefined;
     if (!number) continue;
     const title = String(row.title ?? '');
-    const body = String(row.body ?? '');
+    const body = stripConflictSection(String(row.body ?? ''));
     const ghState = statusToGithubState(stateName(row.state));
     const base = baseline.get(number);
     if (base && (base.title ?? '') === title && (base.body ?? '') === body && (base.state ?? 'open') === ghState) continue;
@@ -178,7 +178,7 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   for (const [ztrackId, number] of Object.entries(b.byZtrack)) {
     const id = ghId(number);
     const row = trackerById.get(ztrackId);
-    if (row) boundFork.push(res(id, { title: String(row.title ?? ''), body: String(row.body ?? ''), state: statusToGithubState(stateName(row.state)) }));
+    if (row) boundFork.push(res(id, { title: String(row.title ?? ''), body: stripConflictSection(String(row.body ?? '')), state: statusToGithubState(stateName(row.state)) }));
     const r = realByNumber.get(number);
     if (r) boundReal.push(res(id, { title: r.title, body: r.body, state: r.state ?? 'open' }));
     if (baseStore.resources[id]) boundBase.push(res(id, baseStore.resources[id]!));
@@ -226,13 +226,25 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   // RECORDED so `ztrack check` gates on them until resolved (cleared here once they converge).
   const conflicts = plan.subjects.filter((s) => s.conflicts.length).map((s) => ({ issue: b.byNumber[String(numberOf(s.id))] ?? s.id, number: numberOf(s.id), fields: s.conflicts.map((c) => c.field) }));
   const conflictStore = loadConflicts(o.projectRoot);
+  const prior = new Set(Object.keys(conflictStore.issues));
+  const now = new Map<string, ConflictRecord[]>();
   for (const s of plan.subjects) {
     const ztrackId = b.byNumber[String(numberOf(s.id))];
-    if (!ztrackId) continue;
-    if (s.conflicts.length) conflictStore.issues[ztrackId] = s.conflicts.map((c) => ({ field: c.field, local: String(c.fork ?? ''), remote: String(c.real ?? '') }));
-    else delete conflictStore.issues[ztrackId];
+    if (!ztrackId || !s.conflicts.length) continue;
+    now.set(ztrackId, s.conflicts.map((c) => ({ field: c.field, local: String(c.fork ?? ''), remote: String(c.real ?? '') })));
   }
+  for (const [zid, recs] of now) conflictStore.issues[zid] = recs;
+  for (const zid of prior) if (!now.has(zid)) delete conflictStore.issues[zid];
   saveConflicts(o.projectRoot, conflictStore);
+  // Refresh the LOCAL-ONLY `## Conflicts` block in each touched issue's body (added when a
+  // conflict appears, removed once it converges). Stripped from the synced body above, so it
+  // never round-trips to GitHub. Only touch issues whose conflict state actually changed.
+  for (const zid of new Set([...now.keys(), ...prior])) {
+    const view = await o.client.issue.view(zid, { json: 'body' }) as Record<string, unknown>;
+    const body = String(view.body ?? '');
+    const next = withConflictSection(body, now.get(zid) ?? []);
+    if (next.trim() !== body.trim()) await o.client.issue.edit(zid, { body: next });
+  }
 
   // advance the base to the converged value (non-conflict fields only, so an unresolved conflict
   // stays detected next time instead of auto-resolving in one side's favour).
