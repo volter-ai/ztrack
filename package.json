@@ -117,13 +117,18 @@
     "@types/bun": "^1.2.20",
     "@types/node": "^24.0.0",
     "@volter-ai-dev/twin": "^0.1.0",
+    "@volter-ai-dev/twin-github": "^0.1.0",
     "typescript": "^5.9.0"
   },
   "peerDependencies": {
-    "@volter-ai-dev/twin": "*"
+    "@volter-ai-dev/twin": "*",
+    "@volter-ai-dev/twin-github": "*"
   },
   "peerDependenciesMeta": {
     "@volter-ai-dev/twin": {
+      "optional": true
+    },
+    "@volter-ai-dev/twin-github": {
       "optional": true
     }
   },

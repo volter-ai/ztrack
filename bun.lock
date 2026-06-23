@@ -15,13 +15,16 @@
         "@types/bun": "^1.2.20",
         "@types/node": "^24.0.0",
         "@volter-ai-dev/twin": "^0.1.0",
+        "@volter-ai-dev/twin-github": "^0.1.0",
         "typescript": "^5.9.0",
       },
       "peerDependencies": {
         "@volter-ai-dev/twin": "*",
+        "@volter-ai-dev/twin-github": "*",
       },
       "optionalPeers": [
         "@volter-ai-dev/twin",
+        "@volter-ai-dev/twin-github",
       ],
     },
   },
@@ -39,6 +42,8 @@
     "@types/unist": ["@types/unist@3.0.3", "", {}, "sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q=="],
 
     "@volter-ai-dev/twin": ["@volter-ai-dev/twin@0.1.0", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-y2rSyQcqEGD0Er4hWr6Epni0ozodSMW0xVpVNeOMKn0l96aBExyOjzI8X4Mugl4pUUNUBjjwJmDQe8AN4OJVHA=="],
+
+    "@volter-ai-dev/twin-github": ["@volter-ai-dev/twin-github@0.1.0", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter-ai-dev/twin": "0.1.0" }, "bin": { "world-github": "src/cli.ts" } }, "sha512-efBFefQXYZo5lJ1JtAUcEtbHGWnjndLSmFH2nJDUVOsHlJFmiLSPVS51+qZQHFhnfT+HzPC7J31U7Oen1MWPMw=="],
 
     "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
@@ -139,6 +144,12 @@
     "micromark-util-types": ["micromark-util-types@2.0.2", "", {}, "sha512-Yw0ECSpJoViF1qTU4DC6NwtC4aWGt1EkzaQB8KPPyCRR8z9TWeV0HbEFGTO+ZY1wB22zmxnJqhPyTpOVCpeHTA=="],
 
     "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
+
+    "react": ["react@19.2.7", "", {}, "sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ=="],
+
+    "react-dom": ["react-dom@19.2.7", "", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.7" } }, "sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ=="],
+
+    "scheduler": ["scheduler@0.27.0", "", {}, "sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
