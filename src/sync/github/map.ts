@@ -7,7 +7,7 @@
 // GitHub (an issue's `state` can't represent it). This module is the pure field/status
 // mapping; the GitHub I/O (pull/reconcile/push through @volter-ai-dev/twin + the github twin)
 // builds on top of it.
-import type { IssueRecord } from './core/engine.ts';
+import type { IssueRecord } from '../../core/engine.ts';
 import type { SyncResource } from '@volter-ai-dev/twin';
 
 const DONE = 'done';

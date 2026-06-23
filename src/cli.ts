@@ -11,8 +11,7 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
-import { resolveGithubExecute } from './githubExecute.ts';
-import { pullFromGithub, pushToGithub } from './githubSyncRun.ts';
+import * as githubSync from './sync/github/index.ts';
 import type { IssueRecord } from './core/engine.ts';
 import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
@@ -472,17 +471,17 @@ GraphQL-shaped query against the local tracker store.
       throw new Error("tracker sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
     }
     const [owner, name] = repo.split('/');
-    const o = { projectRoot: projectRootFrom(), owner: owner!, repo: name!, execute: resolveGithubExecute(), client, occurredAt: new Date().toISOString() };
+    const o = { projectRoot: projectRootFrom(), owner: owner!, repo: name!, execute: githubSync.resolveGithubExecute(), client, occurredAt: new Date().toISOString() };
     const onlyPull = args.includes('--pull') && !args.includes('--push');
     const onlyPush = args.includes('--push') && !args.includes('--pull');
     const out: Record<string, unknown> = { repo };
     if (!onlyPush) {
-      const r = await pullFromGithub(o);
+      const r = await githubSync.pull(o);
       out.pull = r;
       process.stdout.write(`${statusMark('pass')} pull: ${r.total} GitHub issue(s) → ${r.created.length} created, ${r.updated.length} updated locally\n`);
     }
     if (!onlyPull) {
-      const r = await pushToGithub(o);
+      const r = await githubSync.push(o);
       out.push = r;
       process.stdout.write(`${statusMark('pass')} push: ${r.total} tracker issue(s) → ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
     }

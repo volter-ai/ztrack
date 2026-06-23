@@ -12,9 +12,9 @@
 // incremental rather than a cold full read every time.
 import { syncGithubFromReal, applyGithubWrite, pushPendingGithubActions, type GithubExecute } from '@volter-ai-dev/twin-github';
 import { currentResources, pendingActions } from '@volter-ai-dev/twin';
-import type { TrackerClient } from './types.ts';
-import { issueResourceToRecordFields, statusToGithubState } from './githubSync.ts';
-import { loadBindings, saveBindings, bind } from './githubSyncStore.ts';
+import type { TrackerClient } from '../../types.ts';
+import { issueResourceToRecordFields, statusToGithubState } from './map.ts';
+import { loadBindings, saveBindings, bind } from './bindings.ts';
 
 export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
 export type PullResult = { created: string[]; updated: string[]; total: number };
@@ -53,7 +53,7 @@ const asSyncResource = (r: IssueResource) => ({ type: 'issue', id: r.id, fields:
 
 /** PULL: fold real GitHub into the twin (deltas only), then write to the tracker only the
  *  issues whose folded resource differs from the bound local issue (or create + bind new ones). */
-export async function pullFromGithub(o: SyncOpts): Promise<PullResult> {
+export async function pull(o: SyncOpts): Promise<PullResult> {
   const repo = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repo);
   await syncGithubFromReal(o.execute, { owner: o.owner, repo: o.repo, root: o.projectRoot, occurredAt: OBSERVED_AT });
@@ -85,7 +85,7 @@ export async function pullFromGithub(o: SyncOpts): Promise<PullResult> {
 /** PUSH: morph the twin (one pending action per genuinely-changed tracker issue), then flush
  *  pending actions to real GitHub through the idempotent egress ledger. Unchanged issues
  *  produce no pending action and so are never re-PATCHed; a re-push replays nothing. */
-export async function pushToGithub(o: SyncOpts): Promise<PushResult> {
+export async function push(o: SyncOpts): Promise<PushResult> {
   const repo = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repo);
   // Fold first so the twin's observed state is the change-detection baseline (idempotent: if a
