@@ -11,6 +11,8 @@ import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
+import { resolveGithubExecute } from './githubExecute.ts';
+import { pullFromGithub, pushToGithub } from './githubSyncRun.ts';
 import type { IssueRecord } from './core/engine.ts';
 import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
@@ -457,6 +459,35 @@ GraphQL-shaped query against the local tracker store.
 
   if (args[0] === 'annotations') {
     throw new Error('ztrack annotations requires the optional @volter-ai-dev/twin peer dependency and a mirrored world store.');
+  }
+
+  // Two-way GitHub issue sync through the twin. Auth is the gh CLI (or GITHUB_TOKEN) — never a
+  // prompted PAT. A synced issue IS the GitHub issue (binding in .volter/sync/github.json).
+  if (args[0] === 'sync') {
+    if (args[1] !== 'github') {
+      throw new Error("usage: tracker sync github --repo <owner/name> [--pull | --push]   (default: pull then push)");
+    }
+    const repo = optionValue(args, '--repo');
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+      throw new Error("tracker sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
+    }
+    const [owner, name] = repo.split('/');
+    const o = { projectRoot: projectRootFrom(), owner: owner!, repo: name!, execute: resolveGithubExecute(), client, occurredAt: new Date().toISOString() };
+    const onlyPull = args.includes('--pull') && !args.includes('--push');
+    const onlyPush = args.includes('--push') && !args.includes('--pull');
+    const out: Record<string, unknown> = { repo };
+    if (!onlyPush) {
+      const r = await pullFromGithub(o);
+      out.pull = r;
+      process.stdout.write(`${statusMark('pass')} pull: ${r.total} GitHub issue(s) → ${r.created.length} created, ${r.updated.length} updated locally\n`);
+    }
+    if (!onlyPull) {
+      const r = await pushToGithub(o);
+      out.push = r;
+      process.stdout.write(`${statusMark('pass')} push: ${r.total} tracker issue(s) → ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
+    }
+    if (args.includes('--json')) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+    return;
   }
 
   if (await handleEvidenceCommand(args)) return;
