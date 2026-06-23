@@ -97,8 +97,9 @@ exists. The installed `preset.mts` is real, editable code — open it and change
 ```bash
 # A) Local tracker — author and verify work locally
 npx ztrack init
-npx ztrack issue create --title "Add /health" --label type:case --state ready --body-file body.md
-npx ztrack check
+npx ztrack issue scaffold --title "Add /health" > issue.md   # a starter body you fill in
+npx ztrack issue create --title "Add /health" --label type:case --state draft --assignee me --body-file issue.md
+npx ztrack check                                             # ✓ passes — now fill in the AC + evidence
 
 # B) Linked to GitHub Issues — your issues ARE the GitHub issues, synced both ways
 npx ztrack init --sync github --repo owner/name   # links + pulls existing issues

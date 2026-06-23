@@ -2,6 +2,15 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.19.1
+
+- **Cookbook-tested the documented recipes.** A new black-box cookbook e2e runs the README
+  quick-start verbatim — and caught that "Two ways to start (A)" ended RED (it dropped
+  `--assignee me` and reused the demo's fabricated-commit body, so `check` failed on
+  `issue_missing_assignee`). Fixed the recipe to the verified-green flow (scaffold → create
+  `--assignee me` → check). The cookbook keeps every documented command (check / check &lt;id&gt; /
+  check ./file / loop gate / the fabricated-commit demo) honest in CI.
+
 ## 0.19.0
 
 - **Onboarding reflects the actual scenarios.** `ztrack init` next-steps now adapt: a LOCAL
