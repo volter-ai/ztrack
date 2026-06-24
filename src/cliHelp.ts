@@ -166,6 +166,39 @@ to see the shape), then re-serializes through the preset — e.g. \`{"checked":t
 `);
     return true;
   }
+  if (resource === 'lint') {
+    process.stdout.write(`Usage: ${command} lint [--issues a,b] [--json] [--fail-on-warn]
+
+Flags weak or unverifiable CLAIMS in issue bodies (a soft style lint). This is advisory;
+\`${command} check\` is the hard gate that fails on missing evidence. --fail-on-warn exits
+nonzero on any finding.
+`);
+    return true;
+  }
+  if (resource === 'fmt') {
+    process.stdout.write(`Usage: ${command} fmt (--issue <id> | --input <file>) [--write] [--check]
+
+Canonicalize an issue body through the preset's grammar (parse → serialize). --write applies
+it in place; --check exits nonzero if it is not already canonical; default prints the result.
+`);
+    return true;
+  }
+  if (resource === 'tx') {
+    process.stdout.write(`Usage: ${command} tx <plan|apply> --file tx.json
+
+Plan or apply a batch of model edits (tx.json: {"edits": [{"issue": "A-1", "op": "check",
+"acId": "dev/01", ...}]}). \`plan\` previews; \`apply\` writes (and accepts a prior plan's base).
+`);
+    return true;
+  }
+  if (resource === 'mcp') {
+    process.stdout.write(`Usage: ${command} mcp serve
+
+Starts the MCP server (agent-facing task/evidence tools — check, patch, etc. — over stdio).
+Wire it into an agent with e.g. \`claude mcp add ztrack -- npx ztrack mcp serve\`.
+`);
+    return true;
+  }
   if (resource === 'sync') {
     process.stdout.write(`Usage: ${command} sync github [--repo <owner/name>] [--pull | --push] [--policy merge|hub-wins|twin-wins] [--json]
 

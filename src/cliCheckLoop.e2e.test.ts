@@ -133,6 +133,15 @@ describe('CLI footguns: --help/--version never have side effects, and delete wor
     expect(v.out).toMatch(/^ztrack \d+\.\d+\.\d+/);
     expect(zf(['-v']).out).toMatch(/^ztrack \d+\.\d+\.\d+/);
   });
+  // Regression: `lint --help` used to silently RUN lint (exit 0, no output), and fmt/tx/mcp --help
+  // errored instead of helping. Every resource's --help must print usage and exit 0 with no action.
+  test('`--help` is consistent across resources (lint/fmt/tx/mcp print usage, never execute)', () => {
+    for (const r of ['lint', 'fmt', 'tx', 'mcp', 'check', 'loop', 'sync', 'issue', 'ac', 'waiver', 'evidence']) {
+      const h = zf([r, '--help']);
+      expect(h.code, `\`ztrack ${r} --help\` should exit 0`).toBe(0);
+      expect(h.out, `\`ztrack ${r} --help\` should print usage`).toMatch(/Usage: ztrack/);
+    }
+  }, 30_000);
   test('`issue delete` removes a fat-fingered issue', () => {
     expect(zf(['init', '--team', 'DEL']).code).toBe(0);
     expect(zf(['issue', 'create', '--title', 'Typo', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body', '# x']).code).toBe(0);

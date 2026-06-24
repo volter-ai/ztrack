@@ -2,6 +2,19 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.5
+
+Third panel pass — confirmed 0.21.4 and caught the rest of the `--help` inconsistency:
+
+- **`--help` now works on every resource.** `lint --help` used to silently RUN lint (exit 0, no
+  output); `fmt`/`tx`/`mcp --help` errored instead of helping. All now print usage and exit 0 with
+  no side effects, like the rest. Regression test sweeps `--help` across all resources.
+- **Quickstart no longer commits `node_modules`.** The README's `git add -A && git commit` step now
+  writes `node_modules/` to `.gitignore` first, so a verbatim follower doesn't commit dependencies.
+
+(A panel report of "`--help` is config-gated before init" was investigated and is FALSE — `init
+--help` and all resource `--help` print correctly in a fresh repo; verified against the tarball.)
+
 ## 0.21.4
 
 A re-run of the multi-perspective panel against 0.21.3 confirmed the earlier fixes and found a

@@ -97,6 +97,7 @@ corrected body (the issue is stored independently, so editing `body.md` alone is
 `issue edit` re-imports it):
 
 ```bash
+echo "node_modules/" >> .gitignore                   # don't commit deps
 git add -A && git commit -m "add /health endpoint"   # a real commit to cite
 SHA=$(git rev-parse HEAD)
 cat > body.md <<EOF
