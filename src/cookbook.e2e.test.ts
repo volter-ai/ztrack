@@ -18,6 +18,15 @@ function zt(args: string[]): { code: number; out: string } {
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
+// A real ztrack project is a git repo with an identity — `waiver sign` records who signed, so it
+// needs `git config user.*`. CI runners have no GLOBAL git identity, so set it locally per root
+// (without this, waiver sign passes only on a dev machine that happens to have a global identity).
+function gitInit(dir: string): void {
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  spawnSync('git', ['config', 'user.email', 'cookbook@test.local'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 'cookbook'], { cwd: dir });
+}
+
 describe('cookbook: the documented local getting-started recipe', () => {
   // Each describe owns an isolated root; `beforeEach` restores the shared `root` (used by zt) to
   // it before every test, so the other describe's beforeAll reassigning `root` can't make a test
@@ -27,6 +36,7 @@ describe('cookbook: the documented local getting-started recipe', () => {
     mine = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-')); root = mine;
     mkdirSync(join(root, 'node_modules'), { recursive: true });
     symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
+    gitInit(root);
     // README "Two ways to start (A)" + init next-steps, verbatim:
     expect(zt(['init']).code).toBe(0);
     const scaffold = zt(['issue', 'scaffold', '--title', 'Add /health']);
@@ -73,6 +83,7 @@ describe('cookbook: the full taught command surface', () => {
     mine = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-surface-')); root = mine;
     mkdirSync(join(root, 'node_modules'), { recursive: true });
     symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    gitInit(root);
     expect(zt(['init']).code).toBe(0);
     writeFileSync(join(root, 'body.md'), zt(['issue', 'scaffold', '--title', 'First case']).out);
     expect(zt(['issue', 'create', '--title', 'First case', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'body.md']).code).toBe(0);
