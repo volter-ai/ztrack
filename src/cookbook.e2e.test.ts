@@ -3,7 +3,7 @@
 // covered by the live GitHub e2e. Subprocess-isolated like the other CLI e2es. The recipes here
 // must match README "Two ways to start (A)" + the target-grammar block + the fabricated-commit
 // demo, and the in-product `ztrack init` next-steps.
-import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -19,8 +19,12 @@ function zt(args: string[]): { code: number; out: string } {
 }
 
 describe('cookbook: the documented local getting-started recipe', () => {
+  // Each describe owns an isolated root; `beforeEach` restores the shared `root` (used by zt) to
+  // it before every test, so the other describe's beforeAll reassigning `root` can't make a test
+  // run against the wrong/cleaned-up cwd (a non-deterministic cross-describe race in CI).
+  let mine = '';
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-'));
+    mine = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-')); root = mine;
     mkdirSync(join(root, 'node_modules'), { recursive: true });
     symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
     // README "Two ways to start (A)" + init next-steps, verbatim:
@@ -30,7 +34,8 @@ describe('cookbook: the documented local getting-started recipe', () => {
     writeFileSync(join(root, 'issue.md'), scaffold.out);
     expect(zt(['issue', 'create', '--title', 'Add /health', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'issue.md']).code).toBe(0);
   }, 30_000); // init+scaffold+create = 3 cold `bun run` spawns; exceeds bun's 5s hook default under load
-  afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+  beforeEach(() => { root = mine; });
+  afterAll(() => { if (mine) rmSync(mine, { recursive: true, force: true }); });
 
   test('`ztrack check` on the scaffolded issue is GREEN (a getting-started recipe must not end red)', () => {
     expect(zt(['check']).code).toBe(0);
@@ -63,15 +68,17 @@ describe('cookbook: the documented local getting-started recipe', () => {
 // reality — caught `ac --help` teaching the removed check/uncheck/set-status DSL and `check --help`
 // shadowing the real target-grammar usage with a stale copy.
 describe('cookbook: the full taught command surface', () => {
+  let mine = '';
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-surface-'));
+    mine = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-surface-')); root = mine;
     mkdirSync(join(root, 'node_modules'), { recursive: true });
     symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
     expect(zt(['init']).code).toBe(0);
     writeFileSync(join(root, 'body.md'), zt(['issue', 'scaffold', '--title', 'First case']).out);
     expect(zt(['issue', 'create', '--title', 'First case', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'body.md']).code).toBe(0);
   }, 30_000); // init+scaffold+create = 3 cold `bun run` spawns; exceeds bun's 5s hook default under load
-  afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+  beforeEach(() => { root = mine; });
+  afterAll(() => { if (mine) rmSync(mine, { recursive: true, force: true }); });
 
   test('help matches reality (no stale/shadowed usage)', () => {
     const ac = zt(['ac', '--help']).out;
