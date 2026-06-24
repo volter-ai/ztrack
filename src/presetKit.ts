@@ -18,7 +18,7 @@ export type {
   Preset, Rule, RuleRecord, DerivedModel, Located, Finding, Severity, Context, PresetContextInput,
   BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot, IssueRecord, IssueColumns,
 } from './core/engine.ts';
-export { gitWorld, gitFileExistsAtCommit } from './core/gitWorld.ts';
+export { gitWorld, gitFileExistsAtCommit, gitCommitFiles } from './core/gitWorld.ts';
 export { formatRef, BlockRefSchema } from './core/ref.ts';
 // Parsing + graph mechanism a standalone preset rents to build its OWN parser/rules.
 export { splitIssueBundle } from './core/bundle.ts';

@@ -19,7 +19,7 @@
 // (no `../core/*`, no `mdast-*`, no `zod`). Its OWN schema, parser, and rules live here.
 import {
   z, toMdast, nodeText, type MdNode,
-  check as runCheck, rule, gitWorld, gitFileExistsAtCommit, formatRef, BlockRefSchema,
+  check as runCheck, rule, gitWorld, gitFileExistsAtCommit, gitCommitFiles, formatRef, BlockRefSchema,
   normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
@@ -55,6 +55,9 @@ export const DefaultAcSchema = z.object({
   proof: DefaultProofSchema.optional(),               // primitive (rule requires it for passed)
   blockedBy: z.array(BlockRefSchema).optional(),      // primitive: nodes that gate this one
   blocks: z.array(BlockRefSchema).optional(),         // primitive: nodes this one gates
+  // OPTIONAL relevance anchor: the repo paths this AC's work concerns (globs ok: *, **). When set,
+  // a passed AC's cited commit must TOUCH one of them — so an unrelated real commit can't pass.
+  paths: z.array(z.string().min(1)).optional(),
 }).strict();
 
 // primitives the default SDLC implements (issue-level)
@@ -169,6 +172,7 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
         let status: string | undefined;
         let proof: unknown;
         const evidence: unknown[] = [];
+        const paths: string[] = [];
         const blockedBy: RawBlockRef[] = [];
         const blocks: RawBlockRef[] = [];
         const rawList = (raw: string): RawBlockRef[] =>
@@ -189,12 +193,15 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
           if (bb) { blockedBy.push(...rawList(bb[1]!)); continue; }
           const bk = /^blocks:\s*(.+)$/i.exec(line);
           if (bk) { blocks.push(...rawList(bk[1]!)); continue; }
+          const pa = /^paths:\s*(.+)$/i.exec(line);
+          if (pa) { paths.push(...splitList(pa[1]!)); continue; }
         }
         // status defaults from the checkbox; an explicit line can override (and is then guarded by a rule)
         if (!status) status = checked ? 'passed' : 'pending';
         const ac: Record<string, unknown> = { id, status, checked, text, evidence };
         if (version !== undefined) ac.version = version;
         if (proof !== undefined) ac.proof = proof;
+        if (paths.length) ac.paths = paths;
         if (blockedBy.length) ac.blockedBy = blockedBy;
         if (blocks.length) ac.blocks = blocks;
         acs.push(ac);
@@ -238,6 +245,7 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
     // render refs relatively (bare) when they target this issue's own AC, absolutely
     // otherwise; an issue-level ref (no `ac`) is just the issue id.
     const renderRef = (r: BlockRef) => (r.ac !== undefined && r.issue === issue.id ? r.ac : formatRef(r));
+    if (ac.paths?.length) out.push(`  - paths: ${ac.paths.join(', ')}`);
     if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
     if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
   }
@@ -327,6 +335,22 @@ const DEFAULT_RULES = [
     code: 'passed_ac_missing_evidence', select: (m) => m.acs,
     when: ({ ac }) => ac.status === 'passed' && ac.evidence.length === 0,
     message: ({ ac }) => `AC ${ac.id} is passed but has no evidence (cite a commit, optionally an image, and a proof).`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
+    // RELEVANCE (opt-in via `paths`): a passed AC's cited commit(s) must TOUCH one of the paths the
+    // AC declares — a deterministic partial close of the relevance gap (an unrelated real commit
+    // touches none of them). Only fires when paths are declared AND the commit's files resolved
+    // (so a missing commit is reported once, by evidence_commit_not_found, not double-flagged).
+    code: 'evidence_commit_unrelated', select: (m) => m.acs,
+    when: ({ ac }, m) => {
+      if (ac.status !== 'passed' || !ac.paths?.length || !ac.evidence.length) return false;
+      const cf = m.context.git?.commitFiles;
+      if (!cf) return false;
+      const touched = ac.evidence.flatMap((ev) => cf[ev.commit] ?? []);
+      if (!touched.length) return false;   // no resolved file info → don't false-flag
+      return !touched.some((f) => ac.paths!.some((p) => pathMatches(p, f)));
+    },
+    message: ({ ac }) => `AC ${ac.id} is passed, but its cited commit touches none of its declared paths (${ac.paths!.join(', ')}) — the commit is unrelated to the claimed work.`,
   }),
   rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
     code: 'passed_ac_missing_proof', select: (m) => m.acs,
@@ -456,6 +480,34 @@ function citedEvidenceFiles(input: PresetContextInput): { commit: string; image:
     .filter((m) => isPath(m[1])).map((m) => ({ image: m[1]!, commit: m[2]!.toLowerCase() }));
 }
 
+// Every cited evidence commit (from the parsed root, else scanned from the bundle — loadContext is
+// handed the bundle in the live path). Their touched-files are resolved so the relevance rule, which
+// reads the AC's declared `paths` off the model, can check them.
+function citedCommits(input: PresetContextInput): string[] {
+  if (input.root) {
+    return (input.root as unknown as DefaultRoot).issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence.map((ev) => ev.commit)));
+  }
+  if (!input.bundle) return [];
+  return [...input.bundle.matchAll(/^\s*-?\s*evidence\s+\S+:.*?commit=([0-9a-fA-F]{7,40})/gim)].map((m) => m[1]!.toLowerCase());
+}
+
+// Does a declared path (glob: `*` within a segment, `**` across segments, else exact/dir-prefix)
+// match a repo-relative file a commit touched?
+function pathMatches(pattern: string, file: string): boolean {
+  const p = pattern.replace(/\/+$/, '');
+  if (file === p || file.startsWith(`${p}/`)) return true;          // exact or directory prefix
+  if (!/[*?]/.test(p)) return false;
+  let rx = '';
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i]!;
+    if (c === '*') { if (p[i + 1] === '*') { rx += '.*'; i++; } else rx += '[^/]*'; }
+    else if (c === '?') rx += '[^/]';
+    else if ('.+^${}()|[]\\/'.includes(c)) rx += '\\' + c;
+    else rx += c;
+  }
+  try { return new RegExp(`^${rx}$`).test(file); } catch { return false; }
+}
+
 // Per-finding REMEDIATION: the exact action that turns this finding green. The agent fills the
 // real values (the sha it just committed, the image path); the hint supplies the command + the
 // schema shape, and points at `ztrack ac --help` / `ztrack issue view` for the full grammar.
@@ -476,6 +528,8 @@ function defaultFixHint(f: Finding): string | undefined {
     case 'evidence_sha_stale':
     case 'evidence_ac_version_stale':
       return acPatch('{"evidence":[{"id":"ev1","commit":"<real-sha>","acVersion":1}]}', ' — cite a commit that exists in git (and the AC version)');
+    case 'evidence_commit_unrelated':
+      return acPatch('{"evidence":[{"id":"ev1","commit":"<sha-that-touches-the-declared-paths>","acVersion":1}]}', ' — cite the commit that actually changed this AC\'s `paths` (or correct the `paths:` line to the area you really changed)');
     case 'ac_checkbox_status_mismatch':
       return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
     case 'issue_missing_assignee':
@@ -510,6 +564,13 @@ export const DefaultPreset: Preset<DefaultRoot> = {
         if (!(key in blobs)) blobs[key] = gitFileExistsAtCommit(input.projectRoot, ev.commit, ev.image);
       }
       ctx.git.evidenceBlobs = blobs;
+      // For relevance: resolve the files each cited commit touched, so a rule can require a passed
+      // AC's commit to land in the AC's declared `paths`.
+      const files: Record<string, string[]> = {};
+      for (const commit of citedCommits(input)) {
+        if (!(commit in files)) files[commit] = gitCommitFiles(input.projectRoot, commit);
+      }
+      ctx.git.commitFiles = files;
     }
     return ctx;
   },

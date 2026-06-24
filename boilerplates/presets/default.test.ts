@@ -74,6 +74,36 @@ describe('default preset', () => {
     expect(r.findings.some((f) => f.code === 'evidence_sha_stale')).toBe(true);
   });
 
+  describe('rule: evidence_commit_unrelated (relevance gap)', () => {
+    // A passed AC may declare `paths:`; its cited commit must TOUCH at least one. ctx.git.commitFiles
+    // maps commit→files-it-changed (resolved offline by loadContext via `git show --name-only`).
+    const recWith = (pathsLine: string) => ({
+      ...REC,
+      body: `## Acceptance Criteria\n\n- [x] AC-1 v2 do it\n  - status: passed\n${pathsLine}  - evidence ev1: commit=${HEAD} acv=2\n  - proof: "ev1 shows it" -> ev1\n`,
+    } as IssueRecord);
+    const ctxFiles = (files: string[]) => ({ git: { existingCommits: [HEAD], prs: {}, commitFiles: { [HEAD]: files } } });
+    const fired = (pathsLine: string, files: string[]) =>
+      checkDefault([recWith(pathsLine)], ctxFiles(files)).findings.some((f) => f.code === 'evidence_commit_unrelated');
+
+    test('relevant commit (src/** ⊇ src/health.ts) → passes', () => {
+      expect(fired('  - paths: src/**\n', ['src/health.ts'])).toBe(false);
+    });
+    test('unrelated commit (src/** vs docs/x.md) → fires', () => {
+      expect(fired('  - paths: src/**\n', ['docs/x.md'])).toBe(true);
+    });
+    test('opt-in: no paths declared → never fires', () => {
+      expect(fired('', ['docs/x.md'])).toBe(false);
+    });
+    test('single-star stays within a segment: src/*.ts matches src/a.ts but not src/sub/a.ts', () => {
+      expect(fired('  - paths: src/*.ts\n', ['src/a.ts'])).toBe(false);
+      expect(fired('  - paths: src/*.ts\n', ['src/sub/a.ts'])).toBe(true);
+    });
+    test('no commitFiles in context (offline, unresolved) → never false-flags', () => {
+      const r = checkDefault([recWith('  - paths: src/**\n')], { git: { existingCommits: [HEAD], prs: {} } });
+      expect(r.findings.some((f) => f.code === 'evidence_commit_unrelated')).toBe(false);
+    });
+  });
+
   test('rule: PR head unknown when git world has no head', () => {
     const r = checkDefault([REC], { git: { existingCommits: [HEAD], prs: {} } });
     expect(r.findings.some((f) => f.code === 'current_head_unknown')).toBe(true);

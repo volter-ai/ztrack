@@ -2,6 +2,23 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.25.0
+
+Relevance check — a passed AC's cited commit must actually touch the work it claims.
+
+- The default preset's AC now accepts an optional **`paths:`** line (comma/space-separated globs:
+  `*` within a path segment, `**` across segments, else exact/dir-prefix). When a passed AC declares
+  `paths`, its cited commit(s) must change at least one matching file, or the new
+  **`evidence_commit_unrelated`** rule fails it — a deterministic, offline partial close of the
+  relevance gap (an unrelated real commit that compiles + exists no longer satisfies the AC). It is
+  strictly **opt-in**: an AC with no `paths` is unaffected, and the rule never fires when the cited
+  commit's file list can't be resolved (a missing commit is reported once, by
+  `evidence_commit_not_found`).
+- `loadContext` resolves each cited commit's changed files offline via `git show --name-only`
+  (exposed as `gitCommitFiles` on `ztrack/preset-kit`); the gate makes no network call.
+- The finding is self-documenting: it points you to cite the commit that really changed the declared
+  paths, or to correct the `paths:` line.
+
 ## 0.24.0
 
 GitHub attachment evidence — store evidence on the linked repo instead of committing it.

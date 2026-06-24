@@ -30,6 +30,14 @@ export function gitFileExistsAtCommit(repo: string, commit: string, path: string
   }
 }
 
+/** The repo-relative paths a commit changed (its diff vs. its first parent; root commit = all
+ *  files added). Lets a preset check that a cited commit actually TOUCHES the area an AC claims —
+ *  a deterministic partial close of the relevance gap (an unrelated commit touches none of them). */
+export function gitCommitFiles(repo: string, commit: string): string[] {
+  const out = git(repo, ['show', '--no-renames', '--pretty=format:', '--name-only', commit]);
+  return out.split('\n').map((l) => l.trim()).filter(Boolean);
+}
+
 export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommits?: boolean } = {}): Context {
   const prs: Record<string, { headSha?: string; merged?: boolean }> = {};
   for (const branch of prBranches) {
