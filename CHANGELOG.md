@@ -2,6 +2,19 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.6
+
+Final panel pass — came back clean except one real hint bug:
+
+- The `issue_missing_assignee` fix hint suggested `ztrack issue edit <id> --assignee`, which is
+  correct for a stored issue but fails on a loose file (`check ./file.md`) where the id isn't
+  stored. The hint now also gives the loose-file fix (add an `Assignee: <you>` line to the body).
+
+The panel otherwise found no defects: red→green works on both init modes, every resource `--help`
+and `--version` are config-free and side-effect-free, bad verbs fail loudly, `issue delete` works,
+no warning noise, the gate fails fabricated commits on loose files / stored issues / exported
+roots, and the docs honestly disclose what is not verified (commit relevance, image existence).
+
 ## 0.21.5
 
 Third panel pass — confirmed 0.21.4 and caught the rest of the `--help` inconsistency:

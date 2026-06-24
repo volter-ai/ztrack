@@ -447,7 +447,7 @@ function defaultFixHint(f: Finding): string | undefined {
     case 'ac_checkbox_status_mismatch':
       return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
     case 'issue_missing_assignee':
-      return `Fix: ztrack issue edit ${issue} --assignee <you>  (assignee is an issue column)`;
+      return `Fix: assign an owner — \`ztrack issue edit ${issue} --assignee <you>\` for a stored issue, or add an \`Assignee: <you>\` line to the top of the body for a loose file.`;
     case 'ready_requires_dev_ac':
       return `Fix: give ${issue} at least one acceptance criterion (a \`## Acceptance Criteria\` item), or move it back to draft`;
     case 'review_requires_pr':
