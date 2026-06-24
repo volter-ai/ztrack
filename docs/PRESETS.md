@@ -65,8 +65,8 @@ loadContext?, derive?, primitives?, scaffold? }`. Here is the minimal real shape
 // A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
 import {
   z, toMdast, nodeText, type MdNode,
-  check as runCheck, rule, gitWorld, splitIssueBundle,
-  type Context, type Preset,
+  rule, gitWorld,
+  type Context, type Preset, type IssueRecord, type IssueColumns,
 } from 'ztrack/preset-kit';
 
 // ── this preset's OWN strict schema (core fields + preset-specific, all .strict()) ──
@@ -88,14 +88,22 @@ const SpecIssueSchema = z.object({
 const SpecRootSchema = z.object({ issues: z.array(SpecIssueSchema) }).strict();
 type SpecRoot = z.infer<typeof SpecRootSchema>;
 
-// ── this preset's OWN mdast parser → the schema shape (structure from the AST) ──
-function parseSpec(markdown: string): unknown {
-  return { issues: splitIssueBundle(markdown).map(/* ...mdast walk... */) };
+// ── this preset's OWN parser: each backend RECORD → the schema shape. Metadata (id/title/status)
+//    arrives structured in the record's columns; only the body content is mined from its mdast. ──
+function parseSpecIssue(record: IssueRecord): unknown {
+  const tree = toMdast(record.body);                 // walk tree for summary + acceptanceCriteria
+  return { id: record.id, title: record.title, status: record.status || 'draft', summary: '', acceptanceCriteria: [] };
+}
+function parseSpec(records: IssueRecord[]): unknown {
+  return { issues: records.map(parseSpecIssue) };
 }
 
-// ── this preset's OWN serialize → canonical markdown (the declared inverse of parse) ──
-function serializeSpec(root: SpecRoot): string {
-  return root.issues.map((issue) => /* ...emit `# id: title`, Status:, ACs... */ '').join('\n');
+// ── this preset's OWN serialize → ONE issue's stored form: content `body` + metadata `columns`
+//    (the declared inverse of parse; the backend persists body and columns separately). ──
+function serializeSpecIssue(issue: SpecRoot['issues'][number]): { body: string; columns: IssueColumns } {
+  const out = ['## Acceptance Criteria', ''];
+  for (const ac of issue.acceptanceCriteria) out.push(`- [${ac.status === 'passed' ? 'x' : ' '}] ${ac.id} ${ac.text}`);
+  return { body: out.join('\n'), columns: { title: issue.title, status: issue.status } };
 }
 
 // ── this preset's OWN rules: declarative records over the engine's derived model ──
@@ -113,7 +121,7 @@ const SpecPreset: Preset<SpecRoot> = {
   name: 'spec', schema: SpecRootSchema,
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpec,
-  serialize: serializeSpec,   // the inverse of parse (one grammar, both directions)
+  serialize: serializeSpecIssue,   // the inverse of parse (one grammar, both directions)
   rules: SPEC_RULES,
   scaffold: (title) => `# ${title}\n\nSummary: …\n\n## Acceptance Criteria\n\n- [ ] AC-1 …\n`,
 };
@@ -324,3 +332,37 @@ Before adding rules, write down:
 
 Keep hard, deterministic checks in `ztrack check`. Put subjective guidance in
 `ztrack lint` or documentation.
+
+### Add one rule
+
+A rule is a record over the **derived model** `m`. Open
+`.volter/tracker/validation/preset.mts`, copy an existing `rule<Root, Scope>({...})` block in the
+rules array, and change the predicate. The model exposes ready-made scopes:
+
+- `m.issues` — `{ issueId, issue }` per issue
+- `m.acs` — `{ issueId, acId, ac }` per acceptance criterion
+- `m.evidence` — `{ issueId, acId, evidenceId, ev }` per evidence row
+- `m.duplicateAcIds`, `m.duplicateIssueIds`, `m.graph` (cycles / blocker / completion facts)
+
+```ts
+rule<MyRoot, { issueId: string; acId: string; ac: MyAC }>({
+  code: 'passed_ac_needs_review_tag',     // a new finding code agents will learn to fix
+  select: (m) => m.acs,                    // scope: one match per AC
+  when: ({ ac }) => ac.status === 'passed' && !ac.text.includes('[reviewed]'),
+  message: ({ ac }) => `AC ${ac.id} is passed but not marked [reviewed].`,
+  // severity: 'warning',  // optional; default is an error that fails check
+}),
+```
+
+For a fact that needs cross-issue computation (not just one item), compute it in the preset's
+`derive(model)` and read it back in `select`. Run `ztrack check` to see your rule fire.
+
+### Stay current: `ztrack preset upgrade`
+
+Because your preset is an edited copy, ztrack records the pristine original at install
+(`.volter/tracker/validation/.preset.base.mts`) as a merge base. When a new ztrack ships improved
+upstream rules, `ztrack preset upgrade` does a **3-way merge** (base → upstream vs. base → your
+edits) into your `preset.mts`, preserving your changes. Conflicts are written as `<<<<<<<` markers
+to resolve by hand; then run `ztrack check`. It is reported as `up-to-date`, `updated`, or
+`no-base` (re-run `ztrack init --preset <name>` to re-seed a base) — keep `.preset.base.mts`
+committed so the merge is reproducible.

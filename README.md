@@ -217,7 +217,7 @@ inside a worktree named for an issue — that issue automatically.
   /plugin marketplace add volter-ai/ztrack
   /plugin install ztrack-gate@ztrack
   ```
-  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire `hooks/stop-loop.sh` into your `Stop` hooks directly.
+  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire the loop hook into your `Stop` hooks directly — it ships at `node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh` (the **armed-only** loop hook: active only between `loop start` and green/`loop stop`). The repo also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on** gate that auto-scopes to the branch/worktree issue every turn — use that one if you want continuous gating without arming.
 
 See [examples](docs/EXAMPLES.md) for a minimal local check, a committed validated-root
 CI gate, and an MCP agent loop.
@@ -301,6 +301,8 @@ confirm there is a good fit.
 - [Examples](docs/EXAMPLES.md)
 - [Adopting ztrack](docs/ADOPTING.md)
 - [Cookbooks](docs/COOKBOOKS.md)
+- [Evidence and attestation](docs/EVIDENCE.md) — cite, store, and verify proof; in-toto + DSSE
+- [Programmatic API](docs/API.md) — run a check from code; the exports map
 - [Visualizer](visualizer/README.md) — local web view of tracker state
 - [Preset reference](docs/PRESETS.md)
 - [AI agent playbook](docs/AGENT-PLAYBOOK.md)

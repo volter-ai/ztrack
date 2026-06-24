@@ -53,6 +53,9 @@ export function rowToRecord(row: Row): IssueRecord {
 // GraphQL shape (`state:{name}`, `assignee:{name}`, `labels:{nodes:[{name}]}`), unlike the
 // loader's flattened list rows — so unwrap both. Used by the write path (`ac patch`/`fmt`).
 export function viewToRecord(view: Record<string, unknown>, fallbackId: string): IssueRecord {
+  // A backend returns null/empty for an unknown id; without this guard the first field access
+  // leaks `Cannot read properties of null (reading 'assignee')`. Fail with a clean not-found.
+  if (view == null || typeof view !== 'object') throw new Error(`issue ${fallbackId} not found`);
   const name = (v: unknown): string => typeof v === 'string' ? v : (v && typeof v === 'object' ? str((v as { name?: unknown; identifier?: unknown }).name) || str((v as { identifier?: unknown }).identifier) : '');
   const nodeNames = (v: unknown): string[] => v && typeof v === 'object' && Array.isArray((v as { nodes?: unknown[] }).nodes)
     ? (v as { nodes: unknown[] }).nodes.map(name).filter(Boolean)

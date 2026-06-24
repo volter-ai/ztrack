@@ -2,6 +2,31 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.27.0
+
+Documentation + discoverability pass (from a 6-persona new-user review) plus two small fixes. No
+breaking changes.
+
+- **Docs — new pages:** [`docs/EVIDENCE.md`](docs/EVIDENCE.md) (cite/store/verify evidence, commit
+  vs attach, in-toto + DSSE signing — the evidence surface was previously CLI/`--help`-only) and
+  [`docs/API.md`](docs/API.md) (run a check from code with `checkTracker`, issue CRUD with
+  `createTrackerClient`, and the full exports map). Both linked from the README and docs index.
+- **Docs — fixes:** the `docs/PRESETS.md` worked preset example was stale (old
+  `parse(markdown)`/`serialize(root): string` signatures) — rewritten to the real
+  `parse(records: IssueRecord[])` / `serialize(issue) => { body, columns }` contract, plus an "add
+  one rule" recipe and a `ztrack preset upgrade` (3-way merge) section. Documented `--phase
+  all|gate` and a **GitHub-linked CI gate** recipe in `docs/EXAMPLES.md`, plus the seven MCP
+  `tracker_*` tools. Reconciled the storage design doc (Phase 3 shipped in 0.23–0.24, not "next").
+- **Packaging:** `demos/` (incl. the SDK example) and `plugins/` (the `ztrack-gate` loop Stop hook)
+  now ship in the npm package, so the README's hook reference and the SDK demo are reachable from an
+  install. README hook path corrected (`plugins/ztrack-gate/hooks/stop-loop.sh`) and the two hooks
+  (always-on `stop-check` vs armed-loop `stop-loop`) disambiguated.
+- **Fix:** `ztrack ac/issue patch <unknown-id>` now fails with a clean `issue <id> not found`
+  instead of leaking `Cannot read properties of null (reading 'assignee')`.
+- **Fix:** `ztrack evidence export --format in-toto --sign` (a bare `--sign`) is now rejected with a
+  hint to use `--sign-key <private.pem>`, instead of silently emitting an *unsigned* statement that
+  could read as attested. Real DSSE signing via `--sign-key` is unchanged.
+
 ## 0.26.1
 
 Security fix — a fabricated screenshot could pass the gate when the evidence fields were written in

@@ -105,6 +105,11 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
   }
   if (args[1] === 'export') {
     if (optionValue(args, '--format') !== 'in-toto') throw new Error('tracker evidence export: only --format in-toto is supported');
+    // `--sign` alone is a no-op (signing needs the key): catch the plausible-but-wrong flag instead
+    // of silently emitting an UNSIGNED statement, which would read as a (false) attestation.
+    if (args.includes('--sign') && !optionValue(args, '--sign-key')) {
+      throw new Error('tracker evidence export: signing requires `--sign-key <private.pem>` (generate one with `ztrack evidence keygen`), not a bare `--sign`.');
+    }
     const projectRoot = projectRootFrom();
     const root = await exportTrackerRoot({ projectRoot });
     const issuesFilter = optionValue(args, '--issues');
