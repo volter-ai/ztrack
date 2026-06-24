@@ -2,6 +2,18 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.20.3
+
+- **Fixed: a pulled issue's local edit didn't sync back to GitHub.** The one-way `pull()` (used by
+  `ztrack init --sync` and `sync --pull`) didn't seed the reconcile base, so the first
+  bidirectional `sync` after a pull saw a locally-developed issue as a both-sides change and
+  refused to push it (a phantom conflict — `pushed: []`, GitHub kept the old body). `pull()` now
+  seeds the base (a pull IS the common ancestor). Found by the full-scale LINKED development
+  simulation (`simulateLinkedProject.ts`): 25 features synced to a real GitHub repo, each
+  developed + pushed (GitHub reflects it) with the adversarial gate still catching every fake, and
+  a convergent idempotent re-sync. The 7 prior GitHub e2es never hit it — it only shows when you
+  develop a pulled issue at scale.
+
 ## 0.20.2
 
 - **Fixed: the visualizer showed zero issues for every configured tracker.** Two latent

@@ -117,6 +117,14 @@ export async function pull(o: SyncOpts): Promise<PullResult> {
   }
   const created = await createInTracker(o, b, resources);
   saveBindings(o.projectRoot, b);
+  // Seed the reconcile base: a pull makes the tracker agree with GitHub, so THIS is the common
+  // ancestor. Without it, the first bidirectional `sync` after `init --sync` sees base=∅, treats
+  // a locally-developed issue as a both-sides change, and refuses to push it (phantom conflict).
+  const base = loadBase(o.projectRoot, repoKey);
+  for (const res of resources) {
+    base.resources[`${repoKey}#issue:${res.number}`] = { ...(res.title !== undefined ? { title: res.title } : {}), ...(res.body !== undefined ? { body: res.body } : {}), state: res.state ?? 'open' };
+  }
+  saveBase(o.projectRoot, base);
   return { created: created.map((c) => c.ztrack), updated, total: resources.length };
 }
 
