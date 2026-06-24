@@ -33,12 +33,19 @@ suite('visualizer — boots and serves', () => {
     if (root) rmSync(root, { recursive: true, force: true });
   });
 
-  test('serves HTTP 200 on its port', async () => {
+  test('serves the SPA and the REAL issue data over /api/board', async () => {
+    // wait for it to come up
     let status = 0;
     for (let i = 0; i < 25 && status !== 200; i++) {
       try { status = (await fetch(`http://localhost:${port}/`)).status; } catch { /* not up yet */ }
       if (status !== 200) await Bun.sleep(800);
     }
-    expect(status).toBe(200);
+    expect(status).toBe(200);                                    // the SPA shell serves
+
+    // the data API returns the ACTUAL tracker contents, not just a live socket
+    const board = await (await fetch(`http://localhost:${port}/api/board`)).json() as { issues?: Array<{ id?: string; identifier?: string }> };
+    expect(Array.isArray(board.issues)).toBe(true);
+    const ids = (board.issues ?? []).map((i) => i.id ?? i.identifier);
+    expect(ids).toContain('LOCAL-1');                            // the seeded issue is actually served
   }, 30_000);
 });

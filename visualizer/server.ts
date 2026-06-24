@@ -86,10 +86,10 @@ async function configuredBoard(): Promise<{ preset: unknown; presetName: string;
   // Honor validation.entrypoint exactly as check does; fall back to the core
   // registry by the requested preset name only when no entrypoint is configured.
   const preset = config.validation?.entrypoint?.trim()
-    ? resolveTrackerValidation(config, PROJECT_DIR)
+    ? await resolveTrackerValidation(config, PROJECT_DIR) // async (dynamic-imports preset.mts) — MUST await, or `preset` is a Promise and check sees no parse()
     : resolvePreset(PRESET);
-  const { bundle, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
-  const r = check(preset, bundle, context);
+  const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
+  const r = check(preset, records, context);
   return {
     preset,
     presetName: preset.name ?? PRESET,

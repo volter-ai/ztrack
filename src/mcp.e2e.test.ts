@@ -44,20 +44,33 @@ describe('mcp serve — the agent-facing stdio server', () => {
   }, 30_000);
   afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
 
-  test('initialize, tools/list, and the tracker tools work end to end', async () => {
+  // text payload of a tools/call result, parsed as JSON (the tracker tools return JSON text).
+  const toolJson = (r: Map<unknown, any>, id: number) => JSON.parse(r.get(id)?.result?.content?.[0]?.text ?? 'null');
+
+  test('protocol: initialize + tools/list expose the tracker tools', async () => {
     const r = await mcpSession([
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} },
       { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'tracker_issue_list', arguments: {} } },
-      { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'tracker_check', arguments: {} } },
+    ]);
+    expect(r.get(1)?.result?.serverInfo?.name).toBe('ztrack');
+    const tools = (r.get(2)?.result?.tools ?? []).map((t: { name: string }) => t.name);
+    expect(tools).toEqual(expect.arrayContaining(['tracker_check', 'tracker_issue_list', 'tracker_issue_view', 'tracker_issue_create', 'tracker_patch', 'tracker_fmt']));
+  }, 30_000);
+
+  test('a real DEVELOP loop over MCP: list → check passes → create a bad issue → check CATCHES it', async () => {
+    const r = await mcpSession([
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'tracker_issue_list', arguments: {} } },
+      { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'tracker_check', arguments: {} } },                         // baseline: green
+      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'tracker_issue_create', arguments: { title: 'Bad' } } },   // minimal create (no state) — an incomplete issue
+      { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'tracker_check', arguments: {} } },                         // now: caught
     ]);
 
-    expect(r.get(1)?.result?.serverInfo?.name).toBe('ztrack');
+    expect(r.get(1)?.result?.content?.[0]?.text).toMatch(/LOCAL-1/);        // list shows the seeded issue
+    expect(toolJson(r, 2).ok).toBe(true);                                   // check actually evaluates → a green tracker PASSES
+    expect(r.get(3)?.result?.content?.[0]?.text).toMatch(/LOCAL-2|identifier/); // the create landed (a new issue)
 
-    const tools = (r.get(2)?.result?.tools ?? []).map((t: { name: string }) => t.name);
-    expect(tools).toEqual(expect.arrayContaining(['tracker_check', 'tracker_issue_list', 'tracker_issue_view', 'tracker_issue_create', 'tracker_patch']));
-
-    expect(r.get(3)?.result?.content?.[0]?.text).toMatch(/LOCAL-1/);   // the tool actually lists the issue
-    expect(typeof r.get(4)?.result?.content?.[0]?.text).toBe('string'); // check ran and returned a result
+    const after = toolJson(r, 4);
+    expect(after.ok).toBe(false);                                          // the MCP write changed the world AND re-check saw it
+    expect(JSON.stringify(after.findings)).toMatch(/issues\.1|LOCAL-2/);   // a real finding on the new (incomplete) issue
   }, 30_000);
 });

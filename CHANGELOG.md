@@ -2,6 +2,17 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.20.2
+
+- **Fixed: the visualizer showed zero issues for every configured tracker.** Two latent
+  regressions from the structured-metadata redesign — `configuredBoard` destructured the old
+  `{ bundle }` from `loadValidationInput` (now `{ records }`) and, worse, didn't `await` the
+  now-async `resolveTrackerValidation`, so `preset` was a Promise and `check` saw no `parse()`
+  (`/api/board` returned `parse_failed` + an empty board). Caught by strengthening the e2es from
+  liveness checks to real-data assertions: the visualizer test now hits `/api/board` and asserts
+  the seeded issue is served, and the MCP test runs a real develop loop (check passes → an MCP
+  write makes it fail → re-check catches it) instead of a single call.
+
 ## 0.20.0
 
 - **The issue store is now committed for a local tracker** (and still ignored for a linked one).
