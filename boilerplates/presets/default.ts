@@ -19,7 +19,7 @@
 // (no `../core/*`, no `mdast-*`, no `zod`). Its OWN schema, parser, and rules live here.
 import {
   z, toMdast, nodeText, type MdNode,
-  check as runCheck, rule, gitWorld, formatRef, BlockRefSchema,
+  check as runCheck, rule, gitWorld, gitFileExistsAtCommit, formatRef, BlockRefSchema,
   normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
@@ -28,7 +28,10 @@ import {
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
   id: z.string().min(1),                              // core
-  image: z.string().regex(/^\S+$/, 'image must be a single whitespace-free token'), // serialized as image=<tok>, so no spaces
+  // OPTIONAL: the backbone of evidence is commit + proof. An image/artifact is an optional
+  // attachment — but if cited as a repo path, a rule verifies it exists at the commit (no
+  // fabricated screenshots). `sha256:<hex>` blob refs are left to the blob store.
+  image: z.string().regex(/^\S+$/, 'image must be a single whitespace-free token').optional(),
   commit: z.string().regex(/^[0-9a-f]{7,40}$/),       // preset: captured at this commit
   acVersion: z.number().int().min(1),                 // preset: against this AC version
 }).strict();
@@ -173,8 +176,8 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
           const line = firstParagraphText(sub);
           const st = /^status:\s*([\w-]+)/i.exec(line)?.[1];
           if (st) { status = st.toLowerCase(); continue; }
-          const ev = /^evidence\s+(\S+):\s*image=(\S+)\s+commit=([0-9a-fA-F]+)\s+acv=(\d+)/i.exec(line);
-          if (ev) { evidence.push({ id: ev[1], image: ev[2], commit: ev[3]!.toLowerCase(), acVersion: Number(ev[4]) }); continue; }
+          const ev = /^evidence\s+(\S+):\s*(?:image=(\S+)\s+)?commit=([0-9a-fA-F]+)\s+acv=(\d+)/i.exec(line);
+          if (ev) { evidence.push({ id: ev[1], ...(ev[2] ? { image: ev[2] } : {}), commit: ev[3]!.toLowerCase(), acVersion: Number(ev[4]) }); continue; }
           // proof: "<explanation>" -> ev1, ev2 — match the QUOTED explanation greedily so a
           // '->' (or a quote) inside the explanation survives; fall back to an unquoted form.
           const pf = /^proof:\s*"(.*)"\s*->\s*(.+)$/i.exec(line) ?? /^proof:\s*(.+?)\s*->\s*(.+)$/i.exec(line);
@@ -228,7 +231,7 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
   for (const ac of issue.acceptanceCriteria) {
     out.push(`- [${ac.checked ? 'x' : ' '}] ${ac.id} v${ac.version} ${ac.text}`);
     out.push(`  - status: ${ac.status}`);
-    for (const ev of ac.evidence) out.push(`  - evidence ${ev.id}: image=${ev.image} commit=${ev.commit} acv=${ev.acVersion}`);
+    for (const ev of ac.evidence) out.push(`  - evidence ${ev.id}: ${ev.image ? `image=${ev.image} ` : ''}commit=${ev.commit} acv=${ev.acVersion}`);
     if (ac.proof) out.push(`  - proof: "${ac.proof.explanation}" -> ${ac.proof.evidenceRefs.join(', ')}`);
     // render refs relatively (bare) when they target this issue's own AC, absolutely
     // otherwise; an issue-level ref (no `ac`) is just the issue id.
@@ -321,7 +324,7 @@ const DEFAULT_RULES = [
   rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
     code: 'passed_ac_missing_evidence', select: (m) => m.acs,
     when: ({ ac }) => ac.status === 'passed' && ac.evidence.length === 0,
-    message: ({ ac }) => `AC ${ac.id} is passed but has no image evidence.`,
+    message: ({ ac }) => `AC ${ac.id} is passed but has no evidence (cite a commit, optionally an image, and a proof).`,
   }),
   rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
     code: 'passed_ac_missing_proof', select: (m) => m.acs,
@@ -341,6 +344,18 @@ const DEFAULT_RULES = [
     code: 'evidence_commit_not_found', select: (m) => m.evidence,
     when: ({ ev }, m) => { const c = m.context.git?.existingCommits; return !!c && !c.some((x) => shaMatches(x, ev.commit)); },
     message: ({ ev }) => `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; ev: Evidence }>({
+    // A cited image PATH must actually be in the tree at the commit it claims — not just a string.
+    // Only fires when the commit EXISTS (a missing commit is `evidence_commit_not_found`) and the
+    // file was resolved as absent; `sha256:` blob refs and image-less evidence are untouched.
+    code: 'evidence_file_not_found', select: (m) => m.evidence,
+    when: ({ ev }, m) => {
+      const blobs = m.context.git?.evidenceBlobs; const commits = m.context.git?.existingCommits;
+      if (!ev.image || /^sha256:/i.test(ev.image) || !blobs || !commits || !commits.some((x) => shaMatches(x, ev.commit))) return false;
+      return blobs[`${ev.commit}:${ev.image}`] === false;
+    },
+    message: ({ ev }) => `Evidence ${ev.id} cites file "${ev.image}" at commit ${ev.commit}, but that file is not in the tree at that commit.`,
   }),
   rule<DefaultRoot, { issueId: string; issue: Issue }>({
     code: 'current_head_unknown', select: (m) => m.issues,
@@ -426,6 +441,19 @@ function defaultPrBranches(input: PresetContextInput): string[] {
   return input.bundle ? prBranchesFrom(input.bundle) : [];
 }
 
+// Cited (commit, image-path) pairs to resolve — only PATH images (a `sha256:` blob ref is the
+// blob store's job, not a tree path). From the parsed root when present, else scanned from the bundle.
+function citedEvidenceFiles(input: PresetContextInput): { commit: string; image: string }[] {
+  const isPath = (img: string | undefined): img is string => !!img && !/^sha256:/i.test(img);
+  if (input.root) {
+    return (input.root as unknown as DefaultRoot).issues.flatMap((i) =>
+      i.acceptanceCriteria.flatMap((ac) => ac.evidence.filter((ev) => isPath(ev.image)).map((ev) => ({ commit: ev.commit, image: ev.image! }))));
+  }
+  if (!input.bundle) return [];
+  return [...input.bundle.matchAll(/^\s*-?\s*evidence\s+\S+:\s*image=(\S+)\s+commit=([0-9a-fA-F]{7,40})/gim)]
+    .filter((m) => isPath(m[1])).map((m) => ({ image: m[1]!, commit: m[2]!.toLowerCase() }));
+}
+
 // Per-finding REMEDIATION: the exact action that turns this finding green. The agent fills the
 // real values (the sha it just committed, the image path); the hint supplies the command + the
 // schema shape, and points at `ztrack ac --help` / `ztrack issue view` for the full grammar.
@@ -435,7 +463,9 @@ function defaultFixHint(f: Finding): string | undefined {
   const acPatch = (shape: string, note = '') => `Fix: ztrack ac patch ${issue} ${ac} --json '${shape}'${note}  (\`ztrack ac --help\` / \`ztrack issue view ${issue}\` for the AC schema)`;
   switch (f.code) {
     case 'passed_ac_missing_evidence':
-      return acPatch('{"evidence":[{"id":"ev1","image":"<path>","commit":"<sha>","acVersion":1}]}');
+      return acPatch('{"evidence":[{"id":"ev1","commit":"<sha>","acVersion":1}]}', ' — cite the commit that makes this AC true (add "image":"<committed-path>" only if you have a real screenshot)');
+    case 'evidence_file_not_found':
+      return acPatch('{"evidence":[{"id":"ev1","image":"<path-committed-at-the-sha>","commit":"<sha>","acVersion":1}]}', ' — commit the image so it resolves at the cited commit (`git cat-file -e <sha>:<path>`), or drop the image and keep commit+proof');
     case 'passed_ac_missing_proof':
     case 'proof_cites_no_evidence':
     case 'proof_evidence_ref_missing':
@@ -443,7 +473,7 @@ function defaultFixHint(f: Finding): string | undefined {
     case 'evidence_commit_not_found':
     case 'evidence_sha_stale':
     case 'evidence_ac_version_stale':
-      return acPatch('{"evidence":[{"id":"ev1","image":"<path>","commit":"<real-sha>","acVersion":1}]}', ' — cite a commit that exists in git (and the AC version)');
+      return acPatch('{"evidence":[{"id":"ev1","commit":"<real-sha>","acVersion":1}]}', ' — cite a commit that exists in git (and the AC version)');
     case 'ac_checkbox_status_mismatch':
       return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
     case 'issue_missing_assignee':
@@ -466,7 +496,21 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   fixHint: defaultFixHint,
   schema: DefaultRootSchema,
   // this preset's observed facts: the git world (commits + PR head/merged).
-  loadContext: (input) => gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits }),
+  loadContext: (input) => {
+    const ctx = gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits });
+    // Resolve cited evidence FILES at their commits, so the gate can reject a screenshot/artifact
+    // that isn't actually committed at the commit it claims. Skipped when commit verification is
+    // off (the same escape hatch shallow/CI checkouts already use).
+    if (input.verifyCommits !== false && ctx.git) {
+      const blobs: Record<string, boolean> = {};
+      for (const ev of citedEvidenceFiles(input)) {
+        const key = `${ev.commit}:${ev.image}`;
+        if (!(key in blobs)) blobs[key] = gitFileExistsAtCommit(input.projectRoot, ev.commit, ev.image);
+      }
+      ctx.git.evidenceBlobs = blobs;
+    }
+    return ctx;
+  },
   parse: parseDefault,
   serialize: serializeIssue, // issue -> { body, columns }; the inverse of parse
   // an AC-less issue counts as done (for the block graph's completion gate) only at the terminal state.
@@ -476,7 +520,7 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   rules: DEFAULT_RULES,
   // `ztrack issue scaffold` starter: a draft issue with one pending dev AC (green to begin —
   // nothing is claimed yet). Fill in the work, then mark it passed + cite evidence + proof.
-  scaffold: (_title) => `Summary: One or two sentences describing the work.\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Describe one observable, testable outcome.\n  - status: pending\n\n<!-- To mark an AC done: check the [x] box, set status: passed, and cite real proof —\n  - [x] dev/01 v1 …\n    - status: passed\n    - evidence ev1: image=<screenshot-or-artifact> commit=<real-git-sha> acv=1\n    - proof: "how the evidence shows this AC is met" -> ev1\nThe commit must EXIST in git (verified by default). \`ztrack ac patch <issue> dev/01 --json …\` writes this for you; \`ztrack ac --help\` shows the schema. -->\n`,
+  scaffold: (_title) => `Summary: One or two sentences describing the work.\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Describe one observable, testable outcome.\n  - status: pending\n\n<!-- To mark an AC done: check the [x] box, set status: passed, and cite real proof —\n  - [x] dev/01 v1 …\n    - status: passed\n    - evidence ev1: commit=<real-git-sha> acv=1   # optional: add image=<file-committed-at-the-sha>\n    - proof: "how the commit shows this AC is met" -> ev1\nThe commit must EXIST in git (verified by default). An image is optional, but if you cite one it must be committed at that sha. \`ztrack ac patch <issue> dev/01 --json …\` writes this for you; \`ztrack ac --help\` shows the schema. -->\n`,
   // which standard primitives this SDLC implements. (audit is NOT declared here:
   // it is a core, always-on capability — recorded automatically on any change.)
   primitives: {

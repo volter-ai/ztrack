@@ -27,7 +27,7 @@ new_consumer() {
   echo "# consumer" > "$1/README.md"; git -C "$1" add README.md; git -C "$1" commit -q -m init
   git -C "$1" rev-parse --short HEAD
 }
-green_body() { printf 'Assignee: t\nStatus: ready\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: image=shot.png commit=%s acv=1\n  - proof: "ev1 proves it" -> ev1\n' "$1" > body.md; }
+green_body() { printf 'Assignee: t\nStatus: ready\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: commit=%s acv=1\n  - proof: "ev1 proves it" -> ev1\n' "$1" > body.md; }
 
 echo "## pnpm (strict isolated store)"
 d="$tmp/pnpm"; sha="$(new_consumer "$d")"; cd "$d"; set +e

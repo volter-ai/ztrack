@@ -44,11 +44,13 @@ validate PRs, screenshots, videos, approvals, and source systems.
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
 **What it does _not_ verify** (be honest with your team): the default preset checks that the
-cited commit **exists** in git — not that it is *relevant* to the criterion (an unrelated real
-SHA passes), and not that a referenced screenshot file exists on disk (image paths are
-structural strings unless your preset resolves them). It raises the floor from "prose can lie"
-to "the proof must exist and be real"; encode stricter, project-specific grounding (source
-checks, file resolution, PR metadata) in the editable `preset.mts`.
+cited commit **exists** in git, and — if you cite an image — that the image is actually committed
+at that commit (a fabricated screenshot path fails). What it can't check is *relevance*: an
+unrelated real commit with a real screenshot still passes. That semantic judgment is the
+irreducible thing a deterministic checker can't make. It raises the floor from "prose can lie" to
+"the proof must exist and be real"; encode stricter, project-specific grounding (source checks,
+PR metadata, semantic rules) in the editable `preset.mts`. Evidence is **commit + proof** at its
+core — an image is optional, and verified when present.
 
 ## Quickstart
 
@@ -76,7 +78,7 @@ Status: ready
 
 - [x] dev/01 v1 GET /health returns 200
   - status: passed
-  - evidence ev1: image=health.png commit=deadbeef acv=1
+  - evidence ev1: commit=deadbeef acv=1
   - proof: "screenshot shows a 200 response" -> ev1
 EOF
 npx ztrack issue create --title "Add /health" --label type:case --state ready --assignee me --body-file body.md
@@ -109,7 +111,7 @@ Status: ready
 
 - [x] dev/01 v1 GET /health returns 200
   - status: passed
-  - evidence ev1: image=health.png commit=$SHA acv=1
+  - evidence ev1: commit=$SHA acv=1
   - proof: "screenshot shows a 200 response" -> ev1
 EOF
 npx ztrack issue edit LOCAL-1 --body-file body.md    # re-import the corrected body

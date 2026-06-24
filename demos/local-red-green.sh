@@ -33,7 +33,7 @@ npm install "$tmp/$tarball" >/dev/null
 # default grammar: a passed AC with image+commit evidence and a proof. The commit starts
 # fabricated (red), then is rewritten to the real HEAD (green).
 body() {
-  printf '# APP-1: Protect API endpoint\n\nSummary: Guard the API endpoint.\nStatus: in-progress\nAssignee: demo\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 Describe one observable outcome.\n  - status: passed\n  - evidence ev1: image=s.png commit=%s acv=1\n  - proof: "ev1 demonstrates it" -> ev1\n' "$1" > body.md
+  printf '# APP-1: Protect API endpoint\n\nSummary: Guard the API endpoint.\nStatus: in-progress\nAssignee: demo\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 Describe one observable outcome.\n  - status: passed\n  - evidence ev1: commit=%s acv=1\n  - proof: "ev1 demonstrates it" -> ev1\n' "$1" > body.md
 }
 
 body deadbeef

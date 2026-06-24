@@ -20,7 +20,7 @@ PR: ${PR}
 
 - [x] AC-1 v2 Members can filter by status
   - status: passed
-  - evidence ev1: image=shots/ac1.png commit=${HEAD} acv=2
+  - evidence ev1: commit=${HEAD} acv=2
   - proof: "ev1 shows the status filter applied" -> ev1
 ` });
 

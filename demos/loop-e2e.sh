@@ -18,7 +18,7 @@ tarball="$(cd "$repo_root" && npm pack --pack-destination "$tmp" --silent)"
 # exactly one waivable finding, passed_ac_missing_proof. `COMMIT` is substituted with the repo
 # HEAD per-repo so evidence_commit_not_found stays quiet (the default check verifies commit
 # existence). A pending (unchecked) AC is GREEN (nothing is claimed yet).
-red_body=$'# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: image=s.png commit=COMMIT acv=1\n'
+red_body=$'# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: commit=COMMIT acv=1\n'
 green_body=$'# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 do the thing\n  - status: pending\n'
 
 setup() { # $1=name $2=red|green $3=arm|noarm  -> echoes the repo dir

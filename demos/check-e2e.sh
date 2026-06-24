@@ -27,10 +27,10 @@ sha() { ( cd "$1" && git rev-parse HEAD ); }
 
 echo "## default preset — wellformedness / evidence / lifecycle / blocking rules fire"
 d="$(new_repo rules)"; s="$(sha "$d")"
-mkissue "$d" noassignee "## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: image=s.png commit=$s acv=1\n  - proof: \"x\" -> ev1\n" ready ""
+mkissue "$d" noassignee "## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: commit=$s acv=1\n  - proof: \"x\" -> ev1\n" ready ""
 mkissue "$d" mismatch   '## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: failed\n'
 mkissue "$d" noevidence '## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n'
-mkissue "$d" noproof    "## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n  - evidence ev1: image=s.png commit=$s acv=1\n"
+mkissue "$d" noproof    "## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n  - evidence ev1: commit=$s acv=1\n"
 mkissue "$d" selfblock  '## Acceptance Criteria\n\n- [ ] dev/01 v1 x\n  - status: pending\n  - blocked-by: dev/01\n'
 mkissue "$d" misblock   '## Acceptance Criteria\n\n- [ ] dev/01 v1 x\n  - status: pending\n  - blocked-by: dev/99\n'
 mkissue "$d" noac       '## Summary\n\nNo criteria yet.\n'
@@ -48,12 +48,12 @@ d="$(new_repo cycle)"
 mkissue "$d" c '## Acceptance Criteria\n\n- [ ] dev/01 v1 a\n  - status: pending\n  - blocked-by: dev/02\n- [ ] dev/02 v1 b\n  - status: pending\n  - blocked-by: dev/01\n'
 ok "$(yn "$(has "$(check_out "$d")" 'ac_block_cycle')")" Y "a blocking cycle fires"
 d="$(new_repo clean)"; s="$(sha "$d")"
-mkissue "$d" ok "## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: image=s.png commit=$s acv=1\n  - proof: \"ev1 proves it\" -> ev1\n"
+mkissue "$d" ok "## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: commit=$s acv=1\n  - proof: \"ev1 proves it\" -> ev1\n"
 ok "$(chk "$d")" 0 "a fully-cited green issue passes"
 
 echo "## default preset — --verify-commits catches a cited-but-nonexistent commit"
 d="$(new_repo verify)"
-mkissue "$d" v '## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n  - evidence ev1: image=s.png commit=deadbeef1234 acv=1\n  - proof: "x" -> ev1\n'
+mkissue "$d" v '## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n  - evidence ev1: commit=deadbeef1234 acv=1\n  - proof: "x" -> ev1\n'
 vout="$( ( cd "$d" && npx ztrack check --verify-commits 2>&1 ) || true )"
 ok "$(yn "$(has "$vout" 'evidence_commit_not_found')")" Y "a nonexistent cited commit fires under --verify-commits"
 

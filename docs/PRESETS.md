@@ -185,7 +185,7 @@ Blocked by: APP-2
 
 - [x] dev/01 v1 GET /health returns 200
   - status: passed
-  - evidence ev1: image=health.png commit=abc1234 acv=1
+  - evidence ev1: commit=abc1234 acv=1
   - proof: "screenshot shows a 200 response" -> ev1
   - blocked-by: dev/00
   - blocks: dev/02
@@ -193,8 +193,7 @@ Blocked by: APP-2
 
 - Issue `Status:` is `draft | ready | in-progress | in-review | done`.
 - An AC line is `- [x] <id> v<version> <text>`, followed by nested
-  `- status: passed|pending|failed`, `- evidence <id>: image=<file>
-  commit=<sha> acv=<n>`, `- proof: "<why>" -> ev1`, and optional `- blocked-by:
+  `- status: passed|pending|failed`, `- evidence <id>: commit=<sha> acv=<n>`, `- proof: "<why>" -> ev1`, and optional `- blocked-by:
   <refs>` / `- blocks: <refs>`.
 - Issue-level relations are `Blocks:` / `Blocked by:` / `Relates:`; `Children:`
   lists sub-issues.

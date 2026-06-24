@@ -22,7 +22,7 @@ const FAILING_AC = `## Acceptance Criteria
 
 - [x] dev/01 v1 does the thing
   - status: passed
-  - evidence ev1: image=x.png commit=deadbeef acv=1
+  - evidence ev1: commit=deadbeef acv=1
   - proof: "shows it" -> ev1
 `;
 

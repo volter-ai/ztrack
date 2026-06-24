@@ -70,7 +70,7 @@ bad claim:
 2. Edit one acceptance criterion from unchecked to passed (`[x]` + `status:
    passed`).
 3. Cite a fake commit in its evidence sub-line, such as
-   `evidence ev1: image=shot.png commit=deadbee acv=1`, plus a `proof:` line.
+   `evidence ev1: commit=deadbee acv=1`, plus a `proof:` line.
 4. Run `npx ztrack check`.
 
 Expected with `default`: `evidence_commit_not_found` and exit code `1`.

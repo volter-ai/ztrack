@@ -34,7 +34,7 @@ greps(){ ( cd "$1" && npx ztrack check 2>&1 ) | grep "$2" | grep -cv '↳' || tr
 # default grammar: a passed AC with REAL-commit evidence but NO proof -> exactly one
 # (waivable) finding, `passed_ac_missing_proof` (COMMIT is substituted with the repo HEAD by
 # mk_issue, so evidence_commit_not_found stays quiet). A pending AC -> no findings (green).
-red=$'## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: image=s.png commit=COMMIT acv=1\n'
+red=$'## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: commit=COMMIT acv=1\n'
 green=$'## Acceptance Criteria\n\n- [ ] dev/01 v1 do the thing\n  - status: pending\n'
 
 fails=0
@@ -93,7 +93,7 @@ ok "$(greps "$d" 'ac_blocker_missing')" 1 "exactly one missing-blocker (dev/99);
 
 echo "# H2: a per-finding waiver clears a readiness error but NOT a structural self-block"
 d="$(new_repo h2)"
-printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: image=s.png commit=deadbeef acv=1\n- [ ] dev/02 v1 Loop.\n  - status: pending\n  - blocked-by: dev/02\n' > "$d/body.md"
+printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: commit=deadbeef acv=1\n- [ ] dev/02 v1 Loop.\n  - status: pending\n  - blocked-by: dev/02\n' > "$d/body.md"
 ( cd "$d" && npx ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
 ok "$(chk "$d")" 1 "unwaived: red (missing proof + self-block)"
 ( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof in PR" >/dev/null )

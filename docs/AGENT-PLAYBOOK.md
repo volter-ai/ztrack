@@ -45,7 +45,7 @@ After init, project-specific rules are added by editing the standalone
 
 1. Create a real git commit or use the current repository HEAD.
 2. Mark one AC passed (`[x]` + `status: passed`) and cite a fake commit in its
-   evidence sub-line: `evidence ev1: image=shot.png commit=deadbee acv=1`, plus a
+   evidence sub-line: `evidence ev1: commit=deadbee acv=1`, plus a
    `proof:` line.
 3. Run `npx ztrack check --json`.
 4. Confirm the finding code is `evidence_commit_not_found`.

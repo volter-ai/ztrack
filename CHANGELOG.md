@@ -2,6 +2,29 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.22.0
+
+Evidence is now real, and linked trackers work across git worktrees. **Breaking** (the evidence
+grammar changed; see below).
+
+- **Evidence is `commit + proof` at its core; the image is optional and verified when present.**
+  Before, a passed AC required an `image=` token that was never checked — so `image=health.png`
+  (a label pointing at nothing) passed. Now:
+  - `image` is **optional** — author evidence as `evidence ev1: commit=<sha> acv=1` + a `proof`.
+  - If you *do* cite an image as a repo path, a new rule **`evidence_file_not_found`** verifies it
+    is actually committed at that commit (`git cat-file -e <sha>:<path>`, checkout-independent). A
+    fabricated screenshot path now fails the gate. `--no-verify-commits` skips it (shallow/CI), and
+    `sha256:` blob refs are left to the blob store.
+  - **Breaking:** existing evidence citing a non-committed `image=` label will now fail — drop the
+    image (keep commit+proof) or commit the file. Examples/docs updated accordingly.
+- **Linked tracker cache is shared per-clone, not per-worktree.** The issue markdown cache + sync
+  bookkeeping (reconcile base, identity bindings, conflicts) now resolve to
+  `<git-common-dir>/ztrack/…` — one cache shared by every worktree of a clone, never committed or
+  pushed (it's inside `.git`). Fixes the bug where a fresh linked worktree saw the link but 0
+  issues. Local trackers are unchanged (issues stay committed and branch-scoped). Resolved at
+  runtime via `git rev-parse --git-common-dir`; no symlink. See
+  `docs/DESIGN-storage-scope-and-evidence.md`.
+
 ## 0.21.7
 
 Fixes the actual first-time experience for external users on LTS Node:

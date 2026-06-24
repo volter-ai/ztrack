@@ -153,6 +153,10 @@ export interface Context {
     // resolvable branch heads (branch name -> head sha). a preset can anchor evidence to a
     // tracker branch head; other presets simply leave this unset.
     branches?: Record<string, string>;
+    // does a cited evidence file exist at its commit? keyed by `${commit}:${path}` → exists.
+    // a preset that anchors image/artifact evidence to a real committed file resolves these so a
+    // rule can reject a cited screenshot that isn't actually in the tree at that commit.
+    evidenceBlobs?: Record<string, boolean>;
   };
   // the twin world as an evidence substrate (the sources feature). The loader
   // injects captured event envelopes (payload opaque; `text` is precomputed for
@@ -185,6 +189,7 @@ const GitContextSchema = z.object({
   existingCommits: z.array(z.string()).optional(),
   prs: z.record(z.string(), z.object({ headSha: z.string().optional(), merged: z.boolean().optional() }).strict()).optional(),
   branches: z.record(z.string(), z.string()).optional(),
+  evidenceBlobs: z.record(z.string(), z.boolean()).optional(),
 }).strict();
 const WorldEventSchema = z.object({
   id: z.string(), service: z.string(), type: z.string().optional(), text: z.string().optional(), annotationRequired: z.boolean().optional(),

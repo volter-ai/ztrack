@@ -39,7 +39,7 @@ describe('findings are self-documenting AND self-closing', () => {
 
     // the agent does EXACTLY what the fix says (filling the placeholders with the real sha) —
     // evidence + proof, the two things the findings flagged.
-    const patch = { evidence: [{ id: 'ev1', image: 'shot.png', commit: sha, acVersion: 1 }], proof: { explanation: 'ev1 shows the outcome', evidenceRefs: ['ev1'] } };
+    const patch = { evidence: [{ id: 'ev1', commit: sha, acVersion: 1 }], proof: { explanation: 'ev1 shows the outcome', evidenceRefs: ['ev1'] } };
     expect(zt('ac', 'patch', 'APP-1', 'dev/01', '--json', JSON.stringify(patch)).code).toBe(0);
 
     // gate is now green — the loop closed from the finding alone

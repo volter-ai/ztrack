@@ -30,13 +30,13 @@ const withGit = <T>(fn: () => T): Promise<T> => { const run = gitGate.then(fn); 
 
 const AC = (box: string, lines: string) => `Summary: feature work.\n\n## Acceptance Criteria\n\n- ${box} dev/01 v1 the observable outcome\n${lines}`;
 const pendingBody = AC('[ ]', '  - status: pending\n');
-const realBody = (sha: string) => AC('[x]', `  - status: passed\n  - evidence ev1: image=ev.png commit=${sha} acv=1\n  - proof: "ev1 demonstrates the outcome" -> ev1\n`);
+const realBody = (sha: string) => AC('[x]', `  - status: passed\n  - evidence ev1: commit=${sha} acv=1\n  - proof: "ev1 demonstrates the outcome" -> ev1\n`);
 // the adversarial cheat corpus — each MUST be caught by `check --auto-scope --verify-commits`.
 const CHEATS: Record<string, (sha: string) => string> = {
-  fakeCommit: () => AC('[x]', '  - status: passed\n  - evidence ev1: image=ev.png commit=deadbeef99 acv=1\n  - proof: "ev1 shows it" -> ev1\n'),
+  fakeCommit: () => AC('[x]', '  - status: passed\n  - evidence ev1: commit=deadbeef99 acv=1\n  - proof: "ev1 shows it" -> ev1\n'),
   noEvidence: () => AC('[x]', '  - status: passed\n'),
-  noProof: (sha) => AC('[x]', `  - status: passed\n  - evidence ev1: image=ev.png commit=${sha} acv=1\n`),
-  checkboxMismatch: (sha) => AC('[ ]', `  - status: passed\n  - evidence ev1: image=ev.png commit=${sha} acv=1\n  - proof: "ev1 shows it" -> ev1\n`),
+  noProof: (sha) => AC('[x]', `  - status: passed\n  - evidence ev1: commit=${sha} acv=1\n`),
+  checkboxMismatch: (sha) => AC('[ ]', `  - status: passed\n  - evidence ev1: commit=${sha} acv=1\n  - proof: "ev1 shows it" -> ev1\n`),
 };
 const CHEAT_NAMES = Object.keys(CHEATS);
 

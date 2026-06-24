@@ -84,7 +84,7 @@ body = p.read_text()
 body = body.replace(
     f"- [ ] {ac} v1 {text}\n  - status: pending\n",
     f"- [x] {ac} v1 {text}\n  - status: passed\n"
-    f"  - evidence {evidence}: image=s.png commit={sha} acv=1\n"
+    f"  - evidence {evidence}: commit={sha} acv=1\n"
     f'  - proof: "{evidence} demonstrates {ac}" -> {evidence}\n',
 )
 p.write_text(body)

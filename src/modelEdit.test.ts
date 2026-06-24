@@ -17,7 +17,7 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
   test('ac patch overlays a typed fragment and re-serializes in the preset grammar', () => {
     const patch = {
       checked: true, status: 'passed',
-      evidence: [{ id: 'ev1', image: 's.png', commit: 'abc1234', acVersion: 1 }],
+      evidence: [{ id: 'ev1', commit: 'abc1234', acVersion: 1 }],
       proof: { explanation: 'ev1 shows it', evidenceRefs: ['ev1'] },
     };
     const { body, changed } = applyModelPatch(def, PENDING, { acId: 'dev/01', patch });
@@ -25,7 +25,7 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
     // rendered in default's OWN grammar (nested status/evidence/proof, no [En]/AC-Version)
     expect(body).toContain('- [x] dev/01 v1 Build the thing');
     expect(body).toContain('  - status: passed');
-    expect(body).toContain('  - evidence ev1: image=s.png commit=abc1234 acv=1');
+    expect(body).toContain('  - evidence ev1: commit=abc1234 acv=1');
     expect(body).toContain('  - proof: "ev1 shows it" -> ev1');
     expect(body).not.toMatch(/AC-Version|## Evidence|\[E1\]/);
     // body is CONTENT-ONLY: no synthesized metadata header (no `# APP-1`, no Status: line)

@@ -18,6 +18,18 @@ export function git(repo: string, args: string[]): string {
   }
 }
 
+/** Does `path` exist (as a blob) at `commit` in `repo`? `git cat-file -e <commit>:<path>` exits 0
+ *  when the object exists — so a cited evidence file can be verified to actually be in the tree at
+ *  the commit it claims, from any worktree that has the commit (the tree is checkout-independent). */
+export function gitFileExistsAtCommit(repo: string, commit: string, path: string): boolean {
+  try {
+    execFileSync('git', ['-C', repo, 'cat-file', '-e', `${commit}:${path}`], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommits?: boolean } = {}): Context {
   const prs: Record<string, { headSha?: string; merged?: boolean }> = {};
   for (const branch of prBranches) {

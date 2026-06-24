@@ -1,6 +1,6 @@
 # Design: storage scope, worktrees, and evidence
 
-Status: agreed, in build. This is the north star for the evidence + linked-worktree work
+Status: Phase 1 (scope foundation) + Phase 2 (evidence verification) shipped in 0.22.0. Phase 3 (config.evidence storage policy + provider attachment upload) is next. This is the north star for the evidence + linked-worktree work
 (targets 0.22.0, breaking).
 
 ## The one principle

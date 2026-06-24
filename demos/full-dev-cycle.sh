@@ -54,7 +54,7 @@ Assignee: maintainer
 
 - [x] dev/01 v1 $ac1
   - status: passed
-  - evidence E1: image=s.png commit=$sha acv=1
+  - evidence E1: commit=$sha acv=1
   - proof: "E1 demonstrates dev/01" -> E1
 - [ ] dev/02 v1 $ac2
   - status: pending
@@ -281,7 +281,7 @@ text = text.replace("Status: in-review", "Status: in-progress")
 text = text.replace(
     "- [ ] dev/02 v1 Renaming rejects blank titles.\n  - status: pending\n",
     "- [x] dev/02 v1 Renaming rejects blank titles.\n  - status: passed\n"
-    f"  - evidence E2: image=s.png commit={sha} acv=1\n"
+    f"  - evidence E2: commit={sha} acv=1\n"
     "  - proof: \"E2 demonstrates dev/02\" -> E2\n",
 )
 p.write_text(text)

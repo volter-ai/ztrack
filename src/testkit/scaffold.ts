@@ -21,8 +21,8 @@ export type IssueSpec = { title: string; shape: IssueShape; label?: string; stat
 const AC = (checked: '[ ]' | '[x]', lines: string) => `Summary: work to do.\n\n## Acceptance Criteria\n\n- ${checked} dev/01 v1 do the observable thing\n${lines}`;
 const bodyFor = (shape: IssueShape, sha: string): string => ({
   pending: AC('[ ]', '  - status: pending\n'),
-  realCommit: AC('[x]', `  - status: passed\n  - evidence ev1: image=x.png commit=${sha} acv=1\n  - proof: "shows it" -> ev1\n`),
-  fakeCommit: AC('[x]', '  - status: passed\n  - evidence ev1: image=x.png commit=deadbeef acv=1\n  - proof: "shows it" -> ev1\n'),
+  realCommit: AC('[x]', `  - status: passed\n  - evidence ev1: commit=${sha} acv=1\n  - proof: "shows it" -> ev1\n`),
+  fakeCommit: AC('[x]', '  - status: passed\n  - evidence ev1: commit=deadbeef acv=1\n  - proof: "shows it" -> ev1\n'),
   noEvidence: AC('[x]', '  - status: passed\n'),
 }[shape]);
 

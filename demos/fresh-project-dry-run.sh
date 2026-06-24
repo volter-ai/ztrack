@@ -22,7 +22,7 @@ new_repo() {
   printf '%s\n' "$dir"
 }
 json_field() { node -e "const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));let v=d;for(const p of process.argv[2].split('.'))v=v[/^[0-9]+$/.test(p)?+p:p];console.log(v)" "$1" "$2"; }
-body() { printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: image=s.png commit=%s acv=1\n  - proof: "ev1 demonstrates it" -> ev1\n' "$1" > body.md; }
+body() { printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: commit=%s acv=1\n  - proof: "ev1 demonstrates it" -> ev1\n' "$1" > body.md; }
 
 # ── default preset: red→green through the real packed CLI ───────────────────
 repo="$(new_repo preset-default)"; cd "$repo"
