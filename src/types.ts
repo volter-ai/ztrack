@@ -26,6 +26,21 @@ export interface TrackerConfig {
     policy?: 'hub-wins' | 'twin-wins' | 'merge';
   };
   /**
+   * Where evidence files (screenshots/artifacts) are stored. Verification is always
+   * commit/locator-anchored regardless.
+   *  - `commit` (default): the file is committed in `dir` and verified to exist at the cited
+   *    commit (`git cat-file -e <sha>:<path>`). Works in both local and linked trackers.
+   *  - `attach`: the file is uploaded to the linked provider (a release asset / tracker
+   *    attachment) and verified by its locator URL + digest. (Provider upload: in progress.)
+   *  - `external`: an object store you configure.
+   *  - `auto` (default): `commit` for a local tracker, `attach` for a linked one.
+   */
+  evidence?: {
+    store?: 'auto' | 'commit' | 'attach' | 'external';
+    /** Directory for evidence files, relative to project root. Default `.volter/evidence`. */
+    dir?: string;
+  };
+  /**
    * Preferred validation architecture: ztrack loads one repo-local validation
    * entrypoint after init. The entrypoint owns parser/schema/render semantics.
    * Legacy configs that only set `organization.validationPreset` must be

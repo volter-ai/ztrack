@@ -149,12 +149,16 @@ default, port 3300, project = current tracker root. Requires Bun (bun.sh).
     return true;
   }
   if (resource === 'evidence') {
-    process.stdout.write(`Usage: ${command} evidence <add|keygen|verify|ingest|export> [args...]
+    process.stdout.write(`Usage: ${command} evidence <add|keygen|verify|export> [args...]
 
-Examples:
-  ${command} evidence add A-1 --type test --ac dev/01 --head <commit> --justification "npm test passed"
-  ${command} evidence keygen --out-dir .volter/keys
-  ${command} evidence export --format in-toto --out evidence.json
+  ${command} evidence add <file> [--name <name>]   copy a screenshot/artifact into the evidence
+       dir and print the path to cite (\`image=<path>\`) + its sha256. COMMIT the file — then a
+       checked AC citing it verifies the file exists at that commit. (\`--blob\` = content-addressed.)
+  ${command} evidence keygen --out-dir .volter/keys              generate a DSSE signing key
+  ${command} evidence export --format in-toto --out evidence.json   export signed attestations
+
+Evidence is commit + proof at its core; an image is optional and verified when cited. Where files
+live is set by \`evidence.store\` in the tracker config (default: committed in \`evidence.dir\`).
 `);
     return true;
   }

@@ -58,6 +58,27 @@ export function syncStateDir(projectRoot: string): string { return join(cacheRoo
 /** Provider connector cache (poll cursors, twin event log) — under the linked cache root. */
 export function providerCacheDir(projectRoot: string): string { return join(cacheRoot(projectRoot), 'github'); }
 
+/** The effective evidence store mode (resolves `auto`). `commit` for a local tracker, `attach`
+ *  for a linked one — overridable via `config.evidence.store`. */
+export function evidenceStore(projectRoot: string): 'commit' | 'attach' | 'external' {
+  let cfgStore: string | undefined;
+  try { cfgStore = loadTrackerConfig(projectRoot).evidence?.store; } catch { /* no config */ }
+  if (cfgStore === 'commit' || cfgStore === 'attach' || cfgStore === 'external') return cfgStore;
+  // auto: `commit` for now (works in both modes — committed evidence verifies at the cited
+  // commit). When provider attachment upload lands, auto will resolve to `attach` for a linked
+  // tracker so evidence lands on the issue instead of the repo.
+  return 'commit';
+}
+
+/** Directory for evidence files (relative paths cited as `image=`). Default `.volter/evidence`;
+ *  committed (not gitignored) when the store mode is `commit`, so it travels and verifies at the
+ *  cited commit. */
+export function evidenceDir(projectRoot: string): string {
+  let dir: string | undefined;
+  try { dir = loadTrackerConfig(projectRoot).evidence?.dir; } catch { /* no config */ }
+  return join(projectRoot, dir || join(stateDirName(), 'evidence'));
+}
+
 export type InitTrackerPreset = 'default' | 'spec' | 'speckit';
 
 const INIT_TRACKER_PRESETS = ['default', 'spec', 'speckit'] as const;
