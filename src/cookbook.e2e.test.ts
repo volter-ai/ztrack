@@ -29,7 +29,7 @@ describe('cookbook: the documented local getting-started recipe', () => {
     expect(scaffold.code).toBe(0);
     writeFileSync(join(root, 'issue.md'), scaffold.out);
     expect(zt(['issue', 'create', '--title', 'Add /health', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'issue.md']).code).toBe(0);
-  });
+  }, 30_000); // init+scaffold+create = 3 cold `bun run` spawns; exceeds bun's 5s hook default under load
   afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
 
   test('`ztrack check` on the scaffolded issue is GREEN (a getting-started recipe must not end red)', () => {
@@ -49,7 +49,7 @@ describe('cookbook: the documented local getting-started recipe', () => {
     expect(zt(['loop', 'start', 'LOCAL-1']).code).toBe(0);
     expect(zt(['check', '--auto-scope']).code).toBe(0);
     zt(['loop', 'stop']);
-  });
+  }, 30_000); // 3 cold `bun run` spawns exceed bun's 5s default under load (like the sibling tests)
 
   test('the fabricated-commit DEMO is caught (the README hook)', () => {
     writeFileSync(join(root, 'fake.md'), `Assignee: me\nStatus: ready\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 GET /health returns 200\n  - status: passed\n  - evidence ev1: image=health.png commit=deadbeef acv=1\n  - proof: "screenshot shows a 200 response" -> ev1\n`);
@@ -70,7 +70,7 @@ describe('cookbook: the full taught command surface', () => {
     expect(zt(['init']).code).toBe(0);
     writeFileSync(join(root, 'body.md'), zt(['issue', 'scaffold', '--title', 'First case']).out);
     expect(zt(['issue', 'create', '--title', 'First case', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'body.md']).code).toBe(0);
-  });
+  }, 30_000); // init+scaffold+create = 3 cold `bun run` spawns; exceeds bun's 5s hook default under load
   afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
 
   test('help matches reality (no stale/shadowed usage)', () => {
@@ -94,7 +94,7 @@ describe('cookbook: the full taught command surface', () => {
     expect(zt(['loop', 'start', 'LOCAL-1']).code).toBe(0);
     expect(zt(['loop', 'status']).code).toBe(0);
     expect(zt(['loop', 'stop']).code).toBe(0);
-  });
+  }, 30_000); // 3 cold `bun run` spawns exceed bun's 5s default under load (like the sibling tests)
 
   test('sync with no link errors helpfully (not a crash)', () => {
     const r = zt(['sync', 'github']);

@@ -131,11 +131,13 @@ async function main(): Promise<void> {
     }
     // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
     // a network/auth failure leaves init successful — `ztrack sync` retries later).
+    let pulled = false;
     if (sync) {
       process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to github ${sync.repo} — pulling issues…`)}\n`);
       try {
         const r = await githubSync.pull({ projectRoot: root, owner: sync.repo.split('/')[0]!, repo: sync.repo.split('/')[1]!, execute: githubSync.resolveGithubExecute(), client: createTrackerClient({ projectRoot: root }), occurredAt: new Date().toISOString() });
         process.stdout.write(`${statusMark('pass')} ${ui.dim(`pulled ${r.total} GitHub issue(s) → ${r.created.length} created locally`)}\n`);
+        pulled = true;
       } catch (e) {
         process.stdout.write(`${statusMark('warn')} ${ui.yellow(`initial pull skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim('— run `ztrack sync` once auth is set up')}\n`);
       }
@@ -146,7 +148,9 @@ async function main(): Promise<void> {
     // the tracker), so it goes straight to verify/loop/sync; a LOCAL project authors one first.
     const nextSteps = sync
       ? [
-          stackedCommand(1, 'Verify an issue', `${command} check <issue-id>`, `${ui.dim('or')} ${command} check ${ui.dim('for the whole tracker — your GitHub issues were just pulled in.')}`),
+          pulled
+            ? stackedCommand(1, 'Verify an issue', `${command} check <issue-id>`, `${ui.dim('or')} ${command} check ${ui.dim('for the whole tracker — your GitHub issues were just pulled in.')}`)
+            : stackedCommand(1, 'Pull your GitHub issues', `${command} sync github`, 'The initial pull was skipped (set up `gh auth login` or GITHUB_TOKEN first), then `ztrack check`.'),
           '',
           stackedCommand(2, 'Drive one to done in a loop', `${command} loop start <issue-id>`, 'The Stop-hook gate holds the turn until that issue passes check (a ralph loop).'),
           '',
@@ -614,6 +618,9 @@ GraphQL-shaped query against the local tracker store.
   const result = await client.command(forwardArgs, args[0] === 'extract-issue-ref' ? await readStdinIfPiped() : undefined);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
+  // A backend error (unknown verb, not-found, not-implemented) reports on stderr with no stdout.
+  // Without this it would exit 0 — a silent no-op that lets scripts/agents believe a bad command worked.
+  if (result.stderr && !result.stdout) process.exitCode = 1;
 }
 
 main().catch((error) => {

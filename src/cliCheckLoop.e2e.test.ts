@@ -45,6 +45,14 @@ describe('check targets', () => {
     expect(r.code).not.toBe(0);
     expect(r.out).toMatch(/not found in the tracker/);
   });
+  // Regression: an unknown backend verb used to print "unsupported command" but exit 0, so a
+  // script or agent that fat-fingered a verb (e.g. `issue update` — the verb is `edit`) believed
+  // it worked. A backend error (stderr, no stdout) must exit nonzero.
+  test('an unknown verb ERRORS instead of a silent exit-0 no-op', () => {
+    const r = ztrack(['issue', 'update', 'ZT-1', '--state', 'done']);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toMatch(/unsupported command/);
+  });
   test('a markdown file is checked as one issue and catches a fabricated commit', () => {
     writeFileSync(join(root, 'loose.md'), `Status: ready\n\n${FAILING_AC}`);
     const r = ztrack(['check', './loose.md', '--verify-commits']);

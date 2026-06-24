@@ -43,6 +43,13 @@ validate PRs, screenshots, videos, approvals, and source systems.
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
+**What it does _not_ verify** (be honest with your team): the default preset checks that the
+cited commit **exists** in git — not that it is *relevant* to the criterion (an unrelated real
+SHA passes), and not that a referenced screenshot file exists on disk (image paths are
+structural strings unless your preset resolves them). It raises the floor from "prose can lie"
+to "the proof must exist and be real"; encode stricter, project-specific grounding (source
+checks, file resolution, PR metadata) in the editable `preset.mts`.
+
 ## Quickstart
 
 > **Prerequisites:** Node ≥ 24 and `git`. That's it — no database, no Python. The
@@ -77,14 +84,35 @@ npx ztrack check --verify-commits    # ✗ the cited commit isn't in git
 ```text
 ✗ ztrack check failed     issues 1 • errors 1 • warnings 0
 
-ZT-1
+LOCAL-1
 ╰─  ✗ error  evidence_commit_not_found
    └─ Evidence ev1 cites commit deadbeef, which does not exist.
 
 ✗ exit 1 — the checkbox says done. the commit doesn't exist.
 ```
 
-Replace `deadbeef` with a real commit SHA (`git rev-parse HEAD`) and re-run — it passes.
+Now make it real: commit the work, cite a SHA that actually exists, and re-import the
+corrected body (the issue is stored independently, so editing `body.md` alone isn't enough —
+`issue edit` re-imports it):
+
+```bash
+git add -A && git commit -m "add /health endpoint"   # a real commit to cite
+SHA=$(git rev-parse HEAD)
+cat > body.md <<EOF
+Assignee: me
+Status: ready
+
+## Acceptance Criteria
+
+- [x] dev/01 v1 GET /health returns 200
+  - status: passed
+  - evidence ev1: image=health.png commit=$SHA acv=1
+  - proof: "screenshot shows a 200 response" -> ev1
+EOF
+npx ztrack issue edit LOCAL-1 --body-file body.md    # re-import the corrected body
+npx ztrack check --verify-commits                    # ✓ now it passes
+```
+
 That's the whole idea: a checked acceptance criterion must cite proof that actually
 exists. The installed `preset.mts` is real, editable code — open it and change the rules.
 
@@ -110,10 +138,10 @@ Either way, **`check` and `loop` are how you use it**, over one target:
 
 ```bash
 ztrack check                 # the whole tracker
-ztrack check ZT-1            # one issue
+ztrack check LOCAL-1         # one issue
 ztrack check ./body.md       # a loose markdown file, as an issue
 ztrack check                 # inside a worktree → auto-scopes to the branch's issue
-ztrack loop start ZT-1       # a ralph loop: the Stop hook holds the turn until ZT-1 is green
+ztrack loop start LOCAL-1    # a ralph loop: the Stop hook holds the turn until LOCAL-1 is green
 ```
 
 ## Adopt it into your repo

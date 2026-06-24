@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.2
+
+New-user onboarding fixes surfaced by a multi-perspective review of the published npm artifact
+(impatient first-runner, skeptical adopter, AI agent, GitHub-linked team):
+
+- **Quickstart red→green actually works now.** The README's flagship example told you to "replace
+  the fabricated SHA and re-run — it passes," but a fresh `git init` has no commit to cite and
+  editing `body.md` doesn't touch the already-stored issue, so the headline demo dead-ended. It now
+  shows the working sequence: commit, cite the real SHA, `ztrack issue edit --body-file` to
+  re-import, re-check. Also fixed the example's issue id (`LOCAL-1`, the default team — was `ZT-1`).
+- **Unknown verbs no longer exit 0.** A fat-fingered backend verb (e.g. `issue update`, whose verb
+  is `edit`) printed `unsupported command` but exited 0 — a silent no-op a script or agent reads as
+  success. A backend error (stderr, no stdout) now exits nonzero. Regression-guarded.
+- **Linked init no longer lies about pulling.** When the initial GitHub pull is skipped (no auth),
+  the next-steps no longer claim "your GitHub issues were just pulled in" — it now tells you to set
+  up auth and run `ztrack sync github`.
+- **Honest boundary documented.** The README now states plainly what the default preset does _not_
+  verify: that the cited commit is *relevant* to the criterion (an unrelated real SHA passes) and
+  that referenced image files exist on disk (structural strings unless your preset resolves them).
+
 ## 0.21.1
 
 - **Universal fix-hint floor.** A finding the preset gives no specific hint for — an uncovered
