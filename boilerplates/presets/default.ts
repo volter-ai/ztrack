@@ -104,6 +104,22 @@ function splitList(s: string): string[] {
 }
 
 // the AC line: "<id> v<version> <text>"  (version optional -> schema flags absence)
+// Evidence line: `evidence <id>: [image=…] [sha256=…] commit=<sha> acv=<n>`, fields in ANY order.
+// Order-independence is a SECURITY property, not a nicety: if an `image=` written AFTER `commit=`
+// were dropped (as an ordered regex would), a fabricated screenshot in that order would sail
+// through the gate unverified — exactly the tampering this preset exists to catch. So tokenize.
+function parseEvidenceLine(line: string): { id: string; image?: string; sha256?: string; commit: string; acVersion: number } | null {
+  const head = /^evidence\s+(\S+):\s*(.+)$/i.exec(line);
+  if (!head) return null;
+  const f: Record<string, string> = {};
+  for (const tok of head[2]!.trim().split(/\s+/)) {
+    const eq = tok.indexOf('=');
+    if (eq > 0) f[tok.slice(0, eq).toLowerCase()] = tok.slice(eq + 1);
+  }
+  if (!f.commit || !/^[0-9a-fA-F]+$/.test(f.commit) || f.acv === undefined || !/^\d+$/.test(f.acv)) return null;
+  return { id: head[1]!, ...(f.image ? { image: f.image } : {}), ...(f.sha256 ? { sha256: f.sha256 } : {}), commit: f.commit.toLowerCase(), acVersion: Number(f.acv) };
+}
+
 function parseAcLine(line: string): { id: string; version?: number; text: string } {
   const withV = /^(\S+)\s+v(\d+)\s+(.+)$/.exec(line);
   if (withV) return { id: withV[1]!, version: Number(withV[2]), text: withV[3]!.trim() };
@@ -182,8 +198,8 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
           const line = firstParagraphText(sub);
           const st = /^status:\s*([\w-]+)/i.exec(line)?.[1];
           if (st) { status = st.toLowerCase(); continue; }
-          const ev = /^evidence\s+(\S+):\s*(?:image=(\S+)\s+)?(?:sha256=(\S+)\s+)?commit=([0-9a-fA-F]+)\s+acv=(\d+)/i.exec(line);
-          if (ev) { evidence.push({ id: ev[1], ...(ev[2] ? { image: ev[2] } : {}), ...(ev[3] ? { sha256: ev[3] } : {}), commit: ev[4]!.toLowerCase(), acVersion: Number(ev[5]) }); continue; }
+          const ev = parseEvidenceLine(line);
+          if (ev) { evidence.push(ev); continue; }
           // proof: "<explanation>" -> ev1, ev2 — match the QUOTED explanation greedily so a
           // '->' (or a quote) inside the explanation survives; fall back to an unquoted form.
           const pf = /^proof:\s*"(.*)"\s*->\s*(.+)$/i.exec(line) ?? /^proof:\s*(.+?)\s*->\s*(.+)$/i.exec(line);
@@ -484,8 +500,12 @@ function citedEvidenceFiles(input: PresetContextInput): { commit: string; image:
       i.acceptanceCriteria.flatMap((ac) => ac.evidence.filter((ev) => isPath(ev.image)).map((ev) => ({ commit: ev.commit, image: ev.image! }))));
   }
   if (!input.bundle) return [];
-  return [...input.bundle.matchAll(/^\s*-?\s*evidence\s+\S+:\s*image=(\S+)\s+commit=([0-9a-fA-F]{7,40})/gim)]
-    .filter((m) => isPath(m[1])).map((m) => ({ image: m[1]!, commit: m[2]!.toLowerCase() }));
+  // Order-independent (matches parseEvidenceLine): an `image=` after `commit=` must still resolve,
+  // or the blob check below would skip a fabricated screenshot written in that order.
+  return [...input.bundle.matchAll(/^\s*-?\s*(evidence\s+\S+:.*)$/gim)]
+    .map((m) => parseEvidenceLine(m[1]!))
+    .filter((ev): ev is NonNullable<typeof ev> => !!ev && isPath(ev.image))
+    .map((ev) => ({ image: ev.image!, commit: ev.commit }));
 }
 
 // Every cited evidence commit (from the parsed root, else scanned from the bundle — loadContext is

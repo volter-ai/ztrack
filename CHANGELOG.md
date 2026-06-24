@@ -2,6 +2,22 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.26.1
+
+Security fix — a fabricated screenshot could pass the gate when the evidence fields were written in
+a documented order.
+
+- The default preset parsed an evidence line with an **order-sensitive** regex (`image=` had to
+  precede `commit=`). The docs and `issue scaffold` show `commit=<sha> acv=1 image=<file>` (image
+  **last**) — in that order the `image=` field was silently dropped, so the cited screenshot was
+  never resolved or verified and a **fabricated image path passed `check` (exit 0)**. This
+  contradicted the core "a fabricated screenshot fails" guarantee.
+- Fix: evidence fields now parse in **any order** (`parseEvidenceLine` tokenizes `key=value`), in
+  lockstep with the offline file-resolution scan. A cited `image=` is always captured and therefore
+  always verified at its commit (`evidence_file_not_found`), regardless of field order. Regression
+  tests added (fabricated image written after `commit` → caught; real image in that order → passes).
+  Only the `default` preset was affected.
+
 ## 0.26.0
 
 Relevance **enforcement** — make the opt-in `paths` anchor mandatory so every passed AC is checked.

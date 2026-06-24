@@ -193,6 +193,30 @@ describe('default preset', () => {
     expect(r.findings.some((f) => f.code === 'evidence_ac_version_stale')).toBe(true);
   });
 
+  describe('evidence field order-independence (anti-tamper)', () => {
+    // SECURITY regression: a fabricated `image=` written AFTER `commit=` (the order the docs show)
+    // must NOT be silently dropped — or the gate would pass an unverified screenshot. See parseEvidenceLine.
+    const imageLast = (img: string) => ({
+      ...REC,
+      body: `## Acceptance Criteria\n\n- [x] AC-1 v2 do it\n  - status: passed\n  - evidence ev1: commit=${HEAD} acv=2 image=${img}\n  - proof: "ev1 shows it" -> ev1\n`,
+    } as IssueRecord);
+
+    test('image after commit is still captured by the parser', () => {
+      const root = parseDefault([imageLast('shots/late.png')]) as { issues: { acceptanceCriteria: { evidence: { image?: string }[] }[] }[] };
+      expect(root.issues[0]!.acceptanceCriteria[0]!.evidence[0]!.image).toBe('shots/late.png');
+    });
+    test('a fabricated image written AFTER commit is caught (evidence_file_not_found)', () => {
+      const blobCtx = { git: { existingCommits: [HEAD], prs: {}, evidenceBlobs: { [`${HEAD}:shots/FAKE.png`]: false } } };
+      const r = checkDefault([imageLast('shots/FAKE.png')], blobCtx);
+      expect(r.findings.some((f) => f.code === 'evidence_file_not_found')).toBe(true);
+    });
+    test('a real image (present in tree) passes in image-after-commit order', () => {
+      const blobCtx = { git: { existingCommits: [HEAD], prs: {}, evidenceBlobs: { [`${HEAD}:shots/real.png`]: true } } };
+      const r = checkDefault([imageLast('shots/real.png')], blobCtx);
+      expect(r.findings.some((f) => f.code === 'evidence_file_not_found')).toBe(false);
+    });
+  });
+
   test('rule: checkbox disagreeing with explicit status fails', () => {
     const rec: IssueRecord = { id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
       body: `## Acceptance Criteria\n\n- [ ] AC-1 v1 a\n  - status: passed\n` };
