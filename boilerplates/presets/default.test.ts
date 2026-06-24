@@ -47,6 +47,17 @@ describe('default preset', () => {
     expect(r.ok).toBe(false);
   });
 
+  test('findings are SELF-DOCUMENTING: each carries a located fix hint naming the resolution', () => {
+    const fixOf = (recs: IssueRecord[], code: string) => checkDefault(recs, ctx).findings.find((f) => f.code === code)?.fix ?? '';
+    const ac = (lines: string) => [{ id: 'D-1', title: 'x', status: 'draft', assignee: 'me', body: `## Acceptance Criteria\n\n- [x] AC-1 v1 do it\n${lines}` } as IssueRecord];
+    // evidence/proof/commit findings → the exact `ztrack ac patch <issue> <ac>` to run, located
+    expect(fixOf(ac('  - status: passed\n'), 'passed_ac_missing_evidence')).toMatch(/ztrack ac patch D-1 AC-1 .*evidence/);
+    expect(fixOf(ac(`  - status: passed\n  - evidence ev1: image=x.png commit=${HEAD} acv=1\n`), 'passed_ac_missing_proof')).toMatch(/ztrack ac patch D-1 AC-1 .*proof/);
+    expect(fixOf([{ ...REC, body: REC.body.replace(HEAD, 'deadbeef') }], 'evidence_commit_not_found')).toMatch(/ztrack ac patch DEF-1 .*commit that exists/);
+    // an issue-level finding → an issue-level action, not ac patch
+    expect(fixOf([{ id: 'D-1', title: 'x', status: 'draft', assignee: '', body: '## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n' }], 'issue_missing_assignee')).toMatch(/ztrack issue edit D-1 --assignee/);
+  });
+
   test('rule: evidence citing a missing commit fails (git world)', () => {
     const rec: IssueRecord = { ...REC, body: REC.body.replace(HEAD, 'deadbeef') };
     const r = checkDefault([rec], ctx);

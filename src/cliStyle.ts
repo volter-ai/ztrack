@@ -175,6 +175,7 @@ export function renderCheckReport(result: CheckResult<CoreRoot>, options: { erro
         const detailPrefix = last ? '   └─' : '│  └─';
         lines.push(`${ui.dim(branch)} ${findingLevel(finding)} ${codeLabel(finding.code)}`);
         lines.push(`${ui.dim(detailPrefix)} ${finding.message}`);
+        if (finding.fix) lines.push(`${ui.dim(last ? '      ' : '│     ')}${ui.cyan('↳')} ${ui.dim(finding.fix)}`);
         if (!last) lines.push(ui.dim('│'));
       });
     }

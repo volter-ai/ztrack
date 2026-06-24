@@ -22,7 +22,7 @@ import {
   check as runCheck, rule, gitWorld, formatRef, BlockRefSchema,
   normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
-  type DerivedModel, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
+  type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
 } from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
@@ -426,8 +426,45 @@ function defaultPrBranches(input: PresetContextInput): string[] {
   return input.bundle ? prBranchesFrom(input.bundle) : [];
 }
 
+// Per-finding REMEDIATION: the exact action that turns this finding green. The agent fills the
+// real values (the sha it just committed, the image path); the hint supplies the command + the
+// schema shape, and points at `ztrack ac --help` / `ztrack issue view` for the full grammar.
+function defaultFixHint(f: Finding): string | undefined {
+  const issue = f.issueId ?? '<issue>';
+  const ac = f.acId ?? '<acId>';
+  const acPatch = (shape: string, note = '') => `Fix: ztrack ac patch ${issue} ${ac} --json '${shape}'${note}  (\`ztrack ac --help\` / \`ztrack issue view ${issue}\` for the AC schema)`;
+  switch (f.code) {
+    case 'passed_ac_missing_evidence':
+      return acPatch('{"evidence":[{"id":"ev1","image":"<path>","commit":"<sha>","acVersion":1}]}');
+    case 'passed_ac_missing_proof':
+    case 'proof_cites_no_evidence':
+    case 'proof_evidence_ref_missing':
+      return acPatch('{"proof":{"explanation":"how the evidence shows this AC is met","evidenceRefs":["ev1"]}}');
+    case 'evidence_commit_not_found':
+    case 'evidence_sha_stale':
+    case 'evidence_ac_version_stale':
+      return acPatch('{"evidence":[{"id":"ev1","image":"<path>","commit":"<real-sha>","acVersion":1}]}', ' — cite a commit that exists in git (and the AC version)');
+    case 'ac_checkbox_status_mismatch':
+      return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
+    case 'issue_missing_assignee':
+      return `Fix: ztrack issue edit ${issue} --assignee <you>  (assignee is an issue column)`;
+    case 'ready_requires_dev_ac':
+      return `Fix: give ${issue} at least one acceptance criterion (a \`## Acceptance Criteria\` item), or move it back to draft`;
+    case 'review_requires_pr':
+      return `Fix: add a \`PR: <url>\` line to ${issue} before in-review`;
+    case 'review_requires_all_acs_passed':
+      return `Fix: every AC of ${issue} must be passed-with-evidence (ztrack ac patch …) before in-review`;
+    case 'done_requires_merged_pr':
+      return `Fix: ${issue} can move to done only once its PR is merged`;
+    default:
+      // any other finding the authority may knowingly accept rather than fix
+      return f.waivable === false ? undefined : `If acceptable, record it: ztrack waiver sign ${issue} --code ${f.code}${f.acId ? ` --ac ${f.acId}` : ''} --reason "…"`;
+  }
+}
+
 export const DefaultPreset: Preset<DefaultRoot> = {
   name: 'default',
+  fixHint: defaultFixHint,
   schema: DefaultRootSchema,
   // this preset's observed facts: the git world (commits + PR head/merged).
   loadContext: (input) => gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits }),

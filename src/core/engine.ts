@@ -132,6 +132,10 @@ export interface Finding {
   // matter who signs off, so they stay errors even on a waived issue. Default (absent) =
   // waivable (readiness/acceptance findings the authority can accept).
   waivable?: boolean;
+  // A one-line REMEDIATION hint — the exact action that resolves this finding (e.g. the
+  // `ztrack ac patch …` to run). Preset-owned (via Preset.fixHint), shown under the finding
+  // and returned over MCP so an agent can act directly instead of inferring the fix.
+  fix?: string;
 }
 export interface Context {
   now?: string;
@@ -354,6 +358,11 @@ export interface Preset<R extends CoreRoot> {
   // optional authoring affordance (NOT validation): a starter issue body for
   // `ztrack issue scaffold`. Presets may omit it (tooling falls back to a generic body).
   scaffold?: (title: string) => string;
+  // optional REMEDIATION hint per finding: given a finding this preset's rules produced
+  // (code + located issueId/acId), return the one-line action that resolves it (the exact
+  // `ztrack ac patch …` to run). The engine attaches it as `finding.fix`. Preset-owned
+  // because the fix is the preset's own mutation grammar.
+  fixHint?: (finding: Finding) => string | undefined;
 }
 
 export interface CheckResult<R extends CoreRoot> {
@@ -526,7 +535,10 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
     }
   });
   const waived = applyWaivers(findings, ctx.waivers ?? []);
-  return { ok: !waived.some((f) => f.severity === 'error'), findings: waived, export: input.root };
+  // Attach the preset's remediation hint so every finding is self-documenting (the agent is told
+  // the exact fix). Errored/acknowledged alike — a fix helps either way.
+  const withFix = preset.fixHint ? waived.map((f) => { const fix = preset.fixHint!(f); return fix && !f.fix ? { ...f, fix } : f; }) : waived;
+  return { ok: !withFix.some((f) => f.severity === 'error'), findings: withFix, export: input.root };
 }
 
 /** The one entry point: parse -> ValidationInputSchema.parse({context, root}) ->

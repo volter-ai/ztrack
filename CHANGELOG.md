@@ -2,6 +2,20 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.0
+
+- **Findings are now self-documenting.** Every `check`/`loop` finding carries a one-line
+  remediation hint — the exact action that resolves it, located to the issue/AC:
+  `↳ Fix: ztrack ac patch APP-1 dev/01 --json '{"evidence":[…]}'  (\`ztrack ac --help\` for the
+  schema)`. Preset-owned via the new `Preset.fixHint` (the fix is the preset's mutation grammar);
+  shown under each finding in the CLI and returned in the MCP `findings` so an agent acts directly
+  instead of inferring the fix. The skill teaches the model, the finding gives the next command.
+- **A `.claude/skills/ztrack` skill** packages the resolution model (the check/loop loop, the
+  `ac patch`/`issue patch`/`waiver sign` verbs, honest-evidence rule) so a skill-aware agent is
+  fluent before it hits a finding.
+- Verified self-closing: a black-box test resolves a red AC *purely from the finding's fix hint*
+  (no hard-coded `ac patch` knowledge) → green. The loop closes from the finding alone.
+
 ## 0.20.3
 
 - **Fixed: a pulled issue's local edit didn't sync back to GitHub.** The one-way `pull()` (used by
