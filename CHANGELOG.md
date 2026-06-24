@@ -2,6 +2,19 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.23.0
+
+Completes the evidence storage UX (the commit-based path; provider attachment upload is next).
+
+- **`ztrack evidence add <file> [--name]`** copies a screenshot/artifact into the evidence dir
+  (default `.volter/evidence`, committed), stamps its sha256, and prints the path to cite
+  (`image=<path>`). Commit it → the `evidence_file_not_found` rule (0.22.0) verifies it exists at
+  the cited commit. So the loop is: capture → `evidence add` → cite → commit → verified. `--blob`
+  keeps the content-addressed form.
+- **`config.evidence`** = `{ store?: "auto"|"commit"|"attach"|"external", dir? }`. `auto` resolves
+  to `commit` today (committed evidence verifies at the cited commit, in both local and linked
+  trackers); it will resolve to `attach` for linked trackers once provider upload lands.
+
 ## 0.22.0
 
 Evidence is now real, and linked trackers work across git worktrees. **Breaking** (the evidence
