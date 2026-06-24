@@ -41,6 +41,15 @@ export interface TrackerConfig {
     dir?: string;
   };
   /**
+   * Relevance-anchor enforcement. The default preset lets a passed AC declare an optional
+   * `paths:` glob; when set, its cited commit must TOUCH one of those paths (else
+   * `evidence_commit_unrelated`). This dial controls whether the anchor is mandatory:
+   *  - `optional` (default): a passed AC may omit `paths`; relevance is checked only when declared.
+   *  - `required`: a passed AC MUST declare `paths` (else `passed_ac_missing_paths`), so EVERY
+   *    passed AC's commit is relevance-checked. Non-breaking: existing repos default to `optional`.
+   */
+  relevance?: 'optional' | 'required';
+  /**
    * Preferred validation architecture: ztrack loads one repo-local validation
    * entrypoint after init. The entrypoint owns parser/schema/render semantics.
    * Legacy configs that only set `organization.validationPreset` must be

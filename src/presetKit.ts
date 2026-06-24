@@ -19,6 +19,8 @@ export type {
   BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot, IssueRecord, IssueColumns,
 } from './core/engine.ts';
 export { gitWorld, gitFileExistsAtCommit, gitCommitFiles } from './core/gitWorld.ts';
+// Resolves `config.relevance` from disk so a preset's loadContext can set ctx.relevance.
+export { relevanceMode } from './config.ts';
 export { formatRef, BlockRefSchema } from './core/ref.ts';
 // Parsing + graph mechanism a standalone preset rents to build its OWN parser/rules.
 export { splitIssueBundle } from './core/bundle.ts';

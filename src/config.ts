@@ -70,6 +70,15 @@ export function evidenceStore(projectRoot: string): 'commit' | 'attach' | 'exter
   return 'commit';
 }
 
+/** Relevance-anchor enforcement (`config.relevance`). Default `optional` (anchors opt-in, the
+ *  non-breaking default everywhere). `required` makes a preset enforce that every passed AC
+ *  declares its `paths` anchor — read by the default preset's loadContext and surfaced on the
+ *  validation context so its rules can mandate the anchor without re-reading disk. */
+export function relevanceMode(projectRoot: string): 'optional' | 'required' {
+  try { return loadTrackerConfig(projectRoot).relevance === 'required' ? 'required' : 'optional'; }
+  catch { return 'optional'; }
+}
+
 /** Directory for evidence files (relative paths cited as `image=`). Default `.volter/evidence`;
  *  committed (not gitignored) when the store mode is `commit`, so it travels and verifies at the
  *  cited commit. */

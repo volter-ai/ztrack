@@ -19,7 +19,7 @@
 // (no `../core/*`, no `mdast-*`, no `zod`). Its OWN schema, parser, and rules live here.
 import {
   z, toMdast, nodeText, type MdNode,
-  check as runCheck, rule, gitWorld, gitFileExistsAtCommit, gitCommitFiles, formatRef, BlockRefSchema,
+  check as runCheck, rule, gitWorld, gitFileExistsAtCommit, gitCommitFiles, relevanceMode, formatRef, BlockRefSchema,
   normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
@@ -353,6 +353,14 @@ const DEFAULT_RULES = [
     message: ({ ac }) => `AC ${ac.id} is passed, but its cited commit touches none of its declared paths (${ac.paths!.join(', ')}) — the commit is unrelated to the claimed work.`,
   }),
   rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
+    // RELEVANCE ENFORCEMENT (config.relevance: required): turn the opt-in `paths` anchor into a
+    // mandate, so EVERY passed AC is relevance-checked (not just ones that opted in). Off by
+    // default (ctx.relevance === undefined/'optional') → never fires; existing repos unaffected.
+    code: 'passed_ac_missing_paths', select: (m) => m.acs,
+    when: ({ ac }, m) => m.context.relevance === 'required' && ac.status === 'passed' && !ac.paths?.length,
+    message: ({ ac }) => `AC ${ac.id} is passed but declares no \`paths:\` — relevance enforcement is on (config.relevance: required); declare the repo paths this AC's work touches so its commit is relevance-checked.`,
+  }),
+  rule<DefaultRoot, { issueId: string; acId: string; ac: AC }>({
     code: 'passed_ac_missing_proof', select: (m) => m.acs,
     when: ({ ac }) => ac.status === 'passed' && (!ac.proof || ac.proof.explanation.trim() === ''),
     message: ({ ac }) => `AC ${ac.id} is passed but has no proof explaining how its evidence demonstrates it.`,
@@ -530,6 +538,8 @@ function defaultFixHint(f: Finding): string | undefined {
       return acPatch('{"evidence":[{"id":"ev1","commit":"<real-sha>","acVersion":1}]}', ' — cite a commit that exists in git (and the AC version)');
     case 'evidence_commit_unrelated':
       return acPatch('{"evidence":[{"id":"ev1","commit":"<sha-that-touches-the-declared-paths>","acVersion":1}]}', ' — cite the commit that actually changed this AC\'s `paths` (or correct the `paths:` line to the area you really changed)');
+    case 'passed_ac_missing_paths':
+      return acPatch('{"paths":["src/area/**"]}', ' — declare the repo paths this AC\'s work touches (relevance enforcement is on); its cited commit must then change one of them');
     case 'ac_checkbox_status_mismatch':
       return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
     case 'issue_missing_assignee':
@@ -572,6 +582,9 @@ export const DefaultPreset: Preset<DefaultRoot> = {
       }
       ctx.git.commitFiles = files;
     }
+    // Relevance-anchor policy (config.relevance): 'required' makes passed_ac_missing_paths enforce
+    // that every passed AC declares `paths`. Default 'optional' (anchors opt-in) — non-breaking.
+    ctx.relevance = relevanceMode(input.projectRoot);
     return ctx;
   },
   parse: parseDefault,

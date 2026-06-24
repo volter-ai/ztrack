@@ -102,6 +102,84 @@ describe('default preset', () => {
       const r = checkDefault([recWith('  - paths: src/**\n')], { git: { existingCommits: [HEAD], prs: {} } });
       expect(r.findings.some((f) => f.code === 'evidence_commit_unrelated')).toBe(false);
     });
+
+    // ── adversarial matcher battery: glob/literal edge cases through the real rule path ──
+    test('exact file path: matches itself, fires on a sibling', () => {
+      expect(fired('  - paths: src/health.ts\n', ['src/health.ts'])).toBe(false);
+      expect(fired('  - paths: src/health.ts\n', ['src/other.ts'])).toBe(true);
+    });
+    test('directory prefix respects the / boundary (src ⊉ srcfoo)', () => {
+      expect(fired('  - paths: src\n', ['src/a.ts'])).toBe(false);   // dir prefix
+      expect(fired('  - paths: src\n', ['srcfoo/a.ts'])).toBe(true); // not a prefix at a boundary
+    });
+    test('trailing slash on a dir path is normalized', () => {
+      expect(fired('  - paths: src/\n', ['src/a.ts'])).toBe(false);
+    });
+    test('dots in a non-glob path are literal, not wildcards', () => {
+      expect(fired('  - paths: src/a.b.ts\n', ['src/aXbYts'])).toBe(true);   // dots must not match arbitrary chars
+      expect(fired('  - paths: src/a.b.ts\n', ['src/a.b.ts'])).toBe(false);
+    });
+    test('dots inside a glob are escaped (v*.ts is literal-dot then ts)', () => {
+      expect(fired('  - paths: src/v*.ts\n', ['src/v1.ts'])).toBe(false);
+      expect(fired('  - paths: src/v*.ts\n', ['src/v1.2.ts'])).toBe(false); // [^/]* spans the inner dot
+      expect(fired('  - paths: src/v*.ts\n', ['src/v1Xts'])).toBe(true);    // the escaped dot must bite
+    });
+    test('? matches exactly one non-separator char', () => {
+      expect(fired('  - paths: src/a?.ts\n', ['src/ab.ts'])).toBe(false);
+      expect(fired('  - paths: src/a?.ts\n', ['src/abc.ts'])).toBe(true);   // ? is one char
+      expect(fired('  - paths: src/a?.ts\n', ['src/a/.ts'])).toBe(true);    // ? must not cross /
+    });
+    test('** spans segments; bare ** matches everything', () => {
+      expect(fired('  - paths: **\n', ['any/deep/nested/file.x'])).toBe(false);
+      expect(fired('  - paths: src/**/util.ts\n', ['src/a/b/util.ts'])).toBe(false);
+      expect(fired('  - paths: src/**/util.ts\n', ['src/util.ts'])).toBe(true); // ** between slashes needs a segment
+    });
+    test('multiple declared paths: touching ANY one passes', () => {
+      expect(fired('  - paths: src/**, docs/**\n', ['docs/x.md'])).toBe(false);
+      expect(fired('  - paths: src/**, docs/**\n', ['test/x.ts'])).toBe(true);
+    });
+    test('multiple cited commits: ANY commit touching a path passes', () => {
+      const SHA2 = 'beadfacebeadfacebeadfacebeadfacebeadface';
+      const rec = {
+        ...REC,
+        body: `## Acceptance Criteria\n\n- [x] AC-1 v2 do it\n  - status: passed\n  - paths: src/**\n  - evidence ev1: commit=${HEAD} acv=2\n  - evidence ev2: commit=${SHA2} acv=2\n  - proof: "ev1, ev2 show it" -> ev1, ev2\n`,
+      } as IssueRecord;
+      const ctx = { git: { existingCommits: [HEAD, SHA2], prs: {}, commitFiles: { [HEAD]: ['docs/x.md'], [SHA2]: ['src/a.ts'] } } };
+      expect(checkDefault([rec], ctx).findings.some((f) => f.code === 'evidence_commit_unrelated')).toBe(false);
+    });
+    test('empty commit (touched nothing) → does not false-flag', () => {
+      expect(fired('  - paths: src/**\n', [])).toBe(false);
+    });
+  });
+
+  describe('rule: passed_ac_missing_paths (relevance enforcement, config.relevance: required)', () => {
+    // A passed AC with no `paths`. ctx.relevance is the dial loadContext reads from config.
+    const rec = (pathsLine: string) => ({
+      ...REC,
+      body: `## Acceptance Criteria\n\n- [x] AC-1 v2 do it\n  - status: passed\n${pathsLine}  - evidence ev1: commit=${HEAD} acv=2\n  - proof: "ev1 shows it" -> ev1\n`,
+    } as IssueRecord);
+    const base = { git: { existingCommits: [HEAD], prs: {}, commitFiles: { [HEAD]: ['src/a.ts'] } } };
+    const fired = (ctx: object) =>
+      checkDefault([rec('')], ctx).findings.some((f) => f.code === 'passed_ac_missing_paths');
+
+    test('required + passed AC missing paths → fires', () => {
+      expect(fired({ ...base, relevance: 'required' })).toBe(true);
+    });
+    test('default (no relevance dial) → never fires (opt-in, non-breaking)', () => {
+      expect(fired(base)).toBe(false);
+    });
+    test("explicit 'optional' → never fires", () => {
+      expect(fired({ ...base, relevance: 'optional' })).toBe(false);
+    });
+    test('required but paths ARE declared → does not fire', () => {
+      const r = checkDefault([rec('  - paths: src/**\n')], { ...base, relevance: 'required' });
+      expect(r.findings.some((f) => f.code === 'passed_ac_missing_paths')).toBe(false);
+    });
+    test('required + pending AC (not passed) → does not fire', () => {
+      const pending = { ...REC, body: `## Acceptance Criteria\n\n- [ ] AC-1 v2 do it\n  - status: pending\n` } as IssueRecord;
+      const r = checkDefault([pending], { ...base, relevance: 'required' });
+      expect(r.findings.some((f) => f.code === 'passed_ac_missing_paths')).toBe(false);
+    });
   });
 
   test('rule: PR head unknown when git world has no head', () => {

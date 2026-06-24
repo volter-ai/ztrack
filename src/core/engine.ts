@@ -179,6 +179,11 @@ export interface Context {
   // run). Absent = run every rule. This is the typed replacement for the old
   // `--categories` / organization.check.categories selector.
   categories?: Partial<Record<RuleCategory, number>>;
+  // relevance-anchor policy: 'required' makes a preset enforce that a passed AC declares its
+  // optional relevance anchor (the default preset's `paths`) so EVERY passed AC's commit is
+  // relevance-checked, not just opted-in ones. Absent/'optional' = anchors stay opt-in. The
+  // anchor itself (and the unrelated-commit check) is preset-specific; this is just the dial.
+  relevance?: 'optional' | 'required';
   // waivers parsed by the CORE from each issue's `## Waivers` section (see WaiverDirective) —
   // a post-filter applied to findings; preset-agnostic, never on the issue itself.
   waivers?: WaiverDirective[];
@@ -213,6 +218,7 @@ export const CoreContextSchema = z.object({
   git: GitContextSchema.optional(),
   world: z.object({ events: z.array(WorldEventSchema).optional(), annotations: z.array(WorldAnnotationSchema).optional() }).strict().optional(),
   categories: z.record(z.string(), z.number()).optional(),
+  relevance: z.enum(['optional', 'required']).optional(),
   waivers: z.array(WaiverDirectiveSchema).optional(),
 }).strict();
 

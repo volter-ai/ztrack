@@ -2,6 +2,20 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.26.0
+
+Relevance **enforcement** — make the opt-in `paths` anchor mandatory so every passed AC is checked.
+
+- New **`config.relevance`** dial (default **`optional`**, fully non-breaking). Set it to
+  **`required`** and the new **`passed_ac_missing_paths`** rule fails any passed AC that declares no
+  `paths:` — turning 0.25.0's opt-in relevance check into full coverage: every passed AC's commit
+  must now be anchored to (and verified against) the repo paths it claims to touch.
+- The default preset's `loadContext` resolves the dial from disk (`relevanceMode`, re-exported on
+  `ztrack/preset-kit`) and surfaces it on the validation context (`context.relevance`); the rule is
+  pure and offline. Repos that don't set `relevance` see no change.
+- The finding is self-documenting: it points you to declare the AC's `paths` (after which its cited
+  commit must change one of them, via `evidence_commit_unrelated`).
+
 ## 0.25.0
 
 Relevance check — a passed AC's cited commit must actually touch the work it claims.
