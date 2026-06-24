@@ -30,7 +30,7 @@ npx ztrack init --team APP --preset spec
 npx ztrack init --team APP --preset speckit
 ```
 
-Omitting `--preset` installs `default`. Node 24+ is required.
+Omitting `--preset` installs `default`. Node 22.18+ is required (native .mts type stripping).
 
 ## Which Preset To Start With
 

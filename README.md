@@ -52,9 +52,10 @@ checks, file resolution, PR metadata) in the editable `preset.mts`.
 
 ## Quickstart
 
-> **Prerequisites:** Node ≥ 24 (the installed preset is `.mts`, loaded via native type
-> stripping — so an older Node will not run it) and `git`. That's it — no database, no Python.
-> The `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+> **Prerequisites:** Node ≥ 22.18 (the installed preset is `.mts`, loaded via native type
+> stripping, which is on by default from Node 22.18 / 23.6 / 24 — older Node will not run it) and
+> `git`. That's it — no database, no Python. The `ztrack visualizer` additionally needs
+> [Bun](https://bun.sh).
 
 Like `eslint --init` then `eslint`, you install a preset (your ruleset) and then check
 against it. ztrack is a project dev-dependency (the installed preset imports the mechanism
@@ -118,7 +119,7 @@ npx ztrack check                                     # ✓ now it passes
 That's the whole idea: a checked acceptance criterion must cite proof that actually
 exists. The installed `preset.mts` is real, editable code — open it and change the rules.
 
-> **Package managers:** verified on Node 24+ under **npm, pnpm, yarn (classic + Berry +
+> **Package managers:** verified on Node 22.18+ under **npm, pnpm, yarn (classic + Berry +
 > PnP), and bun**. The pure-JS store needs no subprocess, so Yarn PnP works with no
 > extra configuration.
 

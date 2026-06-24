@@ -44,6 +44,17 @@ async function loadValidationEntrypoint(entrypoint: string, projectRoot: string)
     // PROJECT's node_modules. If ztrack isn't a dependency there (e.g. it was run via `npx`
     // without being installed), the import fails — turn the raw resolver error into a fix.
     const msg = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: string } | undefined)?.code;
+    // The installed preset is a `.mts` loaded via Node's native type stripping (unflagged on Node
+    // >= 22.18 / >= 23.6 / >= 24). On older Node the import fails with ERR_UNKNOWN_FILE_EXTENSION —
+    // turn that cryptic error into a clear "upgrade Node" message.
+    if (code === 'ERR_UNKNOWN_FILE_EXTENSION' || /Unknown file extension "\.?mts"/.test(msg)) {
+      throw new Error(
+        `The validation preset (${entrypoint}) is a .mts file, loaded via Node's native TypeScript type `
+        + `stripping — which this Node (${process.version}) does not support. ztrack needs Node >= 22.18.0 `
+        + `(or >= 23.6, or >= 24). Upgrade Node and re-run.`,
+      );
+    }
     if (/Cannot find package 'ztrack'|Cannot find module 'ztrack/.test(msg)) {
       throw new Error(
         `The validation preset (${entrypoint}) imports 'ztrack/preset-kit', but the 'ztrack' package isn't resolvable from this project. `

@@ -2,6 +2,22 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.7
+
+Fixes the actual first-time experience for external users on LTS Node:
+
+- **`engines.node` lowered `>=24` → `>=22.18.0`** (the real minimum — native `.mts` type stripping
+  is on by default from Node 22.18 / 23.6 / 24). The `>=24` floor was wrong: 0.21.x runs fine on
+  Node 22 LTS, but because npm does **engine-aware version selection**, every user on Node < 24 was
+  silently served the year-old **0.10.0** (different presets, no `--version`, none of this work) with
+  no error or warning. Now Node 22.18+ installs the current version.
+- **Clear Node-version error** when the preset can't load: instead of the cryptic
+  `Unknown file extension ".mts"`, ztrack now says it needs Node >= 22.18 and to upgrade — for
+  anyone who lands on an unsupported Node (e.g. via a lockfile or `--engine-strict=false`).
+- README/docs prerequisites corrected to Node ≥ 22.18.
+
+(0.10.0 is deprecated on npm so the remaining fallback path on Node < 22.18 shows an upgrade hint.)
+
 ## 0.21.6
 
 Final panel pass — came back clean except one real hint bug:

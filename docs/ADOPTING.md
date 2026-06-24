@@ -50,7 +50,7 @@ The setup writes `.volter/tracker-config.json`, creates local tracker state
 under `.volter/tracker/`, and installs the editable, standalone preset at
 `.volter/tracker/validation/preset.mts`.
 
-Prerequisites: Node ≥ 24 for `npx` and a git repository — the issue store is
+Prerequisites: Node ≥ 22.18 for `npx` and a git repository — the issue store is
 plain markdown files (pure JS, no database). Commit verification can only see
 commits fetched into the local checkout.
 
