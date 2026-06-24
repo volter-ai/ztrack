@@ -35,6 +35,10 @@ jobs:
           fi
       - name: Typecheck
         run: bun run typecheck
+      - name: Build package
+        # Build BEFORE tests: the black-box e2e tests symlink the repo as node_modules/ztrack and
+        # the installed preset resolves `ztrack/preset-kit` to dist/, so dist must exist first.
+        run: npm run build:node-cli
       - name: Test
         run: bun test
       - name: Fresh project dry run

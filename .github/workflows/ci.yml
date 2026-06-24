@@ -23,10 +23,12 @@ jobs:
         run: |
           (cd visualizer && bun install --silent)
           bunx tsc --noEmit -p visualizer/tsconfig.json
+      - name: Build package
+        # Build BEFORE tests: the black-box e2e tests symlink the repo as node_modules/ztrack and
+        # the installed preset resolves `ztrack/preset-kit` to dist/, so dist must exist first.
+        run: npm run build:node-cli
       - name: Test
         run: bun test
-      - name: Build package
-        run: npm run build:node-cli
       - name: Pack smoke
         run: npm pack --dry-run
       - name: Fresh project dry run
