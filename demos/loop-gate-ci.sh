@@ -27,7 +27,9 @@ fire_msg() { ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$hook" 2>&1 
 count_state() { find "$1/.volter" -maxdepth 1 \( -name '.ztrack-loop-iter-*' -o -name '.ztrack-loop-exempt-*' \) 2>/dev/null | wc -l | tr -d ' '; }
 chk()  { local rc; ( cd "$1" && npx ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
 armed(){ [ -f "$1/.volter/.ztrack-loop.json" ] && echo YES || echo NO; }
-greps(){ ( cd "$1" && npx ztrack check 2>&1 ) | grep -c "$2" || true; }
+# Count FINDINGS of a code, not raw text hits: self-documenting fix hints (the `↳ Fix:` line)
+# also mention the code (e.g. `waiver sign … --code <code>`), so exclude those hint lines.
+greps(){ ( cd "$1" && npx ztrack check 2>&1 ) | grep "$2" | grep -cv '↳' || true; }
 
 # default grammar: a passed AC with REAL-commit evidence but NO proof -> exactly one
 # (waivable) finding, `passed_ac_missing_proof` (COMMIT is substituted with the repo HEAD by
