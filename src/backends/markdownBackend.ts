@@ -5,7 +5,7 @@
 // `backend: "markdown"`. Validation reads this store through `issue list/view`
 // (the loader frames those rows into the validation bundle); the project-manager
 // `snapshot` report verb is the one backend command not yet implemented here.
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
 import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
@@ -150,6 +150,11 @@ export class MarkdownBackend implements TrackerBackend {
       c.updatedAt = new Date().toISOString();
       writeFileSync(issueFile(this.dir, c.identifier), serializeIssue(c));
       return ok('');
+    }
+    if (verb === 'issue' && sub === 'delete') {
+      const c = loadOne(this.dir, rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
+      rmSync(issueFile(this.dir, c.identifier));
+      return ok(`deleted ${c.identifier}`);
     }
     if (verb === 'issue' && sub === 'close') {
       const c = loadOne(this.dir, rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };

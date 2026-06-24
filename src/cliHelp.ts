@@ -100,10 +100,31 @@ export function printIssueActionHelp(action: string): boolean {
 
 export function printResourceHelp(resource: string): boolean {
   const command = commandName();
+  if (resource === 'init') {
+    process.stdout.write(`Usage: ${command} init [--team KEY] [--preset default|spec|speckit] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
+
+Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
+  (no flags)                 a LOCAL tracker — the markdown issue store is committed to your repo.
+  --sync github --repo o/n   LINK to GitHub Issues (two-way sync) and pull existing issues;
+                             GitHub becomes the source of truth (the local store is gitignored).
+  --policy …                 conflict-resolution default for a linked tracker (default merge).
+`);
+    return true;
+  }
+  if (resource === 'loop') {
+    process.stdout.write(`Usage: ${command} loop <start|stop|status> [<issue-id>] [--max N]
+
+A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack-gate Stop
+hook is wired (README → Agent workflows), the turn is held until the target issue passes check
+(then it disarms), capped at --max iterations (default 8). \`start\` with no id auto-scopes to the
+branch/worktree issue. \`stop\` disarms; \`status\` shows the armed target.
+`);
+    return true;
+  }
   if (resource === 'issue') {
     process.stdout.write(`Usage: ${command} issue <action> [args...]
 
-Actions: scaffold, list, view, get, create, edit, patch, close, comment, comments,
+Actions: scaffold, list, view, get, create, edit, patch, delete, close, comment, comments,
 history, relate, relations, unrelate.
   ${command} issue patch <issue> --json '{...}'   overlay the preset's schema fields (see \`issue view\`)
 `);
@@ -146,12 +167,15 @@ to see the shape), then re-serializes through the preset — e.g. \`{"checked":t
     return true;
   }
   if (resource === 'sync') {
-    process.stdout.write(`Usage: ${command} sync github --repo <owner/name> [--pull | --push] [--json]
+    process.stdout.write(`Usage: ${command} sync github [--repo <owner/name>] [--pull | --push] [--policy merge|hub-wins|twin-wins] [--json]
 
 Two-way issue sync with GitHub through the twin (incremental + idempotent — never
 a full re-read/re-write). Default syncs both directions (pull then push); --pull
-or --push limits it. A synced issue IS the GitHub issue (identity binding stored
-at .volter/sync/github.json). Auth uses the gh CLI or GITHUB_TOKEN — no prompted PAT.
+or --push limits it. --repo/--policy default to the \`init --sync\` link. A synced issue
+IS the GitHub issue (identity binding stored at .volter/sync/github.json). Same-field
+conflicts surface as an unwaivable \`sync_conflict\` that gates check; --policy (default
+merge) sets resolution: hub-wins | twin-wins | merge. Auth uses the gh CLI or
+GITHUB_TOKEN — no prompted PAT.
 `);
     return true;
   }

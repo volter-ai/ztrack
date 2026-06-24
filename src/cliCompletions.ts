@@ -10,7 +10,7 @@ const TOP_LEVEL = [
 
 // Subcommands per command (second word).
 const SUBCOMMANDS: Record<string, string[]> = {
-  issue: ['scaffold', 'create', 'view', 'edit', 'list', 'close', 'comment', 'comments', 'history', 'relate', 'relations', 'unrelate'],
+  issue: ['scaffold', 'create', 'view', 'edit', 'patch', 'delete', 'list', 'close', 'comment', 'comments', 'history', 'relate', 'relations', 'unrelate'],
   loop: ['start', 'stop', 'status'],
   waiver: ['sign', 'clear', 'status'],
   preset: ['upgrade'],

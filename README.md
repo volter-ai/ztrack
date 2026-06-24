@@ -52,8 +52,9 @@ checks, file resolution, PR metadata) in the editable `preset.mts`.
 
 ## Quickstart
 
-> **Prerequisites:** Node ≥ 24 and `git`. That's it — no database, no Python. The
-> `ztrack visualizer` additionally needs [Bun](https://bun.sh).
+> **Prerequisites:** Node ≥ 24 (the installed preset is `.mts`, loaded via native type
+> stripping — so an older Node will not run it) and `git`. That's it — no database, no Python.
+> The `ztrack visualizer` additionally needs [Bun](https://bun.sh).
 
 Like `eslint --init` then `eslint`, you install a preset (your ruleset) and then check
 against it. ztrack is a project dev-dependency (the installed preset imports the mechanism

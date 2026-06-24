@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.4
+
+A re-run of the multi-perspective panel against 0.21.3 confirmed the earlier fixes and found a
+few more CLI footguns:
+
+- **`--help` no longer executes the command.** `ztrack init --help` used to *provision a tracker*
+  and `ztrack loop start --help` used to *arm the loop*, because no resource-help case matched and
+  they fell through. Both now print usage with no side effects (added `init` and `loop` help, plus
+  a regression test asserting `init --help` creates no `.volter`).
+- **`ztrack --version` works.** It used to return "unsupported command" / "no tracker config" with
+  an inconsistent exit code; now `--version` / `-v` print `ztrack <version>` standalone, never
+  touching config.
+- **`--policy` is now in `sync github --help`** (it was documented in the README and accepted by
+  the CLI, but invisible in help).
+- **`issue delete`** is supported on the markdown backend — a fat-fingered issue can be removed
+  (previously only `issue close --reason canceled` existed; deletion failed as "unsupported").
+- **`issue create` output** terminates with a newline so the JSON and the `✓ created <id>`
+  confirmation no longer run together on one line.
+- README prerequisite notes *why* Node ≥ 24 (the `.mts` preset needs native type stripping).
+
 ## 0.21.3
 
 Second pass on the multi-perspective onboarding review — the remaining friction the panel found:

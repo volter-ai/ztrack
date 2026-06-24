@@ -101,6 +101,15 @@ async function main(): Promise<void> {
     printHelp();
     return;
   }
+  // `--version` must work standalone — never touch tracker config (a verification tool that
+  // can't report its own version is a bad look). Read the package the CLI shipped from.
+  if (['--version', '-v', 'version'].includes(args[0]!)) {
+    try {
+      const v = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: string }).version;
+      process.stdout.write(`ztrack ${v ?? 'unknown'}\n`);
+    } catch { process.stdout.write('ztrack (version unknown)\n'); }
+    return;
+  }
 
   // `completions` is tracker-independent — handle it before anything touches config/client.
   if (handleCompletionsCommand(args, command)) return;
@@ -627,12 +636,15 @@ GraphQL-shaped query against the local tracker store.
   }
 
   const result = await client.command(forwardArgs, args[0] === 'extract-issue-ref' ? await readStdinIfPiped() : undefined);
-  if (result.stdout) process.stdout.write(result.stdout);
+  const isCreate = args[0] === 'issue' && args[1] === 'create';
+  // `issue create`'s JSON has no trailing newline; without one it glues to the `✓ created` line
+  // below. Terminate it so stdout is a clean line (still valid JSON for piping).
+  if (result.stdout) process.stdout.write(isCreate && !result.stdout.endsWith('\n') ? `${result.stdout}\n` : result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   // `issue create` emits the new issue as JSON on stdout (machine-readable, pipeable). A first-time
   // human reads a wall of JSON and can't tell it worked — add a one-line confirmation on STDERR so
   // stdout stays clean for piping. Identifier is parsed from the JSON the backend already returned.
-  if (args[0] === 'issue' && args[1] === 'create' && result.stdout && !result.stderr) {
+  if (isCreate && result.stdout && !result.stderr) {
     try {
       const id = (JSON.parse(result.stdout) as { identifier?: string }).identifier;
       if (id) process.stderr.write(`${statusMark('pass')} ${ui.green(`created ${id}`)}\n`);

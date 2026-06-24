@@ -5,7 +5,7 @@
 // Stop-hook gate (`check --auto-scope`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -100,4 +100,43 @@ describe('loop target drives the Stop-hook gate', () => {
     expect(r.out).toMatch(/deadbeef/);
     ztrack(['loop', 'stop']);
   });
+  // Regression: `loop start --help` (and `init --help`) used to fall through and EXECUTE the
+  // command (arm the loop / provision a tracker) because no resource-help case matched.
+  test('`loop --help` and `loop start --help` print help, they do NOT arm the loop', () => {
+    const h = ztrack(['loop', '--help']);
+    expect(h.code).toBe(0);
+    expect(h.out).toMatch(/Usage: ztrack loop/);
+    ztrack(['loop', 'start', '--help']);
+    expect(ztrack(['loop', 'status']).out).toMatch(/no loop armed/);
+  });
+});
+
+describe('CLI footguns: --help/--version never have side effects, and delete works', () => {
+  let fresh = '';
+  beforeAll(() => {
+    fresh = mkdtempSync(join(tmpdir(), 'ztrk-footgun-'));
+    mkdirSync(join(fresh, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(fresh, 'node_modules', 'ztrack'));
+  });
+  afterAll(() => { if (fresh) rmSync(fresh, { recursive: true, force: true }); });
+  const zf = (args: string[]) => { const r = spawnSync('bun', ['run', CLI, ...args], { cwd: fresh, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };
+
+  test('`init --help` prints usage and does NOT create a tracker', () => {
+    const h = zf(['init', '--help']);
+    expect(h.code).toBe(0);
+    expect(h.out).toMatch(/Usage: ztrack init/);
+    expect(existsSync(join(fresh, '.volter'))).toBe(false); // the footgun: --help must not provision
+  });
+  test('`--version` works standalone without a tracker config', () => {
+    const v = zf(['--version']);
+    expect(v.code).toBe(0);
+    expect(v.out).toMatch(/^ztrack \d+\.\d+\.\d+/);
+    expect(zf(['-v']).out).toMatch(/^ztrack \d+\.\d+\.\d+/);
+  });
+  test('`issue delete` removes a fat-fingered issue', () => {
+    expect(zf(['init', '--team', 'DEL']).code).toBe(0);
+    expect(zf(['issue', 'create', '--title', 'Typo', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body', '# x']).code).toBe(0);
+    expect(zf(['issue', 'delete', 'DEL-1']).code).toBe(0);
+    expect(zf(['issue', 'view', 'DEL-1']).out).toMatch(/not found/);
+  }, 30_000);
 });
