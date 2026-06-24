@@ -457,8 +457,7 @@ function defaultFixHint(f: Finding): string | undefined {
     case 'done_requires_merged_pr':
       return `Fix: ${issue} can move to done only once its PR is merged`;
     default:
-      // any other finding the authority may knowingly accept rather than fix
-      return f.waivable === false ? undefined : `If acceptable, record it: ztrack waiver sign ${issue} --code ${f.code}${f.acId ? ` --ac ${f.acId}` : ''} --reason "…"`;
+      return undefined; // fall through to the core universal floor (inspect + waiver escape)
   }
 }
 

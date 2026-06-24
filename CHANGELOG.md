@@ -2,6 +2,14 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.1
+
+- **Universal fix-hint floor.** A finding the preset gives no specific hint for — an uncovered
+  code, or any finding under a preset (spec/speckit) that does not implement `fixHint` — now still
+  gets a located fallback from the core: `Fix <issue>: `ztrack issue view <issue>`, then fix … —
+  or accept it: `ztrack waiver sign …``. Preset-specific hints still win; the floor only fills
+  gaps, so EVERY finding is self-documenting regardless of preset.
+
 ## 0.21.0
 
 - **Findings are now self-documenting.** Every `check`/`loop` finding carries a one-line

@@ -513,6 +513,18 @@ function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[
   return [...adjusted, ...extra];
 }
 
+// Universal remediation FLOOR — when the preset gives no specific hint for a finding (an
+// uncovered code, or a preset with no `fixHint` at all), still tell the agent the next step:
+// inspect the issue and fix the flagged content, or (when waivable) accept it with a waiver.
+// Located, and valid for ANY preset since `issue view` + waivers are core.
+function genericFixHint(f: Finding): string {
+  if (!f.issueId) return 'Fix: review the check output and resolve the flagged content in the tracker.';
+  const target = f.acId ? `AC ${f.acId}` : 'the flagged content';
+  const inspect = `\`ztrack issue view ${f.issueId}\`, then fix ${target}`;
+  if (f.waivable === false) return `Fix ${f.issueId}: ${inspect} — structural; it cannot be waived.`;
+  return `Fix ${f.issueId}: ${inspect} — or, if you knowingly accept it: \`ztrack waiver sign ${f.issueId} --code ${f.code}${f.acId ? ` --ac ${f.acId}` : ''} --reason "…"\`.`;
+}
+
 function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<R>): CheckResult<R> {
   const ctx = input.context;
   const model = deriveCoreModel(input.root, ctx, preset.isIssueDone);
@@ -537,7 +549,8 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
   const waived = applyWaivers(findings, ctx.waivers ?? []);
   // Attach the preset's remediation hint so every finding is self-documenting (the agent is told
   // the exact fix). Errored/acknowledged alike — a fix helps either way.
-  const withFix = preset.fixHint ? waived.map((f) => { const fix = preset.fixHint!(f); return fix && !f.fix ? { ...f, fix } : f; }) : waived;
+  // Preset-specific hint wins; the universal floor fills any gap, so EVERY finding is self-documenting.
+  const withFix = waived.map((f) => (f.fix ? f : { ...f, fix: preset.fixHint?.(f) ?? genericFixHint(f) }));
   return { ok: !withFix.some((f) => f.severity === 'error'), findings: withFix, export: input.root };
 }
 

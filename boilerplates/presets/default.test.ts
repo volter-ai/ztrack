@@ -56,6 +56,10 @@ describe('default preset', () => {
     expect(fixOf([{ ...REC, body: REC.body.replace(HEAD, 'deadbeef') }], 'evidence_commit_not_found')).toMatch(/ztrack ac patch DEF-1 .*commit that exists/);
     // an issue-level finding → an issue-level action, not ac patch
     expect(fixOf([{ id: 'D-1', title: 'x', status: 'draft', assignee: '', body: '## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n' }], 'issue_missing_assignee')).toMatch(/ztrack issue edit D-1 --assignee/);
+    // a finding the preset gives NO specific hint for still gets the universal FLOOR (located inspect)
+    const floor = fixOf([{ id: 'X-1', title: 'a', status: 'draft', assignee: 'me', body: 'x' }, { id: 'X-1', title: 'b', status: 'draft', assignee: 'me', body: 'y' }], 'duplicate_issue_id');
+    expect(floor).toMatch(/ztrack issue view X-1/);
+    expect(floor.length).toBeGreaterThan(0);
   });
 
   test('rule: evidence citing a missing commit fails (git world)', () => {
