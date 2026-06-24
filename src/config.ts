@@ -20,6 +20,44 @@ export function trackerConfigPath(projectRoot: string): string {
   return join(projectRoot, stateDirName(), 'tracker-config.json');
 }
 
+/** Absolute path to the shared `.git` dir — identical for every worktree of a clone — or null
+ *  when `projectRoot` isn't in a git repo. Linked-mode machine-local cache lives under it so it's
+ *  shared across worktrees and (being inside `.git`) is never committed or pushed. */
+export function gitCommonDir(projectRoot: string): string | null {
+  const r = spawnSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' });
+  if (r.status !== 0) return null;
+  const out = (r.stdout ?? '').trim();
+  return out || null;
+}
+
+/** Is this tracker linked to an external provider? Linked issue data is the provider's truth;
+ *  locally it's a per-clone cache, not committed (vs. a local tracker, whose store is committed). */
+export function isLinkedTracker(projectRoot: string): boolean {
+  try { return !!loadTrackerConfig(projectRoot).sync; } catch { return false; }
+}
+
+/** Root for machine-local cache (linked issue store, sync state, blobs, evidence staging).
+ *  - Linked: `<git-common-dir>/ztrack` — ONE cache shared by every worktree of the clone, never
+ *    pushed (it's inside `.git`). A fresh worktree sees the same issues with no per-worktree sync.
+ *  - Local (or no git available): the per-worktree `<stateDir>` — the issue store there is
+ *    committed and branch-scoped on purpose (work + proof + issue-state merge with the code). */
+export function cacheRoot(projectRoot: string): string {
+  if (isLinkedTracker(projectRoot)) {
+    const common = gitCommonDir(projectRoot);
+    if (common) return join(common, 'ztrack');
+  }
+  return join(projectRoot, stateDirName());
+}
+
+/** The markdown issue store — committed `<stateDir>/tracker/markdown` when local, the shared
+ *  per-clone `<git-common-dir>/ztrack/tracker/markdown` when linked. Every reader/writer of the
+ *  issue store MUST go through this, never the literal path. */
+export function markdownStoreDir(projectRoot: string): string { return join(cacheRoot(projectRoot), 'tracker', 'markdown'); }
+/** Sync bookkeeping (reconcile base, conflicts, identity bindings) — under the linked cache root. */
+export function syncStateDir(projectRoot: string): string { return join(cacheRoot(projectRoot), 'sync'); }
+/** Provider connector cache (poll cursors, twin event log) — under the linked cache root. */
+export function providerCacheDir(projectRoot: string): string { return join(cacheRoot(projectRoot), 'github'); }
+
 export type InitTrackerPreset = 'default' | 'spec' | 'speckit';
 
 const INIT_TRACKER_PRESETS = ['default', 'spec', 'speckit'] as const;

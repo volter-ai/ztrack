@@ -9,8 +9,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
 import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
+import { markdownStoreDir } from '../config.ts';
 
-function storeDir(projectRoot: string): string { return join(projectRoot, '.volter', 'tracker', 'markdown'); }
+// Local: committed `.volter/tracker/markdown` (branch-scoped). Linked: the shared per-clone
+// `<git-common-dir>/ztrack/tracker/markdown`. Resolved by config so every worktree agrees.
+function storeDir(projectRoot: string): string { return markdownStoreDir(projectRoot); }
 // Issue ids name files in the store; reject anything that isn't a plain id so a
 // crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;

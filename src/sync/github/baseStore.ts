@@ -6,11 +6,12 @@
 // GitHub resource id (`owner/repo#issue:N`).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { syncStateDir } from '../../config.ts';
 
 export type BaseFields = { title?: string; body?: string; state?: string };
 export type GithubBase = { repo: string; resources: Record<string, BaseFields> };
 
-const basePath = (projectRoot: string): string => join(projectRoot, '.volter', 'sync', 'github-base.json');
+const basePath = (projectRoot: string): string => join(syncStateDir(projectRoot), 'github-base.json');
 
 export function loadBase(projectRoot: string, repo: string): GithubBase {
   const p = basePath(projectRoot);

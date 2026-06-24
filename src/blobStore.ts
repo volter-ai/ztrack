@@ -15,12 +15,13 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { markdownStoreDir } from './config.ts';
 
-// Blobs live in a `blobs/` dir peer to the markdown issue store
-// (`.volter/tracker/markdown`), content-addressed, deduped, and committed
-// alongside the issues — identical from every checkout, no binary DB.
+// Blobs live in a `blobs/` dir peer to the markdown issue store, content-addressed and deduped —
+// committed alongside the issues when local, in the shared per-clone cache when linked (resolved
+// by config so every worktree agrees).
 export function markdownBlobDir(projectRoot: string): string {
-  return join(projectRoot, '.volter', 'tracker', 'markdown', 'blobs');
+  return join(markdownStoreDir(projectRoot), 'blobs');
 }
 
 export type BlobRef = string; // canonical form: `sha256:<hex>`

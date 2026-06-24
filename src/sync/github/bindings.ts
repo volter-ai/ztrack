@@ -4,6 +4,7 @@
 // state two-way sync needs locally (the issue content itself lives in the tracker + GitHub).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { syncStateDir } from '../../config.ts';
 
 export type GithubBindings = {
   repo: string;                          // owner/repo this binding set is for
@@ -12,7 +13,7 @@ export type GithubBindings = {
 };
 
 function storePath(projectRoot: string): string {
-  return join(projectRoot, '.volter', 'sync', 'github.json');
+  return join(syncStateDir(projectRoot), 'github.json');
 }
 
 export function loadBindings(projectRoot: string, repo: string): GithubBindings {

@@ -8,11 +8,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Finding } from '../core/engine.ts';
+import { syncStateDir } from '../config.ts';
 
 export type ConflictRecord = { field: string; local: string; remote: string };
 export type ConflictStore = { issues: Record<string, ConflictRecord[]> };
 
-const storePath = (projectRoot: string) => join(projectRoot, '.volter', 'sync', 'conflicts.json');
+const storePath = (projectRoot: string) => join(syncStateDir(projectRoot), 'conflicts.json');
 
 export function loadConflicts(projectRoot: string): ConflictStore {
   const p = storePath(projectRoot);
