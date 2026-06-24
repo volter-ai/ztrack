@@ -476,7 +476,7 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   rules: DEFAULT_RULES,
   // `ztrack issue scaffold` starter: a draft issue with one pending dev AC (green to begin —
   // nothing is claimed yet). Fill in the work, then mark it passed + cite evidence + proof.
-  scaffold: (_title) => `Summary: One or two sentences describing the work.\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Describe one observable, testable outcome.\n  - status: pending\n`,
+  scaffold: (_title) => `Summary: One or two sentences describing the work.\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Describe one observable, testable outcome.\n  - status: pending\n\n<!-- To mark an AC done: check the [x] box, set status: passed, and cite real proof —\n  - [x] dev/01 v1 …\n    - status: passed\n    - evidence ev1: image=<screenshot-or-artifact> commit=<real-git-sha> acv=1\n    - proof: "how the evidence shows this AC is met" -> ev1\nThe commit must EXIST in git (verified by default). \`ztrack ac patch <issue> dev/01 --json …\` writes this for you; \`ztrack ac --help\` shows the schema. -->\n`,
   // which standard primitives this SDLC implements. (audit is NOT declared here:
   // it is a core, always-on capability — recorded automatically on any change.)
   primitives: {

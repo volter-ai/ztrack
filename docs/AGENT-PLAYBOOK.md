@@ -47,10 +47,10 @@ After init, project-specific rules are added by editing the standalone
 2. Mark one AC passed (`[x]` + `status: passed`) and cite a fake commit in its
    evidence sub-line: `evidence ev1: image=shot.png commit=deadbee acv=1`, plus a
    `proof:` line.
-3. Run `npx ztrack check --verify-commits --json`.
+3. Run `npx ztrack check --json`.
 4. Confirm the finding code is `evidence_commit_not_found`.
 5. Replace `deadbee` with a real commit SHA.
-6. Run `npx ztrack check --verify-commits --json` again.
+6. Run `npx ztrack check --json` again.
 7. Confirm `summary.status` is `pass`.
 
 Do not commit scratch files created only for the proof, such as `body.md`,

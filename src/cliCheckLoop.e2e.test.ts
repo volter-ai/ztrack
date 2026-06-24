@@ -70,6 +70,16 @@ describe('check targets', () => {
     expect(all.out).toMatch(/ZT-2/);
     expect(ztrack(['check', 'ZT-1']).code).toBe(0); // but the clean issue, alone, passes
   });
+  // Commit existence is verified by DEFAULT (the core guarantee). `--no-verify-commits` is the
+  // escape hatch for shallow/CI checkouts that lack the cited commits; `--verify-commits` is kept
+  // as an accepted no-op alias (docs used to teach it, and it must not error).
+  test('commit verification is default-on; --no-verify-commits opts out; --verify-commits is accepted', () => {
+    expect(ztrack(['check', 'ZT-2']).code).not.toBe(0);                     // fake commit caught with no flag
+    expect(ztrack(['check', 'ZT-2', '--no-verify-commits']).code).toBe(0);  // escape hatch skips the commit check
+    const alias = ztrack(['check', 'ZT-2', '--verify-commits']);
+    expect(alias.code).not.toBe(0);                                         // alias still verifies (not "unknown flag")
+    expect(alias.out).not.toMatch(/unknown flag/);
+  });
 });
 
 describe('loop target drives the Stop-hook gate', () => {

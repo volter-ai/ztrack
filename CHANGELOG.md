@@ -2,6 +2,30 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.21.3
+
+Second pass on the multi-perspective onboarding review — the remaining friction the panel found:
+
+- **No more `ExperimentalWarning: Type Stripping` on every command.** The installed `preset.mts`
+  loads via Node type-stripping, which printed that experimental notice before every command's
+  output and read like a fault. The CLI now drops exactly that one warning (every other warning,
+  including other experimental ones, still passes through).
+- **`--verify-commits` was a documented no-op.** Commit existence is verified by DEFAULT (it's the
+  core guarantee); the flag did nothing and there was no way to turn verification OFF. Now
+  `--no-verify-commits` is a real escape hatch for shallow/CI checkouts that lack the cited commits
+  (and would otherwise fail closed); `--verify-commits` stays accepted as a no-op alias. Docs no
+  longer teach the redundant flag.
+- **`issue create` now confirms.** It still prints the new issue as JSON on stdout (pipeable), but
+  adds a `✓ created <id>` line on stderr so a human can tell it worked instead of reading a wall of
+  JSON as a possible error.
+- **`loop start` stops overpromising.** Arming the loop wires no Stop hook by itself, so the message
+  no longer claims the gate "now holds the turn" — it says it does so *once the ztrack-gate Stop
+  hook is wired*.
+- **Linked-sync model is documented in the README** (was CHANGELOG-only): GitHub is the source of
+  truth and the local issue store is gitignored in linked mode; pull-then-push field-level
+  reconcile; same-field collisions raise an unwaivable `sync_conflict` that gates `check`; and the
+  `--policy merge|hub-wins|twin-wins` resolution lever.
+
 ## 0.21.2
 
 New-user onboarding fixes surfaced by a multi-perspective review of the published npm artifact

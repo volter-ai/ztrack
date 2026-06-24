@@ -25,7 +25,7 @@ You never hand-edit issue markdown — the preset owns the grammar. You mutate t
 - **`ztrack issue edit <issue> --assignee … --state …`** — set issue columns (assignee, state).
 - **`ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "…"`** — only when you *knowingly accept* a finding you cannot satisfy; prefer fixing.
 
-The cited commit must EXIST in git (`ztrack check --verify-commits` enforces it) — so implement and commit the real work first, then cite that SHA. If a needed commit, PR, screenshot, or source does not exist, **leave the AC unchecked and report the blocker** — do not invent it.
+The cited commit must EXIST in git (`ztrack check` enforces this by default) — so implement and commit the real work first, then cite that SHA. If a needed commit, PR, screenshot, or source does not exist, **leave the AC unchecked and report the blocker** — do not invent it.
 
 ## Targets
 `check` and `loop` take one target: nothing (whole tracker), `<issue-id>`, `<file.md>`, or — inside a worktree named for an issue — that issue automatically. `ztrack loop start <issue>` arms a Stop-hook gate that holds your turn until that issue is green.

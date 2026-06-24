@@ -28,6 +28,17 @@ import { handleCheckCommand } from './cliCheck.ts';
 import { handleCompletionsCommand } from './cliCompletions.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 
+// The installed preset is `.volter/tracker/validation/preset.mts`, loaded at runtime via Node's
+// type-stripping — which prints a one-time "ExperimentalWarning: Type Stripping" on every command.
+// It's not actionable for ztrack users and reads like a fault, so drop exactly that one warning;
+// every other warning (including other experimental ones) still passes through untouched.
+const __emitWarning = process.emitWarning.bind(process);
+process.emitWarning = ((warning: unknown, ...rest: unknown[]) => {
+  const type = typeof rest[0] === 'string' ? rest[0] : (rest[0] as { type?: string } | undefined)?.type;
+  if (type === 'ExperimentalWarning' && String(warning).includes('Type Stripping')) return;
+  return (__emitWarning as (...a: unknown[]) => void)(warning, ...rest);
+}) as typeof process.emitWarning;
+
 async function readStdinIfPiped(): Promise<string | undefined> {
   if (process.stdin.isTTY) return undefined;
   const chunks: Buffer[] = [];
@@ -262,7 +273,7 @@ async function main(): Promise<void> {
       writeFileSync(marker, `${JSON.stringify({ target, maxIterations, startedAt: new Date().toISOString(), label }, null, 2)}\n`);
       // Pull the latest from a linked tracker before the ralph loop starts (best-effort).
       await githubSync.syncLinked(root, { pull: true }).catch(() => {});
-      process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); the Stop gate now holds the turn until ${label} is green`)}\n`);
+      process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); once the ztrack-gate Stop hook is wired (README → Agent workflows), it holds the turn until ${label} is green`)}\n`);
       return;
     }
     if (action === 'stop') {
@@ -618,6 +629,15 @@ GraphQL-shaped query against the local tracker store.
   const result = await client.command(forwardArgs, args[0] === 'extract-issue-ref' ? await readStdinIfPiped() : undefined);
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
+  // `issue create` emits the new issue as JSON on stdout (machine-readable, pipeable). A first-time
+  // human reads a wall of JSON and can't tell it worked — add a one-line confirmation on STDERR so
+  // stdout stays clean for piping. Identifier is parsed from the JSON the backend already returned.
+  if (args[0] === 'issue' && args[1] === 'create' && result.stdout && !result.stderr) {
+    try {
+      const id = (JSON.parse(result.stdout) as { identifier?: string }).identifier;
+      if (id) process.stderr.write(`${statusMark('pass')} ${ui.green(`created ${id}`)}\n`);
+    } catch { /* non-JSON output (e.g. a non-markdown backend) — skip the confirmation */ }
+  }
   // A backend error (unknown verb, not-found, not-implemented) reports on stderr with no stdout.
   // Without this it would exit 0 — a silent no-op that lets scripts/agents believe a bad command worked.
   if (result.stderr && !result.stdout) process.exitCode = 1;

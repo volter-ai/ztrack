@@ -31,7 +31,7 @@ function parseCategories(flag: string): Partial<Record<RuleCategory, number>> | 
 
 const KNOWN_FLAGS: Record<string, Set<string>> = {
   export: new Set(['--out', '--issues']),
-  check: new Set(['--input', '--issues', '--case', '--categories', '--phase', '--fail-on-warning', '--verify-commits', '--errors-only', '--output', '--json', '--max-findings', '--auto-scope']),
+  check: new Set(['--input', '--issues', '--case', '--categories', '--phase', '--fail-on-warning', '--verify-commits', '--no-verify-commits', '--errors-only', '--output', '--json', '--max-findings', '--auto-scope']),
 };
 
 /** `ztrack check` (validate the live tracker or a committed validated root) and
@@ -43,7 +43,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\nChecks against the installed preset (run `ztrack init` first). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N]\n\nChecks against the installed preset (run `ztrack init` first). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -62,7 +62,10 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
 
   const categories = parseCategories(optionValue(flagArgs, '--categories'));
   const failOnWarning = flagArgs.includes('--fail-on-warning');
-  const verifyCommits = flagArgs.includes('--verify-commits') ? true : undefined;
+  // Commit existence is verified by DEFAULT (it's the core guarantee). `--verify-commits` is kept
+  // as an accepted no-op alias for back-compat; `--no-verify-commits` is the real escape hatch for
+  // shallow clones / CI checkouts that lack the cited commits and would otherwise fail closed.
+  const verifyCommits = flagArgs.includes('--no-verify-commits') ? false : undefined;
   const phaseRaw = optionValue(flagArgs, '--phase');
   if (phaseRaw && phaseRaw !== 'all' && phaseRaw !== 'gate') throw new Error(`ztrack check: --phase must be 'all' or 'gate' (got '${phaseRaw}')`);
   const phase: 'all' | 'gate' | undefined = phaseRaw === 'gate' || phaseRaw === 'all' ? phaseRaw : undefined;

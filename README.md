@@ -78,7 +78,7 @@ Status: ready
   - proof: "screenshot shows a 200 response" -> ev1
 EOF
 npx ztrack issue create --title "Add /health" --label type:case --state ready --assignee me --body-file body.md
-npx ztrack check --verify-commits    # ✗ the cited commit isn't in git
+npx ztrack check                     # ✗ the cited commit isn't in git (verified by default)
 ```
 
 ```text
@@ -110,7 +110,7 @@ Status: ready
   - proof: "screenshot shows a 200 response" -> ev1
 EOF
 npx ztrack issue edit LOCAL-1 --body-file body.md    # re-import the corrected body
-npx ztrack check --verify-commits                    # ✓ now it passes
+npx ztrack check                                     # ✓ now it passes
 ```
 
 That's the whole idea: a checked acceptance criterion must cite proof that actually
@@ -183,6 +183,20 @@ ztrack sync github --repo owner/name --pull # or an explicit repo, one direction
 
 It syncs through the [twin](#how-it-works) (delta folds + an egress idempotency ledger), so it
 never does a full re-read/re-write. Auth uses the `gh` CLI or `GITHUB_TOKEN`.
+
+What a linked team should know:
+
+- **GitHub is the source of truth.** In linked mode ztrack **gitignores** the local issue store
+  (`.volter/tracker/markdown/`) — your issues live on GitHub, not in your repo. (In *local* mode
+  that store is committed instead.) Re-clones repopulate it on the next `ztrack sync github`.
+- **Push vs pull.** `sync github` pulls GitHub's issues, then pushes your local edits back — a
+  three-way merge (a committed base vs. your tracker vs. GitHub) reconciles field by field, so
+  non-overlapping edits on each side both land.
+- **Conflicts gate the check.** When the *same field* changed on both sides, ztrack raises an
+  unwaivable `sync_conflict` finding (so `check` fails until you resolve it) and writes a
+  local-only `## Conflicts` block into the issue body. Resolve by editing and re-syncing, or pick
+  a policy: `--policy hub-wins | twin-wins | merge` (default `merge`), settable on `sync`/`init`
+  or as `sync.policy` in the tracker config.
 
 `ztrack check` (and `ztrack loop start`, the ralph loop) take the same target: nothing for the
 whole tracker, an **issue id** (`ztrack check ZT-1`), a **file** (`ztrack check ./body.md`), or —

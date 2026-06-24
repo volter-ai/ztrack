@@ -20,7 +20,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
 
 // Flags worth completing for the commands that take them.
 const FLAGS: Record<string, string[]> = {
-  check: ['--issues', '--json', '--auto-scope', '--verify-commits', '--phase', '--fail-on-warning', '--errors-only', '--output', '--input', '--max-findings', '--categories'],
+  check: ['--issues', '--json', '--auto-scope', '--no-verify-commits', '--phase', '--fail-on-warning', '--errors-only', '--output', '--input', '--max-findings', '--categories'],
   export: ['--out', '--issues'],
   init: ['--team', '--preset'],
   loop: ['--max'],

@@ -55,7 +55,7 @@ It packs the current checkout, installs that tarball into new temporary
 projects, and proves:
 
 - all three public presets produce a fake-SHA failure and real-SHA pass;
-- the committed validated-root CI gate works with `--verify-commits`;
+- the committed validated-root CI gate verifies commits (on by default);
 - the MCP server can initialize, create an issue, patch an AC, and return a
   passing `tracker_check` report;
 - the SDK can create, view, and list issues through `createTrackerClient`.
