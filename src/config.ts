@@ -64,9 +64,9 @@ export function evidenceStore(projectRoot: string): 'commit' | 'attach' | 'exter
   let cfgStore: string | undefined;
   try { cfgStore = loadTrackerConfig(projectRoot).evidence?.store; } catch { /* no config */ }
   if (cfgStore === 'commit' || cfgStore === 'attach' || cfgStore === 'external') return cfgStore;
-  // auto: `commit` for now (works in both modes — committed evidence verifies at the cited
-  // commit). When provider attachment upload lands, auto will resolve to `attach` for a linked
-  // tracker so evidence lands on the issue instead of the repo.
+  // auto → `commit`: the default everywhere. Committed evidence is offline-verifiable at the cited
+  // commit and travels with the code — the strongest model. `attach` (upload to the linked GitHub
+  // release host, cite a URL pinned by digest) is opt-in via `evidence.store` or `evidence add --attach`.
   return 'commit';
 }
 

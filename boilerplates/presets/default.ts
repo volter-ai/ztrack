@@ -29,9 +29,11 @@ import {
 export const DefaultEvidenceSchema = z.object({
   id: z.string().min(1),                              // core
   // OPTIONAL: the backbone of evidence is commit + proof. An image/artifact is an optional
-  // attachment — but if cited as a repo path, a rule verifies it exists at the commit (no
-  // fabricated screenshots). `sha256:<hex>` blob refs are left to the blob store.
+  // attachment — a repo PATH (verified to exist at the commit), a `sha256:` blob ref, or a URL
+  // (a tracker attachment / release asset, pinned by `sha256` below and fetch-verified by
+  // `ztrack evidence verify`, not on every check — keeps the gate offline/deterministic).
   image: z.string().regex(/^\S+$/, 'image must be a single whitespace-free token').optional(),
+  sha256: z.string().regex(/^sha256:[0-9a-f]{64}$/, 'sha256 must be sha256:<64-hex>').optional(), // digest pin for a URL/external image
   commit: z.string().regex(/^[0-9a-f]{7,40}$/),       // preset: captured at this commit
   acVersion: z.number().int().min(1),                 // preset: against this AC version
 }).strict();
@@ -176,8 +178,8 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
           const line = firstParagraphText(sub);
           const st = /^status:\s*([\w-]+)/i.exec(line)?.[1];
           if (st) { status = st.toLowerCase(); continue; }
-          const ev = /^evidence\s+(\S+):\s*(?:image=(\S+)\s+)?commit=([0-9a-fA-F]+)\s+acv=(\d+)/i.exec(line);
-          if (ev) { evidence.push({ id: ev[1], ...(ev[2] ? { image: ev[2] } : {}), commit: ev[3]!.toLowerCase(), acVersion: Number(ev[4]) }); continue; }
+          const ev = /^evidence\s+(\S+):\s*(?:image=(\S+)\s+)?(?:sha256=(\S+)\s+)?commit=([0-9a-fA-F]+)\s+acv=(\d+)/i.exec(line);
+          if (ev) { evidence.push({ id: ev[1], ...(ev[2] ? { image: ev[2] } : {}), ...(ev[3] ? { sha256: ev[3] } : {}), commit: ev[4]!.toLowerCase(), acVersion: Number(ev[5]) }); continue; }
           // proof: "<explanation>" -> ev1, ev2 — match the QUOTED explanation greedily so a
           // '->' (or a quote) inside the explanation survives; fall back to an unquoted form.
           const pf = /^proof:\s*"(.*)"\s*->\s*(.+)$/i.exec(line) ?? /^proof:\s*(.+?)\s*->\s*(.+)$/i.exec(line);
@@ -231,7 +233,7 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
   for (const ac of issue.acceptanceCriteria) {
     out.push(`- [${ac.checked ? 'x' : ' '}] ${ac.id} v${ac.version} ${ac.text}`);
     out.push(`  - status: ${ac.status}`);
-    for (const ev of ac.evidence) out.push(`  - evidence ${ev.id}: ${ev.image ? `image=${ev.image} ` : ''}commit=${ev.commit} acv=${ev.acVersion}`);
+    for (const ev of ac.evidence) out.push(`  - evidence ${ev.id}: ${ev.image ? `image=${ev.image} ` : ''}${ev.sha256 ? `sha256=${ev.sha256} ` : ''}commit=${ev.commit} acv=${ev.acVersion}`);
     if (ac.proof) out.push(`  - proof: "${ac.proof.explanation}" -> ${ac.proof.evidenceRefs.join(', ')}`);
     // render refs relatively (bare) when they target this issue's own AC, absolutely
     // otherwise; an issue-level ref (no `ac`) is just the issue id.
@@ -352,7 +354,7 @@ const DEFAULT_RULES = [
     code: 'evidence_file_not_found', select: (m) => m.evidence,
     when: ({ ev }, m) => {
       const blobs = m.context.git?.evidenceBlobs; const commits = m.context.git?.existingCommits;
-      if (!ev.image || /^sha256:/i.test(ev.image) || !blobs || !commits || !commits.some((x) => shaMatches(x, ev.commit))) return false;
+      if (!ev.image || /^(sha256:|https?:\/\/)/i.test(ev.image) || !blobs || !commits || !commits.some((x) => shaMatches(x, ev.commit))) return false;
       return blobs[`${ev.commit}:${ev.image}`] === false;
     },
     message: ({ ev }) => `Evidence ${ev.id} cites file "${ev.image}" at commit ${ev.commit}, but that file is not in the tree at that commit.`,
@@ -444,7 +446,7 @@ function defaultPrBranches(input: PresetContextInput): string[] {
 // Cited (commit, image-path) pairs to resolve — only PATH images (a `sha256:` blob ref is the
 // blob store's job, not a tree path). From the parsed root when present, else scanned from the bundle.
 function citedEvidenceFiles(input: PresetContextInput): { commit: string; image: string }[] {
-  const isPath = (img: string | undefined): img is string => !!img && !/^sha256:/i.test(img);
+  const isPath = (img: string | undefined): img is string => !!img && !/^(sha256:|https?:\/\/)/i.test(img);
   if (input.root) {
     return (input.root as unknown as DefaultRoot).issues.flatMap((i) =>
       i.acceptanceCriteria.flatMap((ac) => ac.evidence.filter((ev) => isPath(ev.image)).map((ev) => ({ commit: ev.commit, image: ev.image! }))));

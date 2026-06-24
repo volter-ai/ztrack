@@ -149,16 +149,19 @@ default, port 3300, project = current tracker root. Requires Bun (bun.sh).
     return true;
   }
   if (resource === 'evidence') {
-    process.stdout.write(`Usage: ${command} evidence <add|keygen|verify|export> [args...]
+    process.stdout.write(`Usage: ${command} evidence <add|verify|keygen|export> [args...]
 
-  ${command} evidence add <file> [--name <name>]   copy a screenshot/artifact into the evidence
-       dir and print the path to cite (\`image=<path>\`) + its sha256. COMMIT the file — then a
-       checked AC citing it verifies the file exists at that commit. (\`--blob\` = content-addressed.)
-  ${command} evidence keygen --out-dir .volter/keys              generate a DSSE signing key
-  ${command} evidence export --format in-toto --out evidence.json   export signed attestations
+  ${command} evidence add <file> [--name <n>]      COMMIT mode (default): copy into the evidence
+       dir; cite the printed \`image=<path>\` and commit it → verified at the cited commit.
+  ${command} evidence add <file> --attach          ATTACH mode (linked GitHub repo): upload as a
+       release asset; cite \`image=<url> sha256=<digest>\`. The gate accepts it offline (the digest
+       is a tamper-evident pin); run \`evidence verify\` to fetch + compare.
+  ${command} evidence verify [--issues a,b]         fetch every URL-pinned evidence and check its
+       content matches the pinned sha256 (the network step \`check\` skips). gh-auth for private repos.
+  ${command} evidence keygen / export               DSSE signing key / in-toto attestation export.
 
-Evidence is commit + proof at its core; an image is optional and verified when cited. Where files
-live is set by \`evidence.store\` in the tracker config (default: committed in \`evidence.dir\`).
+Evidence is commit + proof at its core; an image is optional and verified when cited. Storage is
+set by \`evidence.store\` in the config (default \`commit\`; \`attach\` uploads to the linked repo).
 `);
     return true;
   }

@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.24.0
+
+GitHub attachment evidence — store evidence on the linked repo instead of committing it.
+
+- **`ztrack evidence add <file> --attach`** uploads the file to the linked GitHub repo as a release
+  asset (the `ztrack-evidence` release) and prints `image=<url> sha256=<digest>` to cite. Auth is
+  the gh CLI.
+- The default preset's evidence now accepts a **URL `image=` pinned by `sha256=`**. `check` accepts
+  it **offline** — the digest is a tamper-evident commitment, so the gate never makes a network
+  call. (A repo-path image is still verified at its commit; a `sha256:` blob ref is untouched.)
+- **`ztrack evidence verify [--issues a,b]`** is the network step the gate skips: it fetches every
+  URL-pinned evidence and checks the bytes match the pinned digest — a swapped or rotted asset
+  fails loudly. Private repos are fetched via the gh CLI; public over plain HTTP. Live-verified
+  end-to-end against throwaway public and private repos (attach → check → verify, plus a tamper
+  case that fails).
+- `evidence.store` stays `commit` by default (offline, commit-verified, code-adjacent — the
+  strongest model); `attach` is opt-in via the config or `--attach`.
+
+(Linear/Jira attachment upload is not built — it needs accounts to develop and live-test against.)
+
 ## 0.23.0
 
 Completes the evidence storage UX (the commit-based path; provider attachment upload is next).

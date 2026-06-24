@@ -30,10 +30,10 @@ export interface TrackerConfig {
    * commit/locator-anchored regardless.
    *  - `commit` (default): the file is committed in `dir` and verified to exist at the cited
    *    commit (`git cat-file -e <sha>:<path>`). Works in both local and linked trackers.
-   *  - `attach`: the file is uploaded to the linked provider (a release asset / tracker
-   *    attachment) and verified by its locator URL + digest. (Provider upload: in progress.)
+   *  - `attach`: the file is uploaded to the linked provider (a release asset) and verified by its locator URL + digest (`evidence verify`).
    *  - `external`: an object store you configure.
-   *  - `auto` (default): `commit` for a local tracker, `attach` for a linked one.
+   *  - `auto` (default): resolves to `commit` (the offline, commit-verified, code-adjacent model).
+   *    `attach` is opt-in here or per-call via `evidence add --attach`.
    */
   evidence?: {
     store?: 'auto' | 'commit' | 'attach' | 'external';

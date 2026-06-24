@@ -6,7 +6,9 @@ import { putBlob } from './blobStore.ts';
 import { optionValue } from './cliArgs.ts';
 import { exportTrackerRoot } from './export.ts';
 import { generateSigningKey, signStatement, verifyEnvelope, type DsseEnvelope } from './dsse.ts';
-import { evidenceDir, projectRootFrom } from './config.ts';
+import { evidenceDir, evidenceStore, projectRootFrom } from './config.ts';
+import { linkedRepo } from './sync/github/linked.ts';
+import { uploadEvidenceToGithub, verifyUrlDigest } from './sync/github/attach.ts';
 
 export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
   if (args[0] !== 'evidence') return false;
@@ -27,9 +29,21 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
       process.stdout.write(`${JSON.stringify({ blob: putBlob(root, new Uint8Array(bytes), mediaType) }, null, 2)}\n`);
       return true;
     }
+    const name = optionValue(args, '--name') || basename(abs);
+    // attach mode (linked tracker, or --attach): upload to the GitHub release host → cite a URL
+    // pinned by the digest (the gate accepts it; `evidence verify` fetches + compares). Otherwise
+    // commit mode: copy friendly-named into the evidence dir → cite the path (verified at commit).
+    const attach = args.includes('--attach') || (!args.includes('--commit') && evidenceStore(root) === 'attach');
+    if (attach) {
+      const repo = linkedRepo(root);
+      if (!repo) throw new Error('evidence add --attach: no linked GitHub repo. Link one with `ztrack init --sync github --repo <owner/name>`, or use commit storage.');
+      const { url } = uploadEvidenceToGithub(repo, abs, name);
+      process.stdout.write(`${JSON.stringify({ image: url, sha256 }, null, 2)}\n`);
+      process.stderr.write(`✓ uploaded to ${repo}\n  cite: image=${url} sha256=${sha256}\n`);
+      return true;
+    }
     const dir = evidenceDir(root);
     mkdirSync(dir, { recursive: true });
-    const name = optionValue(args, '--name') || basename(abs);
     const dest = join(dir, name);
     copyFileSync(abs, dest);
     const path = relative(root, dest);
@@ -50,7 +64,31 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
   if (args[1] === 'verify') {
     const bundlePath = optionValue(args, '--bundle');
     const keyPath = optionValue(args, '--key');
-    if (!bundlePath || !keyPath) throw new Error('usage: tracker evidence verify --bundle envelopes.json --key public.pem');
+    // No --bundle → verify URL-hosted (attached) evidence across the tracker: fetch each cited URL
+    // and compare its content to the pinned sha256. This is the network step the GATE deliberately
+    // skips (check stays offline); run it on demand / in CI to catch a swapped or rotted artifact.
+    if (!bundlePath) {
+      const root = await exportTrackerRoot({ projectRoot: projectRootFrom() });
+      const issuesFilter = optionValue(args, '--issues');
+      const only = issuesFilter ? new Set(issuesFilter.split(',').map((s) => s.trim()).filter(Boolean)) : null;
+      const pins: { issue: string; ac: string; id: string; url: string; sha256: string }[] = [];
+      for (const issue of (root as unknown as { issues?: Array<Record<string, unknown>> }).issues ?? []) {
+        if (only && !only.has(String(issue.id))) continue;
+        for (const ac of (issue.acceptanceCriteria as Array<Record<string, unknown>> | undefined) ?? []) {
+          for (const ev of (ac.evidence as Array<Record<string, unknown>> | undefined) ?? []) {
+            const image = ev.image as string | undefined; const sha = ev.sha256 as string | undefined;
+            if (image && /^https?:\/\//i.test(image) && sha) pins.push({ issue: String(issue.id), ac: String(ac.id), id: String(ev.id), url: image, sha256: sha });
+          }
+        }
+      }
+      const results = await Promise.all(pins.map(async (p) => ({ ...p, ...(await verifyUrlDigest(p.url, p.sha256)) })));
+      const failed = results.filter((r) => !r.ok);
+      process.stdout.write(`${JSON.stringify({ checked: results.length, verified: results.length - failed.length, failed: failed.length, results: failed.length ? failed : undefined }, null, 2)}\n`);
+      if (!pins.length) process.stderr.write('no URL-pinned evidence to verify (committed evidence is verified by `ztrack check` at its commit).\n');
+      process.exitCode = failed.length > 0 ? 1 : 0;
+      return true;
+    }
+    if (!keyPath) throw new Error('usage: tracker evidence verify --bundle envelopes.json --key public.pem   (or `evidence verify [--issues a,b]` to fetch-verify URL-pinned evidence)');
     const publicKeyPem = readFileSync(resolve(process.cwd(), keyPath), 'utf8');
     const bundle = JSON.parse(readFileSync(resolve(process.cwd(), bundlePath), 'utf8')) as { envelopes?: DsseEnvelope[] };
     if (!Array.isArray(bundle.envelopes)) throw new Error(`bundle ${bundlePath} is missing an "envelopes" array`);
