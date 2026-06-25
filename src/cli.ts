@@ -533,7 +533,7 @@ GraphQL-shaped query against the local tracker store.
   }
 
   if (args[0] === 'annotations') {
-    throw new Error('ztrack annotations requires the optional @volter-ai-dev/twin peer dependency and a mirrored world store.');
+    throw new Error('ztrack annotations requires a configured world store (a mirrored world to annotate). See docs/WORLD-INTEGRATION.md.');
   }
 
   // Two-way GitHub issue sync through the twin. Auth is the gh CLI (or GITHUB_TOKEN) — never a

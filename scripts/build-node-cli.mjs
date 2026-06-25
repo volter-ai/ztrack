@@ -39,7 +39,10 @@ function rewriteDeclarations(dir) {
 }
 rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 
-const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/twin', '--outfile=dist/cli.js'], {
+// twin (@volter-ai-dev/twin*) is a regular dependency and is bundled into the CLI on purpose, so
+// `ztrack sync github` works from a plain install with no extra step. (A prior `--external=@volter/twin`
+// flag was a no-op typo — wrong scope name — and is intentionally gone.)
+const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--outfile=dist/cli.js'], {
   cwd: packageRoot,
   encoding: 'utf8',
 });
@@ -65,7 +68,7 @@ chmodSync(outFile, 0o755);
 // dist/cli.js), so the visualizer imports this bundle instead of dist/src/*.
 const vizCore = spawnSync(
   'bun',
-  ['build', 'visualizer/serverCore.ts', '--target=bun', '--external=@volter/twin', '--outfile=visualizer/core.js'],
+  ['build', 'visualizer/serverCore.ts', '--target=bun', '--outfile=visualizer/core.js'],
   { cwd: packageRoot, encoding: 'utf8' },
 );
 if (vizCore.status !== 0) {

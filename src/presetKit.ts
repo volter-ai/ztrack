@@ -27,10 +27,10 @@ export { splitIssueBundle } from './core/bundle.ts';
 export { normalizeBlockRefs, parseBlockToken } from './core/blocking.ts';
 export type { RawBlockRef } from './core/blocking.ts';
 
-// World annotations live behind the `@volter-ai-dev/twin` PEER dependency, so they are
-// deliberately NOT re-exported here (that would force every installed preset to resolve
-// `twin` just to load). A preset whose loadContext uses them imports the dedicated
-// `ztrack/world-annotations` subpath instead.
+// World annotations pull in `@volter-ai-dev/twin`, so they are deliberately NOT re-exported
+// here — keeping preset-kit (and thus every baseline installed preset) from loading twin's
+// world runtime just to parse. A preset whose loadContext uses them imports the dedicated
+// `ztrack/world-annotations` subpath instead (twin is a regular dependency, always present).
 
 // ── mdast mechanism: a standalone preset's parser walks this tree ─────────────
 // The `mdast-*` deps live in the kit, not in each installed preset.

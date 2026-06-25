@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.29.0
+
+Make the `@volter-ai-dev/twin` dependency honest — it's a real, bundled dependency, not an
+"optional peer."
+
+- `@volter-ai-dev/twin` + `@volter-ai-dev/twin-github` are now regular **dependencies** (were
+  declared as *optional peer* dependencies). They power `ztrack sync github` and world-backed
+  validation, and were already being bundled into the CLI — so the "optional" declaration was a
+  fiction left over from when twin was a private `@volter/twin` GitHub-Packages package. It's now
+  public on npm, so it's a normal dependency.
+- This **fixes** the `ztrack/world-annotations` and `ztrack/world-source-books` subpaths, which
+  previously failed with `ERR_MODULE_NOT_FOUND` in a plain install (they import twin at runtime, and
+  nothing guaranteed it was installed). They now resolve in any install.
+- Removed a no-op `--external=@volter/twin` build flag (wrong scope name — it never matched the real
+  `@volter-ai-dev/twin`, so twin was silently bundled anyway). The bundling is now intentional:
+  `ztrack sync github` works from a plain `npm i ztrack` with no extra install step.
+- Docs reconciled: `WORLD-INTEGRATION.md` and `ARCHITECTURE.md` described twin as a private
+  GitHub-Packages optional peer requiring registry setup — all stale. Now: a public-npm regular
+  dependency; world integration is opt-in by *policy* (your preset), not by installing anything.
+
 ## 0.28.0
 
 Trim the published API surface to what's actually used.

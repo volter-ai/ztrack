@@ -193,8 +193,8 @@ Berry + PnP), and bun with no build step.
 ## 5. World integration (optional)
 
 ztrack can use a **mirrored world** of the SaaS systems your code talks to
-(GitHub/Jira/Slack/...) as an evidence substrate, via the optional external
-`@volter/twin` peer.
+(GitHub/Jira/Slack/...) as an evidence substrate, via the
+`@volter-ai-dev/twin` runtime (the same engine behind `ztrack sync github`).
 
 | file | role |
 |---|---|
@@ -202,11 +202,13 @@ ztrack can use a **mirrored world** of the SaaS systems your code talks to
 | `worldSourceBooks.ts` | adapter: twin events → "source books" the loader feeds into `Context` |
 | `sync/<provider>/` | two-way issue sync (e.g. `sync/github/`: `execute`/`map`/`bindings`/`sync`). A **standalone provider module** — ztrack has no universal sync engine; the twin is the shared event-sourced substrate that makes pull/push incremental + idempotent. `ztrack sync github` is the user surface; identity bindings live at `.volter/sync/<provider>.json` |
 
-`@volter/twin` is an **optional** peer dependency distributed through GitHub
-Packages under `volter-ai`. Without it installed, the validation pipeline works
-over the store + git. The world files are source-level adapter code, not default
-npm exports; see `docs/WORLD-INTEGRATION.md` for registry setup before building a
-world-backed preset.
+`@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`) is a regular dependency on
+the public npm registry — bundled into the CLI and installed with the package, so
+sync and world-backed validation work with no extra step. World integration is
+still opt-in by *policy*: a baseline tracker validates over the store + git and
+never consults the world. The adapters are reachable from the
+`ztrack/world-annotations` / `ztrack/world-source-books` subpaths; see
+`docs/WORLD-INTEGRATION.md`.
 
 ---
 
