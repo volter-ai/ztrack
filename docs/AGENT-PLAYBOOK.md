@@ -8,7 +8,7 @@ From a target repository, a user should be able to run an agent with a prompt
 like this:
 
 ```bash
-claude -p 'Adopt ztrack in this repository. Start by reading https://github.com/volter-ai/ztrack/blob/main/README.md, https://github.com/volter-ai/ztrack/blob/main/docs/ADOPTING.md, https://github.com/volter-ai/ztrack/blob/main/docs/AGENT-PLAYBOOK.md, and https://github.com/volter-ai/ztrack/blob/main/docs/PRESETS.md. Choose exactly one install preset: default for a dev lifecycle (the primary choice), spec for lightweight issue-shaped specs, or speckit for GitHub Spec Kit style repos. Initialize ztrack, create one demo issue, prove one fake-SHA failure and one real-SHA pass, add the smallest appropriate CI or final-check instructions, and leave a concise adoption note. Do not invent evidence; if a needed commit, PR, screenshot, source, or token does not exist, leave the claim unchecked and report the blocker. Run ztrack check before finishing.'
+claude -p 'Adopt ztrack in this repository. Start by reading https://github.com/volter-ai/ztrack/blob/main/README.md, https://github.com/volter-ai/ztrack/blob/main/docs/ADOPTING.md, https://github.com/volter-ai/ztrack/blob/main/docs/AGENT-PLAYBOOK.md, and https://github.com/volter-ai/ztrack/blob/main/docs/PRESETS.md. Choose exactly one install preset: simple-sdlc for a dev lifecycle (the PR-free baseline, the primary choice), simple-gh-sdlc for a GitHub PR-based flow, spec for lightweight issue-shaped specs, or speckit for GitHub Spec Kit style repos. Initialize ztrack, create one demo issue, prove one fake-SHA failure and one real-SHA pass, add the smallest appropriate CI or final-check instructions, and leave a concise adoption note. Do not invent evidence; if a needed commit, PR, screenshot, source, or token does not exist, leave the claim unchecked and report the blocker. Run ztrack check before finishing.'
 ```
 
 If the target repository cannot access the internet, first install or vendor the
@@ -28,7 +28,7 @@ evidence. Do not create prose-only done states.
 ## First Pass
 
 ```bash
-npx ztrack init --team APP --preset default
+npx ztrack init --team APP --preset simple-sdlc
 npx ztrack issue scaffold --title "Adopt ztrack" > body.md
 npx ztrack issue create --title "Adopt ztrack" --label type:case --state ready --assignee agent --body-file body.md
 npx ztrack check
@@ -67,7 +67,7 @@ fixtures.
 
 ## Preset Selection
 
-- `default`: first adoption and the primary choice — a dev lifecycle
+- `simple-sdlc`: first adoption and the primary choice — a PR-free dev lifecycle (the `default` alias)
   (draft→ready→in-progress→in-review→done) with image+commit evidence and proof.
 - `spec`: lightweight issue bodies whose ACs cite commit-backed evidence.
 - `speckit`: feature records follow GitHub Spec Kit sections (read-only).

@@ -4,7 +4,7 @@
 // verdict. This is the behavior that matters — a green gate for THIS branch even
 // when an unrelated issue is red.
 import { describe, expect, test } from 'bun:test';
-import { checkDefault } from '../boilerplates/presets/default.ts';
+import { checkDefault } from '../boilerplates/presets/simple-sdlc.ts';
 import type { IssueRecord } from './core/engine.ts';
 import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
 

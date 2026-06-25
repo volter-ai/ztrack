@@ -88,12 +88,21 @@ export function evidenceDir(projectRoot: string): string {
   return join(projectRoot, dir || join(stateDirName(), 'evidence'));
 }
 
-export type InitTrackerPreset = 'default' | 'spec' | 'speckit';
+// The real boilerplate files shipped at boilerplates/presets/<name>.ts.
+export type CanonicalTrackerPreset = 'simple-sdlc' | 'simple-gh-sdlc' | 'spec' | 'speckit';
+// Accepted `--preset` input. `default` is an ALIAS for the recommended baseline (simple-sdlc) — there
+// is no `default.ts`; it resolves to simple-sdlc so `ztrack init` (no flag) installs the lean preset.
+export type InitTrackerPreset = CanonicalTrackerPreset | 'default';
 
-const INIT_TRACKER_PRESETS = ['default', 'spec', 'speckit'] as const;
+const INIT_TRACKER_PRESETS = ['simple-sdlc', 'simple-gh-sdlc', 'spec', 'speckit', 'default'] as const;
 
 export function initTrackerPresets(): readonly InitTrackerPreset[] {
   return INIT_TRACKER_PRESETS;
+}
+
+// Resolve an accepted preset name (incl. the `default` alias) to its boilerplate file name.
+function resolvePresetName(preset: InitTrackerPreset): CanonicalTrackerPreset {
+  return preset === 'default' ? 'simple-sdlc' : preset;
 }
 
 export type InitTrackerProjectOptions = {
@@ -106,7 +115,7 @@ export type InitTrackerProjectOptions = {
 // `ztrack init` copies it verbatim — it is REAL code (its OWN schema/parser/rules),
 // importing only `ztrack/preset-kit`. No template substitution, no flags.
 function presetTemplate(preset: InitTrackerPreset): string {
-  return readFileSync(fileURLToPath(new URL(`../boilerplates/presets/${preset}.ts`, import.meta.url)), 'utf8');
+  return readFileSync(fileURLToPath(new URL(`../boilerplates/presets/${resolvePresetName(preset)}.ts`, import.meta.url)), 'utf8');
 }
 
 export function trackerValidationEntrypointPath(projectRoot: string): string {
@@ -168,9 +177,11 @@ export function upgradeTrackerPreset(projectRoot: string): UpgradePresetResult {
   const installedFrom = config.validation?.installedFrom;
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
   if (!installedFrom || !(INIT_TRACKER_PRESETS as readonly string[]).includes(installedFrom) || !existsSync(entrypoint)) {
-    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <default|spec|speckit>`.");
+    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <simple-sdlc|simple-gh-sdlc|spec|speckit>`.");
   }
-  const variant = installedFrom as InitTrackerPreset;
+  // Legacy compat: a repo recorded as `default` predates the alias and meant the old PR-based preset,
+  // which is now simple-gh-sdlc — upgrade it against that, not the new lean simple-sdlc baseline.
+  const variant: InitTrackerPreset = installedFrom === 'default' ? 'simple-gh-sdlc' : (installedFrom as InitTrackerPreset);
   const basePath = trackerValidationBasePath(projectRoot);
   if (!existsSync(basePath)) return { status: 'no-base', entrypoint, installedFrom: variant, conflicts: 0 };
   const base = readFileSync(basePath, 'utf8');
@@ -195,7 +206,8 @@ export function initTrackerProject(
   options: InitTrackerProjectOptions = {},
 ): { configPath: string; alreadyInitialized: boolean; teamKey: string; preset: InitTrackerPreset; validationEntrypoint?: string } {
   const configPath = trackerConfigPath(root);
-  const preset = options.preset ?? 'default';
+  // Resolve the `default` alias up front so the canonical name is what we install + record.
+  const preset = resolvePresetName(options.preset ?? 'default');
   if (existsSync(configPath)) return { configPath, alreadyInitialized: true, teamKey, preset };
   const key = teamKey.toUpperCase();
   mkdirSync(dirname(configPath), { recursive: true });

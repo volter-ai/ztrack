@@ -578,7 +578,7 @@ function defaultFixHint(f: Finding): string | undefined {
 }
 
 export const DefaultPreset: Preset<DefaultRoot> = {
-  name: 'default',
+  name: 'simple-gh-sdlc',
   fixHint: defaultFixHint,
   schema: DefaultRootSchema,
   // this preset's observed facts: the git world (commits + PR head/merged).

@@ -35,7 +35,7 @@ fake-SHA failure and one real-SHA pass, then run ztrack check before finishing.
 ## 1. Install
 
 ```bash
-npx ztrack init --team APP --preset default
+npx ztrack init --team APP --preset simple-sdlc
 npx ztrack issue scaffold --title "First verified task" > body.md
 npx ztrack issue create \
   --title "First verified task" \

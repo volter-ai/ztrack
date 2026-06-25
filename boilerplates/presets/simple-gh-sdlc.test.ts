@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { IssueRecord } from 'ztrack/preset-kit';
-import { checkDefault, DefaultPreset, DefaultRootSchema, parseDefault, serializeIssue } from './default.ts';
+import { checkDefault, DefaultPreset, DefaultRootSchema, parseDefault, serializeIssue } from './simple-gh-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
 const PR = 'https://github.com/volter-ai/x/pull/5';

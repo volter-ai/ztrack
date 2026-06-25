@@ -18,26 +18,31 @@ their workflow becomes more specific.
 
 | Preset | Use When | What It Enforces |
 |---|---|---|
-| `default` | a dev lifecycle (draft→ready→in-progress→in-review→done) | every issue assigned; passed ACs carry image+commit evidence and a proof; evidence fresh against the AC version and PR head; lifecycle gates (ready needs a dev AC, in-review needs a PR + all ACs passed, done needs a merged PR); blocking graph is acyclic |
+| `simple-sdlc` | a dev lifecycle (draft→ready→in-progress→in-review→done), **local or no remote** | every issue assigned; passed ACs carry commit+proof evidence (image optional, verified if cited); evidence fresh against the AC version; lifecycle gates (ready needs a dev AC, in-review needs all ACs passed); opt-in blocking graph is acyclic. **PR-free** — done = all ACs passed-with-evidence (the review's verdict), so it runs with no remote |
+| `simple-gh-sdlc` | a GitHub PR-based dev lifecycle (review happens on a PR) | everything `simple-sdlc` enforces, **plus** a PR at in-review and a merged PR for done. *(Stage 2 will also require world annotations + sources.)* |
 | `spec` | issue bodies are lightweight specs | passed ACs cite commit-backed evidence; cited commits exist; ids unique |
 | `speckit` | repos following GitHub Spec Kit conventions | a multi-file feature bundle with required User Scenarios/Stories, Functional Requirements, and Tasks; task commits exist; foundational tasks gate story completion; Constitution Check gate passes (read-only) |
 
 Install one with:
 
 ```bash
-npx ztrack init --team APP --preset default
+npx ztrack init --team APP --preset simple-sdlc      # the lean, PR-free baseline
+npx ztrack init --team APP --preset simple-gh-sdlc   # PR-based GitHub flow
 npx ztrack init --team APP --preset spec
 npx ztrack init --team APP --preset speckit
 ```
 
-Omitting `--preset` installs `default`. Node 22.18+ is required (native .mts type stripping).
+Omitting `--preset` installs `simple-sdlc` (and `--preset default` is an alias for it).
+Node 22.18+ is required (native .mts type stripping).
 
 ## Which Preset To Start With
 
-Use `default` when you are adopting ztrack into an existing repo. It is the
-primary preset and proves the core value: a passed acceptance criterion must
-cite image+commit evidence captured at a real commit, with a proof explaining
-how that evidence demonstrates the AC, and the issue's lifecycle gates must hold.
+Use `simple-sdlc` when you are adopting ztrack into an existing repo — it's the
+baseline (and the `default` alias) and proves the core value: a passed acceptance
+criterion must cite a real commit and a proof explaining how that commit
+demonstrates the AC (an image is optional but verified when cited), and the
+issue's lifecycle gates must hold. It needs no remote/PR, so it runs on a private
+repo. Choose `simple-gh-sdlc` when your process reviews on GitHub pull requests.
 
 Use `spec` for the lighter spec style: issue bodies whose acceptance criteria are
 GFM task-list items, each carrying a commit-backed evidence sub-line. It is the
@@ -173,11 +178,13 @@ The `speckit` preset is **read-only** — it defines no `serialize`, so it canno
 be `fmt`'d or patched. Its features come from Spec Kit tooling and are edited as
 the Spec Kit files.
 
-## The `default` Grammar
+## The `simple-sdlc` / `simple-gh-sdlc` Grammar
 
-`default` is one issue per markdown file. The heading carries the id and title;
+Both dev presets share one grammar (`simple-gh-sdlc` is `simple-sdlc` plus the PR
+gate). One issue per markdown file. The heading carries the id and title;
 designated metadata lines follow; then `## Acceptance Criteria` with one list
-item per AC and nested sub-lines for status, evidence, proof, and blocking:
+item per AC and nested sub-lines for status, evidence, proof, and blocking. The
+`PR:` line is only meaningful under `simple-gh-sdlc` (`simple-sdlc` ignores it):
 
 ```markdown
 # APP-1: Add the /health endpoint
@@ -185,7 +192,7 @@ item per AC and nested sub-lines for status, evidence, proof, and blocking:
 Assignee: alice
 Summary: One or two sentences describing the work.
 Status: in-review
-PR: feat/health
+PR: feat/health          # simple-gh-sdlc only
 Labels: backend, api
 Blocked by: APP-2
 
@@ -206,14 +213,16 @@ Blocked by: APP-2
 - Issue-level relations are `Blocks:` / `Blocked by:` / `Relates:`; `Children:`
   lists sub-issues.
 
-Rule codes (`default`): `issue_missing_assignee`,
+Rule codes (`simple-sdlc`): `issue_missing_assignee`,
 `ac_checkbox_status_mismatch`, `passed_ac_missing_evidence`,
-`passed_ac_missing_proof`, `evidence_commit_not_found`, `evidence_sha_stale`,
-`evidence_ac_version_stale`, `ready_requires_dev_ac`, `review_requires_pr`,
-`review_requires_all_acs_passed`, `done_requires_merged_pr`, `ac_self_block`,
+`passed_ac_missing_proof`, `evidence_commit_not_found`,
+`evidence_ac_version_stale`, `ready_requires_dev_ac`,
+`review_requires_all_acs_passed`, `ac_self_block`,
 `ac_blocker_missing`, `ac_block_cycle` — plus the universal `duplicate_ac_id`,
 `duplicate_issue_id`, and the waiver codes (`waiver_unused`,
-`waiver_missing_reason`, `waiver_missing_signoff`).
+`waiver_missing_reason`, `waiver_missing_signoff`). `simple-gh-sdlc` adds
+`review_requires_pr`, `done_requires_merged_pr`, `evidence_sha_stale`,
+`current_head_unknown` (the PR-bound rules).
 
 ## The `spec` Grammar
 

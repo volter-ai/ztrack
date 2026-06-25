@@ -68,7 +68,7 @@ done but cites a **fabricated** commit, and watch ztrack catch it:
 ```bash
 npm install -D ztrack                # add ztrack to the project (the preset imports it)
 
-npx ztrack init --preset default     # installs .volter/tracker/validation/preset.mts — real, editable code
+npx ztrack init --preset simple-sdlc     # installs .volter/tracker/validation/preset.mts — real, editable code
 
 cat > body.md <<'EOF'
 Assignee: me

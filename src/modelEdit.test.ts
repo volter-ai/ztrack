@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
-import DefaultPreset from '../boilerplates/presets/default.ts';
+import DefaultPreset from '../boilerplates/presets/simple-sdlc.ts';
 import SpeckitPreset from '../boilerplates/presets/speckit.ts';
 import type { CoreRoot, IssueRecord, Preset } from './core/engine.ts';
 
@@ -34,7 +34,7 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
 
   test('a patch that violates the hard schema fails loudly (no silently-misparsing body)', () => {
     expect(() => applyModelPatch(def, PENDING, { acId: 'dev/01', patch: { status: 'shipped' } }))
-      .toThrow(/invalid 'default' issue/);
+      .toThrow(/invalid 'simple-sdlc' issue/);
   });
 
   test('patching an unknown AC id throws', () => {
