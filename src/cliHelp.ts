@@ -15,7 +15,7 @@ ${ui.bold('Usage')}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
 ${helpSection('top', 'Start here', [
-    [`${command} init [--team KEY] [--preset simple-sdlc|simple-gh-sdlc|spec|speckit] [--sync github --repo o/n]`, 'install a preset + config (optionally link a tracker)'],
+    [`${command} init [--team KEY] [--preset <name>] [--sync github --repo o/n]`, 'install a preset + config (optionally link a tracker)'],
     [`${command} issue create`, 'add a verifiable issue'],
     [`${command} check [<issue-id> | <file.md>]`, 'verify completion (whole tracker, an issue, or a file)'],
   ])}
@@ -101,7 +101,7 @@ export function printIssueActionHelp(action: string): boolean {
 export function printResourceHelp(resource: string): boolean {
   const command = commandName();
   if (resource === 'init') {
-    process.stdout.write(`Usage: ${command} init [--team KEY] [--preset simple-sdlc|simple-gh-sdlc|spec|speckit] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
+    process.stdout.write(`Usage: ${command} init [--team KEY] [--preset <name>] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
 
 Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
   (no flags)                 a LOCAL tracker — the markdown issue store is committed to your repo.
@@ -141,7 +141,7 @@ history, relate, relations, unrelate.
   // `check`/`export --help` fall through to handleCheckCommand, the single source of truth for
   // their (target-grammar-aware) usage — do NOT shadow it with a short stale copy here.
   if (resource === 'visualizer' || resource === 'viz') {
-    process.stdout.write(`Usage: ${command} visualizer [--preset default|speckit] [--port n] [--project dir]
+    process.stdout.write(`Usage: ${command} visualizer [--preset <name>] [--port n] [--project dir]
 
 Starts the web visualizer (a Bun app) over the local tracker. Defaults: preset
 default, port 3300, project = current tracker root. Requires Bun (bun.sh).

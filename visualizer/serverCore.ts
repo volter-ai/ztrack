@@ -10,10 +10,12 @@ export { buildSpeckitBundle } from '../boilerplates/presets/speckit.ts';
 // Resolve a STANDALONE preset by name (the `ztrack visualizer --preset <name>` mode).
 // There is no catalog/registry — the presets are standalone modules, so this is just a
 // small static map over them.
-import DefaultPreset from '../boilerplates/presets/default.ts';
+import SimpleSdlcPreset from '../boilerplates/presets/simple-sdlc.ts';
+import SimpleGhSdlcPreset from '../boilerplates/presets/simple-gh-sdlc.ts';
 import SpecPreset from '../boilerplates/presets/spec.ts';
 import SpeckitPreset from '../boilerplates/presets/speckit.ts';
-const STANDALONE_PRESETS = { default: DefaultPreset, spec: SpecPreset, speckit: SpeckitPreset };
+// `default` is an alias for the baseline simple-sdlc (matches config.ts's preset resolution).
+const STANDALONE_PRESETS = { 'simple-sdlc': SimpleSdlcPreset, 'simple-gh-sdlc': SimpleGhSdlcPreset, default: SimpleSdlcPreset, spec: SpecPreset, speckit: SpeckitPreset };
 export function resolvePreset(name) {
   const preset = STANDALONE_PRESETS[name];
   if (!preset) throw new Error(`Unknown preset '${name}'. Available: ${Object.keys(STANDALONE_PRESETS).join(', ')}.`);

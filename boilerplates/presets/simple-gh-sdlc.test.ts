@@ -20,7 +20,7 @@ PR: ${PR}
 `,
 };
 
-describe('default preset', () => {
+describe('simple-gh-sdlc preset', () => {
   test('mdast parses straight into the hard schema', () => {
     const root = DefaultRootSchema.parse(parseDefault([REC])); // throws unless schema-valid
     const issue = root.issues[0]!;

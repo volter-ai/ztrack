@@ -177,7 +177,7 @@ export function upgradeTrackerPreset(projectRoot: string): UpgradePresetResult {
   const installedFrom = config.validation?.installedFrom;
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
   if (!installedFrom || !(INIT_TRACKER_PRESETS as readonly string[]).includes(installedFrom) || !existsSync(entrypoint)) {
-    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <simple-sdlc|simple-gh-sdlc|spec|speckit>`.");
+    throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <name>`.");
   }
   // Legacy compat: a repo recorded as `default` predates the alias and meant the old PR-based preset,
   // which is now simple-gh-sdlc — upgrade it against that, not the new lean simple-sdlc baseline.

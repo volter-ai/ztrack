@@ -1,4 +1,5 @@
-// The default preset — a minimal, standards-following process. One AC type (dev),
+// The simple-gh-sdlc preset — the GitHub PR-based dev process (review on a PR, merged PR for
+// done). Everything simple-sdlc enforces, plus the PR coupling. One AC type (dev),
 // image+commit-anchored evidence, five issue states, every issue assigned. Built
 // exactly on the architecture: ONE strict Zod schema, mdast fills it, rules validate
 // it against the injected git world.

@@ -2,6 +2,12 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.30.1
+
+Ships the 0.30.0 preset split (0.30.0's publish was blocked by a build break). Fix: the visualizer
+(`visualizer/serverCore.ts`) and CLI help now reference the renamed presets (`simple-sdlc` /
+`simple-gh-sdlc`) instead of the removed `default.ts`.
+
 ## 0.30.0
 
 Split the dev-lifecycle preset along the one axis that varies — the acceptance proof — and make

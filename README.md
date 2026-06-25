@@ -43,7 +43,7 @@ validate PRs, screenshots, videos, approvals, and source systems.
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
-**What it does _not_ verify** (be honest with your team): the default preset checks that the
+**What it does _not_ verify** (be honest with your team): the `default` preset checks that the
 cited commit **exists** in git, and — if you cite an image — that the image is actually committed
 at that commit (a fabricated screenshot path fails). What it can't check is *relevance*: an
 unrelated real commit with a real screenshot still passes. That semantic judgment is the

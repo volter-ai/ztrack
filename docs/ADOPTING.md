@@ -174,7 +174,7 @@ Read [Preset Reference](PRESETS.md) before changing the rulebook.
 
 ## Agent Adoption Checklist
 
-- [ ] Run `npx ztrack init --team <KEY> --preset <default|spec|speckit>`.
+- [ ] Run `npx ztrack init --team <KEY> --preset <name>`.
 - [ ] Create one issue from `ztrack issue scaffold`.
 - [ ] Run `ztrack check` before changing workflow rules.
 - [ ] Demonstrate one fake-SHA failure and one real-SHA pass.
