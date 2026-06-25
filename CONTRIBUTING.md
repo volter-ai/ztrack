@@ -28,3 +28,9 @@ CLI from source with `bun run src/cli.ts …`; build only when you need the bund
 - Keep them focused and small.
 - Add/adjust tests; `check` regressions are caught in CI (including the test that
   proves a fabricated commit SHA fails).
+
+## Writing demos
+The runnable demos in `demos/` double as docs (linked from [docs/GUIDE.md](docs/GUIDE.md)). Keep them:
+- runnable in a fresh temp directory; create a real local commit when git is needed;
+- failing-case-before-passing-case for anything about a gate, and print the exact finding code;
+- credential-free in baseline demos (keep GitHub/Linear/Jira as optional integrations).

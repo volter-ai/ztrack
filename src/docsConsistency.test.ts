@@ -1,0 +1,66 @@
+import { describe, expect, test } from 'bun:test';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+
+// Guards the doc-drift classes that bit us repeatedly: a doc linking a moved/deleted page, a doc
+// citing a `boilerplates/presets/<name>.ts` that was renamed away, or a `--preset <name>` that
+// isn't a real preset/alias. The fix for each was always "edit N scattered docs and miss one" —
+// this catches the miss in CI. CHANGELOG is excluded (historical; it names docs as they were).
+const REPO = resolve(import.meta.dir, '..');
+const DOCS = [
+  'README.md', 'PRESET-GUIDE.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md', 'boilerplates/README.md',
+  ...readdirSync(join(REPO, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`),
+];
+
+// Valid `--preset` tokens = preset filenames + their declared aliases (from the sidecars) + the
+// `<name>` placeholder. Same source `presetManifest()` reads, computed independently here.
+const presetDir = join(REPO, 'boilerplates/presets');
+const presetNames = readdirSync(presetDir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => f.slice(0, -3));
+const aliases = presetNames.flatMap((n) => {
+  const j = join(presetDir, `${n}.json`);
+  return existsSync(j) ? (JSON.parse(readFileSync(j, 'utf8')).aliases ?? []) : [];
+});
+const validPresetTokens = new Set([...presetNames, ...aliases, '<name>']);
+
+describe('docs consistency', () => {
+  test('every relative markdown/HTML link resolves to a real file', () => {
+    const broken: string[] = [];
+    for (const doc of DOCS) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      const targets = [
+        ...[...text.matchAll(/\]\(([^)]+)\)/g)].map((m) => m[1]!),       // [text](target)
+        ...[...text.matchAll(/href="([^"]+)"/g)].map((m) => m[1]!),       // <a href="target">
+      ];
+      for (const raw of targets) {
+        const target = raw.split('#')[0]!.trim();                        // drop #anchor
+        if (!target || /^(https?:|mailto:)/.test(target)) continue;      // external / anchor-only
+        if (!existsSync(resolve(REPO, dirname(doc), target))) broken.push(`${doc} -> ${raw}`);
+      }
+    }
+    expect(broken).toEqual([]);
+  });
+
+  test('every cited boilerplates/presets/<name>.ts exists', () => {
+    const missing: string[] = [];
+    for (const doc of DOCS) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      for (const m of text.matchAll(/boilerplates\/presets\/([a-z][a-z0-9-]*)\.ts/g)) {
+        if (!existsSync(join(presetDir, `${m[1]}.ts`))) missing.push(`${doc} -> ${m[0]}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('every `--preset <name>` in docs names a real preset or alias', () => {
+    const unknown: string[] = [];
+    for (const doc of DOCS) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      for (const m of text.matchAll(/--preset\s+([^\s`)]+)/g)) {
+        const tok = m[1]!;
+        if (tok.startsWith('<') || tok.includes('|')) continue; // `<name>` placeholder / `a|b|c` enum-example
+        if (!validPresetTokens.has(tok)) unknown.push(`${doc} -> --preset ${tok}`);
+      }
+    }
+    expect(unknown).toEqual([]);
+  });
+});

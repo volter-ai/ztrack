@@ -8,14 +8,14 @@ From a target repository, a user should be able to run an agent with a prompt
 like this:
 
 ```bash
-claude -p 'Adopt ztrack in this repository. Start by reading https://github.com/volter-ai/ztrack/blob/main/README.md, https://github.com/volter-ai/ztrack/blob/main/docs/ADOPTING.md, https://github.com/volter-ai/ztrack/blob/main/docs/AGENT-PLAYBOOK.md, and https://github.com/volter-ai/ztrack/blob/main/docs/PRESETS.md. Choose exactly one install preset: simple-sdlc for a dev lifecycle (the PR-free baseline, the primary choice), simple-gh-sdlc for a GitHub PR-based flow, spec for lightweight issue-shaped specs, or speckit for GitHub Spec Kit style repos. Initialize ztrack, create one demo issue, prove one fake-SHA failure and one real-SHA pass, add the smallest appropriate CI or final-check instructions, and leave a concise adoption note. Do not invent evidence; if a needed commit, PR, screenshot, source, or token does not exist, leave the claim unchecked and report the blocker. Run ztrack check before finishing.'
+claude -p 'Adopt ztrack in this repository. Start by reading https://github.com/volter-ai/ztrack/blob/main/README.md, https://github.com/volter-ai/ztrack/blob/main/docs/GUIDE.md, https://github.com/volter-ai/ztrack/blob/main/docs/AGENT-PLAYBOOK.md, and https://github.com/volter-ai/ztrack/blob/main/docs/PRESETS.md. Choose exactly one install preset: simple-sdlc for a dev lifecycle (the PR-free baseline, the primary choice), simple-gh-sdlc for a GitHub PR-based flow, spec for lightweight issue-shaped specs, or speckit for GitHub Spec Kit style repos. Initialize ztrack, create one demo issue, prove one fake-SHA failure and one real-SHA pass, add the smallest appropriate CI or final-check instructions, and leave a concise adoption note. Do not invent evidence; if a needed commit, PR, screenshot, source, or token does not exist, leave the claim unchecked and report the blocker. Run ztrack check before finishing.'
 ```
 
 If the target repository cannot access the internet, first install or vendor the
 `ztrack` package and provide these local docs to the agent:
 
 - `README.md`
-- `docs/ADOPTING.md`
+- `docs/GUIDE.md`
 - `docs/AGENT-PLAYBOOK.md`
 - `docs/PRESETS.md`
 - `docs/WORLD-INTEGRATION.md` only if the project needs world/source grounding

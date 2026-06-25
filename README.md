@@ -13,9 +13,7 @@
 
 <p align="center">
   <a href="#quickstart"><strong>Quickstart</strong></a> ·
-  <a href="docs/ADOPTING.md"><strong>Adopt</strong></a> ·
-  <a href="docs/EXAMPLES.md"><strong>Examples</strong></a> ·
-  <a href="docs/COOKBOOKS.md"><strong>Cookbooks</strong></a> ·
+  <a href="docs/GUIDE.md"><strong>Guide</strong></a> ·
   <a href="#agent-workflows"><strong>Agent workflows</strong></a> ·
   <a href="#community-and-support"><strong>Support</strong></a> ·
   <a href="https://ztrack.dev/startup-pilot.html"><strong>Startup Pilot</strong></a>
@@ -155,8 +153,8 @@ it's treated as a draft. Use `issue create` to exercise the full lifecycle.
 
 ## Adopt it into your repo
 
-For the full adoption path — a CI gate, a committed validated root, MCP, and the agent
-stop-hook loop — see [Adopting ztrack](docs/ADOPTING.md).
+For the full path — adopt into a repo, a CI gate, MCP, and the agent stop-hook loop, one recipe per
+task — see the [Guide](docs/GUIDE.md).
 
 ## How it works
 
@@ -213,23 +211,13 @@ inside a worktree named for an issue — that issue automatically.
 
 ## Agent workflows
 
-- **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve`
-- **CI gate:** run `npx ztrack check` in your pipeline, or use `volter-ai/ztrack@v0`
-- **Autonomy loop:** a ralph-pattern loop whose completion oracle is `check` — `ztrack loop start <issue>` holds the agent's turn until that issue is green (then disarms), capped so it can't grind forever. Three honest escapes (none fakes "done"): disarm, a per-session self-exempt that can't outlive the session, and a durable `ztrack waiver sign` (signed off as your git identity, anchored to the acceptance-criteria fingerprint) that auto-stales when those criteria change — or just descope the AC when it's genuinely out of scope. Turn it on via the bundled Claude Code plugin (one toggle, armed-only so interactive work is untouched):
+ztrack is built to be an AI agent's **completion oracle**:
 
-  ```
-  /plugin marketplace add volter-ai/ztrack
-  /plugin install ztrack-gate@ztrack
-  ```
-  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire the loop hook into your `Stop` hooks directly — it ships at `node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh` (the **armed-only** loop hook: active only between `loop start` and green/`loop stop`). In a Claude Code `settings.json`:
+- **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve` — the agent calls `tracker_check` before finishing.
+- **CI gate:** `npx ztrack check` in your pipeline, or the `volter-ai/ztrack@v0` Action.
+- **Autonomy loop:** `ztrack loop start <issue>` holds the agent's turn until the issue is green (capped, with honest escapes), via a Stop hook — install the bundled `ztrack-gate` plugin or wire it yourself.
 
-  ```json
-  { "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ] } }
-  ```
-  The repo also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on** gate that auto-scopes to the branch/worktree issue every turn — use that one (same `Stop` wiring) if you want continuous gating without arming.
-
-See [examples](docs/EXAMPLES.md) for a minimal local check, a committed validated-root
-CI gate, and an MCP agent loop.
+Full setup (MCP tools, the loop, the Stop-hook `settings.json`) is in the [Guide](docs/GUIDE.md#4-enforce-it-for-agents); the one-shot adoption prompt is in the [agent playbook](docs/AGENT-PLAYBOOK.md).
 
 ## Visualize
 
@@ -245,8 +233,8 @@ ztrack viz --preset speckit --port 4000
 It validates the live tracker on each request through the same core as `check`,
 so the board never drifts from what CI enforces.
 
-If you are adding ztrack to an existing repository, start with
-[Adopting ztrack](docs/ADOPTING.md). If an AI agent is doing the setup, give it
+If you are adding ztrack to an existing repository, start with the
+[Guide](docs/GUIDE.md). If an AI agent is doing the setup, give it
 [the agent playbook](docs/AGENT-PLAYBOOK.md).
 
 ## Install presets
@@ -308,9 +296,7 @@ confirm there is a good fit.
 ## Documentation
 
 - [Docs index](docs/README.md)
-- [Examples](docs/EXAMPLES.md)
-- [Adopting ztrack](docs/ADOPTING.md)
-- [Cookbooks](docs/COOKBOOKS.md)
+- [Guide](docs/GUIDE.md) — adopt, local check, CI gate, agent enforcement, visualize
 - [Evidence and attestation](docs/EVIDENCE.md) — cite, store, and verify proof; in-toto + DSSE
 - [Programmatic API](docs/API.md) — run a check from code; the exports map
 - [Visualizer](visualizer/README.md) — local web view of tracker state

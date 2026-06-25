@@ -2,6 +2,25 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.32.0
+
+Docs consolidation — one home per topic, plus a guard so they can't silently drift again.
+
+- **Merged `docs/ADOPTING.md` + `docs/EXAMPLES.md` + `docs/COOKBOOKS.md` into one
+  [`docs/GUIDE.md`](docs/GUIDE.md)** — a task-oriented guide (adopt → local check → CI gate → agent
+  enforcement → visualize), one recipe per task, no duplication. The three docs taught the same
+  flows three times, which is how preset names and recipes kept drifting out of sync.
+- **Trimmed the README** to a front door: it keeps the quickstart, the honesty box, and the preset
+  table, and now *links* to the Guide for the deep how-to (agent setup, CI) instead of duplicating
+  it. The agent Stop-hook setup detail now lives once, in the Guide.
+- **New doc-drift guard** (`src/docsConsistency.test.ts`, CI-only) fails the build if any doc has a
+  broken relative link, cites a `boilerplates/presets/<name>.ts` that doesn't exist, or names a
+  `--preset` that isn't a real preset/alias — the exact drift classes (renamed `default.ts`, deleted
+  pages, stale preset names) that required repeated manual sweeps.
+- Each fact now has a single source of truth: preset choice → `PRESETS.md` + `ztrack init --list`,
+  evidence → `EVIDENCE.md`, programmatic use → `API.md`, the how-to flows → `GUIDE.md`. No
+  user-facing behavior change.
+
 ## 0.31.1
 
 Doc consistency + small UX fixes (from a second 6-persona new-user review of the published package).
