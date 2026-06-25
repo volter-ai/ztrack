@@ -8,7 +8,7 @@ import { dirname, join, resolve } from 'node:path';
 // this catches the miss in CI. CHANGELOG is excluded (historical; it names docs as they were).
 const REPO = resolve(import.meta.dir, '..');
 const DOCS = [
-  'README.md', 'PRESET-GUIDE.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md', 'boilerplates/README.md',
+  'README.md', 'ARCHITECTURE.md', 'CONTRIBUTING.md', 'boilerplates/README.md',
   ...readdirSync(join(REPO, 'docs')).filter((f) => f.endsWith('.md')).map((f) => `docs/${f}`),
 ];
 

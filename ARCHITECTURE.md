@@ -75,7 +75,7 @@ write-time standard would fail issues for historical/structural debt on every ro
 check. `default` is `all` (strict). Canceled issues are blanket-exempt from
 structural/completeness checks.
 
-See `PRESET-GUIDE.md` for how to build or review a core preset.
+See [docs/PRESETS.md § Building or extending a preset](docs/PRESETS.md#building-or-extending-a-preset-maintainers) for how to build or review a core preset.
 
 ---
 
@@ -205,7 +205,7 @@ sync and world-backed validation work with no extra step. World integration is
 still opt-in by *policy*: a baseline tracker validates over the store + git and
 never consults the world. The adapters are reachable from the
 `ztrack/world-annotations` / `ztrack/world-source-books` subpaths; see
-`docs/WORLD-INTEGRATION.md`.
+[docs/EVIDENCE.md § Advanced: validating against a mirrored world](docs/EVIDENCE.md#advanced-validating-against-a-mirrored-world).
 
 ---
 

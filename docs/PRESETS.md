@@ -375,3 +375,165 @@ edits) into your `preset.mts`, preserving your changes. Conflicts are written as
 to resolve by hand; then run `ztrack check`. It is reported as `up-to-date`, `updated`, or
 `no-base` (re-run `ztrack init --preset <name>` to re-seed a base) — keep `.preset.base.mts`
 committed so the merge is reproducible.
+
+## Building or extending a preset (maintainers)
+
+The sections above cover editing an installed preset. This section is for building a
+*new* standalone preset (or reviewing one) at the source level — an agent changing the
+preset system should read it first. Reference standalone presets (the bar to copy):
+`boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` — each its own schema,
+parser, serialize, rules. The shared mechanism is the core engine (`src/core/engine.ts`); a
+new preset imports only `ztrack/preset-kit`.
+
+> **Presets are standalone — there is NO universal model.** Each preset is a self-contained
+> `Preset { name, schema, parse, rules, ... }` with its OWN strict schema, its OWN mdast parser,
+> and its OWN rules. Presets share NOTHING with each other except the engine *mechanism*
+> (`core/engine.ts`) + dev utilities (mdast, zod) + types — **no shared universal parser or
+> schema, no generic preset factory, no flag-toggled mega-preset, and no shared "rule library"
+> you pick records from** (see the anti-patterns below).
+
+### Architecture contract — non-negotiable
+
+1. **ONE strict top-level schema.** `ValidationInputSchema = z.object({ context, root }).strict()`
+   (composed by `makeValidationInputSchema(rootSchema, contextSchema?)`). Core fields +
+   preset-specific fields, every nested object `.strict()`. NEVER `.passthrough()`, `z.any()`,
+   `z.unknown()` (except an intentionally-opaque external payload inside `Context`), a raw `body`
+   field, or a `sections: Record<>` map.
+2. **mdast parse straight into the schema.** Document STRUCTURE (headings scope sections; list
+   items / table rows / paragraphs are records; GFM checkboxes) comes from the AST. Regex ONLY to
+   read field content from within a node's text — NEVER line-scan the raw doc/section to discover
+   records or structure. A leading `---` YAML frontmatter block is allowed (metadata not in the body).
+3. **The parse target IS the schema; the validated root IS the export.** No projection / `toIssues`
+   / second model. `check()` runs `ValidationInputSchema.parse({ context, root })`; the validated
+   `root` is what every surface reads (`{ ok, findings, export: root }`).
+4. **Pure rules.** `Rule.run = (input: ValidationInput) => Finding[]` — reads only
+   `input.root` / `input.context`. No I/O, filesystem, network, time, raw-markdown, global mutable
+   state, `Date.now()`/randomness, mutation of `root`, or `throw`. Deterministic. A rule may declare
+   `category`/`depth` for the `ztrack check --categories` selector.
+5. **One impure edge: the loader, but context is preset-owned.** Real data (git, twin world, issue
+   files) enters only through `core/loader.ts`, which reads the backend, frames each issue into a
+   bundle, then calls the **active preset's `loadContext`** to gather exactly the observed facts
+   THAT preset's rules read, overlaying the universal run selectors (`now`/`phase`/`categories`).
+   A preset that needs no observed facts omits `loadContext`; declare a `contextSchema` (extending
+   `CoreContextSchema`) only when it adds facts beyond the core git/world.
+
+(The core model — `ValidationInput`, the always-multi-issue `Root { issues }`,
+`Issue`/`AcceptanceCriterion`/`Evidence`, and the typed `Context`
+(`now`, `phase`, `git`, `world`, `categories`) — is described under "Installed Contract" above and
+defined in `engine.ts`. `phase` selects the rule surface (`all` = full write/promote; `gate` =
+skip `transition` rules). Primitives (`labels, relations, children, sources, category, proof`) are
+opt-in via `primitives`; `audit` is core/always-on.)
+
+### Source the SDLC faithfully
+
+This is where presets go wrong. Derive from the REAL, authoritative source — never a dormant
+predecessor or memory. Verify, don't invent.
+
+- **Premade system (speckit / openspec / …):** `WebFetch` the upstream templates + skill/command
+  definitions; install/inspect the real tool's output and map its real artifacts to the schema. Do
+  NOT inherit invented fields from an in-repo predecessor — confirm every field against the upstream.
+- **Bespoke pre-existing process:** the team's written standards/process docs are authoritative;
+  read them ALL first. Use any legacy implementation only to enumerate completeness (rule codes); the
+  standards win on semantics. Separate in-scope per-issue markdown structure from the provider layer
+  (the world/`Context`).
+- **Brand-new (fresh repo):** elicit the process from the user and WRITE IT DOWN before coding — the
+  ordered states, the AC type(s), the evidence each completion needs, the per-state entry gates, the
+  roles/concurrency. Confirm before building.
+
+### Build order
+
+1. **Map the process:** ordered states · AC type(s) · evidence/proof shape · per-state entry gates ·
+   roles · what's out of scope (a different provider).
+2. **Design the strict schema:** narrow `status`/enums; model each AC type; evidence/proof as a typed
+   pool or nested; the primitives the SDLC uses. `.strict()` everywhere.
+3. **Write the mdast parser → schema** (structure from AST; field content via regex within node text;
+   frontmatter for metadata; a `===MARKER===` split for multi-file/multi-issue bundles).
+4. **Write rules**, grouped: structural existence · checkbox⇄status consistency · per-state gates ·
+   evidence requirements + freshness/anchoring (read `ctx.git`) · ref-integrity · completeness/
+   cross-issue (over `root.issues`, read `ctx.world`). Each emits a stable `code`.
+5. **Loader (impure):** read real data → `Context` + bundle; the only place with fs/world/git. Map
+   files↔issues by parsed id (NOT ordinal — parse may drop invalid segments).
+6. **Write `serialize`** (the inverse of parse) for a read-write preset; export the preset as the
+   module's `default` (its `name` MUST equal the filename); then add the manifest sidecar
+   `boilerplates/presets/<name>.json` (`description`, optional `aliases`/`recommended`). Presets are
+   discovered by scanning the dir + reading sidecars — there is no central registry (a hardcoded
+   enum/array/map is an anti-pattern). See `boilerplates/README.md`.
+7. **Tests:** clean fixtures that produce ZERO findings (incl. warnings) at each lifecycle stage,
+   plus a perturbation that fires each rule; a strict-schema rejection test; and a `parse∘serialize`
+   round-trip test for any read-write preset.
+8. **Review** (below), then **prove on real data** via the loader; if porting, cross-check findings
+   against the legacy/world validator (they should agree where scope overlaps).
+
+### Never (anti-patterns that caused real bugs)
+
+- **A universal/generic model.** No shared universal schema or parser, no generic preset factory
+  emitting presets from flags, no shared "rule library" a preset picks records from
+  (`rules: [...sharedGroup]`), no "core model" presets extend. The ONLY shared layer is the engine
+  mechanism (`core/engine.ts`). A shared rule menu or shared parser is the same anti-pattern in new
+  syntax. (This one is reintroduced repeatedly — it is THE thing this section exists to prevent.)
+- A two-layer projection model — the multi-issue validated root IS the export.
+- `.passthrough()` / `any` / raw-body / metadata mined from body prose when frontmatter or
+  structured fields exist.
+- Line-scanning a section to find records (use mdast node boundaries).
+- Parser-side semantic INFERENCE (keyword heuristics that invent a fact the artifact never states).
+  If the standard requires the fact, require it explicitly.
+- Per-file checking that leaves `root.issues` size 1 — it silently defeats every cross-issue rule.
+- Hard-error completeness over fuzzy matching or a partial corpus — make it advisory (warning) unless
+  the corpus is known-complete and matching is exact.
+- Silently defaulting a required field (e.g. an explicit `status:`) — record that it was absent and
+  flag it.
+- Leaving any emitted `code` unclassified if the repo has a code-classification gate.
+- **A central preset list/enum/map.** Presets are discovered by scanning `boilerplates/presets/` +
+  their `<name>.json` sidecars — never reintroduce a hardcoded set of preset names (a TS union, an
+  `INIT_TRACKER_PRESETS` array, a visualizer `STANDALONE_PRESETS` map, or an enumerated
+  `--preset a|b|c` in help/docs). Such a list rots when a preset is added/renamed and silently breaks
+  consumers. Use `presetManifest()` / `ztrack init --list`; let the guard test
+  (`presetManifest.test.ts`) enforce it.
+
+### Review
+
+Run after building or changing a preset. **Launch the three adversarial lenses below IN PARALLEL**
+(each as a `general-purpose` sub-agent, or run them yourself in sequence — resetting framing between
+each — if you can't spawn). Prepend the target file paths (the preset + its loader) to each prompt.
+Then **reproduce the load-bearing findings yourself** (`bun -e` against the real module — never trust
+a review blind) and synthesize one report.
+
+**Lens A — Purity / architecture.** Adversarial; assume NON-conformant, prove deviations, cite
+file:line, read-only. SCHEMA: every object `.strict()`, no `.passthrough()`/`any`/`unknown`
+smuggling content, no raw `body`/`sections: Record<>`, root multi-issue + strict? PARSER: ALL
+structure from mdast, regex ONLY for field content (never line-scanning to discover records),
+frontmatter only the leading `---`, bundle split collision-safe, parse target IS the schema, NO
+parser-side semantic inference? RULES: each pure (reads only root+ctx, no I/O / Date.now / random /
+mutation / throw, deterministic), throw-safe on schema-valid edge input? LOADER: the only impure
+edge, files↔issues mapped by parsed id NOT ordinal, no silent catch/unsafe assertion? Output
+PASS/PARTIAL/FAIL per criterion with file:line + a prioritized must-fix list.
+
+**Lens B — Edge cases / completeness.** Adversarial; find behaviors WRONG or fragile on real input,
+give a concrete failing input per issue and reproduce it with `bun -e`, mark DEFINITE vs THEORETICAL,
+cite file:line, read-only. Probe: matching (false matches from short substrings — is there a
+specificity floor? — missed matches, URL/key normalization); completeness/gates (right vs standards?
+over-fires on a partial corpus → should be warning; any rule that can't fire or fires on valid
+input; did legacy gate on a field the new schema dropped?); hash/version staleness stability;
+frontmatter edges (quotes, lists, CRLF, nested, block scalars, a `---` in the body); multi-issue
+bundle (dup ids, empty segments, ordering); state/evidence gates vs the standards; loader edges +
+scale (empty dir, no world, missing files, O(n·m)/memory on multi-MB logs). Output prioritized
+must-fix / should-fix / low with file:line + failing input; what the tests do NOT cover; a minimal
+fix direction per must-fix (recommend, don't implement).
+
+**Lens C — Realistic-run simulation.** Dynamic; role-play the SDLC's actors and drive MANY realistic
+end-to-end runs by hand, read-only. Per run: author a realistic artifact for a lifecycle point, run
+check/loader, record EXPECTED vs ACTUAL findings, advance state as the next actor would, re-check.
+Cover happy path start→done; each state-gate violated; evidence going stale (sha/version drift); a
+multi-issue root with cross-issue relations + partial corpus; world/sources grounding (a true
+reflection passes, a short-quote/unrelated one does NOT, an unreflected source surfaces at the right
+severity); malformed/adversarial input (missing/duplicate/reordered/no-id) — never crash, never
+silent-clean a bad artifact. Drive it as the PM/manager loop: does derived state advance correctly,
+or get STUCK / LOOP / FALSELY ADVANCE? Output a numbered run log (scenario · authored · expected ·
+actual · verdict); ranked DIVERGENCES with **false-pass before false-fail** + triggering input +
+suspected file:line.
+
+**Synthesize.** Collect the three reports; reproduce every must-fix yourself (false-pass divergences
+first). Produce one ranked must-fix / should-fix / low list, each with file:line + reproduced failing
+input. Re-verify until clean: preset tests green (clean fixtures = 0 findings; a perturbation per
+rule), `tsc` clean, and — if porting — world/legacy-validator fidelity on real data where scope
+overlaps. **Ready = contract held + behavior correct on real data, not just fixtures green.**

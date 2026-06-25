@@ -12,7 +12,7 @@ Run `ztrack init --list` to see the available presets and their descriptions —
 the list is generated from the manifests below, never hand-maintained.
 
 After installation, the file belongs to the target repo. Editing it is how a team
-customizes ztrack — see `PRESET-GUIDE.md` for authoring the preset's rules.
+customizes ztrack — see [docs/PRESETS.md § Building or extending a preset](../docs/PRESETS.md#building-or-extending-a-preset-maintainers) for authoring the preset's rules.
 
 ## Adding a preset
 
@@ -22,7 +22,7 @@ visualizer all discover presets by scanning this directory.
 
 1. **`<name>.ts`** — the standalone preset (schema/parser/serialize/rules), importing
    only `ztrack/preset-kit`. Its exported `name` field **must equal the filename**
-   `<name>`. See `PRESET-GUIDE.md` and the existing presets as the bar to copy.
+   `<name>`. See [docs/PRESETS.md § Building or extending a preset](../docs/PRESETS.md#building-or-extending-a-preset-maintainers) and the existing presets as the bar to copy.
 
 2. **`<name>.json`** — the manifest sidecar:
 

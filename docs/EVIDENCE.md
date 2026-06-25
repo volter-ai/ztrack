@@ -85,6 +85,16 @@ commitment, so the gate makes no network call. Requires a linked repo (`ztrack i
 `config.evidence.store` selects it: `commit` (default), `attach`, `external`, or `auto` (resolves
 to `commit`). A single call can override with `--attach` or `--commit`.
 
+> **Storage scope follows the source of truth, and verification is commit/locator-anchored, never
+> working-tree-anchored.** In **local** mode git is the source of truth, so issues *and* their
+> evidence are branch-scoped and committed under `.volter/tracker/markdown/` — they travel with the
+> code and merge atomically. In **linked** mode the tracker (GitHub/Linear/Jira) owns one set of
+> issues for the whole clone, so the local issue cache + sync state live in a machine-local
+> `<git-common-dir>/ztrack/` cache (resolved at runtime, shared by every worktree, never pushed or
+> cloned, repopulated by `ztrack sync`). Either way the gate verifies a committed file at its
+> **cited commit** (`git cat-file -e <sha>:<path>`, checkout-independent), so evidence stays stable
+> across worktrees without content-addressing.
+
 ```jsonc
 // .volter/tracker-config.json
 { "evidence": { "store": "commit", "dir": ".volter/evidence" } }
@@ -135,8 +145,37 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
   statement that falsely looks attested).
 - `verify --bundle … --key <public.pem>` checks the envelope signatures.
 
+## Advanced: validating against a mirrored world
+
+Beyond commit-backed proof, ztrack can validate evidence against a mirrored **world** of external
+systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter-ai-dev/twin`** — a
+regular dependency of ztrack (also the substrate behind `ztrack sync github`), bundled into the CLI
+and installed with the package. There is nothing extra to install. What's opt-in is the *policy*: a
+baseline tracker never consults the world. You wire world-backed checks into your installed preset
+only when validation needs claims to trace back to external conversations, tickets, reviews, or
+other mirrored vendor events. Day-one usage (`init` → `scaffold` → `create` → `check`) touches none
+of it.
+
+**Package boundary:**
+
+- `@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`): the external event log, world config, and
+  service-event APIs — and the engine behind `ztrack sync github`. A regular dependency on the
+  public npm registry, so it's always present.
+- `ztrack`: issue validation and the installed-preset boundary where world source rows can be
+  consumed.
+
+**Using it from a preset.** A preset that grounds claims in the world imports the adapters from
+ztrack's published world subpaths in its `loadContext`:
+
+```ts
+import { loadWorldSourceBooks } from 'ztrack/world-source-books';
+// or the annotation adapter:
+import { listAnnotations, isAnnotationExemptEvent } from 'ztrack/world-annotations';
+```
+
+These resolve against the installed `@volter-ai-dev/twin` — no extra install or registry
+configuration. A baseline preset that imports neither stays world-free.
+
 ## See also
 
 - [Preset reference](PRESETS.md) — the exact evidence rules per preset.
-- [Storage scope design](DESIGN-storage-scope-and-evidence.md) — why verification is
-  commit/locator-anchored rather than working-tree-anchored.

@@ -69,7 +69,7 @@ mechanism, two demoed narrow imports, and the world-integration extension).
 | `ztrack/preset-kit` | Mechanism to author a **standalone preset** (schema/parse/rules) | preset authors → [PRESETS.md](PRESETS.md) |
 | `ztrack/check` | `checkTracker` / `checkFile` directly (also on the root) | tooling |
 | `ztrack/sdk` | `createTrackerClient` directly (also on the root) | tooling |
-| `ztrack/world-annotations`, `ztrack/world-source-books` | the world-integration extension a world-using preset imports | [WORLD-INTEGRATION.md](WORLD-INTEGRATION.md) |
+| `ztrack/world-annotations`, `ztrack/world-source-books` | the world-integration extension a world-using preset imports | [EVIDENCE.md § mirrored world](EVIDENCE.md#advanced-validating-against-a-mirrored-world) |
 
 Prefer the package **root**. Everything else a CLI subcommand needs (mcp, lint, tx, attest, dsse, …)
 is an internal module, intentionally **not** a published entry point.
