@@ -69,7 +69,7 @@ describe('docs consistency', () => {
     // Valid commands extracted from the dispatch (cli.ts + handle* modules + resource-help) — no
     // hardcoded list, so it stays in sync. Catches a documented-but-removed command (e.g. the
     // phantom `snapshot project-manager` the architecture review found).
-    const cliSrc = ['src/cli.ts', 'src/cliCheck.ts', 'src/cliEvidence.ts', 'src/cliCompletions.ts', 'src/cliHelp.ts']
+    const cliSrc = ['src/cli.ts', 'src/cliCheck.ts', 'src/cliEvidence.ts', 'src/cliCompletions.ts', 'src/cliHelp.ts', 'src/cliInit.ts', 'src/cliLoop.ts', 'src/cliWaiver.ts']
       .map((f) => readFileSync(join(REPO, f), 'utf8')).join('\n');
     const commands = new Set([
       ...[...cliSrc.matchAll(/args\[0\]\s*[=!]==\s*'([a-z][a-z-]*)'/g)].map((m) => m[1]!),

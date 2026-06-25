@@ -1,22 +1,19 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exportTrackerRoot } from './export.ts';
-import { git } from './core/gitWorld.ts';
 import { lintIssueBody } from './lint.ts';
 import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import * as githubSync from './sync/github/index.ts';
-import { positionalArgs, resolveTarget } from './cliTarget.ts';
-import { describeTarget } from './loopState.ts';
 import type { IssueRecord } from './core/engine.ts';
-import { ensureTrackerGitignore, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath } from './config.ts';
-import { initTrackerPresets, initTrackerProject, presetManifest, upgradeTrackerPreset } from './presetCatalog.ts';
+import { loadTrackerConfig, projectRootFrom, trackerConfigPath } from './config.ts';
+import { upgradeTrackerPreset } from './presetCatalog.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
@@ -27,7 +24,10 @@ import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
 import { handleCompletionsCommand } from './cliCompletions.ts';
-import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
+import { handleWaiverCommand } from './cliWaiver.ts';
+import { handleLoopCommand } from './cliLoop.ts';
+import { handleInitCommand } from './cliInit.ts';
+import { heading, statusMark, ui } from './cliStyle.ts';
 
 // The installed preset is `.volter/tracker/validation/preset.mts`, loaded at runtime via Node's
 // type-stripping — which prints a one-time "ExperimentalWarning: Type Stripping" on every command.
@@ -58,41 +58,6 @@ async function activePresetScaffold(title: string): Promise<string | undefined> 
   } catch {
     return undefined;
   }
-}
-
-// The issue's `## Waivers` section is a list of located waiver directives, one per row:
-// `- code: <finding-code> [ac: <acId>] reason: <text> by: <signer>` (parsed identically by the
-// core in engine.parseWaivers). These helpers read/strip/re-render it for `waiver sign|clear`.
-type WaiverRow = { code: string; acId?: string; reason: string; approvedBy: string };
-function parseWaiverRows(body: string): WaiverRow[] {
-  const m = /(?:^|\n)##\s+waivers\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|$)/i.exec(body);
-  if (!m) return [];
-  const rows: WaiverRow[] = [];
-  for (const line of m[1]!.split('\n')) {
-    const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
-    if (!code) continue;
-    const acId = /\bac:\s*(\S+)/i.exec(line)?.[1];
-    const reason = /\breason:\s*(.+?)\s*(?=\s+by:|$)/i.exec(line)?.[1]?.trim() ?? '';
-    const approvedBy = /\bby:\s*(.+?)\s*$/i.exec(line)?.[1]?.trim() ?? '';
-    rows.push({ code, reason, approvedBy, ...(acId ? { acId } : {}) });
-  }
-  return rows;
-}
-function stripWaiversSection(body: string): string {
-  const out: string[] = [];
-  let skipping = false;
-  for (const line of body.split('\n')) {
-    if (/^##\s+waivers\b/i.test(line)) { skipping = true; continue; }
-    if (skipping && /^##\s+/.test(line)) skipping = false;
-    if (!skipping) out.push(line);
-  }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '');
-}
-function withWaivers(body: string, rows: WaiverRow[]): string {
-  const base = stripWaiversSection(body);
-  if (!rows.length) return `${base}\n`;
-  const render = (w: WaiverRow) => `- code: ${w.code}${w.acId ? ` ac: ${w.acId}` : ''} reason: ${w.reason} by: ${w.approvedBy}`;
-  return `${base}\n\n## Waivers\n\n${rows.map(render).join('\n')}\n`;
 }
 
 async function main(): Promise<void> {
@@ -128,89 +93,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (args[0] === 'init') {
-    const root = resolve(optionValue(args, '--root') || process.cwd());
-    // `ztrack init --list` — the catalog (name + description), generated from the preset manifests
-    // so it never needs a hand-maintained list. Shows the alias and the recommended baseline.
-    if (args.includes('--list')) {
-      const manifest = presetManifest();
-      const width = Math.max(...manifest.map((p) => p.name.length));
-      process.stdout.write(`${ui.bold('Available presets')} ${ui.dim(`— ${command} init --preset <name>`)}\n\n`);
-      for (const p of manifest) {
-        const tags = [p.recommended ? 'recommended' : '', p.aliases?.length ? `alias: ${p.aliases.join(', ')}` : ''].filter(Boolean).join('; ');
-        process.stdout.write(`  ${ui.cyan(p.name.padEnd(width))}  ${p.description}${tags ? ui.dim(`  (${tags})`) : ''}\n`);
-      }
-      process.stdout.write(`\n${ui.dim(`${command} init                  installs the recommended preset`)}\n`);
-      return;
-    }
-    const preset = optionValue(args, '--preset', 'default');
-    if (!initTrackerPresets().includes(preset)) {
-      throw new Error(`ztrack init: unknown --preset '${preset}'. Run \`${command} init --list\` to see available presets.`);
-    }
-    // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`.
-    const syncProvider = optionValue(args, '--sync');
-    let sync: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' } | undefined;
-    if (syncProvider) {
-      if (syncProvider !== 'github') throw new Error(`ztrack init: --sync only supports 'github' today (got '${syncProvider}')`);
-      const repo = optionValue(args, '--repo');
-      if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("ztrack init --sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
-      const policy = optionValue(args, '--policy');
-      if (policy && !['hub-wins', 'twin-wins', 'merge'].includes(policy)) throw new Error(`ztrack init: --policy must be merge | hub-wins | twin-wins (got '${policy}')`);
-      sync = { provider: 'github', repo, ...(policy ? { policy: policy as 'hub-wins' | 'twin-wins' | 'merge' } : {}) };
-    }
-    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}) });
-    if (result.alreadyInitialized) {
-      process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
-      return;
-    }
-    // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
-    // a network/auth failure leaves init successful — `ztrack sync` retries later).
-    let pulled = false;
-    if (sync) {
-      process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to github ${sync.repo} — pulling issues…`)}\n`);
-      try {
-        const r = await githubSync.pull({ projectRoot: root, owner: sync.repo.split('/')[0]!, repo: sync.repo.split('/')[1]!, execute: githubSync.resolveGithubExecute(), client: createTrackerClient({ projectRoot: root }), occurredAt: new Date().toISOString() });
-        process.stdout.write(`${statusMark('pass')} ${ui.dim(`pulled ${r.total} GitHub issue(s) → ${r.created.length} created locally`)}\n`);
-        pulled = true;
-      } catch (e) {
-        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`initial pull skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim('— run `ztrack sync` once auth is set up')}\n`);
-      }
-    }
-    const configPath = result.configPath;
-    const teamKey = result.teamKey;
-    // Next steps adapt to the scenario: a LINKED project already has its issues (pulled from
-    // the tracker), so it goes straight to verify/loop/sync; a LOCAL project authors one first.
-    const nextSteps = sync
-      ? [
-          pulled
-            ? stackedCommand(1, 'Verify an issue', `${command} check <issue-id>`, `${ui.dim('or')} ${command} check ${ui.dim('for the whole tracker — your GitHub issues were just pulled in.')}`)
-            : stackedCommand(1, 'Pull your GitHub issues', `${command} sync github`, 'The initial pull was skipped (set up `gh auth login` or GITHUB_TOKEN first), then `ztrack check`.'),
-          '',
-          stackedCommand(2, 'Drive one to done in a loop', `${command} loop start <issue-id>`, 'The Stop-hook gate holds the turn until that issue passes check (a ralph loop).'),
-          '',
-          stackedCommand(3, 'Re-sync with GitHub', `${command} sync github`, 'Bidirectional + conflict-aware; no --repo needed (it uses the link).'),
-        ]
-      : [
-          stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
-          '',
-          stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state draft --assignee me --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
-          '',
-          stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
-        ];
-    process.stdout.write([
-      `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey} • preset ${result.preset}${sync ? ` • linked ${sync.repo}` : ''}`)}`,
-      `  ${ui.dim(configPath)}`,
-      ...(result.validationEntrypoint ? [`  ${ui.dim(`validation ${result.validationEntrypoint}`)}`] : []),
-      '',
-      ui.bold('Next steps'),
-      ...nextSteps,
-      '',
-      ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
-      ui.dim('Edit the installed validation preset to encode your project rules.'),
-      '',
-    ].join('\n'));
-    return;
-  }
+  if (await handleInitCommand(args)) return;
 
   if (args[0] === 'migrate-local') {
     const root = projectRootFrom(resolve(optionValue(args, '--root') || process.cwd()));
@@ -262,120 +145,9 @@ async function main(): Promise<void> {
     throw new Error(`ztrack preset: unknown action '${action}'. Try '${command} preset upgrade'.`);
   }
 
-  if (args[0] === 'loop') {
-    // The explicit-start that makes the gate loop-scoped instead of always-on: while
-    // armed, the Stop hook holds the agent's turn until <issue> passes `ztrack check`.
-    const action = args[1];
-    const root = projectRootFrom();
-    const stateDir = join(root, stateDirName());
-    const marker = join(stateDir, '.ztrack-loop.json');
-    const cappedPath = join(stateDir, '.ztrack-loop-capped.json');
-    // Sweep every session's runtime state (iter counters + leftover exemptions), so a
-    // disarm/arm leaves nothing stale behind — mirrors the hook's sweep_loop_state.
-    const sweepRuntime = (): void => {
-      for (const f of existsSync(stateDir) ? readdirSync(stateDir) : []) {
-        if (f.startsWith('.ztrack-loop-iter-') || f.startsWith('.ztrack-loop-exempt-')) rmSync(join(stateDir, f), { force: true });
-      }
-    };
-    if (!action || action === '--help' || action === '-h' || action === 'help') {
-      process.stdout.write(`Usage: ${command} loop <start [<issue>|<file.md>] [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate (a ralph loop). While armed, the Stop hook keeps the agent going until the target passes \`${command} check\` (then it disarms), or the iteration cap trips. The target uses the same grammar as \`check\`: an issue id, a markdown file, or — with no argument — this worktree's issue (resolved from the branch/worktree name). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
-      return;
-    }
-    if (action === 'start') {
-      // Same target grammar as `check`: <issue id> | <file.md> | (bare) -> this branch's issue.
-      const positionals = positionalArgs(args.slice(2), new Set(['--max']));
-      const resolved = resolveTarget({ positionals, forceAuto: false, cwd: process.cwd() });
-      const target = resolved.kind === 'all' ? { kind: 'auto' as const } : resolved; // bare loop = ralph on the active branch
-      const label = describeTarget(target);
-      const maxRaw = optionValue(args, '--max');
-      const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
-      mkdirSync(stateDir, { recursive: true });
-      ensureTrackerGitignore(root); // so the loop's runtime/exempt files are ignored even on a repo init'd before the loop existed
-      sweepRuntime();
-      if (existsSync(cappedPath)) rmSync(cappedPath); // a fresh arm clears any prior cap breadcrumb
-      writeFileSync(marker, `${JSON.stringify({ target, maxIterations, startedAt: new Date().toISOString(), label }, null, 2)}\n`);
-      // Pull the latest from a linked tracker before the ralph loop starts (best-effort).
-      await githubSync.syncLinked(root, { pull: true }).catch(() => {});
-      process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); once the ztrack-gate Stop hook is wired (README → Agent workflows), it holds the turn until ${label} is green`)}\n`);
-      return;
-    }
-    if (action === 'stop') {
-      if (existsSync(marker)) rmSync(marker);
-      if (existsSync(cappedPath)) rmSync(cappedPath);
-      sweepRuntime();
-      process.stdout.write(`${statusMark('pass')} ${ui.dim('loop disarmed')}\n`);
-      return;
-    }
-    if (action === 'status') {
-      // A torn write of a runtime file must not crash `status`; treat unreadable as absent.
-      const readJson = (p: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>; } catch { return null; } };
-      const m = existsSync(marker) ? readJson(marker) : null;
-      if (m) {
-        const label = m.label ?? m.issue ?? 'target';
-        process.stdout.write(`${statusMark('info')} ${ui.bold(`loop armed → ${label}`)} ${ui.dim(`(max ${m.maxIterations}, since ${m.startedAt})`)}\n`);
-        return;
-      }
-      const c = existsSync(cappedPath) ? readJson(cappedPath) : null;
-      if (c) {
-        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`loop capped → ${c.issue}`)} ${ui.dim(`(hit the iteration cap after ${c.iterations} iterations, still red as of ${c.cappedAt}; run \`${command} check\` then \`${command} loop start ${c.issue}\` to re-arm)`)}\n`);
-        return;
-      }
-      process.stdout.write(`${statusMark('info')} ${ui.dim('no loop armed')}\n`);
-      return;
-    }
-    throw new Error(`${command} loop: unknown action '${action}'. Try 'start <issue>', 'stop', or 'status'.`);
-  }
+  if (await handleLoopCommand(args)) return;
 
-  if (args[0] === 'waiver') {
-    // eslint-`disable`-style escape: an authority acknowledges ONE specific check finding (by
-    // its code, optionally scoped to an AC) on <issue>, recorded in the `## Waivers` section.
-    // The core downgrades the matching finding to 'acknowledged'; a waiver that matches nothing
-    // is reported (`waiver_unused`). Sign-off is the git identity, captured automatically.
-    const action = args[1];
-    const projectRoot = projectRootFrom();
-    if (!action || ['--help', '-h', 'help'].includes(action)) {
-      process.stdout.write(`Usage: ${command} waiver <sign <issue> --code <finding-code> [--ac <acId>] --reason "..." | clear <issue> [--code <code>] | status <issue>>\n\nAcknowledges ONE check finding (by its code) on <issue>, signed off as your git identity, in the issue's \`## Waivers\` section. The core downgrades that finding to 'acknowledged' so \`${command} check\` passes; a waiver that matches no finding is reported (\`waiver_unused\`). Prefer fixing the issue — waive only a finding you knowingly accept.\n`);
-      return;
-    }
-    const id = args[2];
-    if (!id || id.startsWith('-')) throw new Error(`${command} waiver ${action}: needs an issue id, e.g. \`${command} waiver ${action} APP-1\``);
-    const wClient = createTrackerClient();
-    const issueView = await wClient.issue.view(id, { json: 'body' });
-    const body = String((issueView as Record<string, unknown>).body ?? '');
-    const rows = parseWaiverRows(body);
-    if (action === 'sign') {
-      const reason = optionValue(args, '--reason');
-      const code = optionValue(args, '--code');
-      const acId = optionValue(args, '--ac');
-      if (!code) throw new Error(`${command} waiver sign: --code <finding-code> is required — the check finding you are accepting (e.g. evidence_commit_not_found).`);
-      if (!reason) throw new Error(`${command} waiver sign: --reason "<why this failing state is acceptable>" is required`);
-      const gitName = git(projectRoot, ['config', 'user.name']);
-      const gitEmail = git(projectRoot, ['config', 'user.email']);
-      // `Name (email)`, not git's `Name <email>` — angle brackets get mangled by the markdown
-      // round-trip; parens survive. The signer is the git identity (authors commits too).
-      const approvedBy = gitName && gitEmail ? `${gitName} (${gitEmail})` : (gitName || gitEmail);
-      if (!approvedBy) throw new Error(`${command} waiver sign: no git identity configured. Set one (\`git config user.name\` / \`user.email\`) — a waiver must record who signed it.`);
-      const next = rows.filter((w) => !(w.code === code && (w.acId ?? '') === (acId ?? '')));  // replace a same code+ac waiver
-      next.push({ code, reason, approvedBy, ...(acId ? { acId } : {}) });
-      await wClient.issue.edit(id, { body: withWaivers(body, next) });
-      process.stdout.write(`${statusMark('pass')} ${ui.green('waiver signed')} ${ui.dim(`→ ${id}${acId ? ` (${acId})` : ''} for '${code}' by ${approvedBy}. Honored only while '${code}' actually fires — otherwise check reports waiver_unused.`)}\n`);
-      return;
-    }
-    if (action === 'clear') {
-      const code = optionValue(args, '--code');
-      const next = code ? rows.filter((w) => w.code !== code) : [];
-      await wClient.issue.edit(id, { body: withWaivers(body, next) });
-      process.stdout.write(`${statusMark('pass')} ${ui.dim(code ? `waiver for '${code}' cleared on ${id}` : `all waivers cleared on ${id}`)}\n`);
-      return;
-    }
-    if (action === 'status') {
-      process.stdout.write(rows.length
-        ? `${statusMark('info')} ${ui.bold(`${id} carries ${rows.length} waiver${rows.length === 1 ? '' : 's'}`)}\n${rows.map((w) => `  ${ui.dim(`${w.code}${w.acId ? ` (${w.acId})` : ''} — ${w.reason} [${w.approvedBy}]`)}`).join('\n')}\n`
-        : `${statusMark('info')} ${ui.dim(`${id} has no waivers`)}\n`);
-      return;
-    }
-    throw new Error(`${command} waiver: unknown action '${action}'. Try 'sign <issue> --code <code> --reason "..."', 'clear <issue> [--code <code>]', or 'status <issue>'.`);
-  }
+  if (await handleWaiverCommand(args)) return;
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {
     const title = optionValue(args, '--title') || 'New case';
