@@ -2,6 +2,30 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.33.0
+
+Internal refactor sweep from the OSS-posture review — code organization and naming, no behavior
+change. Five structural cleanups, each behavior-preserving and guard-backed:
+
+- **Naming: markdown models out of the `presets` namespace.** `src/presets.ts` → `src/rawIssueMarkdown.ts`
+  (the raw structured model: `parseRawIssueMarkdown`/`renderPresetCanonicalIssueMarkdown`),
+  `src/presets/issueMarkdown.ts` → `src/markdownDocument.ts` (the lenient mdast read-model). The
+  one-line `markdownModel.ts` alias is gone. They are document grammars, not presets — the old names
+  conflated them with the validation presets.
+- **Command-surface guard.** `docsConsistency` now fails CI if docs reference a `ztrack <command>`
+  that no longer exists in the dispatch (the check that would have caught the phantom
+  `snapshot project-manager`), and the linked-sync deep-dive moved from the README to `docs/GUIDE.md`.
+- **Shared SDLC-grammar conformance kit.** `src/testkit/presetConformance.ts` exports
+  `assertSdlcGrammarConformance(...)`; `simple-sdlc` and `simple-gh-sdlc` both call it instead of
+  duplicating the relevance-gap / passed-AC / anti-tamper blocks. Preset-specific PR tests stay
+  inline. Zero coverage lost (50/52 preset tests still pass).
+- **Preset catalog split out of `config.ts`.** Manifest discovery + resolve + install + 3-way
+  upgrade + `initTrackerProject` now live in `src/presetCatalog.ts` (a one-way dependency on
+  `config.ts`); `config.ts` is back to path/config primitives (367 → 180 lines).
+- **`cli.ts` decomposed (674 → 447 lines).** `init`, `loop`, and `waiver` extracted into
+  `cliInit.ts`/`cliLoop.ts`/`cliWaiver.ts` as `handleXCommand(args): Promise<boolean>` handlers,
+  matching the existing check/evidence/completions split.
+
 ## 0.32.1
 
 Doc-truth fixes from an OSS-posture review (4 reviewers: adopter, contributor, two architects), plus
