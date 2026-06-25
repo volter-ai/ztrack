@@ -33,6 +33,12 @@ if (!result.ok) {
 
 To validate an already-exported root (no disk read), use `checkTrackerRoot(root, options)`.
 
+> **Driving an agent to completion from code.** There is no programmatic loop primitive — the ralph
+> loop (`ztrack loop` + the Stop hook) is a CLI/harness construct (see the [Guide](GUIDE.md#3-usage-drive-an-agent-to-green)).
+> In an orchestrated/headless setup, *be* the loop: run `checkTracker` each iteration and treat
+> `!result.ok` as "not done — keep working" (the snippet above is the gate). `checkTracker` is the
+> same oracle the loop and CI use, so an in-code loop enforces exactly what the CLI does.
+
 ## Read / write issues
 
 `createTrackerClient` is the programmatic form of the issue CLI.

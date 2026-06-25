@@ -7,7 +7,7 @@ gates fail. This doc maps the pieces of the single validation pipeline and how d
 > **TL;DR**
 > - **One typed pipeline.** Validation is a single pass: a loader reads issue markdown and, through the active preset's `loadContext`, gathers that preset's observed facts into a typed `Context`; the preset parses markdown to an mdast-backed `root`; `ValidationInputSchema.parse({ context, root })` types the whole input; pure rules run; the validated `root` **is** the export. There is no separate snapshot model assembled after validation.
 > - **One impure boundary.** `src/core/loader.ts` is the only place that does I/O (tracker backend, git, time). Everything downstream — schema, rules, export — is pure and operates over the typed `Context` and `root`.
-> - **Presets are standalone — there is NO universal model.** Each preset (`default`/`spec`/`speckit`) brings its OWN strict schema, its OWN markdown parser, and its OWN rules. They share **no schema, no parser, and no rule set** with each other. The only shared layer is the engine *mechanism* (`core/engine.ts`: the minimal `CoreRoot` contract + the `Rule`-record evaluation / derived model) plus generic dev utilities (mdast, zod) and types. `ztrack init` installs the chosen preset's real, editable source. There is **no generic/universal preset factory, no shared parser or schema, no flag-toggled mega-preset, and no shared "rule library" presets compose from** — those are the legacy this architecture exists to forbid (see the invariant in §3).
+> - **Presets are standalone — there is NO universal model.** Each preset (`simple-sdlc`/`simple-gh-sdlc`/`spec`/`speckit`) brings its OWN strict schema, its OWN markdown parser, and its OWN rules. They share **no schema, no parser, and no rule set** with each other. The only shared layer is the engine *mechanism* (`core/engine.ts`: the minimal `CoreRoot` contract + the `Rule`-record evaluation / derived model) plus generic dev utilities (mdast, zod) and types. `ztrack init` installs the chosen preset's real, editable source. There is **no generic/universal preset factory, no shared parser or schema, no flag-toggled mega-preset, and no shared "rule library" presets compose from** — those are the legacy this architecture exists to forbid (see the invariant in §3).
 
 ---
 
@@ -87,8 +87,8 @@ real, editable source.
 
 > **INVARIANT — presets are standalone; there is NO universal model.**
 > A preset is a self-contained `Preset { name, schema, parse, rules, ... }`: its OWN strict
-> Zod schema, its OWN mdast parser, its OWN rules. `default`, `spec`, and `speckit` share
-> NONE of these with each other — only the engine *mechanism* (`core/engine.ts`: the minimal
+> Zod schema, its OWN mdast parser, its OWN rules. `simple-sdlc`, `simple-gh-sdlc`, `spec`, and
+> `speckit` share NONE of these with each other — only the engine *mechanism* (`core/engine.ts`: the minimal
 > `CoreRoot` contract + `Rule`-record evaluation).
 >
 > **The `CoreRoot` contract is the SPINE.** It's the minimal shared shape (`issues >
@@ -153,7 +153,7 @@ CI artifact is exactly that validated root JSON (`{ issues: [...] }`), re-valida
 
 A repo selects its rulebook with `validation.entrypoint`. Legacy configs that only set
 `organization.validationPreset` are rejected with migration guidance. The public init
-presets are `default`, `spec`, and `speckit`; each is a standalone preset (its own schema,
+presets are `simple-sdlc`, `simple-gh-sdlc`, `spec`, and `speckit` (`default` is an alias for `simple-sdlc`); each is a standalone preset (its own schema,
 parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 
 ---

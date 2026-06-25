@@ -47,6 +47,7 @@ With an image:
 | A cited **file** `image=<path>` exists in the tree **at that commit** (`git cat-file -e <sha>:<path>`) | `evidence_file_not_found` |
 | The `acv` matches the AC's current version | `evidence_ac_version_stale` |
 | A passed AC has evidence and a proof | `passed_ac_missing_evidence`, `passed_ac_missing_proof` |
+| **Opt-in** (only when the AC declares `paths:`): a cited commit touches one of those paths | `evidence_commit_unrelated` |
 
 So a **fabricated screenshot path fails** the gate — the path must be a real file committed at the
 cited commit. `check` stays fully offline and deterministic; it never fetches a URL (see Verify).

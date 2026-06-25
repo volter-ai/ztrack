@@ -215,10 +215,14 @@ Blocked by: APP-2
 
 Rule codes (`simple-sdlc`): `issue_missing_assignee`,
 `ac_checkbox_status_mismatch`, `passed_ac_missing_evidence`,
-`passed_ac_missing_proof`, `evidence_commit_not_found`,
-`evidence_ac_version_stale`, `ready_requires_dev_ac`,
-`review_requires_all_acs_passed`, `ac_self_block`,
-`ac_blocker_missing`, `ac_block_cycle` — plus the universal `duplicate_ac_id`,
+`passed_ac_missing_proof`, `passed_ac_missing_paths`,
+`evidence_commit_not_found`, `evidence_commit_unrelated`,
+`evidence_file_not_found`, `evidence_ac_version_stale`,
+`proof_cites_no_evidence`, `proof_evidence_ref_missing`,
+`ready_requires_dev_ac`, `review_requires_all_acs_passed`,
+`ac_self_block`, `ac_blocker_missing`, `ac_block_cycle`,
+`ac_blocked_by_unpassed`, `relation_target_missing`,
+`relation_not_reciprocal` — plus the universal `duplicate_ac_id`,
 `duplicate_issue_id`, and the waiver codes (`waiver_unused`,
 `waiver_missing_reason`, `waiver_missing_signoff`). `simple-gh-sdlc` adds
 `review_requires_pr`, `done_requires_merged_pr`, `evidence_sha_stale`,
@@ -316,8 +320,8 @@ Waivers` section per issue downgrades a matching finding to `acknowledged`:
 
 ```bash
 ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
-ztrack waiver status
-ztrack waiver clear
+ztrack waiver status <issue>
+ztrack waiver clear <issue> [--code <finding-code>]
 ```
 
 A waiver that matches nothing emits `waiver_unused`; an unreasoned or unsigned
