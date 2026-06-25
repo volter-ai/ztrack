@@ -2,6 +2,24 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.33.1
+
+Documentation only — no code or behavior change (refreshes the npm package page).
+
+- **Reframed the docs around the two usage patterns.** The README is now a two-step front door —
+  **Setup** (install, local-vs-linked, preset, the loop gate) then **Usage**, presenting `ztrack
+  check` (verify on demand — CI, pre-merge) and `ztrack loop` (the ralph loop — *recommended for
+  development*) as two co-equal patterns over the same targets. The Guide mirrors the spine and the
+  agent playbook leads with driving work under the loop.
+- **Consolidated doc sprawl.** Merged `PRESET-GUIDE.md` into `docs/PRESETS.md`, folded
+  `docs/WORLD-INTEGRATION.md` into `docs/EVIDENCE.md`, and removed a shipped design note and the
+  redundant docs index — the learn path is now README → Guide → Presets → Evidence → API/Architecture.
+- **Accuracy fixes verified against the live CLI:** completed the `simple-sdlc` rule-code list,
+  documented `evidence_commit_unrelated` (opt-in `paths:` relevance), corrected `ztrack waiver
+  status|clear <issue>` to show the required issue arg, added `--assignee` to `issue create|edit`
+  help, fixed stale preset names in `ARCHITECTURE.md`, and signposted that there is no programmatic
+  loop primitive (be the loop yourself via `checkTracker`).
+
 ## 0.33.0
 
 Internal refactor sweep from the OSS-posture review — code organization and naming, no behavior
