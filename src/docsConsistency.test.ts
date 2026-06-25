@@ -65,6 +65,31 @@ describe('docs consistency', () => {
     expect(missing).toEqual([]);
   });
 
+  test('every documented `ztrack <command>` is a real CLI command', () => {
+    // Valid commands extracted from the dispatch (cli.ts + handle* modules + resource-help) — no
+    // hardcoded list, so it stays in sync. Catches a documented-but-removed command (e.g. the
+    // phantom `snapshot project-manager` the architecture review found).
+    const cliSrc = ['src/cli.ts', 'src/cliCheck.ts', 'src/cliEvidence.ts', 'src/cliCompletions.ts', 'src/cliHelp.ts']
+      .map((f) => readFileSync(join(REPO, f), 'utf8')).join('\n');
+    const commands = new Set([
+      ...[...cliSrc.matchAll(/args\[0\]\s*[=!]==\s*'([a-z][a-z-]*)'/g)].map((m) => m[1]!),
+      ...[...cliSrc.matchAll(/resource === '([a-z][a-z-]*)'/g)].map((m) => m[1]!),
+    ]);
+    const unknown: string[] = [];
+    for (const doc of DOCS) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      // Only inside inline-code / fenced-code spans, and only where `ztrack` is the INVOKED command
+      // (line-start or after `npx`/`$ `) — so `cd ztrack` or prose "add ztrack to …" isn't flagged.
+      const spans = [...text.matchAll(/`[^`\n]+`/g), ...text.matchAll(/```[\s\S]*?```/g)].map((m) => m[0]);
+      for (const span of spans) {
+        for (const m of span.matchAll(/(?:^|npx |\$ )ztrack[ \t]+([a-z][a-z-]+)/gm)) {
+          if (!commands.has(m[1]!)) unknown.push(`${doc} -> ztrack ${m[1]}`);
+        }
+      }
+    }
+    expect(unknown).toEqual([]);
+  });
+
   test('every `--preset <name>` in docs names a real preset or alias', () => {
     const unknown: string[] = [];
     for (const doc of DOCS) {

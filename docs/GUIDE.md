@@ -102,9 +102,20 @@ jobs:
       - run: npx ztrack check --phase gate
 ```
 
-Auth uses the `gh` CLI or `GITHUB_TOKEN` (never a prompted PAT). A `sync_conflict` (same field edited
-on both sides) fails the check until resolved — see
-[Works with your tracker](../README.md#works-with-your-tracker).
+Auth uses the `gh` CLI or `GITHUB_TOKEN` (never a prompted PAT).
+
+### How linked sync works
+
+- **GitHub is the source of truth.** In linked mode ztrack **gitignores** the local issue store
+  (`.volter/tracker/markdown/`) — issues live on GitHub, not in your repo (in *local* mode that store
+  is committed). Re-clones repopulate it on the next `ztrack sync github`.
+- **Push vs pull.** `ztrack sync github` pulls GitHub's issues then pushes your local edits back — a
+  three-way merge (committed base vs. your tracker vs. GitHub) reconciles field by field, so
+  non-overlapping edits on both sides land.
+- **Conflicts gate the check.** When the *same field* changed on both sides, ztrack raises an
+  unwaivable `sync_conflict` (so `check` fails until resolved) and writes a local-only `## Conflicts`
+  block into the body. Resolve by editing + re-syncing, or pick a `--policy hub-wins | twin-wins |
+  merge` (default `merge`), settable on `sync`/`init` or as `sync.policy` in the config.
 
 ## 4. Enforce it for agents
 
