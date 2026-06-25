@@ -31,7 +31,7 @@ Reserved for complex pure logic, and for code the CLI can't reach:
   (`src/core/scope.test.ts`), the ref grammar (`src/core/ref.test.ts`), AC mutations +
   AC-Version stamping (`src/modelEdit.test.ts`);
 - the mdast parser's exact structured output and the waiver freshness-fingerprint / `waivable`
-  logic and the parser regression edge cases (`src/presets/issueMarkdown.test.ts`) — **not** the
+  logic and the parser regression edge cases (`src/markdownDocument.test.ts`) — **not** the
   rule-firing behaviors, which live in `check-e2e.sh`;
 - the preset upgrade 3-way-merge that keeps an edited `preset.mts` reconcilable with its source
   (`src/presetUpgrade.test.ts`);
@@ -40,7 +40,7 @@ Reserved for complex pure logic, and for code the CLI can't reach:
   shipped product only through the **visualizer** (`serverCore.ts` resolves them via the
   registry for display), where E2E is impractical — so a unit test is their surgical coverage.
 - markdown serialization + parser edges (`src/backends/markdown.test.ts`,
-  `src/presets/issueMarkdown.test.ts`, `src/graphql.test.ts`): null-vs-empty, comment-block
+  `src/markdownDocument.test.ts`, `src/graphql.test.ts`): null-vs-empty, comment-block
   round-trips, fenced-code blocks, CRLF, `fmt` fixed-point — exactly the things a CLI E2E
   can't isolate.
 

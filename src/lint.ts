@@ -4,7 +4,7 @@
 // firing on the 205 production bodies was adjudicated as a true positive
 // (Vale discipline — false positives are the #1 lint killer). Severity is
 // configurable per rule via organization.lint.rules ("warn"|"error"|"off").
-import { parseIssueMarkdown } from './markdownModel.ts';
+import { parseIssueMarkdown } from './markdownDocument.ts';
 import type { TrackerConfig } from './types.ts';
 
 export type LintSeverity = 'warn' | 'error' | 'off';

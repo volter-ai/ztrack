@@ -46,7 +46,7 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 | `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` | the standalone reference presets — each its OWN strict schema + mdast parser + serialize + pure rules per SDLC; installed verbatim as `preset.mts` |
 | `backends/markdown.ts` | canonical-issue ⇄ markdown (de)serializer |
 | `backends/markdownBackend.ts` | the `markdown` peer `TrackerBackend` (issue verbs over the `.md` store) |
-| `presets/issueMarkdown.ts`, `markdownModel.ts` | the lenient issue-markdown parser/model (mdast tree-walk); `markdown-model` re-exports it |
+| `markdownDocument.ts` | the lenient issue-markdown parser/model (mdast tree-walk) — read model for `lint`/`fmt` |
 | `acVersion.ts` | content-hash of an acceptance criterion (`AC-Version`) for freshness/anchoring |
 
 **Validate flow:**
@@ -213,5 +213,5 @@ never consults the world. The adapters are reachable from the
 
 - **The store is a local markdown folder — never a SaaS.** GitHub/Jira/Slack are world sync spokes, not backends.
 - **Validation is one pipeline.** `core/engine.ts` (`check`/`checkRoot`) over the repo-local standalone `preset.mts` is all there is; the "export" is just `check().export` (the validated `Root`). There is no separate snapshot model.
-- **The write-side layer is not validation.** `modelEdit.ts` (parse → edit the typed model → the preset's `serialize` — the one mutation path), `markdownModel.ts`, and `lint.ts` edit/format issue bodies; the validation pipeline does not import them.
-- **`markdownModel.ts` re-exports `presets/issueMarkdown.ts`** — the same lenient issue-markdown model under both names.
+- **The write-side layer is not validation.** `modelEdit.ts` (parse → edit the typed model → the preset's `serialize` — the one mutation path), `markdownDocument.ts`, `rawIssueMarkdown.ts`, and `lint.ts` edit/format issue bodies; the validation pipeline does not import them.
+- **"preset" means a validation preset only.** The markdown read-model lives in `markdownDocument.ts` (lenient mdast) and the raw structured model in `rawIssueMarkdown.ts` — neither is under a `presets/` path anymore.

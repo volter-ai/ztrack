@@ -6,7 +6,7 @@ import {
   parseMarkdownDocument,
   renderCanonicalIssueMarkdown,
   type CanonicalIssueMarkdown,
-} from './markdownModel.ts';
+} from './markdownDocument.ts';
 
 export const RawIssueCheckboxRowSchema = z.object({
   checked: z.boolean(),

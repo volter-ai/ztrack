@@ -6,7 +6,7 @@ import {
   MARKDOWN_AC_PACK,
   resolveGrammarPack,
   type GrammarPack,
-} from './issueMarkdown.ts';
+} from './markdownDocument.ts';
 
 // An example section canon a preset might supply (the generic default is permissive —
 // no canon — so these suites pass an explicit order to exercise reorder/respell/diagnostics).
