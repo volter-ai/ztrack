@@ -11,7 +11,7 @@ How to add or extend a preset in ztrack, and how to adversarially review it.
 > installs the chosen preset's real, editable source (`preset.mts`) — you then edit that
 > preset's own code.
 
-Most projects start from a shipped preset (`default`/`spec`/`speckit`) and edit it; read
+Most projects start from a shipped preset (`ztrack init --list`) and edit it; read
 [docs/PRESETS.md](docs/PRESETS.md) for that path. **An agent changing the preset system
 should read this doc first.** Reference standalone presets (the bar):
 `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` — each its own schema, parser, serialize,
