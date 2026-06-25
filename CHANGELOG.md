@@ -2,6 +2,22 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.30.0
+
+Split the dev-lifecycle preset along the one axis that varies — the acceptance proof — and make
+the lean, PR-free process the baseline.
+
+- **`simple-sdlc`** (new): the dev SDLC without the PR coupling. `done` = every AC
+  passed-with-evidence (commit + proof; image optional) — no pull request, so it runs on a private
+  repo with **no remote**. Keeps the full evidence integrity, relevance, and the opt-in dependency
+  (block) graph. Drops `review_requires_pr` / `done_requires_merged_pr` / `evidence_sha_stale` /
+  `current_head_unknown` and the `pr` field.
+- **`simple-gh-sdlc`** (was `default`): the PR-based process (review on a PR, merged PR for `done`),
+  renamed. The seed for richer GitHub validation (world annotations + sources) to come.
+- **`default` is now an alias for `simple-sdlc`.** `ztrack init` (no flag) and `--preset default`
+  install the lean preset; a repo previously recorded as `default` upgrades against `simple-gh-sdlc`
+  so its PR process is preserved.
+
 ## 0.29.0
 
 Make the `@volter-ai-dev/twin` dependency honest — it's a real, bundled dependency, not an
