@@ -29,13 +29,13 @@ Reserved for complex pure logic, and for code the CLI can't reach:
 
 - the block graph (`src/core/blocking.test.ts`), active-issue scope resolution
   (`src/core/scope.test.ts`), the ref grammar (`src/core/ref.test.ts`), AC mutations +
-  AC-Version stamping (`src/mutate.test.ts`);
+  AC-Version stamping (`src/modelEdit.test.ts`);
 - the mdast parser's exact structured output and the waiver freshness-fingerprint / `waivable`
-  logic and the parser regression edge cases (`src/presetKit.test.ts`) — **not** the
+  logic and the parser regression edge cases (`src/presets/issueMarkdown.test.ts`) — **not** the
   rule-firing behaviors, which live in `check-e2e.sh`;
-- the install-parity guard that keeps the installed `preset.mts` byte-for-byte equivalent to
-  its source (`src/presetInstall.test.ts`);
-- the standalone `default` / `spec` / `speckit` presets (`boilerplates/presets/*.test.ts`).
+- the preset upgrade 3-way-merge that keeps an edited `preset.mts` reconcilable with its source
+  (`src/presetUpgrade.test.ts`);
+- the standalone `simple-sdlc` / `simple-gh-sdlc` / `spec` / `speckit` presets (`boilerplates/presets/*.test.ts`).
   `ztrack check` always uses the installed standalone `preset.mts`; these are reached in the
   shipped product only through the **visualizer** (`serverCore.ts` resolves them via the
   registry for display), where E2E is impractical — so a unit test is their surgical coverage.

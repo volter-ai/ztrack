@@ -269,6 +269,13 @@ Current status: ztrack is pre-beta and has been battle-tested first on our own p
 workflow. The deterministic core is general, but new tracker conventions may expose rough
 edges. Please open issues with the smallest workflow shape that breaks.
 
+**Stability & dependencies (be honest with yourself before adopting).** Pre-1.0: minor versions
+can rename presets or flags — **pin an exact version** and read the [CHANGELOG](CHANGELOG.md) before
+upgrading. The deterministic **local** core (check, evidence, presets) depends only on the markdown
+store and git. **GitHub two-way sync** and **world-backed evidence** route through
+`@volter-ai-dev/twin` (a regular dependency, currently `0.1.0`, same publisher) — so if you adopt
+only local verification you carry no such risk; if you adopt sync, scope your risk to that surface.
+
 ## How it compares
 
 | | Records claim | Validates structure | Verifies evidence of "done" |

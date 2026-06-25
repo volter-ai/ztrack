@@ -44,8 +44,22 @@ describe('docs consistency', () => {
     const missing: string[] = [];
     for (const doc of DOCS) {
       const text = readFileSync(join(REPO, doc), 'utf8');
-      for (const m of text.matchAll(/boilerplates\/presets\/([a-z][a-z0-9-]*)\.ts/g)) {
-        if (!existsSync(join(presetDir, `${m[1]}.ts`))) missing.push(`${doc} -> ${m[0]}`);
+      // Handle both `…/<name>.ts` and brace-expansion `…/{a,b,c}.ts` (the form that slipped past
+      // the first version of this guard and let ARCHITECTURE.md cite a renamed `default.ts`).
+      for (const m of text.matchAll(/boilerplates\/presets\/(\{[a-z0-9,-]+\}|[a-z][a-z0-9-]*)\.ts/g)) {
+        const names = m[1]!.startsWith('{') ? m[1]!.slice(1, -1).split(',') : [m[1]!];
+        for (const n of names) if (!existsSync(join(presetDir, `${n}.ts`))) missing.push(`${doc} -> boilerplates/presets/${n}.ts`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('every backtick-cited src/**/*.ts path exists', () => {
+    const missing: string[] = [];
+    for (const doc of DOCS.concat('TESTING.md')) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      for (const m of text.matchAll(/`(src\/[a-zA-Z0-9/_.-]+\.ts)`/g)) {
+        if (!existsSync(join(REPO, m[1]!))) missing.push(`${doc} -> ${m[1]}`);
       }
     }
     expect(missing).toEqual([]);

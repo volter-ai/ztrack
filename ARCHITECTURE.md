@@ -43,7 +43,7 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 | `core/gitWorld.ts` | preset-agnostic git facts (commits, PR/branch heads) a preset's `loadContext` calls — it knows nothing about any preset's schema |
 | `core/ref.ts` | universal node addressing: the derived colon-delimited id (`issue`/`issue:ac`/`issue:ac:evidence`/`issue:ac:proof`) used by cross-tree references like blocking |
 | `core/blocking.ts` | the unified blocking graph — a derived projection over the root that folds AC `blocked-by`/`blocks` and issue `relations` (every direction and level) into one dependency DAG; powers cycle detection, the out-of-order completion gate, and the transitive blocked/actionable view (`blockStatuses`) |
-| `boilerplates/presets/{default,spec,speckit}.ts` | the standalone reference presets — each its OWN strict schema + mdast parser + serialize + pure rules per SDLC; installed verbatim as `preset.mts` |
+| `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` | the standalone reference presets — each its OWN strict schema + mdast parser + serialize + pure rules per SDLC; installed verbatim as `preset.mts` |
 | `backends/markdown.ts` | canonical-issue ⇄ markdown (de)serializer |
 | `backends/markdownBackend.ts` | the `markdown` peer `TrackerBackend` (issue verbs over the `.md` store) |
 | `presets/issueMarkdown.ts`, `markdownModel.ts` | the lenient issue-markdown parser/model (mdast tree-walk); `markdown-model` re-exports it |
@@ -118,7 +118,7 @@ export default MyPreset;
 ```
 
 It is editable with no build step (installed as `.mts`). The reference standalone presets
-(the bar) are `boilerplates/presets/{default,spec,speckit}.ts` — each with its own schema,
+(the bar) are `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` — each with its own schema,
 parser, serialize, and rules.
 
 | file | role |
@@ -133,7 +133,7 @@ parser, serialize, and rules.
 | `checkRules.ts` | the category/depth **types** for the `--categories` selector |
 | `blobStore.ts`, `attest.ts`, `dsse.ts` | evidence blobs + in-toto/DSSE attestation over a validated root |
 | `lint.ts` | issue-body lint (structure warnings) — write-side, see §6 |
-| `mutate.ts`, `tx.ts` | AC mutation + multi-edit transaction (apply → re-check → revert if worse) — write-side, see §6 |
+| `modelEdit.ts`, `tx.ts` | AC mutation + multi-edit transaction (apply → re-check → revert if worse) — write-side, see §6 |
 
 **Validate flow (what `ztrack check` does):**
 ```
@@ -165,7 +165,7 @@ parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 | `ztrack` / `cli.ts` `check` | the validator — runs the pipeline (loader → parse → schema → rules) over the live tracker |
 | `ztrack export` | writes the validated `root` (`check().export`) to JSON |
 | `mcp.ts` (`tracker_check`, …) | the validator over MCP |
-| `sdk.ts` `createTrackerClient` | backend-agnostic CRUD (`local` or `markdown`); writes via the backend; `tx.ts` re-checks |
+| `sdk.ts` `createTrackerClient` | issue CRUD over the markdown backend; writes via the backend; `tx.ts` re-checks |
 | `server.ts` / `graphql.ts` | GraphQL over the backend (CRUD) |
 | `visualizer/` (`ztrack visualizer`) | standalone Bun web app over `check().export`; runs every `tracker/*.md` through its preset and renders issues, ACs, findings, and timestamps (read-only) |
 
@@ -184,9 +184,6 @@ The installed preset is `.volter/tracker/validation/preset.mts` — an ES module
 inside a CommonJS consumer repo, so it works on Node ≥ 24 across npm, pnpm, yarn (classic +
 Berry + PnP), and bun with no build step.
 
-> **Note** — `ztrack snapshot project-manager` is an **unrelated** feature: a PM status
-> report generated from the backend. It is not part of validation and shares no code with
-> the pipeline above.
 
 ---
 
@@ -218,4 +215,3 @@ never consults the world. The adapters are reachable from the
 - **Validation is one pipeline.** `core/engine.ts` (`check`/`checkRoot`) over the repo-local standalone `preset.mts` is all there is; the "export" is just `check().export` (the validated `Root`). There is no separate snapshot model.
 - **The write-side layer is not validation.** `modelEdit.ts` (parse → edit the typed model → the preset's `serialize` — the one mutation path), `markdownModel.ts`, and `lint.ts` edit/format issue bodies; the validation pipeline does not import them.
 - **`markdownModel.ts` re-exports `presets/issueMarkdown.ts`** — the same lenient issue-markdown model under both names.
-- **`ztrack snapshot project-manager`** is a backend PM status report, unrelated to validation — the only place "snapshot" appears in ztrack.

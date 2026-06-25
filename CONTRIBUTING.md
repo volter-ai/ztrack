@@ -15,6 +15,7 @@ git clone https://github.com/volter-ai/ztrack
 cd ztrack
 bun install --frozen-lockfile
 bun run typecheck
+bun run build                # required before `bun test`: the e2e tests resolve `ztrack/preset-kit` from dist/
 bun test
 bun run src/cli.ts --help   # run the CLI from source (no build needed)
 ```

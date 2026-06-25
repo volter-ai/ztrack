@@ -2,6 +2,27 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.32.1
+
+Doc-truth fixes from an OSS-posture review (4 reviewers: adopter, contributor, two architects), plus
+closing a hole in the drift guard that let them through.
+
+- **Closed the `docsConsistency` guard's blind spots.** It now expands brace-lists
+  (`boilerplates/presets/{a,b,c}.ts`) before checking existence, and validates every backtick-cited
+  `src/**/*.ts` path — the exact gaps that let `ARCHITECTURE.md`/`TESTING.md` cite renamed files.
+- **Fixed `ARCHITECTURE.md` drift** the guard now catches: the reference presets are
+  `simple-sdlc`/`simple-gh-sdlc`/`spec`/`speckit` (not the renamed `default.ts`); `mutate.ts` →
+  `modelEdit.ts`; `createTrackerClient` is markdown-only (the `local` backend is removed); and
+  removed the phantom `ztrack snapshot project-manager` command (it doesn't exist).
+- **Fixed `TESTING.md`** stale test-file references (`mutate.test.ts` → `modelEdit.test.ts`,
+  `presetKit.test.ts` → `presets/issueMarkdown.test.ts`, `presetInstall.test.ts` →
+  `presetUpgrade.test.ts`, preset names).
+- **`CONTRIBUTING.md`**: added the required `bun run build` before `bun test` — the e2e suite
+  resolves `ztrack/preset-kit` from `dist/`, so a fresh-clone `bun test` failed without it (the #1
+  contributor bounce).
+- **README**: added a "Stability & dependencies" note — pin a version pre-1.0; the local core is
+  dependency-light, GitHub sync / world evidence route through `@volter-ai-dev/twin`.
+
 ## 0.32.0
 
 Docs consolidation — one home per topic, plus a guard so they can't silently drift again.
