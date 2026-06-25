@@ -87,7 +87,7 @@ async function configuredBoard(): Promise<{ preset: unknown; presetName: string;
   // registry by the requested preset name only when no entrypoint is configured.
   const preset = config.validation?.entrypoint?.trim()
     ? await resolveTrackerValidation(config, PROJECT_DIR) // async (dynamic-imports preset.mts) — MUST await, or `preset` is a Promise and check sees no parse()
-    : resolvePreset(PRESET);
+    : await resolvePreset(PRESET);
   const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
   const r = check(preset, records, context);
   return {
@@ -111,7 +111,7 @@ async function board() {
     findings.push(...configured.findings);
   } else {
     // No tracker-config: legacy per-document path (bare tracker/*.md or speckit specs/).
-    preset = resolvePreset(PRESET);
+    preset = await resolvePreset(PRESET);
     presetName = (preset as { name?: string }).name ?? PRESET;
     for (const doc of documents(PRESET)) {
       // Context is preset-owned: each preset's loadContext gathers exactly the facts

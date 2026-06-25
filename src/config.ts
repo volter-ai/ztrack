@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -88,25 +88,69 @@ export function evidenceDir(projectRoot: string): string {
   return join(projectRoot, dir || join(stateDirName(), 'evidence'));
 }
 
-// The real boilerplate files shipped at boilerplates/presets/<name>.ts.
-export type CanonicalTrackerPreset = 'simple-sdlc' | 'simple-gh-sdlc' | 'spec' | 'speckit';
-// Accepted `--preset` input. `default` is an ALIAS for the recommended baseline (simple-sdlc) — there
-// is no `default.ts`; it resolves to simple-sdlc so `ztrack init` (no flag) installs the lean preset.
-export type InitTrackerPreset = CanonicalTrackerPreset | 'default';
-
-const INIT_TRACKER_PRESETS = ['simple-sdlc', 'simple-gh-sdlc', 'spec', 'speckit', 'default'] as const;
-
-export function initTrackerPresets(): readonly InitTrackerPreset[] {
-  return INIT_TRACKER_PRESETS;
+// ── Preset catalog ───────────────────────────────────────────────────────────────────
+// Presets are discovered by SCANNING the shipped boilerplates dir — nothing here enumerates
+// the set, so it scales to many presets. Each preset is two co-located files:
+//   boilerplates/presets/<name>.ts    the editable standalone preset (schema/parser/rules)
+//   boilerplates/presets/<name>.json  its manifest: { description, aliases?, recommended? }
+// Adding a preset = drop those two files. `presetManifest.test.ts` guards them in sync.
+export interface PresetManifestEntry {
+  /** Canonical `--preset` name = the boilerplate filename. */
+  name: string;
+  /** One-line summary shown by `ztrack init --list`. */
+  description: string;
+  /** Alternate `--preset` inputs that resolve to this preset (e.g. `default`). */
+  aliases?: string[];
+  /** The recommended baseline — what `ztrack init` (no `--preset`) installs. Exactly one. */
+  recommended?: boolean;
 }
 
-// Resolve an accepted preset name (incl. the `default` alias) to its boilerplate file name.
-function resolvePresetName(preset: InitTrackerPreset): CanonicalTrackerPreset {
-  return preset === 'default' ? 'simple-sdlc' : preset;
+const PRESETS_DIR = fileURLToPath(new URL('../boilerplates/presets', import.meta.url));
+
+let manifestCache: PresetManifestEntry[] | undefined;
+/** The full preset catalog, read from the per-preset `<name>.json` sidecars. */
+export function presetManifest(): PresetManifestEntry[] {
+  if (manifestCache) return manifestCache;
+  const names = readdirSync(PRESETS_DIR)
+    .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+    .map((f) => f.slice(0, -'.ts'.length))
+    .sort();
+  manifestCache = names.map((name) => {
+    const sidecar = join(PRESETS_DIR, `${name}.json`);
+    const meta = existsSync(sidecar) ? JSON.parse(readFileSync(sidecar, 'utf8')) as Partial<PresetManifestEntry> : {};
+    return {
+      name,
+      description: meta.description ?? '',
+      ...(meta.aliases?.length ? { aliases: meta.aliases } : {}),
+      ...(meta.recommended ? { recommended: true } : {}),
+    };
+  });
+  return manifestCache;
+}
+
+/** The baseline preset `ztrack init` installs with no `--preset`. */
+export function recommendedPreset(): string {
+  const m = presetManifest();
+  return (m.find((p) => p.recommended) ?? m[0]!).name;
+}
+
+/** Every accepted `--preset` input: canonical names plus their aliases. */
+export function initTrackerPresets(): readonly string[] {
+  const m = presetManifest();
+  return [...m.map((p) => p.name), ...m.flatMap((p) => p.aliases ?? [])];
+}
+
+// Resolve an accepted preset input (name or alias) to its boilerplate file name.
+export function resolvePresetName(preset: string): string {
+  const m = presetManifest();
+  if (m.some((p) => p.name === preset)) return preset;
+  const aliased = m.find((p) => p.aliases?.includes(preset));
+  if (aliased) return aliased.name;
+  throw new Error(`Unknown preset '${preset}'. Run \`ztrack init --list\` to see available presets.`);
 }
 
 export type InitTrackerProjectOptions = {
-  preset?: InitTrackerPreset;
+  preset?: string;
   /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
   sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
 };
@@ -114,8 +158,8 @@ export type InitTrackerProjectOptions = {
 // The standalone preset's editable source, shipped at `boilerplates/presets/<preset>.ts`.
 // `ztrack init` copies it verbatim — it is REAL code (its OWN schema/parser/rules),
 // importing only `ztrack/preset-kit`. No template substitution, no flags.
-function presetTemplate(preset: InitTrackerPreset): string {
-  return readFileSync(fileURLToPath(new URL(`../boilerplates/presets/${resolvePresetName(preset)}.ts`, import.meta.url)), 'utf8');
+function presetTemplate(preset: string): string {
+  return readFileSync(join(PRESETS_DIR, `${resolvePresetName(preset)}.ts`), 'utf8');
 }
 
 export function trackerValidationEntrypointPath(projectRoot: string): string {
@@ -131,7 +175,7 @@ export function trackerValidationBasePath(projectRoot: string): string {
   return join(projectRoot, stateDirName(), 'tracker', 'validation', '.preset.base.mts');
 }
 
-function installPreset(projectRoot: string, preset: InitTrackerPreset): string {
+function installPreset(projectRoot: string, preset: string): string {
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
   mkdirSync(dirname(entrypoint), { recursive: true });
   const source = presetTemplate(preset);
@@ -145,7 +189,7 @@ function installPreset(projectRoot: string, preset: InitTrackerPreset): string {
 export interface UpgradePresetResult {
   status: 'updated' | 'up-to-date' | 'conflicts' | 'no-base';
   entrypoint: string;
-  installedFrom: InitTrackerPreset;
+  installedFrom: string;
   conflicts: number;
 }
 
@@ -176,12 +220,12 @@ export function upgradeTrackerPreset(projectRoot: string): UpgradePresetResult {
   const config = loadTrackerConfig(projectRoot);
   const installedFrom = config.validation?.installedFrom;
   const entrypoint = trackerValidationEntrypointPath(projectRoot);
-  if (!installedFrom || !(INIT_TRACKER_PRESETS as readonly string[]).includes(installedFrom) || !existsSync(entrypoint)) {
+  if (!installedFrom || !initTrackerPresets().includes(installedFrom) || !existsSync(entrypoint)) {
     throw new Error("No bundled preset to upgrade from. `ztrack preset upgrade` only applies to a repo init'd with `ztrack init --preset <name>`.");
   }
   // Legacy compat: a repo recorded as `default` predates the alias and meant the old PR-based preset,
   // which is now simple-gh-sdlc — upgrade it against that, not the new lean simple-sdlc baseline.
-  const variant: InitTrackerPreset = installedFrom === 'default' ? 'simple-gh-sdlc' : (installedFrom as InitTrackerPreset);
+  const variant: string = installedFrom === 'default' ? 'simple-gh-sdlc' : installedFrom;
   const basePath = trackerValidationBasePath(projectRoot);
   if (!existsSync(basePath)) return { status: 'no-base', entrypoint, installedFrom: variant, conflicts: 0 };
   const base = readFileSync(basePath, 'utf8');
@@ -204,10 +248,10 @@ export function initTrackerProject(
   root: string,
   teamKey = 'LOCAL',
   options: InitTrackerProjectOptions = {},
-): { configPath: string; alreadyInitialized: boolean; teamKey: string; preset: InitTrackerPreset; validationEntrypoint?: string } {
+): { configPath: string; alreadyInitialized: boolean; teamKey: string; preset: string; validationEntrypoint?: string } {
   const configPath = trackerConfigPath(root);
-  // Resolve the `default` alias up front so the canonical name is what we install + record.
-  const preset = resolvePresetName(options.preset ?? 'default');
+  // Resolve an alias (e.g. `default`) up front so the canonical name is what we install + record.
+  const preset = resolvePresetName(options.preset ?? recommendedPreset());
   if (existsSync(configPath)) return { configPath, alreadyInitialized: true, teamKey, preset };
   const key = teamKey.toUpperCase();
   mkdirSync(dirname(configPath), { recursive: true });

@@ -7,19 +7,15 @@ export { check } from '../src/core/engine.ts';
 export { observeChanges, readAudit, timestampsFor } from '../src/core/audit.ts';
 export { buildSpeckitBundle } from '../boilerplates/presets/speckit.ts';
 
-// Resolve a STANDALONE preset by name (the `ztrack visualizer --preset <name>` mode).
-// There is no catalog/registry — the presets are standalone modules, so this is just a
-// small static map over them.
-import SimpleSdlcPreset from '../boilerplates/presets/simple-sdlc.ts';
-import SimpleGhSdlcPreset from '../boilerplates/presets/simple-gh-sdlc.ts';
-import SpecPreset from '../boilerplates/presets/spec.ts';
-import SpeckitPreset from '../boilerplates/presets/speckit.ts';
-// `default` is an alias for the baseline simple-sdlc (matches config.ts's preset resolution).
-const STANDALONE_PRESETS = { 'simple-sdlc': SimpleSdlcPreset, 'simple-gh-sdlc': SimpleGhSdlcPreset, default: SimpleSdlcPreset, spec: SpecPreset, speckit: SpeckitPreset };
-export function resolvePreset(name) {
-  const preset = STANDALONE_PRESETS[name];
-  if (!preset) throw new Error(`Unknown preset '${name}'. Available: ${Object.keys(STANDALONE_PRESETS).join(', ')}.`);
-  return preset;
+// Resolve a STANDALONE preset by name (the `ztrack visualizer --preset <name>` view of a tracker
+// with no configured validation entrypoint). The alias + canonical name come from the shared
+// preset manifest; the boilerplate is then dynamic-imported from the shipped presets dir — no
+// static catalog here, so it scales as presets are added (same source as `ztrack init`).
+import { resolvePresetName } from '../src/config.ts';
+export async function resolvePreset(name) {
+  const canonical = resolvePresetName(name);
+  const mod = await import(new URL(`../boilerplates/presets/${canonical}.ts`, import.meta.url).href);
+  return mod.default;
 }
 
 // The board view routes through the SAME loaders as `ztrack check`/`export`: the active

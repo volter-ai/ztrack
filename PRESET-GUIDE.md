@@ -50,7 +50,7 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 4. **Write rules**, grouped: structural existence (required sections/fields) · checkbox⇄status consistency · per-state gates · evidence requirements + freshness/anchoring (read `ctx.git`) · ref-integrity · completeness/cross-issue (over `root.issues`, read `ctx.world`). Each emits a stable `code`.
 5. **Multi-input** if needed: frontmatter metadata, `Context.world` for twin/world grounding, a bundle marker for multiple issues/files.
 6. **Loader** (impure): read real data → `Context` + bundle; the only place with fs/world/git. Map files↔issues by parsed id (NOT ordinal — parse may drop invalid segments).
-7. **Write `serialize`** (the inverse of parse) for a read-write preset, then **export the preset as the module's `default`** — `ztrack init --preset <name>` installs it to `.volter/tracker/validation/preset.mts`; there is no central registry.
+7. **Write `serialize`** (the inverse of parse) for a read-write preset; **export the preset as the module's `default`** (its `name` field MUST equal the filename `<name>`); then **add the manifest sidecar `boilerplates/presets/<name>.json`** (`description`, optional `aliases`/`recommended`). Presets are discovered by scanning the dir + reading sidecars — `ztrack init --preset <name>` installs `<name>.ts` to `.volter/tracker/validation/preset.mts` and `ztrack init --list` shows the description. There is no central registry/list (a hardcoded enum/array/map is an anti-pattern — see §5). See `boilerplates/README.md`.
 8. **Tests:** clean fixtures that produce ZERO findings (incl. warnings) at each lifecycle stage, plus a perturbation that fires each rule; a strict-schema rejection test; and a `parse∘serialize` round-trip test for any read-write preset.
 9. **Review** (section 6): run the three adversarial passes; reproduce every finding before fixing.
 10. **Prove on real data** via the loader; if porting, cross-check findings against the legacy/world validator (they should agree where scope overlaps).
@@ -65,6 +65,7 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 - Hard-error completeness over fuzzy matching or a partial corpus — make it advisory (warning) unless the corpus is known-complete and matching is exact.
 - Silently defaulting a required field (e.g. an explicit `status:`) — record that it was absent and flag it.
 - Leaving any emitted `code` unclassified if the repo has a code-classification gate.
+- **A central preset list/enum/map.** Presets are discovered by scanning `boilerplates/presets/` + their `<name>.json` sidecars — never reintroduce a hardcoded set of preset names (a TS union, an `INIT_TRACKER_PRESETS` array, a visualizer `STANDALONE_PRESETS` map, or an enumerated `--preset a|b|c` in help/docs). Such a list rots when a preset is added/renamed and silently breaks consumers (this is exactly what broke the visualizer when `default.ts` was renamed). Use `presetManifest()` / `ztrack init --list`; let the guard test (`presetManifest.test.ts`) enforce it.
 
 ---
 

@@ -15,7 +15,7 @@ import * as githubSync from './sync/github/index.ts';
 import { positionalArgs, resolveTarget } from './cliTarget.ts';
 import { describeTarget } from './loopState.ts';
 import type { IssueRecord } from './core/engine.ts';
-import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
+import { ensureTrackerGitignore, initTrackerPresets, initTrackerProject, loadTrackerConfig, presetManifest, projectRootFrom, stateDirName, trackerConfigPath, upgradeTrackerPreset } from './config.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
@@ -129,9 +129,22 @@ async function main(): Promise<void> {
 
   if (args[0] === 'init') {
     const root = resolve(optionValue(args, '--root') || process.cwd());
+    // `ztrack init --list` — the catalog (name + description), generated from the preset manifests
+    // so it never needs a hand-maintained list. Shows the alias and the recommended baseline.
+    if (args.includes('--list')) {
+      const manifest = presetManifest();
+      const width = Math.max(...manifest.map((p) => p.name.length));
+      process.stdout.write(`${ui.bold('Available presets')} ${ui.dim(`— ${command} init --preset <name>`)}\n\n`);
+      for (const p of manifest) {
+        const tags = [p.recommended ? 'recommended' : '', p.aliases?.length ? `alias: ${p.aliases.join(', ')}` : ''].filter(Boolean).join('; ');
+        process.stdout.write(`  ${ui.cyan(p.name.padEnd(width))}  ${p.description}${tags ? ui.dim(`  (${tags})`) : ''}\n`);
+      }
+      process.stdout.write(`\n${ui.dim(`${command} init                  installs the recommended preset`)}\n`);
+      return;
+    }
     const preset = optionValue(args, '--preset', 'default');
-    if (!initTrackerPresets().includes(preset as any)) {
-      throw new Error(`ztrack init: --preset must be one of ${initTrackerPresets().join(', ')}`);
+    if (!initTrackerPresets().includes(preset)) {
+      throw new Error(`ztrack init: unknown --preset '${preset}'. Run \`${command} init --list\` to see available presets.`);
     }
     // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`.
     const syncProvider = optionValue(args, '--sync');
@@ -144,7 +157,7 @@ async function main(): Promise<void> {
       if (policy && !['hub-wins', 'twin-wins', 'merge'].includes(policy)) throw new Error(`ztrack init: --policy must be merge | hub-wins | twin-wins (got '${policy}')`);
       sync = { provider: 'github', repo, ...(policy ? { policy: policy as 'hub-wins' | 'twin-wins' | 'merge' } : {}) };
     }
-    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset: preset as any, ...(sync ? { sync } : {}) });
+    const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}) });
     if (result.alreadyInitialized) {
       process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
       return;

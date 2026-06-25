@@ -2,6 +2,27 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.31.0
+
+Manifest-driven preset discovery — so the preset catalog scales without a hand-maintained list.
+
+- Presets are now **discovered by scanning** `boilerplates/presets/`. Each preset is two
+  co-located files: `<name>.ts` (the standalone preset) + a new **`<name>.json`** manifest sidecar
+  (`{ description, aliases?, recommended? }`). Adding a preset = drop those two files; nothing else
+  to register.
+- New **`ztrack init --list`** prints the catalog with each preset's description, the recommended
+  baseline, and its aliases — generated from the sidecars, never hardcoded.
+- Removed every hardcoded preset list: the `CanonicalTrackerPreset` union and `INIT_TRACKER_PRESETS`
+  array in `config.ts`, the visualizer's static `STANDALONE_PRESETS` map (it now resolves
+  `--preset <name>` via the manifest + a dynamic import), and the enumerated `--preset a|b|c` in CLI
+  help/errors (now `--preset <name>` + a pointer to `--list`). An unknown `--preset` points to
+  `--list`. `default` remains an alias for the recommended `simple-sdlc`.
+- A guard test (`boilerplates/presets/presetManifest.test.ts`) fails CI if a preset lacks its
+  sidecar, if there isn't exactly one `recommended`, if aliases collide, or if a preset's exported
+  `name` doesn't match its filename — the class of drift that broke the visualizer in 0.30.0.
+- Documented the workflow in `boilerplates/README.md` and `PRESET-GUIDE.md` (§4 build order + a "no
+  central preset list" entry in the Never list).
+
 ## 0.30.1
 
 Ships the 0.30.0 preset split (0.30.0's publish was blocked by a build break). Fix: the visualizer

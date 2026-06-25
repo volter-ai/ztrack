@@ -104,7 +104,9 @@ export function printResourceHelp(resource: string): boolean {
     process.stdout.write(`Usage: ${command} init [--team KEY] [--preset <name>] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
 
 Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
-  (no flags)                 a LOCAL tracker — the markdown issue store is committed to your repo.
+  (no flags)                 a LOCAL tracker with the recommended preset — the markdown issue store is committed to your repo.
+  --list                     list the available presets and their descriptions, then exit.
+  --preset <name>            install a specific preset (see \`${command} init --list\`).
   --sync github --repo o/n   LINK to GitHub Issues (two-way sync) and pull existing issues;
                              GitHub becomes the source of truth (the local store is gitignored).
   --policy …                 conflict-resolution default for a linked tracker (default merge).
