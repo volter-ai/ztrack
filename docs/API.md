@@ -59,17 +59,20 @@ const root = await exportTrackerRoot({ projectRoot });
 
 ## The exports map
 
+The package exposes a deliberately small set of entry points. The root re-exports everything most
+callers need; the subpaths exist only where they carry their own weight (the preset-authoring
+mechanism, two demoed narrow imports, and the world-integration extension).
+
 | Import | Purpose | Audience |
 |---|---|---|
-| `ztrack` (root) | **The supported public API**: `checkTracker`, `checkTrackerRoot`, `createTrackerClient`, `exportTrackerRoot`, `serveTrackerApi`, `parseRawIssueMarkdown`, config helpers (`loadTrackerConfig`, `projectRootFrom`, …), and types (`TrackerCheckResult`, `Finding`, `CoreRoot`, `Preset`, …) | app / tooling authors |
-| `ztrack/preset-kit` | Mechanism to author a **standalone preset** (schema/parse/rules). Stable. | preset authors → [PRESETS.md](PRESETS.md) |
-| `ztrack/check` | `checkTracker` / `checkFile` directly | tooling |
-| `ztrack/sdk` | `createTrackerClient` directly | tooling |
-| `ztrack/export` | `exportTrackerRoot` directly | tooling |
-| `ztrack/config` | config resolution helpers | tooling |
-| `ztrack/mcp`, `ztrack/lint`, `ztrack/tx`, `ztrack/attest`, `ztrack/dsse`, `ztrack/markdown-model`, `ztrack/presets`, `ztrack/ac-version`, `ztrack/world-*` | internal building blocks behind CLI subcommands | advanced / treat as unstable |
+| `ztrack` (root) | **The supported public API**: `checkTracker`, `checkTrackerRoot`, `createTrackerClient`, `exportTrackerRoot`, `serveTrackerApi`, `parseRawIssueMarkdown`/`renderPresetCanonicalIssueMarkdown`, config helpers (`loadTrackerConfig`, `projectRootFrom`, `trackerConfigPath`, …), and types (`TrackerCheckResult`, `Finding`, `CoreRoot`, `Preset`, …) | app / tooling authors |
+| `ztrack/preset-kit` | Mechanism to author a **standalone preset** (schema/parse/rules) | preset authors → [PRESETS.md](PRESETS.md) |
+| `ztrack/check` | `checkTracker` / `checkFile` directly (also on the root) | tooling |
+| `ztrack/sdk` | `createTrackerClient` directly (also on the root) | tooling |
+| `ztrack/world-annotations`, `ztrack/world-source-books` | the world-integration extension a world-using preset imports | [WORLD-INTEGRATION.md](WORLD-INTEGRATION.md) |
 
-Prefer the package **root** unless you specifically need a narrower entry point.
+Prefer the package **root**. Everything else a CLI subcommand needs (mcp, lint, tx, attest, dsse, …)
+is an internal module, intentionally **not** a published entry point.
 
 ## CommonJS
 

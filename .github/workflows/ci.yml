@@ -37,12 +37,12 @@ jobs:
         run: bash demos/check-e2e.sh
       - name: Loop gate (Stop hook + waiver, no live agent)
         run: bash demos/loop-gate-ci.sh
-      - name: Export smoke
+      - name: Export smoke (the public surface resolves)
         run: |
-          node --input-type=module -e "const paths=['ztrack','ztrack/config','ztrack/sdk','ztrack/check','ztrack/export','ztrack/markdown-model','ztrack/ac-version','ztrack/presets','ztrack/preset-kit','ztrack/mcp','ztrack/attest','ztrack/lint','ztrack/tx','ztrack/dsse']; for (const p of paths) await import(p);"
-      - name: Internal subpath smoke
+          node --input-type=module -e "const paths=['ztrack','ztrack/sdk','ztrack/check','ztrack/preset-kit','ztrack/world-annotations','ztrack/world-source-books']; for (const p of paths) await import(p);"
+      - name: Internal subpath smoke (formerly-public internals are NOT exported)
         run: |
-          node --input-type=module -e "const blocked=['ztrack/presets/default','ztrack/presets/genericRuntime']; for (const p of blocked) { try { await import(p); throw new Error(p+' unexpectedly imported'); } catch (error) { if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }"
+          node --input-type=module -e "const blocked=['ztrack/mcp','ztrack/lint','ztrack/tx','ztrack/attest','ztrack/dsse','ztrack/export','ztrack/config','ztrack/markdown-model','ztrack/ac-version','ztrack/presets','ztrack/presets/default']; for (const p of blocked) { try { await import(p); throw new Error(p+' unexpectedly imported'); } catch (error) { if (error.code !== 'ERR_PACKAGE_PATH_NOT_EXPORTED') throw error; } }"
 
   # Resolution layouts npm's flat node_modules doesn't exercise: pnpm strict store, yarn
   # classic, yarn Berry/PnP, bun. Parallel to `test` so it doesn't slow the critical path.

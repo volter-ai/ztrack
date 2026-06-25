@@ -2,6 +2,24 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.28.0
+
+Trim the published API surface to what's actually used.
+
+- The `exports` map shipped **16 subpaths**, but ten of them (`ztrack/mcp`, `ztrack/lint`,
+  `ztrack/tx`, `ztrack/attest`, `ztrack/dsse`, `ztrack/export`, `ztrack/config`,
+  `ztrack/markdown-model`, `ztrack/ac-version`, `ztrack/presets`) were **internal CLI-command
+  modules with no consumer** — nothing imported them, and their useful symbols are already
+  re-exported from the package root. They are no longer published entry points (the modules remain
+  internal; the bundled CLI is unaffected).
+- **Supported surface is now**: `ztrack` (the root — the curated public API), `ztrack/preset-kit`
+  (preset authoring), `ztrack/check` + `ztrack/sdk` (narrow imports the SDK demo uses), and
+  `ztrack/world-annotations` + `ztrack/world-source-books` (the documented world-integration
+  extension). See [docs/API.md](docs/API.md).
+- Potentially breaking only if you imported one of the removed subpaths directly; switch to the
+  package root (`import { … } from 'ztrack'`), which exposes the same functions. The CI export-smoke
+  guard now enforces this minimal surface (and fails if a speculative subpath is re-added).
+
 ## 0.27.0
 
 Documentation + discoverability pass (from a 6-persona new-user review) plus two small fixes. No

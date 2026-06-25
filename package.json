@@ -1,6 +1,6 @@
 {
   "name": "ztrack",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
@@ -34,10 +34,6 @@
       "types": "./dist/src/index.d.ts",
       "default": "./dist/src/index.js"
     },
-    "./config": {
-      "types": "./dist/src/config.d.ts",
-      "default": "./dist/src/config.js"
-    },
     "./sdk": {
       "types": "./dist/src/sdk.d.ts",
       "default": "./dist/src/sdk.js"
@@ -50,42 +46,6 @@
     "./check": {
       "types": "./dist/src/check.d.ts",
       "default": "./dist/src/check.js"
-    },
-    "./export": {
-      "types": "./dist/src/export.d.ts",
-      "default": "./dist/src/export.js"
-    },
-    "./markdown-model": {
-      "types": "./dist/src/markdownModel.d.ts",
-      "default": "./dist/src/markdownModel.js"
-    },
-    "./ac-version": {
-      "types": "./dist/src/acVersion.d.ts",
-      "default": "./dist/src/acVersion.js"
-    },
-    "./presets": {
-      "types": "./dist/src/presets.d.ts",
-      "default": "./dist/src/presets.js"
-    },
-    "./mcp": {
-      "types": "./dist/src/mcp.d.ts",
-      "default": "./dist/src/mcp.js"
-    },
-    "./attest": {
-      "types": "./dist/src/attest.d.ts",
-      "default": "./dist/src/attest.js"
-    },
-    "./lint": {
-      "types": "./dist/src/lint.d.ts",
-      "default": "./dist/src/lint.js"
-    },
-    "./tx": {
-      "types": "./dist/src/tx.d.ts",
-      "default": "./dist/src/tx.js"
-    },
-    "./dsse": {
-      "types": "./dist/src/dsse.d.ts",
-      "default": "./dist/src/dsse.js"
     },
     "./world-annotations": {
       "types": "./dist/src/worldAnnotations.d.ts",
