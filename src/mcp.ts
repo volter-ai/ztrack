@@ -4,7 +4,8 @@
 // issue read/write, scoped AC mutations, fmt, and the rulebook check.
 import { checkTracker } from './check.ts';
 import { summarizeResult } from './cliStyle.ts';
-import { initTrackerPresets, initTrackerProject, loadTrackerConfig, projectRootFrom } from './config.ts';
+import { loadTrackerConfig, projectRootFrom } from './config.ts';
+import { initTrackerPresets, initTrackerProject } from './presetCatalog.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';

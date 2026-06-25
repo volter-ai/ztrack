@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTrackerClient } from '../../sdk.ts';
-import { initTrackerProject } from '../../config.ts';
+import { initTrackerProject } from '../../presetCatalog.ts';
 import { checkTracker } from '../../check.ts';
 import { reconcileSync, type SyncOpts } from './sync.ts';
 

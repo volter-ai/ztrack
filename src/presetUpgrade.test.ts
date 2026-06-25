@@ -5,7 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { initTrackerProject, trackerValidationBasePath, trackerValidationEntrypointPath, upgradeTrackerPreset } from './config.ts';
+import { initTrackerProject, trackerValidationBasePath, trackerValidationEntrypointPath, upgradeTrackerPreset } from './presetCatalog.ts';
 
 // a line the current bundled template contains, vs an older form of it.
 const NEW = "code: 'issue_missing_assignee'";

@@ -11,7 +11,7 @@ export { buildSpeckitBundle } from '../boilerplates/presets/speckit.ts';
 // with no configured validation entrypoint). The alias + canonical name come from the shared
 // preset manifest; the boilerplate is then dynamic-imported from the shipped presets dir — no
 // static catalog here, so it scales as presets are added (same source as `ztrack init`).
-import { resolvePresetName } from '../src/config.ts';
+import { resolvePresetName } from '../src/presetCatalog.ts';
 export async function resolvePreset(name) {
   const canonical = resolvePresetName(name);
   const mod = await import(new URL(`../boilerplates/presets/${canonical}.ts`, import.meta.url).href);
