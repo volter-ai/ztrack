@@ -34,6 +34,33 @@ export function isLinkedTracker(projectRoot: string): boolean {
   try { return !!loadTrackerConfig(projectRoot).sync; } catch { return false; }
 }
 
+/** Board scope for a LOCAL tracker (see TrackerConfig.board). `shared` only takes effect for an
+ *  unlinked tracker inside a git repo (linked already has one central store; no git → nothing to share). */
+export function boardScope(projectRoot: string): 'branch' | 'shared' {
+  if (isLinkedTracker(projectRoot)) return 'branch';
+  let cfg: 'branch' | 'shared' = 'branch';
+  try { if (loadTrackerConfig(projectRoot).board === 'shared') cfg = 'shared'; } catch { /* no config */ }
+  return cfg === 'shared' && gitCommonDir(projectRoot) ? 'shared' : 'branch';
+}
+
+/** The central board INDEX dir — a folder of symlinks, one per issue, each pointing at the real
+ *  committed md in whatever worktree currently owns it. Shared mode only; in branch mode it equals the
+ *  committed store, so the index layer is a transparent no-op. Lives inside `.git`, so never committed. */
+export function boardIndexDir(projectRoot: string): string {
+  if (boardScope(projectRoot) === 'shared') {
+    const common = gitCommonDir(projectRoot);
+    if (common) return join(common, 'ztrack', 'board');
+  }
+  return markdownStoreDir(projectRoot);
+}
+
+/** The MAIN (trunk) worktree's committed issue store — the read fallback when an index symlink dangles
+ *  (its worktree was removed: the truth is now on trunk post-merge, or the issue is gone). Null without git. */
+export function mainWorktreeMarkdownDir(projectRoot: string): string | null {
+  const common = gitCommonDir(projectRoot);
+  return common ? join(dirname(common), stateDirName(), 'tracker', 'markdown') : null;
+}
+
 /** Root for machine-local cache (linked issue store, sync state, blobs, evidence staging).
  *  - Linked: `<git-common-dir>/ztrack` — ONE cache shared by every worktree of the clone, never
  *    pushed (it's inside `.git`). A fresh worktree sees the same issues with no per-worktree sync.

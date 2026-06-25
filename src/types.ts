@@ -12,6 +12,15 @@ export interface TrackerConfig {
     store?: string;
   };
   /**
+   * Board scope for a LOCAL (unlinked) tracker. `branch` (default): the committed per-worktree
+   * `.volter` store IS the board — branch-scoped, issues merge with the code, but a coordinator
+   * can't see other branches' state. `shared`: the committed store stays per-worktree (board still
+   * in git), AND a central symlink index in `<git-common-dir>/ztrack/board` aggregates every
+   * worktree's live issues, so a coordinator — and global id allocation — sees ONE board across all
+   * worktrees without an external tracker. Ignored when `sync` is set (linked already has one store).
+   */
+  board?: 'branch' | 'shared';
+  /**
    * A permanently-linked external task tracker. Set by `ztrack init --sync github --repo o/n`.
    * When present, `ztrack sync` needs no `--repo`, and user-facing `check`/`loop start`
    * best-effort sync the tracker with it (the Stop-hook gate never does — it must not hammer

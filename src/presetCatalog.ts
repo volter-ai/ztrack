@@ -74,6 +74,9 @@ export type InitTrackerProjectOptions = {
   preset?: string;
   /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
   sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
+  /** `shared`: a central, cross-worktree board (for multi-worktree/agent fleets). Default `branch`
+   *  (committed, branch-scoped). See TrackerConfig.board. */
+  board?: 'branch' | 'shared';
 };
 
 // The standalone preset's editable source, shipped at `boilerplates/presets/<preset>.ts`.
@@ -186,6 +189,7 @@ export function initTrackerProject(
     },
     organization: { check: { categories: { sourced: 1, code: 2 } } },
     ...(options.sync ? { sync: options.sync } : {}),
+    ...(options.board === 'shared' ? { board: 'shared' as const } : {}),
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   ensureTrackerGitignore(root);
