@@ -25,7 +25,11 @@ marker="$root/$state_dir/.ztrack-loop.json"
 # Not armed → ztrack isn't driving this turn → let it end.
 [ -f "$marker" ] || exit 0
 
-issue="$(sed -n 's/.*"issue"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$marker" | head -1)"
+# Pin the loop's issue from the marker's canonical target (`{"target":{"ids":["ID"]},...}`); flatten
+# first since the marker is pretty-printed. Falls back to the legacy flat "issue" field. For a bare/auto
+# or file target there is no id — leave it empty so `check --auto-scope` resolves from the branch instead.
+issue="$(tr -d '\n' < "$marker" | sed -n 's/.*"ids"[[:space:]]*:[[:space:]]*\[[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+[ -n "$issue" ] || issue="$(sed -n 's/.*"issue"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$marker" | head -1)"
 max="$(sed -n 's/.*"maxIterations"[[:space:]]*:[[:space:]]*\([0-9]*\).*/\1/p' "$marker" | head -1)"; [ -n "$max" ] || max=8
 
 # per-session exemption: an escape hatch for a stuck session. The file is keyed to THIS
