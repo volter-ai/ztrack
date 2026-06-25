@@ -2,6 +2,23 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.34.0
+
+Shared cross-worktree board (now the default) + a loop-gate scoping fix.
+
+- **Shared local board across worktrees, now the DEFAULT.** A local tracker is no longer
+  branch-scoped: issues are visible and globally-numbered across every git worktree of a repo via
+  a central symlink index under the common git dir, regenerable from the committed markdown
+  (fresh-clone safe). This lets a substrate-agnostic coordinator (e.g. a PM dispatching one
+  worktree per issue) read every issue's live state without a remote tracker. Opt back into the
+  old per-branch behavior with `ztrack init --branch`. **Breaking:** new local inits default to
+  the shared board.
+- **Fixed the `ztrack loop` Stop-hook gate scoping.** `stop-loop.sh` parsed a flat `"issue"`
+  field the loop marker no longer writes, so the gate fell back to validating the whole tracker —
+  on a multi-issue board it held the agent's turn on *any* red issue, not the armed one. It now
+  reads the marker's canonical `target.ids[0]`; bare/auto/file targets stay unscoped so
+  `check --auto-scope` resolves from the branch.
+
 ## 0.33.1
 
 Documentation only — no code or behavior change (refreshes the npm package page).
