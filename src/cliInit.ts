@@ -42,9 +42,10 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     if (policy && !['hub-wins', 'twin-wins', 'merge'].includes(policy)) throw new Error(`ztrack init: --policy must be merge | hub-wins | twin-wins (got '${policy}')`);
     sync = { provider: 'github', repo, ...(policy ? { policy: policy as 'hub-wins' | 'twin-wins' | 'merge' } : {}) };
   }
-  // `--shared`: a central, cross-worktree board (no external tracker) — for multi-worktree/agent fleets.
-  const board = args.includes('--shared') ? ('shared' as const) : undefined;
-  const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}), ...(board ? { board } : {}) });
+  // Board scope (unlinked tracker). Default 'shared' — a central, cross-worktree board. `--branch` opts
+  // into the strict branch-scoped board (committed per-branch, no central index); `--shared` is explicit/default.
+  const board = args.includes('--branch') ? ('branch' as const) : ('shared' as const);
+  const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}), board });
   if (result.alreadyInitialized) {
     process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
     return true;

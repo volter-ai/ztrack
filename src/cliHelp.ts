@@ -101,14 +101,17 @@ export function printIssueActionHelp(action: string): boolean {
 export function printResourceHelp(resource: string): boolean {
   const command = commandName();
   if (resource === 'init') {
-    process.stdout.write(`Usage: ${command} init [--team KEY] [--preset <name>] [--shared] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
+    process.stdout.write(`Usage: ${command} init [--team KEY] [--preset <name>] [--branch] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
 
 Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
-  (no flags)                 a LOCAL tracker with the recommended preset — the markdown issue store is committed to your repo.
+  (no flags)                 a LOCAL tracker with the recommended preset. The markdown issue store is
+                             committed to your repo, with a central, cross-worktree board (the default):
+                             committed mds + a <git-common-dir>/ztrack/board index, so a coordinator and
+                             concurrent worktrees share one board — no remote needed.
   --list                     list the available presets and their descriptions, then exit.
   --preset <name>            install a specific preset (see \`${command} init --list\`).
-  --shared                   a LOCAL tracker with a central, cross-worktree board (committed mds + a
-                             <git-common-dir>/ztrack/board index) — for multi-worktree/agent fleets, no remote.
+  --branch                   strict branch-scoped board instead: committed per-branch, no central index
+                             (each branch has its own board that merges with the code; no cross-worktree view).
   --sync github --repo o/n   LINK to GitHub Issues (two-way sync) and pull existing issues;
                              GitHub becomes the source of truth (the local store is gitignored).
   --policy …                 conflict-resolution default for a linked tracker (default merge).

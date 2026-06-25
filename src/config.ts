@@ -21,11 +21,16 @@ export function trackerConfigPath(projectRoot: string): string {
 /** Absolute path to the shared `.git` dir — identical for every worktree of a clone — or null
  *  when `projectRoot` isn't in a git repo. Linked-mode machine-local cache lives under it so it's
  *  shared across worktrees and (being inside `.git`) is never committed or pushed. */
+const gitCommonDirCache = new Map<string, string | null>();
 export function gitCommonDir(projectRoot: string): string | null {
+  // Memoized per process: a ztrack command resolves the board store via several config helpers, each of
+  // which needs the common dir — without this they'd each spawn `git rev-parse` (3× per backend op).
+  const cached = gitCommonDirCache.get(projectRoot);
+  if (cached !== undefined) return cached;
   const r = spawnSync('git', ['-C', projectRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8' });
-  if (r.status !== 0) return null;
-  const out = (r.stdout ?? '').trim();
-  return out || null;
+  const out = r.status !== 0 ? null : ((r.stdout ?? '').trim() || null);
+  gitCommonDirCache.set(projectRoot, out);
+  return out;
 }
 
 /** Is this tracker linked to an external provider? Linked issue data is the provider's truth;
@@ -37,9 +42,10 @@ export function isLinkedTracker(projectRoot: string): boolean {
 /** Board scope for a LOCAL tracker (see TrackerConfig.board). `shared` only takes effect for an
  *  unlinked tracker inside a git repo (linked already has one central store; no git → nothing to share). */
 export function boardScope(projectRoot: string): 'branch' | 'shared' {
-  if (isLinkedTracker(projectRoot)) return 'branch';
-  let cfg: 'branch' | 'shared' = 'branch';
-  try { if (loadTrackerConfig(projectRoot).board === 'shared') cfg = 'shared'; } catch { /* no config */ }
+  if (isLinkedTracker(projectRoot)) return 'branch'; // linked already has one central store (the cache)
+  let cfg: 'branch' | 'shared' = 'shared'; // DEFAULT: a central, cross-worktree board (opt out with board:'branch')
+  try { if (loadTrackerConfig(projectRoot).board === 'branch') cfg = 'branch'; } catch { /* no config → default */ }
+  // Shared needs git (the index lives in <git-common-dir>); no git → fall back to the per-dir store.
   return cfg === 'shared' && gitCommonDir(projectRoot) ? 'shared' : 'branch';
 }
 

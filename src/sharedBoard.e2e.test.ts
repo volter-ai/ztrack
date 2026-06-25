@@ -48,7 +48,7 @@ describe('shared-local board: real lifecycle across git worktrees', () => {
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     writeFileSync(join(root, '.gitignore'), 'node_modules/\n'); // never commit/clone deps
     gitIn(root, 'commit', '-q', '--allow-empty', '-m', 'root');
-    ztIn(root, 'init', '--shared'); // central, cross-worktree board (the OA fleet install opts in here)
+    ztIn(root, 'init'); // shared, cross-worktree board is the DEFAULT
     expect(JSON.parse(readFileSync(join(root, '.volter', 'tracker-config.json'), 'utf8')).board).toBe('shared');
     gitIn(root, 'add', '-A'); gitIn(root, 'commit', '-q', '-m', 'init ztrack (shared board)');
   }, 60_000);
@@ -143,7 +143,8 @@ describe('branch-scoped board (default) is unchanged — regression guard', () =
     symlinkSync(REPO, join(r, 'node_modules', 'ztrack'));
     gitIn(r, 'init', '-q'); gitIn(r, 'config', 'user.email', 't@t.co'); gitIn(r, 'config', 'user.name', 't');
     gitIn(r, 'commit', '-q', '--allow-empty', '-m', 'root');
-    ztIn(r, 'init'); // default board = branch
+    ztIn(r, 'init', '--branch'); // opt OUT of the shared default → strict branch-scoped board
+    expect(JSON.parse(readFileSync(join(r, '.volter', 'tracker-config.json'), 'utf8')).board).toBe('branch');
     const f = join(r, 'b.md'); writeFileSync(f, body('x'));
     ztIn(r, 'issue', 'create', '--title', 'x', '--label', 'type:case', '--state', 'ready', '--assignee', 'me', '--body-file', f);
     expect(existsSync(join(r, '.git', 'ztrack', 'board'))).toBe(false); // no central index in branch mode

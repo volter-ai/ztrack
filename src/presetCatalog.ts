@@ -189,7 +189,9 @@ export function initTrackerProject(
     },
     organization: { check: { categories: { sourced: 1, code: 2 } } },
     ...(options.sync ? { sync: options.sync } : {}),
-    ...(options.board === 'shared' ? { board: 'shared' as const } : {}),
+    // Record the board scope explicitly (default 'shared' — a central, cross-worktree board); linked
+    // trackers ignore it (they already have one central store), so only record it for an unlinked tracker.
+    ...(options.sync ? {} : { board: options.board ?? 'shared' }),
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
   ensureTrackerGitignore(root);
