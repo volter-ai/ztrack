@@ -43,7 +43,7 @@ validate PRs, screenshots, videos, approvals, and source systems.
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
-**What it does _not_ verify** (be honest with your team): the `default` preset checks that the
+**What it does _not_ verify** (be honest with your team): the `simple-sdlc` preset checks that the
 cited commit **exists** in git, and — if you cite an image — that the image is actually committed
 at that commit (a fabricated screenshot path fails). What it can't check is *relevance*: an
 unrelated real commit with a real screenshot still passes. That semantic judgment is the
@@ -149,6 +149,10 @@ ztrack check                 # inside a worktree → auto-scopes to the branch's
 ztrack loop start LOCAL-1    # a ralph loop: the Stop hook holds the turn until LOCAL-1 is green
 ```
 
+A loose `./body.md` is checked for **structure + evidence** (the core promise), but lifecycle/PR
+gates (ready/in-review/done) only apply to **stored** issues — a loose file has no status column, so
+it's treated as a draft. Use `issue create` to exercise the full lifecycle.
+
 ## Adopt it into your repo
 
 For the full adoption path — a CI gate, a committed validated root, MCP, and the agent
@@ -217,7 +221,12 @@ inside a worktree named for an issue — that issue automatically.
   /plugin marketplace add volter-ai/ztrack
   /plugin install ztrack-gate@ztrack
   ```
-  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire the loop hook into your `Stop` hooks directly — it ships at `node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh` (the **armed-only** loop hook: active only between `loop start` and green/`loop stop`). The repo also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on** gate that auto-scopes to the branch/worktree issue every turn — use that one if you want continuous gating without arming.
+  See [plugins/ztrack-gate](plugins/ztrack-gate). For non-plugin / dual-harness setups, wire the loop hook into your `Stop` hooks directly — it ships at `node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh` (the **armed-only** loop hook: active only between `loop start` and green/`loop stop`). In a Claude Code `settings.json`:
+
+  ```json
+  { "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ] } }
+  ```
+  The repo also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on** gate that auto-scopes to the branch/worktree issue every turn — use that one (same `Stop` wiring) if you want continuous gating without arming.
 
 See [examples](docs/EXAMPLES.md) for a minimal local check, a committed validated-root
 CI gate, and an MCP agent loop.
@@ -229,7 +238,7 @@ findings, and audit-derived timestamps — run the visualizer (requires
 [Bun](https://bun.sh)):
 
 ```bash
-ztrack visualizer                 # default preset, http://localhost:3300
+ztrack visualizer                 # the active preset, http://localhost:3300
 ztrack viz --preset speckit --port 4000
 ```
 
@@ -248,11 +257,12 @@ importing only `ztrack/preset-kit`. Edit it freely.
 
 | Preset | Use When |
 |---|---|
-| `default` | a dev lifecycle (draft→ready→in-progress→in-review→done) with commit + image evidence and proof |
+| `simple-sdlc` | a dev lifecycle (draft→ready→in-progress→in-review→done) with commit+proof evidence — **PR-free**, runs locally with no remote. The recommended baseline `ztrack init` installs; `default` is an alias for it |
+| `simple-gh-sdlc` | the same, **plus** a GitHub PR at in-review and a merged PR for done |
 | `spec` | issue bodies are specs whose ACs cite commit-backed evidence |
 | `speckit` | GitHub Spec Kit style feature records (user stories, tasks, phases) |
 
-See [Preset reference](docs/PRESETS.md) for the exact gates.
+Run `ztrack init --list` to see every preset with its description; see [Preset reference](docs/PRESETS.md) for the exact gates.
 
 ## Project-specific rigor
 

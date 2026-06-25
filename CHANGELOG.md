@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.31.1
+
+Doc consistency + small UX fixes (from a second 6-persona new-user review of the published package).
+
+- **Preset naming made consistent.** After the `default→simple-sdlc/simple-gh-sdlc` split, the docs
+  mixed `default` (the alias) and `simple-sdlc` (the real name): the README "Install presets" table
+  still listed `default` and omitted `simple-gh-sdlc` while the quickstart used `simple-sdlc`. The
+  README table now lists all four presets (marking `simple-sdlc` recommended + `default` its alias)
+  and points to `ztrack init --list`; README/ADOPTING/EXAMPLES/EVIDENCE/PRESETS prose now name the
+  preset `simple-sdlc` consistently. `--preset default` still works everywhere (it's the alias).
+- **Fixed dead `boilerplates/presets/default.ts` path references** (renamed to `simple-sdlc.ts`) in
+  `PRESET-GUIDE.md` and `docs/PRESETS.md` — a contributor told to "copy the bar" hit a 404.
+- `ztrack init` now **echoes the installed preset** (`Initialized ztrack team … • preset <name>`).
+- `docs/ADOPTING.md` now surfaces `simple-gh-sdlc` for GitHub PR teams and routes through `ztrack
+  init --list` instead of an outdated `default|spec|speckit` list.
+- Documented the loose-file caveat (a `check ./file.md` runs structure+evidence but treats status as
+  draft — lifecycle gates need a stored issue), fixed the `PR:` grammar example to a real PR URL
+  (the merged-PR gate keys on the URL), and added a copy-paste `Stop`-hook `settings.json` snippet
+  for non-plugin agent harnesses.
+
 ## 0.31.0
 
 Manifest-driven preset discovery — so the preset catalog scales without a hand-maintained list.

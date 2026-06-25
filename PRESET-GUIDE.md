@@ -14,7 +14,7 @@ How to add or extend a preset in ztrack, and how to adversarially review it.
 Most projects start from a shipped preset (`default`/`spec`/`speckit`) and edit it; read
 [docs/PRESETS.md](docs/PRESETS.md) for that path. **An agent changing the preset system
 should read this doc first.** Reference standalone presets (the bar):
-`boilerplates/presets/{default,spec,speckit}.ts` — each its own schema, parser, serialize,
+`boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` — each its own schema, parser, serialize,
 rules. Core engine (the shared mechanism): `src/core/engine.ts`.
 
 Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core model](#2-core-model-enginets) · [3. Source the SDLC](#3-source-the-sdlc-faithfully) · [4. Build order](#4-build-order) · [5. Never](#5-never-anti-patterns) · [6. Review](#6-review)
@@ -70,7 +70,7 @@ Contents: [1. Contract](#1-architecture-contract--non-negotiable) · [2. Core mo
 ---
 
 ## 6. Review
-Run after building or changing a preset. **Launch the three adversarial passes below IN PARALLEL** (each as a `general-purpose` sub-agent, or run them yourself in sequence — resetting framing between each — if you can't spawn). Prepend the target file paths (the preset + its loader) to each prompt. Then **reproduce the load-bearing findings yourself** (`bun -e` against the real module — never trust a review blind) and synthesize one report. Bar: `boilerplates/presets/default.ts`, `boilerplates/presets/speckit.ts`.
+Run after building or changing a preset. **Launch the three adversarial passes below IN PARALLEL** (each as a `general-purpose` sub-agent, or run them yourself in sequence — resetting framing between each — if you can't spawn). Prepend the target file paths (the preset + its loader) to each prompt. Then **reproduce the load-bearing findings yourself** (`bun -e` against the real module — never trust a review blind) and synthesize one report. Bar: `boilerplates/presets/simple-sdlc.ts`, `boilerplates/presets/speckit.ts`.
 
 ### Lens A — Purity / architecture (dispatch this)
 > Adversarial. Assume NON-conformant; prove deviations; cite file:line; read-only.

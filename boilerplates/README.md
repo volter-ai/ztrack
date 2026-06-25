@@ -44,6 +44,8 @@ visualizer all discover presets by scanning this directory.
 `boilerplates/presets/presetManifest.test.ts` guards these invariants (every `.ts`
 has a `.json`, exactly one `recommended`, aliases unique/non-colliding, the
 preset's `name` matches its filename), so a missing or mismatched manifest fails CI.
+(Enforcement is at **CI/test time** — run the repo test suite. `ztrack init` does not
+re-validate a hand-edited boilerplate, so a `name` ≠ filename mismatch installs silently.)
 
 There is intentionally **no central list** of presets anywhere in the codebase — do
 not reintroduce one (a hardcoded enum/array/map is the bug this design removes).

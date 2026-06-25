@@ -197,7 +197,7 @@ async function main(): Promise<void> {
           stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
         ];
     process.stdout.write([
-      `${statusMark('pass')} ${heading('Initialized ztrack', sync ? `team ${teamKey} • linked ${sync.repo}` : `team ${teamKey}`)}`,
+      `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey} • preset ${result.preset}${sync ? ` • linked ${sync.repo}` : ''}`)}`,
       `  ${ui.dim(configPath)}`,
       ...(result.validationEntrypoint ? [`  ${ui.dim(`validation ${result.validationEntrypoint}`)}`] : []),
       '',

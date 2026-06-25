@@ -136,7 +136,7 @@ export default SpecPreset;
 Each `--preset` installs that preset's whole source — schema, parser, serialize,
 and rules. Most teams edit the records and schema in that file directly instead
 of creating a new package. The reference standalone presets (the bar to copy)
-live in the repository at `boilerplates/presets/{default,spec,speckit}.ts` (see
+live in the repository at `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` (see
 https://github.com/volter-ai/ztrack).
 
 A preset defines validation as ONE typed pipeline: the loader (the only impure
@@ -157,7 +157,7 @@ Rules are pure `(input) => Finding[]`: they read only `input.root` /
 
 ## The Bidirectional Grammar — Parse, Serialize, Patch
 
-Every owning preset (`default`, `spec`) defines `parse` AND `serialize` on the
+Every owning preset (`simple-sdlc`, `spec`) defines `parse` AND `serialize` on the
 `Preset` contract: `serialize` is the declared inverse of `parse`, so the grammar
 is bidirectional. There is **no structured-mutation DSL**. To change an issue you
 PATCH the typed model and the preset re-serializes:
@@ -192,7 +192,7 @@ item per AC and nested sub-lines for status, evidence, proof, and blocking. The
 Assignee: alice
 Summary: One or two sentences describing the work.
 Status: in-review
-PR: feat/health          # simple-gh-sdlc only
+PR: https://github.com/org/app/pull/42   # simple-gh-sdlc only — the PR URL (the merged-PR gate keys on it)
 Labels: backend, api
 Blocked by: APP-2
 
@@ -275,7 +275,7 @@ this issue"; to point at another issue's AC, qualify it (`APP-2:dev/01`). The
 parser resolves every ref to its absolute form, so the validated root only ever
 holds fully-qualified references.
 
-The `default` preset authors blocking via sub-lines under the AC:
+The `simple-sdlc` preset authors blocking via sub-lines under the AC:
 
 ```markdown
 - [ ] dev/03 v1 Wire the UI

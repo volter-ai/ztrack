@@ -10,7 +10,7 @@ npx ztrack issue list
 npx ztrack check
 ```
 
-With the `default` preset, a passed acceptance criterion needs commit-backed
+With the `simple-sdlc` preset, a passed acceptance criterion needs commit-backed
 evidence that can be verified against git, plus a proof naming that evidence (an
 image is optional, and verified at its commit when cited — see
 [Evidence](EVIDENCE.md)). A fake commit SHA is a hard type error, not a warning.

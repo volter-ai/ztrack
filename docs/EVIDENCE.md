@@ -3,7 +3,7 @@
 ztrack's core promise is that work marked done is backed by **real, verifiable proof**. This page
 covers how evidence is cited, stored, and verified — and the optional cryptographic attestation.
 
-The `default` preset is used throughout. Evidence is a property of an **acceptance criterion (AC)**.
+The `simple-sdlc` preset (installed by default) is used throughout. Evidence is a property of an **acceptance criterion (AC)**.
 
 ## The model: commit + proof (image optional)
 

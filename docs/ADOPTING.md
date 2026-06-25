@@ -17,8 +17,10 @@ that ztrack can resolve.
 | `ztrack check` | Deterministic verification of checked claims |
 | CI / MCP / stop-hook | Where failures block agents or pull requests |
 
-Start with `default` unless the repo already has written workflow rules that map
-cleanly to the lighter `spec`, or to `speckit`.
+Start with `simple-sdlc` (the recommended baseline; `default` is an alias for it) — or
+`simple-gh-sdlc` if you review on GitHub pull requests — unless the repo already has written
+workflow rules that map cleanly to the lighter `spec`, or to `speckit`. Run `ztrack init --list`
+to see them all.
 
 ## Agent Shortcut
 
@@ -27,9 +29,10 @@ If an AI coding agent is doing the adoption, point it at this guide and
 
 ```text
 Adopt ztrack in this repository. Read the ztrack README, docs/ADOPTING.md,
-docs/AGENT-PLAYBOOK.md, and docs/PRESETS.md first. Choose one install preset
-from default, spec, or speckit based on the repo's existing workflow. Prove one
-fake-SHA failure and one real-SHA pass, then run ztrack check before finishing.
+docs/AGENT-PLAYBOOK.md, and docs/PRESETS.md first. Run `ztrack init --list` and choose
+an install preset based on the repo's existing workflow (simple-sdlc for a local/PR-free
+flow, simple-gh-sdlc for GitHub PRs, or spec/speckit). Prove one fake-SHA failure and one
+real-SHA pass, then run ztrack check before finishing.
 ```
 
 ## 1. Install
@@ -73,7 +76,7 @@ bad claim:
    `evidence ev1: commit=deadbee acv=1`, plus a `proof:` line.
 4. Run `npx ztrack check`.
 
-Expected with `default`: `evidence_commit_not_found` and exit code `1`.
+Expected with `simple-sdlc`: `evidence_commit_not_found` and exit code `1`.
 
 Then replace the fake SHA with a real commit SHA reachable in the repository.
 Expected: exit code `0`.
@@ -105,7 +108,7 @@ Write this down before editing the installed preset:
 
 If the answer is only "passed ACs need commit-backed evidence", the lighter
 `spec` preset may be enough. If the answer includes workflow-specific states, AC
-families, source grounding, or approval chains, start from `default` and evolve
+families, source grounding, or approval chains, start from `simple-sdlc` and evolve
 the installed entrypoint into the project's rulebook.
 
 ## 4. Add CI
