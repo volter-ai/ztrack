@@ -42,7 +42,7 @@ ways**, over the same work:
 | "Implemented in commit `a1b2c3d`" | the SHA exists in the local git object database |
 | "This acceptance criterion is passed" | it cites evidence captured at a real commit, against the current AC version |
 | "This evidence proves it" | the AC carries a `proof:` that names the evidence it relies on |
-| "This ticket is ready/done" | the installed preset's lifecycle gates (PR exists/merged, every AC passed) hold |
+| "This ticket is ready/done" | the installed preset's lifecycle gates hold — every AC passed (and, on a PR-based preset, the PR exists/merged) |
 
 Lint errors are fixed by editing text. Type errors are fixed by producing evidence.
 
