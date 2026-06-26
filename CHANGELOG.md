@@ -2,6 +2,18 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.34.1
+
+Reliability fixes for the visualizer and GitHub sync.
+
+- **Visualizer no longer leaks immortal server processes.** The `ztrack visualizer` wrapper now kills its
+  Bun server child on its own exit/SIGINT/SIGTERM/SIGHUP, and the server self-reaps when it sees its parent
+  gone (it polls the wrapper pid passed via `ZTRACK_VIZ_PARENT_PID`, immune to bun cold-start reparenting).
+  Previously a programmatic/agent teardown that SIGKILLed the wrapper orphaned the server to PID 1 forever;
+  they accumulated across a busy fleet.
+- **GitHub sync no longer crashes on a stale binding.** `pull` and `reconcileSync` now skip a bound issue
+  whose local ztrack issue was deleted (the `issue view` returns null) instead of throwing.
+
 ## 0.34.0
 
 Shared cross-worktree board (now the default) + a loop-gate scoping fix.

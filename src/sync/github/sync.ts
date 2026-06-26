@@ -110,7 +110,8 @@ export async function pull(o: SyncOpts): Promise<PullResult> {
   for (const res of resources) {
     const boundId = b.byNumber[String(res.number)];
     if (!boundId) continue;
-    const cur = await o.client.issue.view(boundId, { json: 'title,body,state' }) as Record<string, unknown>;
+    const cur = await o.client.issue.view(boundId, { json: 'title,body,state' }) as Record<string, unknown> | null;
+    if (!cur) continue; // stale binding: the bound ztrack issue was deleted locally — skip, don't crash
     const f = issueResourceToRecordFields(asSyncResource(res), stateName(cur.state));
     const same = String(cur.title ?? '') === (f.title ?? '') && stripConflictSection(String(cur.body ?? '')) === (f.body ?? '') && stateName(cur.state) === f.status;
     if (!same) { await o.client.issue.edit(boundId, { title: f.title, body: f.body, state: f.status }); updated.push(boundId); }
@@ -200,7 +201,8 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   for (const item of plan.toPull) {
     const ztrackId = b.byNumber[String(numberOf(item.id))];
     if (!ztrackId) continue;
-    const cur = await o.client.issue.view(ztrackId, { json: 'state' }) as Record<string, unknown>;
+    const cur = await o.client.issue.view(ztrackId, { json: 'state' }) as Record<string, unknown> | null;
+    if (!cur) continue; // stale binding: the bound ztrack issue was deleted locally — skip, don't crash
     const edit: Record<string, unknown> = {};
     if (item.fields.title !== undefined) edit.title = String(item.fields.title);
     if (item.fields.body !== undefined) edit.body = String(item.fields.body);

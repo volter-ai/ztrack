@@ -224,11 +224,26 @@ async function main(): Promise<void> {
       ...process.env,
       PROJECT_DIR: resolve(project),
       PRESET: optionValue(args, '--preset') || process.env.PRESET || 'default',
+      // Our pid, so the server self-reaps if WE are SIGKILLed (no signal reaches it
+      // then, and it would otherwise be orphaned to PID 1 forever). It polls this
+      // specific pid rather than ppid — immune to bun cold-start reparenting races.
+      ZTRACK_VIZ_PARENT_PID: String(process.pid),
     };
     const port = optionValue(args, '--port');
     if (port) env.PORT = port;
     await new Promise<void>((resolvePromise, rejectPromise) => {
       const child = spawn('bun', ['run', serverEntry], { stdio: 'inherit', env });
+      // Bind the Bun server's lifetime to this wrapper. Without this, killing the
+      // wrapper (a programmatic launch, a session/agent teardown — not an interactive
+      // Ctrl-C, which signals the whole terminal group) reparents the child to PID 1
+      // and leaks an immortal server; they accumulate across a busy fleet. Kill it on
+      // our own exit/signals. (If WE are SIGKILLed no handler runs — server.ts also
+      // self-reaps when it sees itself reparented to PID 1.)
+      const killChild = () => { try { child.kill('SIGTERM'); } catch { /* already gone */ } };
+      process.on('exit', killChild);
+      for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+        process.once(sig, () => { killChild(); process.exit(sig === 'SIGINT' ? 130 : 143); });
+      }
       child.on('error', (error) => rejectPromise(
         (error as NodeJS.ErrnoException).code === 'ENOENT'
           ? new Error('ztrack visualizer requires Bun (https://bun.sh) — the visualizer is a Bun app.')

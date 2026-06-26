@@ -39,6 +39,22 @@ const TRACKER_DIR = join(PROJECT_DIR, 'tracker');
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
 let clientBundle: Promise<string> | null = null;
 
+// Orphan guard. This server is a child of the `ztrack visualizer` wrapper, which
+// awaits it and is meant to bound its lifetime; the wrapper kills us on its own
+// SIGINT/SIGTERM/exit. But if the wrapper is SIGKILLed no signal reaches us and we
+// would be orphaned to PID 1 and leak forever (this is exactly how 55 of these
+// accumulated). The wrapper hands us its pid in ZTRACK_VIZ_PARENT_PID; poll whether
+// it is still alive (`kill(pid, 0)` throws once it's gone) and self-exit when it
+// dies. We poll the SPECIFIC pid, not ppid===1, because bun's cold start can finish
+// reparenting before this code runs — a ppid check would then never arm. If the env
+// is absent (run directly, e.g. as a deliberate daemon) we install no guard.
+const parentPid = Number(process.env.ZTRACK_VIZ_PARENT_PID || 0);
+if (parentPid > 0) {
+  setInterval(() => {
+    try { process.kill(parentPid, 0); } catch { process.exit(0); }
+  }, 5000).unref();
+}
+
 // Per-preset document discovery. default/spec: each tracker/*.md is one doc.
 // speckit: each specs/<slug>/ feature dir is bundled into one doc.
 function documents(preset: string): string[] {
