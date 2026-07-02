@@ -63,6 +63,17 @@ durable they are, none of which silently lies about "done":
   SDLC-gated presets; the lighter `spec` preset doesn't gate done-ness, so there the
   waiver is the durable escape.)
 
+### A fourth honest escape, specific to document sources
+
+When the tracker is a `format: "document"` source (one hand-authored file, many issues — a
+plan or backlog), some writes fail closed **by design**: state, assignee, label,
+parent/children, comments, writes to the umbrella issue, delete, and any write to a
+`readonly:true` source. That's not the loop being stuck — the fix is exactly what the failing
+finding's `path:line` names. **Edit the document directly** at that span and re-run `ztrack
+check` (or sign a waiver, if policy forbids direct edits to that file). `ac patch` and
+title/body edits don't hit this — they splice into the recorded span through the CLI same as
+always.
+
 ## Trust boundary — cooperative, not a sandbox
 
 The loop fixes one specific failure of a **well-intentioned** agent: stopping too early /
