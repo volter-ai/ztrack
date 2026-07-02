@@ -153,8 +153,8 @@ export class MarkdownBackend implements TrackerBackend {
   // else maintains — so a reparent via `issue edit` must update both endpoints of the edge itself, or
   // `issue list --parent`/the old parent's `children` silently lie until someone fixes it by hand.
   // Bounded cost: one load+write of the old parent (if any) and one of the new parent (if any) — not
-  // a scan of the store. `issue create --parent` does NOT do this (ZTB-3 owns create's path
-  // concurrently; see docs/GUIDE.md's parent/children note for the residual gap).
+  // a scan of the store. `issue create --parent` does NOT backfill the parent's `children` —
+  // a residual gap documented in docs/GUIDE.md's parent/children note.
   private reparentChildren(childId: string, oldParent: string | null, newParent: string | null): void {
     if (oldParent === newParent) return;
     if (oldParent) {
