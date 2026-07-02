@@ -353,3 +353,188 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     expect(readFileSync(wbDocPath(), 'utf8')).toBe(before);
   });
 });
+
+// Asserts that every byte OUTSIDE the target's recorded 1-based [lineStart, lineEnd] line span is
+// unchanged between `beforeText`/`afterText` — the target's own span may grow/shrink (an AC patch
+// can add evidence/proof lines), so this compares the prefix by line index from the START and the
+// suffix by line index from the END, exactly like test "1" above.
+function assertOnlySpanChanged(beforeText: string, afterText: string, lineStart: number, lineEnd: number): void {
+  const beforeLines = beforeText.split('\n');
+  const afterLines = afterText.split('\n');
+  expect(afterLines.slice(0, lineStart - 1)).toEqual(beforeLines.slice(0, lineStart - 1));
+  const suffix = beforeLines.slice(lineEnd);
+  expect(afterLines.slice(afterLines.length - suffix.length)).toEqual(suffix);
+}
+
+describe('document source write-back (ZTB-9 dev/21): splices land on LEAF items at any nesting depth', () => {
+  let nRoot = '';
+  let nRootReal = '';
+  const nDocPath = () => join(nRootReal, 'doc.md');
+  let nHeadSha = '';
+
+  // Three-level nesting: NEST-1 (grandparent) > NEST-1A (parent) > NEST-1A1 (leaf, has an AC) and
+  // NEST-1A2 (leaf sibling, three levels deep); NEST-1B is a leaf two levels deep (a direct child
+  // of NEST-1, with its own AC); NEST-2 is a top-level sibling, entirely outside NEST-1's subtree.
+  const NEST_DOC = [
+    '# Nested backlog (no `Title:` header — no umbrella issue)',
+    '',
+    'Some preamble prose that must never move.',
+    '',
+    '## NEST-1 — Grandparent item',
+    '',
+    'status: in-progress',
+    'assignee: kim',
+    '',
+    'Grandparent own leading content, before any child heading.',
+    '',
+    '### NEST-1A — Parent item',
+    '',
+    'status: in-progress',
+    'assignee: sam',
+    '',
+    'Parent own leading content, before its child headings.',
+    '',
+    '#### NEST-1A1 — Leaf item three levels deep',
+    '',
+    'status: in-progress',
+    'assignee: jo',
+    '',
+    'Leaf body content.',
+    '',
+    '##### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 Leaf criterion',
+    '  - status: pending',
+    '',
+    '#### NEST-1A2 — Leaf sibling item three levels deep',
+    '',
+    'status: draft',
+    'assignee: al',
+    '',
+    'Sibling leaf body text.',
+    '',
+    '### NEST-1B — Leaf item two levels deep',
+    '',
+    'status: draft',
+    'assignee: pat',
+    '',
+    'NEST-1B own leaf body text.',
+    '',
+    '#### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 NEST-1B criterion',
+    '  - status: pending',
+    '',
+    '## NEST-2 — Top sibling item',
+    '',
+    'status: draft',
+    'assignee: lee',
+    '',
+    'Top sibling body text.',
+    '',
+  ].join('\n');
+
+  beforeAll(() => {
+    nRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-nest-'));
+    nRootReal = realpathSync(nRoot);
+    mkdirSync(join(nRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(nRoot, 'node_modules', 'ztrack'));
+    gitIn(nRoot, 'init', '-q'); gitIn(nRoot, 'config', 'user.email', 't@t.co'); gitIn(nRoot, 'config', 'user.name', 't');
+    expect(ztIn(nRoot, 'init', '--team', 'APP').code).toBe(0);
+    writeFileSync(nDocPath(), NEST_DOC);
+    setSources(nRoot, [{ path: '.volter/tracker/markdown' }, { path: 'doc.md', format: 'document' }]);
+    gitIn(nRoot, 'add', '-A');
+    gitIn(nRoot, 'commit', '-q', '-m', 'seed');
+    nHeadSha = gitIn(nRoot, 'rev-parse', 'HEAD').stdout.trim();
+    expect(nHeadSha).toMatch(/^[0-9a-f]{7,40}$/);
+  }, 60_000);
+  afterAll(() => { if (nRoot) rmSync(nRoot, { recursive: true, force: true }); });
+
+  test('1. `ac patch` on NEST-1B (a leaf two levels deep) succeeds; every byte outside its span is untouched', () => {
+    const viewBefore = J(ztIn(nRoot, 'issue', 'view', 'NEST-1B', '--json')) as { lineStart: number; lineEnd: number };
+    const beforeText = readFileSync(nDocPath(), 'utf8');
+
+    const patchJson = JSON.stringify({
+      checked: true, status: 'passed',
+      evidence: [{ id: 'ev1', commit: nHeadSha, acVersion: 1 }],
+      proof: { explanation: 'the seed commit establishes the criterion', evidenceRefs: ['ev1'] },
+    });
+    const patch = ztIn(nRoot, 'ac', 'patch', 'NEST-1B', 'AC-1', '--json', patchJson);
+    expect(patch.code).toBe(0);
+    expect(JSON.parse(patch.out)).toMatchObject({ issue: 'NEST-1B', acId: 'AC-1', changed: true });
+
+    const afterText = readFileSync(nDocPath(), 'utf8');
+    expect(afterText).not.toBe(beforeText);
+    assertOnlySpanChanged(beforeText, afterText, viewBefore.lineStart, viewBefore.lineEnd);
+
+    const view = J(ztIn(nRoot, 'issue', 'view', 'NEST-1B', '--json')) as { body: string };
+    expect(view.body).toContain('- [x] AC-1 v1 NEST-1B criterion');
+    expect(view.body).toContain('status: passed');
+  });
+
+  test('2. `issue edit --title` on NEST-1A2 (a leaf three levels deep) succeeds; only its heading line changes', () => {
+    const before = readFileSync(nDocPath(), 'utf8');
+    const result = ztIn(nRoot, 'issue', 'edit', 'NEST-1A2', '--title', 'Renamed leaf sibling');
+    expect(result.code).toBe(0);
+    const after = readFileSync(nDocPath(), 'utf8');
+    const beforeLines = before.split('\n');
+    const afterLines = after.split('\n');
+    expect(beforeLines.length).toBe(afterLines.length);
+    const changedIdx = beforeLines.map((l, i) => (l === afterLines[i] ? -1 : i)).filter((i) => i !== -1);
+    expect(changedIdx).toEqual([beforeLines.findIndex((l) => l.startsWith('#### NEST-1A2'))]);
+    expect(afterLines[changedIdx[0]!]).toBe('#### NEST-1A2 — Renamed leaf sibling');
+  });
+
+  test('3. `ac patch` on NEST-1A1 (a leaf three levels deep) succeeds; both ancestors\' own content and every sibling\'s raw section are untouched', () => {
+    const viewBefore = J(ztIn(nRoot, 'issue', 'view', 'NEST-1A1', '--json')) as { lineStart: number; lineEnd: number };
+    const grandparentBeforeFull = J(ztIn(nRoot, 'issue', 'view', 'NEST-1', '--json')) as { title: string; body: string };
+    const parentBeforeFull = J(ztIn(nRoot, 'issue', 'view', 'NEST-1A', '--json')) as { title: string; body: string };
+    const grandparentBefore = { title: grandparentBeforeFull.title, body: grandparentBeforeFull.body };
+    const parentBefore = { title: parentBeforeFull.title, body: parentBeforeFull.body };
+    const beforeText = readFileSync(nDocPath(), 'utf8');
+
+    const patchJson = JSON.stringify({
+      checked: true, status: 'passed',
+      evidence: [{ id: 'ev1', commit: nHeadSha, acVersion: 1 }],
+      proof: { explanation: 'the seed commit establishes the criterion', evidenceRefs: ['ev1'] },
+    });
+    const patch = ztIn(nRoot, 'ac', 'patch', 'NEST-1A1', 'AC-1', '--json', patchJson);
+    expect(patch.code).toBe(0);
+    expect(JSON.parse(patch.out)).toMatchObject({ issue: 'NEST-1A1', acId: 'AC-1', changed: true });
+
+    const afterText = readFileSync(nDocPath(), 'utf8');
+    expect(afterText).not.toBe(beforeText);
+    // Byte-local: everything outside NEST-1A1's own recorded span (which covers both ancestors'
+    // heading lines and own content, positioned BEFORE it, and every sibling section, positioned
+    // AFTER it) is untouched.
+    assertOnlySpanChanged(beforeText, afterText, viewBefore.lineStart, viewBefore.lineEnd);
+
+    // Ancestors' own (post-excision) content is explicitly unchanged too, not just implied. Only
+    // `title`/`body` are compared — `issue view --json` also embeds descendant subtree data (e.g.
+    // `children`), which legitimately reflects the patched grandchild and must NOT be part of this
+    // "own content unchanged" comparison.
+    const grandparentAfterFull = J(ztIn(nRoot, 'issue', 'view', 'NEST-1', '--json')) as { title: string; body: string };
+    const parentAfterFull = J(ztIn(nRoot, 'issue', 'view', 'NEST-1A', '--json')) as { title: string; body: string };
+    const grandparentAfter = { title: grandparentAfterFull.title, body: grandparentAfterFull.body };
+    const parentAfter = { title: parentAfterFull.title, body: parentAfterFull.body };
+    expect(grandparentAfter).toEqual(grandparentBefore);
+    expect(parentAfter).toEqual(parentBefore);
+
+    // Siblings' raw sections, byte-for-byte: NEST-1A2's heading (renamed in test 2) through the
+    // rest of the file — the tail after NEST-1A1's span — is untouched.
+    const tailMarker = '#### NEST-1A2 — Renamed leaf sibling';
+    const tailAt = beforeText.indexOf(tailMarker);
+    expect(tailAt).toBeGreaterThan(0);
+    const tail = beforeText.slice(tailAt);
+    expect(afterText.endsWith(tail)).toBe(true);
+  });
+
+  test('4. fail-closed: NEST-1A (the middle item — has id-bearing children NEST-1A1/NEST-1A2) still fails closed, file byte-identical', () => {
+    const before = readFileSync(nDocPath(), 'utf8');
+    const result = ztIn(nRoot, 'issue', 'edit', 'NEST-1A', '--title', 'Should not apply');
+    expect(result.code).not.toBe(0);
+    expect(result.out).toContain('document');
+    expect(result.out).toContain(nDocPath());
+    expect(readFileSync(nDocPath(), 'utf8')).toBe(before);
+  });
+});
