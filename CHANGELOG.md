@@ -2,7 +2,12 @@
 
 All notable ztrack release changes are recorded here.
 
-## Unreleased
+## 0.36.0
+
+Security and correctness fixes to the CI/fork-PR story and the markdown parser, plus a
+loop-gate gap closed for subagents. The headline is a corrected security claim: the
+GitHub Action's "safe path" never actually avoided executing an untrusted repo's preset —
+now it can, via the new `ztrack check --preset` operator override.
 
 - **Security fix: the GitHub Action's "safe path" claim was false — `--input`/`root` never
   avoided executing a preset.** The action.yml header comment, its `::warning`, and SECURITY.md
