@@ -68,8 +68,8 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
   }
   // `sources` (ZTB-3): a declared list of markdown stores the backend unions by issue id. Absent
   // config -> resolveSources returns the one implicit default (byte-identical to pre-ZTB-3).
-  // Resolved here (not lazily inside the backend) so an unsupported `format: "document"` entry
-  // (ZTB-4, not yet landed) fails closed on EVERY command, not just ones that happen to read it.
+  // Resolved here (not lazily inside the backend) so every command sees the same source list —
+  // both `issue-per-file` and `document` (ZTB-4) formats are resolved eagerly and uniformly.
   const sources = resolveSources(projectRoot, config);
   const backend = createMarkdownBackend(projectRoot, config.local?.teamKey ?? 'PH', sources);
 

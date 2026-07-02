@@ -16,40 +16,33 @@ export function inferSourceFormat(path: string): SourceFormat {
 }
 
 export interface ResolvedSource {
-  /** Absolute path: a directory (the only implemented format is `issue-per-file`). */
+  /** Absolute path this source resolves to: a DIRECTORY of one-issue-per-file markdown for
+   *  `issue-per-file`, or the single markdown FILE itself for `document` (ZTB-4). The field name
+   *  stays `dir` for compatibility with existing callers, but for a `document` source it names a
+   *  file, not a directory — `MarkdownBackend` dispatches on `format` to pick the right class
+   *  (`MarkdownSource` vs `DocumentSource`, backends/documentSource.ts) rather than ever
+   *  `mkdirSync`-ing it. */
   dir: string;
   format: SourceFormat;
   readonly: boolean;
   /** This source's resolved dir equals today's implicit `markdownStoreDir()` — it gets the
    *  worktree board-index/trunk union machinery (ZTB-3 makes that machinery user-addressable;
-   *  it isn't new). At most one entry is ever the default. */
+   *  it isn't new). At most one entry is ever the default; a `document` source (a FILE path) can
+   *  never equal the default directory, so this is always false for one. */
   isDefault: boolean;
 }
 
-/** Fail closed: `format: "document"` (declared or defaulted from a `.md` path) names the
- *  not-yet-landed dependency instead of silently being ignored or mis-read as a directory. */
-function assertFormatSupported(entry: TrackerSourceConfig, index: number): SourceFormat {
-  const format = entry.format ?? inferSourceFormat(entry.path);
-  if (format === 'document') {
-    throw new Error(
-      `tracker config: sources[${index}] ("${entry.path}") is a "document" source (a single markdown file holding ` +
-      `many issues), which ztrack does not yet implement — that lands in ZTB-4. Point "path" at a directory of ` +
-      'one-issue-per-file markdown instead, or remove this source.',
-    );
-  }
-  return format;
-}
-
-/** Resolve the declared `sources` list (or the implicit default when absent) into absolute,
- *  format-checked entries. `sources` absent is BYTE-IDENTICAL to today: one implicit
- *  issue-per-file source at `markdownStoreDir(projectRoot)`. */
+/** Resolve the declared `sources` list (or the implicit default when absent) into absolute
+ *  entries. `sources` absent is BYTE-IDENTICAL to today: one implicit issue-per-file source at
+ *  `markdownStoreDir(projectRoot)`. Both formats are implemented (issue-per-file always; the
+ *  `document` read path since ZTB-4 — see backends/documentSource.ts; write-back is ZTB-4 dev/09). */
 export function resolveSources(projectRoot: string, config: { sources?: TrackerSourceConfig[] }): ResolvedSource[] {
   const defaultDir = markdownStoreDir(projectRoot);
   if (!config.sources || config.sources.length === 0) {
     return [{ dir: defaultDir, format: 'issue-per-file', readonly: false, isDefault: true }];
   }
-  return config.sources.map((entry, index) => {
-    const format = assertFormatSupported(entry, index);
+  return config.sources.map((entry) => {
+    const format = entry.format ?? inferSourceFormat(entry.path);
     const dir = resolve(projectRoot, entry.path);
     return { dir, format, readonly: !!entry.readonly, isDefault: dir === defaultDir };
   });

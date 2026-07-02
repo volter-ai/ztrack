@@ -12,6 +12,8 @@ import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
 import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../config.ts';
 import { git } from '../core/gitWorld.ts';
 import { resolveSources, type ResolvedSource } from '../sources.ts';
+import { documentWriteError, DocumentSource } from './documentSource.ts';
+import type { IssueSource, SourceOrigin } from './issueSource.ts';
 
 // Issue ids name files in the store; reject anything that isn't a plain id so a
 // crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
@@ -32,13 +34,17 @@ function mdIds(dir: string): string[] {
 
 // canonical → the full nested `issue view --json` shape (matches the local backend). `path` is
 // the absolute on-disk file this issue was read from — always present (not `--json`-gated,
-// unlike list's field selection), so the loader can populate IssueRecord.origin (ZTB-2).
-export function viewJson(c: CanonicalIssue, path: string): Record<string, unknown> {
+// unlike list's field selection), so the loader can populate IssueRecord.origin (ZTB-2). `span`
+// (ZTB-4) additionally carries a document-sourced issue's section line span; absent (issue-per-file)
+// omits `lineStart`/`lineEnd` entirely rather than emitting them as null.
+export function viewJson(c: CanonicalIssue, path: string, span?: { lineStart?: number; lineEnd?: number }): Record<string, unknown> {
   return {
     id: c.identifier, identifier: c.identifier, number: c.identifier,
     title: c.title, branchName: c.branchName, description: c.body, body: c.body,
     state: { name: c.state, type: c.stateType }, stateType: c.stateType, devProgress: c.devProgress,
     priority: c.priority, url: c.url, path,
+    ...(span?.lineStart !== undefined ? { lineStart: span.lineStart } : {}),
+    ...(span?.lineEnd !== undefined ? { lineEnd: span.lineEnd } : {}),
     labels: { nodes: c.labels.map((name) => ({ name })) },
     assignee: c.assignees.length ? { name: c.assignees[0] } : null,
     assignees: { nodes: c.assignees.map((name) => ({ name })) },
@@ -52,12 +58,15 @@ export function viewJson(c: CanonicalIssue, path: string): Record<string, unknow
 // canonical → a flat `issue list --json <fields>` row (matches the local backend: state/assignee as strings, parent "").
 // `path` is a selectable field like any other — the loader (loader.ts) requests it explicitly
 // so IssueRecord.origin can be populated, without changing the shape of any other caller's row.
-function listRow(c: CanonicalIssue, fields: string[], path: string): Record<string, unknown> {
+// `lineStart`/`lineEnd` (ZTB-4) are the same kind of selectable field, null when the source has no
+// span (issue-per-file) or the caller didn't ask.
+function listRow(c: CanonicalIssue, fields: string[], path: string, span?: { lineStart?: number; lineEnd?: number }): Record<string, unknown> {
   const all: Record<string, unknown> = {
     id: c.identifier, identifier: c.identifier, number: c.identifier, title: c.title,
     body: c.body, description: c.body, state: c.state, stateType: c.stateType,
     createdAt: c.createdAt, updatedAt: c.updatedAt, project: c.project, parent: c.parent ?? '',
     labels: c.labels, url: c.url, priority: c.priority, assignee: c.assignees[0] ?? '', branchName: c.branchName, path,
+    lineStart: span?.lineStart ?? null, lineEnd: span?.lineEnd ?? null,
   };
   const row: Record<string, unknown> = {};
   for (const f of fields) row[f] = all[f] ?? null;
@@ -88,13 +97,17 @@ const ok = (stdout: string): TrackerCommandResult => ({ stdout, stderr: '' });
 // ONE of potentially several sources instead of being the only one. Only `isDefault` sources
 // (today: exactly the implicit `markdownStoreDir()`) get the index/trunk union; a plain declared
 // source is a single directory, read/written directly.
-class MarkdownSource {
+class MarkdownSource implements IssueSource {
+  readonly format = 'issue-per-file' as const;
   readonly dir: string; // this source's directory (default: THIS checkout's committed store)
   readonly indexDir: string; // central symlink index (default source, shared mode); === dir otherwise (no-op)
   readonly mainDir: string | null; // trunk's committed store — read fallback for a dangling index link (default source only)
   readonly shared: boolean;
   readonly readonlySource: boolean;
   readonly isDefault: boolean;
+  // Alias for `dir`, satisfying `IssueSource`'s uniform "where this source lives" field used in
+  // error messages — additive, `dir` itself is untouched everywhere else in this class.
+  get location(): string { return this.dir; }
   constructor(resolved: ResolvedSource, opts: { indexDir?: string; mainDir?: string | null } = {}) {
     this.dir = resolved.dir;
     this.indexDir = opts.indexDir ?? resolved.dir;
@@ -125,6 +138,10 @@ class MarkdownSource {
     if (this.shared && this.mainDir) { const p = issueFile(this.mainDir, id); if (readableMd(p) !== null) return p; }
     return issueFile(this.dir, id);
   }
+  // `IssueSource` conformance (ZTB-4): thin wrappers over the methods above, so this class's own
+  // internals (and every existing caller of resolveBody/originPath) are untouched.
+  load(id: string): CanonicalIssue | null { const body = this.resolveBody(id); return body === null ? null : parseIssue(body); }
+  origin(id: string): SourceOrigin { return { path: this.originPath(id) }; }
   // Write the committed md to THIS checkout (board stays in git, on this branch); in shared mode (re)point
   // the central index symlink at it — making this worktree the live owner of the issue.
   write(c: CanonicalIssue): void {
@@ -144,7 +161,7 @@ class MarkdownSource {
 
 export class MarkdownBackend implements TrackerBackend {
   readonly name = 'markdown' as const;
-  private readonly sources: MarkdownSource[];
+  private readonly sources: IssueSource[];
   private readonly teamKey: string;
   private readonly projectRoot: string;
   // `sources` (resolved by `resolveSources`) is optional so direct callers (unit tests, and any
@@ -155,9 +172,12 @@ export class MarkdownBackend implements TrackerBackend {
     this.projectRoot = projectRoot;
     this.teamKey = teamKey;
     const resolved = sources && sources.length ? sources : resolveSources(projectRoot, {});
-    this.sources = resolved.map((s) => new MarkdownSource(
-      s,
-      s.isDefault ? { indexDir: boardIndexDir(projectRoot), mainDir: mainWorktreeMarkdownDir(projectRoot) } : {},
+    // A `document` source (ZTB-4) is a single FILE, parsed into many issues — a wholly different
+    // class (DocumentSource) from `issue-per-file`'s directory-shaped MarkdownSource. Both
+    // conform to `IssueSource`, so everything below this constructor is format-agnostic.
+    this.sources = resolved.map((s): IssueSource => (s.format === 'document'
+      ? new DocumentSource(s)
+      : new MarkdownSource(s, s.isDefault ? { indexDir: boardIndexDir(projectRoot), mainDir: mainWorktreeMarkdownDir(projectRoot) } : {})
     ));
   }
 
@@ -173,12 +193,18 @@ export class MarkdownBackend implements TrackerBackend {
   // unique (the expected/normal case; `ztrack check` is what flags a genuine cross-source
   // collision, via `issue_id_conflict`). Absent sources param default = exactly one source, so
   // this is a no-op lookup in the byte-identical-compat case.
-  private sourceOf(id: string): MarkdownSource | undefined {
-    return this.sources.find((s) => s.resolveBody(id) !== null);
+  private sourceOf(id: string): IssueSource | undefined {
+    return this.sources.find((s) => s.load(id) !== null);
   }
-  private requireSourceWritable(source: MarkdownSource): void {
+  // Choke point for every write path (edit/comment/close/delete via writeIssue/deleteIssue below).
+  // A `document` source (ZTB-4) fails closed unconditionally — write-back is dev/09 — BEFORE the
+  // `readonly: true` config check, so the message always names the real reason. `DocumentSource
+  // .write`/`.delete` throw the identical error too (defense-in-depth: any future caller that
+  // reaches a document source without going through this method still fails closed).
+  private requireSourceWritable(source: IssueSource): void {
+    if (source.format === 'document') throw documentWriteError(source.location);
     if (source.readonlySource) {
-      throw new Error(`the source '${source.dir}' is read-only (declared readonly: true in tracker-config.json); its issues cannot be written through ztrack — edit the source it reads instead.`);
+      throw new Error(`the source '${source.location}' is read-only (declared readonly: true in tracker-config.json); its issues cannot be written through ztrack — edit the source it reads instead.`);
     }
   }
   // `parent` is a pointer; `children` is a DENORMALIZED VIEW of it (markdown.ts:19-20) that nothing
@@ -202,36 +228,35 @@ export class MarkdownBackend implements TrackerBackend {
   }
   private loadOne(id: string): CanonicalIssue | null {
     const source = this.sourceOf(id);
-    if (!source) return null;
-    const body = source.resolveBody(id);
-    return body === null ? null : parseIssue(body);
+    return source ? source.load(id) : null;
   }
-  // Every (issue, source-path) pair across ALL declared sources, UNDEDUPED across distinct
+  // Every (issue, source-path[, span]) pair across ALL declared sources, UNDEDUPED across distinct
   // sources — an id present in two different sources surfaces as two entries here on purpose
   // (see engine.ts `crossSourceConflicts`: `ztrack check` turns that into an `issue_id_conflict`
   // finding rather than this layer silently picking a winner). Within ONE source, `ids()`
   // already unions/dedupes its own checkout/index/trunk locations via a Set, so that precedence
-  // is untouched.
-  private loadAllRaw(): Array<{ c: CanonicalIssue; path: string }> {
-    const out: Array<{ c: CanonicalIssue; path: string }> = [];
+  // is untouched. `lineStart`/`lineEnd` (ZTB-4) are present only for a document-sourced issue.
+  private loadAllRaw(): Array<{ c: CanonicalIssue; path: string; lineStart?: number; lineEnd?: number }> {
+    const out: Array<{ c: CanonicalIssue; path: string; lineStart?: number; lineEnd?: number }> = [];
     for (const source of this.sources) {
       for (const id of source.ids()) {
-        const body = source.resolveBody(id);
-        if (body === null) continue;
-        out.push({ c: parseIssue(body), path: source.originPath(id) });
+        const c = source.load(id);
+        if (c === null) continue;
+        out.push({ c, ...source.origin(id) });
       }
     }
     return out;
   }
   private loadAll(): CanonicalIssue[] { return this.loadAllRaw().map((r) => r.c); }
-  // The absolute path id's content actually resolved from (first source that has it — see
-  // sourceOf). Every caller of this method has already confirmed the id exists (via loadOne), so
-  // the fallback to sources[0] (always non-empty — see the constructor) is unreachable in
+  // The full origin (path + optional line span) id's content actually resolved from (first source
+  // that has it — see sourceOf). Every caller has already confirmed the id exists (via loadOne),
+  // so the fallback to sources[0] (always non-empty — see the constructor) is unreachable in
   // practice; it exists only so this stays a plain getter, never a throw.
-  private originPath(id: string): string {
+  private originOf(id: string): SourceOrigin {
     const source = this.sourceOf(id) ?? this.sources[0]!;
-    return source.originPath(id);
+    return source.origin(id);
   }
+  private originPath(id: string): string { return this.originOf(id).path; }
   // Resolve the owning source of an EXISTING issue and write it there, after confirming that
   // source isn't `readonly: true`. Used by edit/comment/close — never by create (see
   // mintTargetSource: a NEW issue has no existing source to route to).
@@ -247,11 +272,14 @@ export class MarkdownBackend implements TrackerBackend {
     this.requireSourceWritable(source);
     source.delete(id);
   }
-  // `issue create` mints into the first WRITABLE issue-per-file source (declared order); with no
-  // `sources` config that's the one implicit default, exactly as before.
-  private mintTargetSource(): MarkdownSource {
-    const target = this.sources.find((s) => !s.readonlySource);
-    if (!target) throw new Error('markdown backend: no writable source is configured for new issues (every declared source has readonly: true).');
+  // `issue create` mints into the first WRITABLE `issue-per-file` source (declared order); with no
+  // `sources` config that's the one implicit default, exactly as before. A `document` source
+  // (ZTB-4) is NEVER a mint target, even if nothing marks it `readonly: true` — creating an issue
+  // means adding a new id-bearing heading to the file, which is the same not-yet-implemented
+  // write-back as editing an existing one (dev/09).
+  private mintTargetSource(): IssueSource {
+    const target = this.sources.find((s) => s.format === 'issue-per-file' && !s.readonlySource);
+    if (!target) throw new Error('markdown backend: no writable issue-per-file source is configured for new issues (every declared source is either readonly: true or a "document" source, which cannot be minted into).');
     return target;
   }
 
@@ -272,7 +300,7 @@ export class MarkdownBackend implements TrackerBackend {
       const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((r) => r.c.parent === parent);
       const search = flagVal(args, 'search'); if (search) rows = rows.filter((r) => `${r.c.title}\n${r.c.body}`.toLowerCase().includes(search.toLowerCase()));
       const limit = flagVal(args, 'limit'); const limitN = Number(limit); if (limit && Number.isFinite(limitN) && limitN >= 0) rows = rows.slice(0, limitN);
-      return ok(JSON.stringify(rows.map((r) => listRow(r.c, fields, r.path)), null, 2));
+      return ok(JSON.stringify(rows.map((r) => listRow(r.c, fields, r.path, r)), null, 2));
     }
     if (verb === 'issue' && sub === 'view') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
@@ -280,7 +308,8 @@ export class MarkdownBackend implements TrackerBackend {
       // children are recursively denormalized to full child objects (matches local's view)
       const seen = new Set<string>();
       const fullView = (issue: CanonicalIssue): Record<string, unknown> => {
-        const v = viewJson(issue, this.originPath(issue.identifier));
+        const o = this.originOf(issue.identifier);
+        const v = viewJson(issue, o.path, o);
         v.children = { nodes: issue.children.map((cid) => {
           if (seen.has(cid) || !SAFE_ID.test(cid)) return { id: cid, identifier: cid, number: cid };
           seen.add(cid); const ch = this.loadOne(cid);
@@ -309,7 +338,7 @@ export class MarkdownBackend implements TrackerBackend {
         completedAt: null, canceledAt: null, url: `local://tracker/issue/${id}`, comments: [],
       };
       target.write(c);
-      return ok(JSON.stringify(viewJson(c, target.originPath(c.identifier)), null, 2));
+      return ok(JSON.stringify(viewJson(c, target.origin(c.identifier).path), null, 2));
     }
     if (verb === 'issue' && sub === 'edit') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };

@@ -119,14 +119,17 @@ describe('resolveSources (ZTB-3)', () => {
     ]);
   });
 
-  test('a `.md` file source defaults to format "document" and is rejected as a config error naming ZTB-4', () => {
+  // ZTB-4 dev/08: `document` sources resolve (the read path is implemented) instead of failing
+  // closed — see src/documentParser.ts / src/backends/documentSource.ts. Write-back is dev/09.
+  test('a `.md` file source defaults to format "document" and resolves (ZTB-4) — `dir` names the FILE', () => {
     const root = project({ backend: 'markdown', sources: [{ path: 'BACKLOG.md' }] });
-    expect(() => resolveSources(root, loadTrackerConfig(root))).toThrow(/document/);
-    expect(() => resolveSources(root, loadTrackerConfig(root))).toThrow(/ZTB-4/);
+    const resolved = resolveSources(root, loadTrackerConfig(root));
+    expect(resolved).toEqual([{ dir: join(root, 'BACKLOG.md'), format: 'document', readonly: false, isDefault: false }]);
   });
 
-  test('an explicit format: "document" on a non-.md path is rejected the same way (declared, not inferred)', () => {
+  test('an explicit format: "document" on a non-.md path resolves the same way (declared, not inferred)', () => {
     const root = project({ backend: 'markdown', sources: [{ path: 'somedir', format: 'document' }] });
-    expect(() => resolveSources(root, loadTrackerConfig(root))).toThrow(/ZTB-4/);
+    const resolved = resolveSources(root, loadTrackerConfig(root));
+    expect(resolved).toEqual([{ dir: join(root, 'somedir'), format: 'document', readonly: false, isDefault: false }]);
   });
 });
