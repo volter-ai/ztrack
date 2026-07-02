@@ -268,6 +268,42 @@ Keep **Linear**, **Jira**, or **GitHub Issues** as the human surface; ztrack sit
 validates the claims agents or humans make there. Two-way sync with GitHub Issues is built in (a
 synced issue *is* the GitHub issue) — see the [Guide → linked sync](docs/GUIDE.md#how-linked-sync-works).
 
+## One document, many issues
+
+Your existing plan or backlog markdown can *be* the tracker. Declare it as a `document` source and
+every heading whose text starts with an id (`APP-1 — Add the /health endpoint`) becomes an issue —
+no reformatting, no separate store to keep in sync:
+
+```bash
+cat > PLAN.md <<'EOF'
+## APP-1 — Add the /health endpoint
+
+status: ready
+assignee: me
+
+### Acceptance Criteria
+
+- [ ] dev/01 v1 GET /health returns 200
+  - status: pending
+EOF
+```
+
+```jsonc
+// .volter/tracker-config.json
+{ "sources": [{ "path": ".volter/tracker/markdown" }, { "path": "PLAN.md", "format": "document" }] }
+```
+
+```bash
+npx ztrack issue list --json identifier,title   # -> APP-1  Add the /health endpoint
+npx ztrack check                                # reads PLAN.md like any other store
+```
+
+`ac patch`/`issue edit` splice a verified change straight back into the doc at the heading's
+recorded span — patching `dev/01` above changes only its checkbox and status/evidence/proof lines;
+every other byte in `PLAN.md` is untouched. State, assignee, and anything wider than title/body
+still fail closed, naming the file to edit directly instead. Grammar, the write model, and
+diagnostics: [Sources](docs/SOURCES.md).
+
 ## Agent workflows
 
 ztrack is built to be an AI agent's **completion oracle** — three ways to wire it, smallest to most
@@ -351,6 +387,7 @@ The README is the front door; these go deep:
 
 - **[Guide](docs/GUIDE.md)** — setup, the two usage patterns, CI gate, agent enforcement, visualize.
 - **[Presets](docs/PRESETS.md)** — choose and customize the ruleset; the grammar; add a rule; build your own preset; `preset upgrade`.
+- **[Sources](docs/SOURCES.md)** — declare where issues live; the document format (one file, many issues); write-back and diagnostics.
 - **[Evidence](docs/EVIDENCE.md)** — cite, store, and verify proof; in-toto + DSSE attestation.
 - **[Agent playbook](docs/AGENT-PLAYBOOK.md)** — the copy-paste prompt for an agent adopting and driving ztrack.
 - **[Programmatic API](docs/API.md)** · **[Architecture](ARCHITECTURE.md)** · **[Visualizer](visualizer/README.md)**

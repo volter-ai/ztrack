@@ -228,6 +228,11 @@ Rule codes (`simple-sdlc`): `issue_missing_assignee`,
 `review_requires_pr`, `done_requires_merged_pr`, `evidence_sha_stale`,
 `current_head_unknown` (the PR-bound rules).
 
+Every grammar above describes the shape of **one issue** — it applies identically whether that
+issue lives in its own file in an `issue-per-file` store or as an item inside a `document` source
+(one markdown file holding many issues, presented to the preset in the same canonical shape). See
+[Sources](SOURCES.md).
+
 ## The `spec` Grammar
 
 `spec` is lightweight. A `# SPEC-1: Title` heading, a `Summary:` and `Status:`
