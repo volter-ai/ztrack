@@ -97,6 +97,29 @@ describe('check() runner', () => {
     expect(bad.findings[0]?.code).toBe('root_shape_invalid');
   });
 
+  test('a diagnostics side-channel on parse() is lifted into findings (default severity warning), stripped before schema validation', () => {
+    const preset: Preset<R> = {
+      name: 'diag', schema: RootSchema,
+      parse: () => ({ issues: [emptyIssue], diagnostics: [{ code: 'fake_diag', message: 'something looked off' }, { code: 'fake_diag_error', severity: 'error', message: 'this one gates', issueId: 'A-1' }] }),
+      rules: [],
+    };
+    const result = check(preset, rec());
+    // the diagnostics-derived findings default to 'warning' unless the preset says otherwise
+    expect(result.findings.find((f) => f.code === 'fake_diag')).toMatchObject({ severity: 'warning', message: 'something looked off' });
+    expect(result.findings.find((f) => f.code === 'fake_diag_error')).toMatchObject({ severity: 'error', issueId: 'A-1' });
+    // an error-severity diagnostic gates the check, same as any other error finding
+    expect(result.ok).toBe(false);
+    // the `diagnostics` key never reaches schema validation — no root_shape_invalid / wellformed_shape noise
+    expect(result.findings.some((f) => f.code === 'wellformed_shape' || f.code === 'root_shape_invalid')).toBe(false);
+  });
+
+  test('a preset that returns no `diagnostics` key behaves exactly as today (no diagnostics findings, no shape change)', () => {
+    const preset: Preset<R> = { name: 'nodiag', schema: RootSchema, parse: () => ({ issues: [emptyIssue] }), rules: [] };
+    const result = check(preset, rec());
+    expect(result.ok).toBe(true);
+    expect(result.findings).toEqual([]);
+  });
+
   test('categories selector skips rules deeper than requested; invariants always run', () => {
     const preset: Preset<R> = {
       name: 'p', schema: RootSchema, parse: () => ({ issues: [emptyIssue] }),
