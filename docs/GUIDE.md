@@ -35,6 +35,11 @@ repo (the store is plain markdown — no database). Pick a preset with
 make your issues *be* GitHub Issues, synced both ways, init with a link:
 `npx ztrack init --sync github --repo owner/name` (see [How linked sync works](#how-linked-sync-works)).
 
+**Sources.** The default is one implicit store, `.volter/tracker/markdown/` (one file per issue).
+Declare `sources:` in `.volter/tracker-config.json` to add more, including a `document` source —
+one markdown file (your existing plan or backlog) decomposed into many issues by its id-bearing
+headings. See [Sources](SOURCES.md).
+
 **Prove the gate.** Before wiring any workflow rules, prove the core gate catches a bad claim:
 
 1. Mark one acceptance criterion passed (`[x]` + `status: passed`).
