@@ -586,8 +586,10 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
 
 // Split a parse candidate's optional `diagnostics` key off into findings, and strip the key
 // so ValidationInputSchema never sees it. Absent/non-array `diagnostics` -> no findings, root
-// unchanged (a preset that never opts in is untouched).
-function liftDiagnostics(candidate: unknown): { root: unknown; findings: Finding[] } {
+// unchanged (a preset that never opts in is untouched). Exported for the other consumer of a
+// raw parse candidate (modelEdit's parseOneIssue): the strict preset schemas reject unknown
+// keys, so anything that schema-validates `preset.parse(...)` output must strip this key first.
+export function liftDiagnostics(candidate: unknown): { root: unknown; findings: Finding[] } {
   if (!candidate || typeof candidate !== 'object' || !('diagnostics' in candidate)) return { root: candidate, findings: [] };
   const { diagnostics, ...rest } = candidate as { diagnostics?: unknown } & Record<string, unknown>;
   if (!Array.isArray(diagnostics)) return { root: rest, findings: [] };
