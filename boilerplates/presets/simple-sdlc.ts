@@ -78,8 +78,11 @@ export const DefaultIssueSchema = z.object({
   children: z.array(z.string().min(1)).optional(),             // primitive
   // unknown `## X` body sections (not Acceptance Criteria / Waivers) are CARRIED verbatim so
   // a patch/fmt round-trip never silently drops human-authored prose. (This preset CHOOSES to
-  // carry; another could reject.) Each entry is the raw `## …` section markdown.
-  notes: z.array(z.string().min(1)).optional(),
+  // carry; another could reject.) Each entry is the raw `## …` section markdown — kept split by
+  // POSITION (before vs after "## Acceptance Criteria"), not just content, so `serializeIssue`
+  // re-emits each where it originally sat instead of pushing everything to the end (ZTB-5).
+  notes: z.array(z.string().min(1)).optional(),          // unknown sections AFTER "## Acceptance Criteria"
+  notesBefore: z.array(z.string().min(1)).optional(),    // unknown sections BEFORE "## Acceptance Criteria"
 }).strict();
 
 export const DefaultRootSchema = z.object({ issues: z.array(DefaultIssueSchema) }).strict();
@@ -137,24 +140,31 @@ function nodeLine(node: MdNode): number | undefined {
 }
 
 // Carve out unknown top-level `## X` sections (anything but Acceptance Criteria / the core
-// Waivers section) so the known structure parses normally and the rest round-trips verbatim.
-function splitNotes(body: string): { known: string; notes: string[] } {
+// Waivers section) so the known structure parses normally and the rest round-trips verbatim —
+// AND record whether each carved section sat BEFORE or AFTER "## Acceptance Criteria" in the
+// original body, so `serializeIssue` can put it back where it was instead of always appending
+// it at the end (ZTB-5: position, not just content, must survive an unmodified round trip).
+function splitNotes(body: string): { known: string; notesBefore: string[]; notesAfter: string[] } {
   const known: string[] = [];
-  const notes: string[] = [];
+  const notesBefore: string[] = [];
+  const notesAfter: string[] = [];
   let cur: string[] | null = null;
+  let sawAc = false; // has the (first) "## Acceptance Criteria" heading been emitted into `known` yet?
+  const flush = () => { if (cur) { (sawAc ? notesAfter : notesBefore).push(cur.join('\n').trim()); cur = null; } };
   for (const line of body.split('\n')) {
     const h = /^##\s+(.+?)\s*$/.exec(line);
     if (h) {
-      if (cur) { notes.push(cur.join('\n').trim()); cur = null; }
+      flush();
       const name = h[1]!.toLowerCase();
-      if (/^acceptance criteria/.test(name) || /^waivers\b/.test(name)) { known.push(line); continue; }
+      if (/^acceptance criteria/.test(name)) { known.push(line); sawAc = true; continue; }
+      if (/^waivers\b/.test(name)) { known.push(line); continue; }
       cur = [line]; // start carrying an unknown section
       continue;
     }
     if (cur) cur.push(line); else known.push(line);
   }
-  if (cur) notes.push(cur.join('\n').trim());
-  return { known: known.join('\n'), notes: notes.filter(Boolean) };
+  flush();
+  return { known: known.join('\n'), notesBefore: notesBefore.filter(Boolean), notesAfter: notesAfter.filter(Boolean) };
 }
 
 function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[]): Record<string, unknown> {
@@ -166,8 +176,9 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
     assignee: record.assignee ?? '', summary: '', acceptanceCriteria: [],
     ...(record.labels?.length ? { labels: record.labels } : {}),
   };
-  const { known, notes } = splitNotes(record.body);
-  if (notes.length) issue.notes = notes;
+  const { known, notesBefore, notesAfter } = splitNotes(record.body);
+  if (notesBefore.length) issue.notesBefore = notesBefore;
+  if (notesAfter.length) issue.notes = notesAfter;
   const tree = toMdast(known);
   let inAc = false;
   let sawAcSection = false;
@@ -295,6 +306,10 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
   if (rel('blocks').length) out.push(`Blocks: ${rel('blocks').join(', ')}`);
   if (rel('blocked-by').length) out.push(`Blocked by: ${rel('blocked-by').join(', ')}`);
   if (rel('relates').length) out.push(`Relates: ${rel('relates').join(', ')}`);
+  // unknown sections that sat BEFORE "## Acceptance Criteria" go back there — separated by
+  // exactly one blank line (the canonical spacing `splitNotes` normalizes everything to), so
+  // POSITION survives an unmodified round trip, not just content (ZTB-5).
+  for (const note of issue.notesBefore ?? []) { if (out.length) out.push(''); out.push(note); }
   if (out.length) out.push('');
   out.push('## Acceptance Criteria', '');
   for (const ac of issue.acceptanceCriteria) {
@@ -309,6 +324,7 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
     if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
     if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
   }
+  // unknown sections that sat AFTER "## Acceptance Criteria" (the common case: appendices/notes) stay after it.
   for (const note of issue.notes ?? []) out.push('', note);
   const columns: IssueColumns = {
     title: issue.title, status: issue.status,
