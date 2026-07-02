@@ -1,8 +1,10 @@
-// ZTB-4 dev/08: `format: "document"` source parsing (read path only — write-back is dev/09).
-// Turns one markdown FILE into MANY issues: every section whose heading starts with an ID TOKEN
-// becomes an issue; heading nesting between id-bearing sections becomes parent/children links; a
-// leading `Title:` header block (fileToRecord/loose-mode semantics — src/check.ts) makes the file
-// itself an umbrella issue owning the top-level id-bearing sections as children.
+// ZTB-4 dev/08: `format: "document"` source parsing — turns one markdown FILE into MANY issues.
+// This module still only PARSES (dev/09's write-back splice lives in documentSource.ts /
+// documentWriteBack.ts, layered on top of the `level`/`raw` fields below). Every section whose
+// heading starts with an ID TOKEN becomes an issue; heading nesting between id-bearing sections
+// becomes parent/children links; a leading `Title:` header block (fileToRecord/loose-mode
+// semantics — src/check.ts) makes the file itself an umbrella issue owning the top-level
+// id-bearing sections as children.
 //
 // This module invents NO new markdown syntax — "a heading that starts with an id token" is the
 // whole grammar (no marker, no frontmatter). It consumes markdownDocument.ts's already-solved
@@ -33,6 +35,13 @@ export interface DocumentParsedIssue {
   /** Absent for the umbrella issue (mirrors fileToRecord's loose-mode "whole file, no span"). */
   lineStart?: number;
   lineEnd?: number;
+  /** ZTB-4 dev/09 (additive — read path, src/documentParser.test.ts, is unchanged by these two
+   *  fields): the heading's level, and the section's raw text (heading + full subtree) BEFORE any
+   *  id-bearing-descendant excision — i.e. `doc.sections[index].raw`. `raw === body` iff nothing
+   *  was excised (the common case); DocumentSource.write uses that equality as its span-writable
+   *  gate. Both absent for the umbrella issue (no single section backs it). */
+  level?: number;
+  raw?: string;
 }
 
 function directChildIndices(doc: MarkdownDocument, parentIndex: number | null): number[] {
@@ -152,6 +161,7 @@ export function parseMarkdownDocumentSource(text: string, filePath: string): Doc
       id, title, parent: parentId, children: [], // children filled below, once every parent is known
       body: subtreeExcisingIdBearing(doc, index, isIdBearing),
       lineStart: section.lineStart, lineEnd: section.lineEnd,
+      level: section.level, raw: section.raw,
     });
   }
 

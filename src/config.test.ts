@@ -119,8 +119,8 @@ describe('resolveSources (ZTB-3)', () => {
     ]);
   });
 
-  // ZTB-4 dev/08: `document` sources resolve (the read path is implemented) instead of failing
-  // closed — see src/documentParser.ts / src/backends/documentSource.ts. Write-back is dev/09.
+  // ZTB-4 dev/08 + dev/09: `document` sources resolve (both read and write-back are implemented)
+  // instead of failing closed — see src/documentParser.ts / src/backends/documentSource.ts.
   test('a `.md` file source defaults to format "document" and resolves (ZTB-4) — `dir` names the FILE', () => {
     const root = project({ backend: 'markdown', sources: [{ path: 'BACKLOG.md' }] });
     const resolved = resolveSources(root, loadTrackerConfig(root));

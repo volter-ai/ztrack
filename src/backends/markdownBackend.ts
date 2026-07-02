@@ -8,11 +8,11 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
-import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
+import { type CanonicalIssue, parseIssue, serializeIssue, stateTypeOf } from './markdown.ts';
 import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../config.ts';
 import { git } from '../core/gitWorld.ts';
 import { resolveSources, type ResolvedSource } from '../sources.ts';
-import { documentWriteError, DocumentSource } from './documentSource.ts';
+import { DocumentSource } from './documentSource.ts';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
 
 // Issue ids name files in the store; reject anything that isn't a plain id so a
@@ -81,14 +81,6 @@ function bodyArg(args: string[]): string | undefined {
   const inline = flagVal(args, 'body'); if (inline !== undefined) return inline;
   const file = flagVal(args, 'body-file'); if (file !== undefined) return readFileSync(file, 'utf8');
   return undefined;
-}
-// The status TYPE behind a state NAME — preset rules gate on stateType (`isDone`/`isCanceled`),
-// so `--state Done`/`Canceled` must record `completed`/`canceled`, not a hardcoded `open`.
-function stateTypeOf(name: string): 'open' | 'completed' | 'canceled' {
-  const n = name.trim().toLowerCase();
-  if (n === 'done' || n === 'completed') return 'completed';
-  if (n === 'canceled' || n === 'cancelled') return 'canceled';
-  return 'open';
 }
 const ok = (stdout: string): TrackerCommandResult => ({ stdout, stderr: '' });
 
@@ -197,12 +189,13 @@ export class MarkdownBackend implements TrackerBackend {
     return this.sources.find((s) => s.load(id) !== null);
   }
   // Choke point for every write path (edit/comment/close/delete via writeIssue/deleteIssue below).
-  // A `document` source (ZTB-4) fails closed unconditionally — write-back is dev/09 — BEFORE the
-  // `readonly: true` config check, so the message always names the real reason. `DocumentSource
-  // .write`/`.delete` throw the identical error too (defense-in-depth: any future caller that
-  // reaches a document source without going through this method still fails closed).
+  // ZTB-4 dev/09: a `document` source is no longer gated shut HERE — it CAN be written (splice
+  // write-back), but only within the narrow delta `DocumentSource.write` itself accepts (body
+  // and/or title; see documentSource.ts's guards, which fail closed with a file-naming message
+  // for anything wider — status/assignee/labels/reparent/comment/delete). This method still keeps
+  // the `readonly: true` config check, which now ALSO protects a `readonly: true` document source
+  // (a document source can be declared readonly the same way an issue-per-file one can).
   private requireSourceWritable(source: IssueSource): void {
-    if (source.format === 'document') throw documentWriteError(source.location);
     if (source.readonlySource) {
       throw new Error(`the source '${source.location}' is read-only (declared readonly: true in tracker-config.json); its issues cannot be written through ztrack — edit the source it reads instead.`);
     }

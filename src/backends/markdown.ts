@@ -29,6 +29,18 @@ export interface CanonicalIssue {
   comments: CanonicalComment[];
 }
 
+// The status TYPE behind a state NAME — preset rules gate on stateType (`isDone`/`isCanceled`),
+// so a state name of "Done"/"Canceled" (any case) must record `completed`/`canceled`, not a
+// hardcoded `open`. Shared by markdownBackend.ts (`issue create`/`issue edit --state`) and
+// documentSource.ts (deriving a document item's stateType from its `status:` header line) — a
+// leaf module (no imports of its own), so importing it from either creates no cycle.
+export function stateTypeOf(name: string): 'open' | 'completed' | 'canceled' {
+  const n = name.trim().toLowerCase();
+  if (n === 'done' || n === 'completed') return 'completed';
+  if (n === 'canceled' || n === 'cancelled') return 'canceled';
+  return 'open';
+}
+
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const nodeNames = (v: unknown): string[] => (v && typeof v === 'object' && Array.isArray((v as { nodes?: unknown[] }).nodes) ? (v as { nodes: Array<Record<string, unknown>> }).nodes.map((n) => str(n.name) || str(n.identifier) || str(n.id)).filter(Boolean) : []);
 const refOf = (v: unknown): string | null => { if (!v) return null; if (typeof v === 'string') return v; const o = v as Record<string, unknown>; return str(o.identifier) || str(o.id) || str(o.name) || null; };
