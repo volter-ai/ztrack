@@ -257,4 +257,62 @@ Relates: D-6
     });
   });
 
+  // ZTB-1: fail-closed parse diagnostics — content that LOOKS like tracked work but doesn't
+  // parse as intended must be LOUD (a warning finding), never silently dropped.
+  describe('fail-closed parse diagnostics (ZTB-1)', () => {
+    test('a clean single-AC-section fixture parses with no `diagnostics` key at all (exact-today shape)', () => {
+      expect(parseDefault([REC])).not.toHaveProperty('diagnostics');
+    });
+
+    test('two `## Acceptance Criteria` sections MERGE (append) — never last-section-wins; ac_sections_multiple warns', () => {
+      // the shape that bit the ZTB-1 plan docs themselves: first section 2 ACs, second 11 — 13 total.
+      const section = (start: number, count: number) =>
+        Array.from({ length: count }, (_, i) => `- [ ] dev/${String(start + i).padStart(2, '0')} v1 AC number ${start + i}\n  - status: pending\n`).join('');
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `## Acceptance Criteria\n\n${section(1, 2)}\n## Acceptance Criteria\n\n${section(3, 11)}`,
+      };
+      const root = parseDefault([rec]) as { issues: { acceptanceCriteria: { id: string }[] }[] };
+      // ALL 13 survive, in order — the second section APPENDED, not last-section-wins.
+      expect(root.issues[0]!.acceptanceCriteria.map((ac) => ac.id)).toEqual(
+        Array.from({ length: 13 }, (_, i) => `dev/${String(i + 1).padStart(2, '0')}`),
+      );
+      const r = checkDefault([rec], ctx);
+      const multi = r.findings.filter((f) => f.code === 'ac_sections_multiple');
+      expect(multi).toHaveLength(1);
+      expect(multi[0]?.severity).toBe('warning');
+      expect(r.ok).toBe(true); // a warning never gates
+    });
+
+    test('a checkbox item outside any recognized AC section yields ac_outside_section', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `- [ ] fix the thing outside any section\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 the real AC\n  - status: pending\n`,
+      };
+      const r = checkDefault([rec], ctx);
+      const finding = r.findings.find((f) => f.code === 'ac_outside_section');
+      expect(finding?.severity).toBe('warning');
+      expect(finding?.message).toContain('fix the thing outside any section');
+      expect(finding?.issueId).toBe('D-1');
+      // the real AC still parses, unaffected
+      const root = parseDefault([rec]) as { issues: { acceptanceCriteria: { id: string }[] }[] };
+      expect(root.issues[0]!.acceptanceCriteria.map((ac) => ac.id)).toEqual(['dev/01']);
+    });
+
+    test('an AC line that only parses via the whole-line fallback yields ac_id_malformed naming the resulting id', () => {
+      // a single token (no whitespace) fails BOTH `^(\S+)\s+v(\d+)\s+(.+)$` and `^(\S+)\s+(.+)$`,
+      // so the whole line becomes the id — unaddressable by `ac patch`.
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `## Acceptance Criteria\n\n- [ ] fixthebug\n  - status: pending\n`,
+      };
+      const r = checkDefault([rec], ctx);
+      const finding = r.findings.find((f) => f.code === 'ac_id_malformed');
+      expect(finding?.severity).toBe('warning');
+      expect(finding?.message).toContain('fixthebug');
+      const ac = (parseDefault([rec]) as { issues: { acceptanceCriteria: { id: string }[] }[] }).issues[0]!.acceptanceCriteria[0]!;
+      expect(ac.id).toBe('fixthebug'); // the AC still "exists" (fail LOUD, not fail closed on the parse)
+    });
+  });
+
 });
