@@ -85,15 +85,18 @@ describe('check targets', () => {
     expect(r.out).toMatch(/file not found/);
   });
   // ZTB-1: a loose file's header scan fails LOUD (not open) on a bad line — the check still
-  // runs (title/status/assignee already read before the abort are still honored) and the
-  // warning is visible, but never gates.
-  test('a loose file with an aborted header block yields loose_header_ignored and still checks', () => {
+  // runs and the warning is visible. ZTB-12: the abort is ATOMIC — none of the Title:/Status:/
+  // Assignee: lines matched before the abort are honored (the diagnostic's own wording), so this
+  // file is genuinely unassigned/draft, same as if it had no header block at all. The warning
+  // itself never gates; `issue_missing_assignee` is what fails the check here, not the header scan.
+  test('a loose file with an aborted header block yields loose_header_ignored, discards the whole block, and still checks', () => {
     writeFileSync(join(root, 'loose-header.md'),
       'Title: Loose header\nStatus: ready\nAssignee: otto\nthis line is not Title:/Status:/Assignee:-shaped\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 something\n  - status: pending\n');
     const r = ztrack(['check', './loose-header.md']);
-    expect(r.code).toBe(0);                                 // the warning does not gate the check
-    expect(r.out).toMatch(/loose_header_ignored/);
+    expect(r.code).not.toBe(0);                             // genuinely unassigned — Assignee: otto was discarded, not honored
+    expect(r.out).toMatch(/loose_header_ignored/);           // the header-scan warning still fires
     expect(r.out).toMatch(/this line is not Title:\/Status:\/Assignee:-shaped/);
+    expect(r.out).toMatch(/issue_missing_assignee/);         // the actual gate — not the (non-fatal) header warning
   });
   test('a bare check validates the WHOLE tracker (the bad ZT-2 fails it, unlike `check ZT-1`)', () => {
     const all = ztrack(['check']);
