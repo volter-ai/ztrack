@@ -30,8 +30,9 @@ commit SHA that exists in git, plus the evidence and proof the preset requires. 
 ways**, over the same work:
 
 - **`ztrack check`** — verify on demand (CI, pre-merge, a spot check). Pass or exit non-zero.
-- **`ztrack loop`** — a *ralph loop*: a Stop hook holds your agent's turn until the work is actually
-  green. **Recommended while developing** — the agent can't call it done until it is.
+- **`ztrack loop`** — a *ralph loop*: Stop/SubagentStop hooks hold your agent's turn (and any
+  subagent's) until the work is actually green. **Recommended while developing** — the agent
+  can't call it done until it is.
 
 `check` is the oracle; `loop` runs that oracle on every turn until the agent earns "done."
 
@@ -86,15 +87,15 @@ npx ztrack init --sync github --repo owner/name   # links + pulls existing issue
 See all presets with `ztrack init --list`; choose one with `--preset <name>`. The installed
 `preset.mts` is real, editable code — open it and change the rules. (Reference: [Presets](docs/PRESETS.md).)
 
-**3. The loop gate** — only needed for `ztrack loop` usage. Install the Stop-hook plugin once; it's
-**dormant unless a loop is armed**, so it's safe to leave enabled globally:
+**3. The loop gate** — only needed for `ztrack loop` usage. Install the Stop/SubagentStop-hook
+plugin once; it's **dormant unless a loop is armed**, so it's safe to leave enabled globally:
 
 ```bash
 /plugin marketplace add volter-ai/ztrack     # in Claude Code
 /plugin install ztrack-gate@ztrack
 ```
 
-Not using Claude Code plugins? Wire the Stop hook yourself — see the
+Not using Claude Code plugins? Wire the Stop and SubagentStop hooks yourself — see the
 [Guide → drive an agent to green](docs/GUIDE.md#3-usage-drive-an-agent-to-green).
 
 ---
@@ -105,7 +106,7 @@ Two patterns, **the same targets**. Pick by the job:
 
 | | **`ztrack check`** | **`ztrack loop start`** |
 |---|---|---|
-| **does** | verifies once, exits `0`/`1` | a ralph loop — the Stop hook holds the agent's turn until the target is green, then disarms |
+| **does** | verifies once, exits `0`/`1` | a ralph loop — Stop/SubagentStop hooks hold every turn in the root (main agent and subagents alike) until the target is green, then disarm |
 | **use for** | CI gate, pre-merge, a manual "is this real?" | driving an agent to actually finish — **recommended during development** |
 | **bounds** | one run | capped iterations, with honest escapes; cooperative, not a sandbox |
 
@@ -186,9 +187,10 @@ ztrack loop start LOCAL-1     # while armed, the agent's turn won't end until LO
 ```
 
 **3. Point your agent at the issue** — hand it the id (its working rules are in the
-[agent playbook](docs/AGENT-PLAYBOOK.md)). When the agent tries to stop, the Stop hook runs
-`ztrack check`; if the issue is still red, the turn is held and the agent keeps working — until the
-work is genuinely green (then the loop disarms), or it hits the iteration cap.
+[agent playbook](docs/AGENT-PLAYBOOK.md)). When the agent — or a subagent it delegates to — tries
+to stop, the Stop/SubagentStop hook runs `ztrack check`; if the issue is still red, the turn is
+held and the agent keeps working — until the work is genuinely green (then the loop disarms), or
+it hits the iteration cap.
 
 It's **cooperative**, not a sandbox: the agent can disarm (`ztrack loop stop`), self-exempt for a
 session, or an authority can [waive](docs/PRESETS.md#waivers) a finding it knowingly accepts — so it

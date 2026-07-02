@@ -148,8 +148,9 @@ then reattach (`issue edit <child> --parent <id>`) if you need to force a backfi
 ## 3. Usage: drive an agent to green
 
 This is the **recommended development flow**. `ztrack loop start <issue>` arms a *ralph loop* whose
-oracle is `check`: a Stop hook holds the agent's turn until that issue is green, then disarms — capped
-so it can't grind forever. It takes the [same target grammar](#2-usage-verify-on-demand) as `check`
+oracle is `check`: Stop/SubagentStop hooks hold every turn in the armed root — the main agent's and
+any subagent's it delegates to — until that issue is green, then disarms — capped so it can't grind
+forever. It takes the [same target grammar](#2-usage-verify-on-demand) as `check`
 (id, file, or the current worktree's issue).
 
 ```bash
@@ -158,9 +159,9 @@ ztrack loop status           # is a loop armed? capped?
 ztrack loop stop             # disarm
 ```
 
-**Honest escapes (none fakes "done"):** disarm, a per-session self-exempt that can't outlive the
-session, and a durable [`ztrack waiver sign`](PRESETS.md#waivers) for a finding an authority knowingly
-accepts — or descope the AC. It's cooperative, not a sandbox.
+**Honest escapes (none fakes "done"):** disarm, a per-actor self-exempt (a session or a subagent)
+that can't outlive it, and a durable [`ztrack waiver sign`](PRESETS.md#waivers) for a finding an
+authority knowingly accepts — or descope the AC. It's cooperative, not a sandbox.
 
 **Install the gate** (Claude Code). The plugin is **armed-only**, so interactive work is untouched and
 it's safe to leave enabled globally:
@@ -170,12 +171,19 @@ it's safe to leave enabled globally:
 /plugin install ztrack-gate@ztrack
 ```
 
-For a non-plugin / custom harness, wire the hook into your `Stop` hooks directly — it ships at
-`node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh` (armed-only). In a Claude Code
-`settings.json`:
+For a non-plugin / custom harness, wire the hook into both your `Stop` **and** `SubagentStop` hooks
+directly (the same script, registered under both events — it reads `hook_event_name` from
+neither; a subagent's turn ends via `SubagentStop`, never `Stop`, so skipping it leaves subagent
+turns ungated) — it ships at `node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh`
+(armed-only). In a Claude Code `settings.json`:
 
 ```json
-{ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ] } }
+{
+  "hooks": {
+    "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ],
+    "SubagentStop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ]
+  }
+}
 ```
 
 The package also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on** gate (same `Stop`

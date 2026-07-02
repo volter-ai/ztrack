@@ -126,10 +126,12 @@ Grammar, write-back, and diagnostics: docs/SOURCES.md.
   if (resource === 'loop') {
     process.stdout.write(`Usage: ${command} loop <start|stop|status> [<issue-id>] [--max N]
 
-A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack-gate Stop
-hook is wired (README → Agent workflows), the turn is held until the target issue passes check
-(then it disarms), capped at --max iterations (default 8). \`start\` with no id auto-scopes to the
-branch/worktree issue. \`stop\` disarms; \`status\` shows the armed target.
+A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack-gate
+Stop/SubagentStop hooks are wired (README → Agent workflows), every turn in this root — the main
+agent's and any subagent's it delegates to — is held until the target issue passes check
+(then it disarms), capped at --max iterations per actor (default 8). \`start\` with no id auto-scopes
+to the branch/worktree issue; arming a DIFFERENT target while one is already armed refuses (\`stop\`
+first, or arm in a separate worktree). \`stop\` disarms; \`status\` shows the armed target.
 `);
     return true;
   }

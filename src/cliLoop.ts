@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { ensureTrackerGitignore, projectRootFrom, stateDirName } from './config.ts';
 import { positionalArgs, resolveTarget } from './cliTarget.ts';
-import { describeTarget } from './loopState.ts';
+import { describeTarget, readLoopMarker } from './loopState.ts';
 import { optionValue } from './cliArgs.ts';
 import { commandName } from './cliHelp.ts';
 import { statusMark, ui } from './cliStyle.ts';
@@ -29,7 +29,7 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     }
   };
   if (!action || action === '--help' || action === '-h' || action === 'help') {
-    process.stdout.write(`Usage: ${command} loop <start [<issue>|<file.md>] [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate (a ralph loop). While armed, the Stop hook keeps the agent going until the target passes \`${command} check\` (then it disarms), or the iteration cap trips. The target uses the same grammar as \`check\`: an issue id, a markdown file, or — with no argument — this worktree's issue (resolved from the branch/worktree name). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
+    process.stdout.write(`Usage: ${command} loop <start [<issue>|<file.md>] [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate (a ralph loop). While armed, the Stop/SubagentStop hooks keep every turn in this root going — the agent's and any subagent's — until the target passes \`${command} check\` (then it disarms), or the iteration cap trips. The target uses the same grammar as \`check\`: an issue id, a markdown file, or — with no argument — this worktree's issue (resolved from the branch/worktree name). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it. Arming a DIFFERENT target while one is already armed refuses (\`${command} loop stop\` first, or arm in a separate worktree).\n`);
     return true;
   }
   if (action === 'start') {
@@ -40,6 +40,17 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     const label = describeTarget(target);
     const maxRaw = optionValue(args, '--max');
     const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
+    // Arm-collision guard: the gate is root-scoped, not agent-scoped (there's no reliable agent
+    // identity at arm time — see stop-loop.sh), so re-arming for a DIFFERENT target while one is
+    // already armed would silently steal the gate out from under whoever armed it, including a
+    // subagent's own loop. Refuse instead; isolation between unrelated loops comes from running
+    // in a separate worktree (each has its own marker namespace — src/config.ts), not from
+    // overwriting. Compare the canonical target (not the human label) so re-arming the SAME
+    // target — a refresh: new --max, runtime sweep, cap-breadcrumb clear — stays allowed.
+    const existingMarker = readLoopMarker(root);
+    if (existingMarker && JSON.stringify(existingMarker.target) !== JSON.stringify(target)) {
+      throw new Error(`${command} loop: already armed for ${existingMarker.label} — refusing to re-arm for ${label} (this would silently steal the gate). Run '${command} loop stop' to disarm first, or arm ${label} in a separate worktree — each worktree has its own loop.`);
+    }
     mkdirSync(stateDir, { recursive: true });
     ensureTrackerGitignore(root); // so the loop's runtime/exempt files are ignored even on a repo init'd before the loop existed
     sweepRuntime();
@@ -47,7 +58,7 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     writeFileSync(marker, `${JSON.stringify({ target, maxIterations, startedAt: new Date().toISOString(), label }, null, 2)}\n`);
     // Pull the latest from a linked tracker before the ralph loop starts (best-effort).
     await githubSync.syncLinked(root, { pull: true }).catch(() => {});
-    process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); once the ztrack-gate Stop hook is wired (README → Agent workflows), it holds the turn until ${label} is green`)}\n`);
+    process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); once the ztrack-gate Stop/SubagentStop hooks are wired (README → Agent workflows), it holds every turn in this root — the agent's and any subagent's — until ${label} is green`)}\n`);
     return true;
   }
   if (action === 'stop') {
