@@ -16,7 +16,7 @@ export { rule, definePreset, check, checkRoot, deriveCoreModel } from './core/en
 export { z } from 'zod';
 export type {
   Preset, Rule, RuleRecord, DerivedModel, Located, Finding, Severity, Context, PresetContextInput,
-  BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot, IssueRecord, IssueColumns,
+  BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot, IssueRecord, IssueColumns, ParseDiagnostic,
 } from './core/engine.ts';
 export { gitWorld, gitFileExistsAtCommit, gitCommitFiles } from './core/gitWorld.ts';
 // Resolves `config.relevance` from disk so a preset's loadContext can set ctx.relevance.

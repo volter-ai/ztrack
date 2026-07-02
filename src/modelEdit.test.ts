@@ -49,6 +49,19 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
     expect(body).not.toMatch(/^Status:/m);
   });
 
+  test('a body that triggers parse DIAGNOSTICS (warnings) is still editable — the side-channel never reaches the strict schema', () => {
+    const noisy: IssueRecord = {
+      id: 'APP-1', title: 'A case', status: 'draft',
+      // the stray PREAMBLE checkbox emits ac_outside_section (ZTB-1) — advisory, not a grammar
+      // error. (It must be in the preamble: splitNotes carves unknown `## X` sections out before
+      // the walk, so a checkbox inside one never reaches the diagnostic.)
+      body: 'Summary: do it\n\n- [ ] a stray checkbox outside the AC section\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 Build the thing\n  - status: pending\n',
+    };
+    const { body, changed } = applyModelPatch(def, noisy, { acId: 'dev/01', patch: { status: 'passed', checked: true } });
+    expect(changed).toBe(true);
+    expect(body).toContain('- [x] dev/01 v1 Build the thing');
+  });
+
   test('canonicalizeBody round-trips through the preset (fmt)', () => {
     const messy: IssueRecord = {
       id: 'APP-1', title: 'A case', status: 'draft',

@@ -6,7 +6,7 @@ import { basename, isAbsolute, resolve } from 'node:path';
 import { loadTrackerConfig, projectRootFrom } from './config.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { buildContext, loadValidationInput } from './core/loader.ts';
-import { check, checkRoot, type CheckResult, type Context, type CoreRoot, type IssueRecord } from './core/engine.ts';
+import { check, checkRoot, type CheckResult, type Context, type CoreRoot, type Finding, type IssueRecord } from './core/engine.ts';
 import { conflictFindings } from './sync/conflicts.ts';
 import type { RuleCategory } from './checkRules.ts';
 
@@ -48,23 +48,52 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings };
 }
 
+const HEADER_LINE = /^(title|status|assignee):\s*(.+)$/i;
+
 // Treat a standalone markdown file as ONE issue's body. A loose file has no backend columns,
 // so its metadata comes from optional leading `Title:`/`Status:`/`Assignee:` lines (the
 // convention the README body.md uses); the id falls back to the filename and the title to the
 // first `# heading`. Everything after the metadata block is the content body the preset parses.
-export function fileToRecord(absPath: string, content: string): IssueRecord {
+// `diagnostics`, when passed, collects `loose_header_ignored` findings for two silent-failure
+// shapes: (a) a header block that was IN PROGRESS (at least one Title/Status/Assignee line
+// already matched) got aborted by a non-matching line, discarding the whole block into body;
+// (b) a Title:/Status:/Assignee:-shaped line surviving in the body after the scan stopped —
+// it silently reads as plain text instead of the metadata it looks like.
+export function fileToRecord(absPath: string, content: string, diagnostics?: Finding[]): IssueRecord {
+  const id = basename(absPath).replace(/\.[^.]+$/, '');
   const lines = content.split('\n');
   const meta: Record<string, string> = {};
   let i = 0;
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.trim() === '') { i++; break; }
-    const m = /^(title|status|assignee):\s*(.+)$/i.exec(line.trim());
-    if (!m) { i = 0; break; }      // not a metadata block — the whole file is the body
+    const m = HEADER_LINE.exec(line.trim());
+    if (!m) {
+      // Only loud when a header block was already under way (i > 0) — a file that never looked
+      // like it had a header at all (the very first line doesn't match) is the normal case.
+      if (i > 0) {
+        diagnostics?.push({
+          code: 'loose_header_ignored', severity: 'warning', issueId: id,
+          message: `${absPath}: the header block was aborted by a non-header-shaped line and fell back to plain body (discarding any Title:/Status:/Assignee: lines already read): "${line}"`,
+        });
+      }
+      i = 0; break;      // not a metadata block — the whole file is the body
+    }
     meta[m[1]!.toLowerCase()] = m[2]!.trim();
   }
   const body = i > 0 ? lines.slice(i).join('\n').replace(/^\n+/, '') : content;
-  const id = basename(absPath).replace(/\.[^.]+$/, '');
+  // (b): header-shaped lines surviving in the body — only meaningful once a real header block
+  // was consumed (i > 0); otherwise `body` is the whole file and this would just re-report (a).
+  if (i > 0) {
+    for (const line of body.split('\n')) {
+      if (HEADER_LINE.test(line.trim())) {
+        diagnostics?.push({
+          code: 'loose_header_ignored', severity: 'warning', issueId: id,
+          message: `${absPath}: a Title:/Status:/Assignee:-shaped line appears in the body (after the header scan stopped) and was read as plain text, not metadata: "${line.trim()}"`,
+        });
+      }
+    }
+  }
   const titleFromHeading = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
   return {
     id,
@@ -83,9 +112,13 @@ export async function checkFile(filePath: string, options: TrackerCheckOptions =
   const preset = await resolveTrackerValidation(config, projectRoot);
   const abs = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
   if (!existsSync(abs)) throw new Error(`ztrack check: file not found: ${filePath}`);
-  const record = fileToRecord(abs, readFileSync(abs, 'utf8'));
+  const diagnostics: Finding[] = [];
+  const record = fileToRecord(abs, readFileSync(abs, 'utf8'), diagnostics);
   const context = await buildContext(preset, [record], loadOpts(projectRoot, options));
-  return check(preset, [record], context);
+  const result = check(preset, [record], context);
+  if (!diagnostics.length) return result;
+  const findings = [...diagnostics, ...result.findings];
+  return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings };
 }
 
 /** Validate an already-exported, validated root (committed CI artifact / `--input`).

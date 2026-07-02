@@ -137,6 +137,21 @@ export interface Finding {
   // and returned over MCP so an agent can act directly instead of inferring the fix.
   fix?: string;
 }
+
+// ── parse-time diagnostics side-channel ──────────────────────────────────────
+// A preset's `parse()` MAY attach a `diagnostics` array to the object it returns (e.g.
+// `{ issues, diagnostics }`) for content that parsed but not as the author intended — a
+// second AC section that would otherwise silently replace the first, a checkbox outside any
+// recognized section, a malformed id. `check()` lifts these into findings (default severity
+// 'warning') and strips the key before schema validation, mirroring the existing precedent of
+// engine-emitted findings that belong to no rule (`parse_failed`, `wellformed_shape`,
+// `waiver_*`). A preset that returns no `diagnostics` key behaves exactly as today.
+export interface ParseDiagnostic {
+  code: string;
+  severity?: 'error' | 'warning';
+  message: string;
+  issueId?: string;
+}
 export interface Context {
   now?: string;
   // which rule phases to run. 'all' (default) runs every rule — the strict,
@@ -569,6 +584,21 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
   return { ok: !withFix.some((f) => f.severity === 'error'), findings: withFix, export: input.root };
 }
 
+// Split a parse candidate's optional `diagnostics` key off into findings, and strip the key
+// so ValidationInputSchema never sees it. Absent/non-array `diagnostics` -> no findings, root
+// unchanged (a preset that never opts in is untouched). Exported for the other consumer of a
+// raw parse candidate (modelEdit's parseOneIssue): the strict preset schemas reject unknown
+// keys, so anything that schema-validates `preset.parse(...)` output must strip this key first.
+export function liftDiagnostics(candidate: unknown): { root: unknown; findings: Finding[] } {
+  if (!candidate || typeof candidate !== 'object' || !('diagnostics' in candidate)) return { root: candidate, findings: [] };
+  const { diagnostics, ...rest } = candidate as { diagnostics?: unknown } & Record<string, unknown>;
+  if (!Array.isArray(diagnostics)) return { root: rest, findings: [] };
+  const findings: Finding[] = (diagnostics as ParseDiagnostic[]).map((d) => ({
+    code: d.code, severity: d.severity ?? 'warning', message: d.message, ...(d.issueId ? { issueId: d.issueId } : {}),
+  }));
+  return { root: rest, findings };
+}
+
 /** The one entry point: parse -> ValidationInputSchema.parse({context, root}) ->
  *  pure rules. The validated Root is the export; nothing downstream re-parses or
  *  re-derives. */
@@ -579,12 +609,15 @@ export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecor
   } catch (error) {
     return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error) }] };
   }
+  const { root, findings: diagnosticFindings } = liftDiagnostics(candidate);
   // Waivers are core-parsed from each record's `## Waivers` body section (universal,
   // preset-agnostic) and merged into the context — `applyWaivers` then downgrades the
   // findings they name. The issue id comes from the record, not a synthesized heading.
   const parsed = parseWaivers(records);
   const merged: Context = parsed.length ? { ...ctx, waivers: [...(ctx.waivers ?? []), ...parsed] } : ctx;
-  return validateAndRun(preset, merged, candidate, false);
+  const result = validateAndRun(preset, merged, root, false);
+  if (!diagnosticFindings.length) return result;
+  return { ...result, ok: result.ok && !diagnosticFindings.some((f) => f.severity === 'error'), findings: [...diagnosticFindings, ...result.findings] };
 }
 
 /** Validate an already-parsed Root (the exported, validated model) against the same

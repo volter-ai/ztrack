@@ -23,7 +23,7 @@ import {
   check as runCheck, rule, gitWorld, gitFileExistsAtCommit, gitCommitFiles, relevanceMode, formatRef, BlockRefSchema,
   normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
-  type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type Preset, type PresetContextInput, type RawBlockRef,
+  type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type ParseDiagnostic, type Preset, type PresetContextInput, type RawBlockRef,
 } from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
@@ -121,11 +121,21 @@ function parseEvidenceLine(line: string): { id: string; image?: string; sha256?:
   return { id: head[1]!, ...(f.image ? { image: f.image } : {}), ...(f.sha256 ? { sha256: f.sha256 } : {}), commit: f.commit.toLowerCase(), acVersion: Number(f.acv) };
 }
 
-function parseAcLine(line: string): { id: string; version?: number; text: string } {
+// `malformed: true` marks the whole-line fallback: neither AC grammar matched, so the entire
+// line became the id — unaddressable by `ac patch` and unable to match a `blocked-by:` ref.
+// The caller emits `ac_id_malformed` when it sees this flag.
+function parseAcLine(line: string): { id: string; version?: number; text: string; malformed?: boolean } {
   const withV = /^(\S+)\s+v(\d+)\s+(.+)$/.exec(line);
   if (withV) return { id: withV[1]!, version: Number(withV[2]), text: withV[3]!.trim() };
   const noV = /^(\S+)\s+(.+)$/.exec(line);
-  return noV ? { id: noV[1]!, text: noV[2]!.trim() } : { id: line, text: line };
+  if (noV) return { id: noV[1]!, text: noV[2]!.trim() };
+  return { id: line, text: line, malformed: true };
+}
+
+// mdast's runtime nodes carry `position` (line/column) though the kit's MdNode type doesn't
+// declare it (kept minimal); read it defensively for diagnostic messages only.
+function nodeLine(node: MdNode): number | undefined {
+  return (node as { position?: { start?: { line?: number } } }).position?.start?.line;
 }
 
 // Carve out unknown top-level `## X` sections (anything but Acceptance Criteria / the core
@@ -149,7 +159,7 @@ function splitNotes(body: string): { known: string; notes: string[] } {
   return { known: known.join('\n'), notes: notes.filter(Boolean) };
 }
 
-function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
+function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[]): Record<string, unknown> {
   // Metadata comes STRUCTURED from the record's columns; only the content (summary, pr,
   // relations, ACs) is parsed out of the body markdown. id/title/status/assignee/labels are
   // never re-derived from synthesized markdown. Unknown `## X` sections are carried verbatim.
@@ -162,9 +172,24 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
   if (notes.length) issue.notes = notes;
   const tree = toMdast(known);
   let inAc = false;
+  let sawAcSection = false;
+  // Accumulated across EVERY AC-matching heading/list encountered — append, not assign, so a
+  // second `## Acceptance Criteria` section merges instead of silently replacing the first.
+  const acs: unknown[] = [];
 
   for (const node of tree.children ?? []) {
-    if (node.type === 'heading') { inAc = /acceptance criteria/i.test(nodeText(node)); continue; }
+    if (node.type === 'heading') {
+      const isAc = /acceptance criteria/i.test(nodeText(node));
+      if (isAc && sawAcSection) {
+        diagnostics?.push({
+          code: 'ac_sections_multiple', issueId: record.id,
+          message: `Issue ${record.id} has more than one "## Acceptance Criteria" heading; ACs from every section are merged (append) — none are discarded.`,
+        });
+      }
+      if (isAc) sawAcSection = true;
+      inAc = isAc;
+      continue;
+    }
     if (node.type === 'paragraph') {
       const text = nodeText(node);
       const summary = /^Summary:\s*(.+)$/im.exec(text)?.[1]?.trim();
@@ -180,11 +205,30 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
       if (relations.length) issue.relations = relations;
       continue;
     }
+    if (node.type === 'list' && !inAc) {
+      // A checkbox item outside any recognized AC section vanishes from the model with no
+      // trace today — loud it instead of silent.
+      for (const item of node.children ?? []) {
+        if (item.type !== 'listItem' || item.checked == null) continue;
+        const text = firstParagraphText(item);
+        const line = nodeLine(item);
+        diagnostics?.push({
+          code: 'ac_outside_section', issueId: record.id,
+          message: `Issue ${record.id} has a checkbox item outside any "## Acceptance Criteria" section${line ? ` (line ${line})` : ''}: "${text.slice(0, 60)}"`,
+        });
+      }
+      continue;
+    }
     if (node.type === 'list' && inAc) {
-      const acs: unknown[] = [];
       for (const item of node.children ?? []) {
         if (item.type !== 'listItem') continue;
-        const { id, version, text } = parseAcLine(firstParagraphText(item));
+        const { id, version, text, malformed } = parseAcLine(firstParagraphText(item));
+        if (malformed) {
+          diagnostics?.push({
+            code: 'ac_id_malformed', issueId: record.id,
+            message: `Issue ${record.id}: AC line matched neither "<id> v<version> <text>" nor "<id> <text>", so the whole line became the id "${id.slice(0, 80)}" — unaddressable by \`ac patch\` and unable to match a \`blocked-by:\` ref.`,
+          });
+        }
         const checked = item.checked === true;
         let status: string | undefined;
         let proof: unknown;
@@ -223,9 +267,10 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
         if (blocks.length) ac.blocks = blocks;
         acs.push(ac);
       }
-      issue.acceptanceCriteria = acs;
+      continue;
     }
   }
+  issue.acceptanceCriteria = acs;
   return issue;
 }
 
@@ -233,9 +278,12 @@ function parseDefaultIssue(record: IssueRecord): Record<string, unknown> {
 // from its body. Takes all records so bare blocking refs are classified once the whole
 // tracker is known.
 export function parseDefault(records: IssueRecord[]): unknown {
-  const issues = records.map(parseDefaultIssue);
+  const diagnostics: ParseDiagnostic[] = [];
+  const issues = records.map((r) => parseDefaultIssue(r, diagnostics));
   normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]);
-  return { issues };
+  // No `diagnostics` key at all when empty — a preset returning none behaves exactly as today
+  // (see engine.ts's `check()`, which strips the key before schema validation when present).
+  return diagnostics.length ? { issues, diagnostics } : { issues };
 }
 
 // ── serialize: the validated issue -> its STORED form (inverse of parse) ─────
