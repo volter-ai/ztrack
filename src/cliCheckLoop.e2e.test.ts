@@ -5,7 +5,7 @@
 // Stop-hook gate (`check --auto-scope`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -109,6 +109,20 @@ describe('loop target drives the Stop-hook gate', () => {
     ztrack(['loop', 'start', '--help']);
     expect(ztrack(['loop', 'status']).out).toMatch(/no loop armed/);
   });
+  // ZTB-7: the backend mints/serves letter-suffixed ids too (e.g. `ZL-A9`), but the old
+  // cliTarget grammar (`/^[A-Za-z][A-Za-z0-9]*-\d+$/`) demanded an all-numeric suffix, so
+  // `loop start`/`check` rejected an id every other verb accepted. Fabricate one directly in the
+  // store (a letter-suffixed id isn't one the backend itself mints, but is one it MUST serve —
+  // this is the workspace-observed shape, e.g. ZL-A9) and prove both verbs now accept it.
+  test('loop start/check accept a letter-suffixed issue id, as the backend mints/serves (e.g. ZL-A9)', () => {
+    const storeDir = join(root, '.volter', 'tracker', 'markdown');
+    const zt1 = readFileSync(join(storeDir, 'ZT-1.md'), 'utf8');
+    writeFileSync(join(storeDir, 'ZT-A9.md'), zt1.replace('identifier: "ZT-1"', 'identifier: "ZT-A9"'));
+    expect(ztrack(['check', 'ZT-A9']).code).toBe(0);
+    expect(ztrack(['loop', 'start', 'ZT-A9']).code).toBe(0);
+    expect(ztrack(['check', '--auto-scope']).code).toBe(0);
+    ztrack(['loop', 'stop']);
+  }, 30_000);
 });
 
 describe('CLI footguns: --help/--version never have side effects, and delete works', () => {
