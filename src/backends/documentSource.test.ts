@@ -197,3 +197,27 @@ describe('DocumentSource round-trip: unmodified splice reproduces the file byte-
     expect(readFileSync(path, 'utf8')).toBe(before);
   });
 });
+
+describe("DocumentSource umbrella presentation from the file's Title: header block (ZTB-4 dev/10)", () => {
+  test('Status:/Assignee: lines shape the umbrella state/assignees; Done maps to completed', () => {
+    const { resolved } = docFile([
+      'Title: TRACK-Z — Test document',
+      'Status: in-progress',
+      'Assignee: claude',
+      '',
+      '## DOC-1 — Alpha item',
+      '',
+      'Body.',
+      '',
+    ].join('\n'));
+    const umbrella = new DocumentSource(resolved).load('doc')!;
+    expect(umbrella.state).toBe('in-progress');
+    expect(umbrella.stateType).toBe('open');
+    expect(umbrella.assignees).toEqual(['claude']);
+
+    const { resolved: doneResolved } = docFile('Title: X\nStatus: done\n\n## DOC-1 — Item\n\nBody.\n');
+    const done = new DocumentSource(doneResolved).load('doc')!;
+    expect(done.state).toBe('done');
+    expect(done.stateType).toBe('completed');
+  });
+});

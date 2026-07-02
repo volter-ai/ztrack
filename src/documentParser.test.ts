@@ -165,3 +165,26 @@ describe('parseMarkdownDocumentSource — no id-bearing sections and no Title: h
     expect(issues).toEqual([]);
   });
 });
+
+// ── ZTB-4 dev/10: the umbrella's Status:/Assignee: header lines surface on the parsed issue ─────
+describe('umbrella Status:/Assignee: header lines (ZTB-4 dev/10)', () => {
+  test('the header block surfaces status/assignee on the umbrella issue ONLY (items use their own in-section blocks)', () => {
+    const issues = parseMarkdownDocumentSource(
+      'Title: T\nStatus: ready\nAssignee: kim\n\nTop matter.\n\n## AB-1 — Item\n\nBody.\n',
+      '/x/plan.md',
+    );
+    const umbrella = issues.find((i) => i.id === 'plan')!;
+    expect(umbrella.status).toBe('ready');
+    expect(umbrella.assignee).toBe('kim');
+    const item = issues.find((i) => i.id === 'AB-1')!;
+    expect(item.status).toBeUndefined();
+    expect(item.assignee).toBeUndefined();
+  });
+
+  test('a Title:-only header block leaves status/assignee unset (unchanged pre-dev/10 shape)', () => {
+    const issues = parseMarkdownDocumentSource('Title: T\n\n## AB-1 — Item\n\nBody.\n', '/x/plan.md');
+    const umbrella = issues.find((i) => i.id === 'plan')!;
+    expect(umbrella.status).toBeUndefined();
+    expect(umbrella.assignee).toBeUndefined();
+  });
+});

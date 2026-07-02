@@ -138,8 +138,16 @@ function buildLoadedIssue(parsed: DocumentParsedIssue): LoadedIssue {
   const base = baseCanonicalIssue(parsed);
   if (parsed.lineStart === undefined || parsed.level === undefined || parsed.raw === undefined) {
     // The umbrella issue (or, defensively, any record missing the additive dev/09 fields) —
-    // presented exactly as before dev/09: no reshaping, never writable.
-    return { issue: base, lineStart: parsed.lineStart, lineEnd: parsed.lineEnd };
+    // no reshaping, never writable. Its `Title:` header block's Status:/Assignee: lines (parsed
+    // by documentParser, same fileToRecord semantics) DO shape its presented state/assignee
+    // (ZTB-4 dev/10): a document's umbrella is otherwise permanently unassigned, which no
+    // preset with an assignee rule could ever accept.
+    const state = parsed.status ?? base.state;
+    const issue: CanonicalIssue = {
+      ...base, state, stateType: stateTypeOf(state),
+      assignees: parsed.assignee ? [parsed.assignee] : base.assignees,
+    };
+    return { issue, lineStart: parsed.lineStart, lineEnd: parsed.lineEnd };
   }
   let issue = base;
   let reshapeError: string | undefined;

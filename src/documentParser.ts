@@ -42,6 +42,12 @@ export interface DocumentParsedIssue {
    *  gate. Both absent for the umbrella issue (no single section backs it). */
   level?: number;
   raw?: string;
+  /** UMBRELLA ONLY (ZTB-4 dev/10): the `Status:`/`Assignee:` lines of the file's `Title:` header
+   *  block, exactly as fileToRecord (src/check.ts) would read them. Regular items carry their own
+   *  `status:`/`assignee:` header block INSIDE their section instead (decomposed by
+   *  documentWriteBack.ts, not here), so these stay unset for them — one source of truth each. */
+  status?: string;
+  assignee?: string;
 }
 
 function directChildIndices(doc: MarkdownDocument, parentIndex: number | null): number[] {
@@ -92,7 +98,7 @@ function subtreeExcisingIdBearing(doc: MarkdownDocument, index: number, isIdBear
   return out;
 }
 
-function parseHeaderBlock(preamble: string): { title?: string; headerLineCount: number } {
+function parseHeaderBlock(preamble: string): { title?: string; status?: string; assignee?: string; headerLineCount: number } {
   const lines = preamble.split('\n');
   const meta: Record<string, string> = {};
   let i = 0;
@@ -103,7 +109,10 @@ function parseHeaderBlock(preamble: string): { title?: string; headerLineCount: 
     if (!m) { i = 0; break; } // not a header block after all — nothing consumed
     meta[m[1]!.toLowerCase()] = m[2]!.trim();
   }
-  return { title: meta.title, headerLineCount: i };
+  // status/assignee ride along with title: fileToRecord (src/check.ts) — which this scan
+  // deliberately mirrors — USES all three; dropping two of them left the umbrella issue
+  // permanently unassigned/draft even when the header block says otherwise (ZTB-4 dev/10 fix).
+  return { title: meta.title, status: meta.status, assignee: meta.assignee, headerLineCount: i };
 }
 
 // The umbrella issue's own text: the preamble AFTER the consumed header-block lines (mirrors
@@ -169,6 +178,8 @@ export function parseMarkdownDocumentSource(text: string, filePath: string): Doc
     issues.push({
       id: umbrellaId, title: header.title || umbrellaId, parent: null, children: [],
       body: umbrellaBody(doc, header.headerLineCount, isIdBearing),
+      ...(header.status !== undefined ? { status: header.status } : {}),
+      ...(header.assignee !== undefined ? { assignee: header.assignee } : {}),
       // No line span — the umbrella IS the file (mirrors fileToRecord's loose-mode "whole file,
       // no span" origin for a file with no backend columns).
     });
