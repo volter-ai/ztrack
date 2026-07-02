@@ -61,12 +61,14 @@ runs:
           [ -d "$AP/node_modules" ] || (cd "$AP" && bun install --frozen-lockfile >/dev/null)
           ZTRACK=(bun "$AP/src/cli.ts")
         fi
+        # ${PRESET_ARGS[@]+...} guard: expanding an EMPTY array under `set -u` is an
+        # "unbound variable" error on bash 3.2 (GitHub's macOS runners' /bin/bash).
         PRESET_ARGS=()
         [ -n "$PRESET" ] && PRESET_ARGS=(--preset "$PRESET")
         if [ -n "$ROOT" ]; then
           # `root` avoids reading the live tracker store — it does NOT avoid executing a
           # preset. Without `preset`, this still runs the checkout's own preset.mts.
-          "${ZTRACK[@]}" check --input "$ROOT" --verify-commits "${PRESET_ARGS[@]}"
+          "${ZTRACK[@]}" check --input "$ROOT" --verify-commits ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
         else
           if [ ! -f .volter/tracker-config.json ]; then
             echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2
@@ -79,5 +81,5 @@ runs:
             # validated root) AND `preset` pointed at a TRUSTED (e.g. base-ref) preset copy.
             echo "::warning title=ztrack::'ztrack check' always executes a validation preset — currently this repo's own validation preset (preset.mts). For untrusted/fork PRs, pass 'root' (a committed validated root) AND 'preset' pointed at a trusted (e.g. base-ref) preset copy."
           fi
-          "${ZTRACK[@]}" check "${PRESET_ARGS[@]}"
+          "${ZTRACK[@]}" check ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
         fi
