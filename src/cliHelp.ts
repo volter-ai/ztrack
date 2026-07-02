@@ -115,6 +115,10 @@ Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
   --sync github --repo o/n   LINK to GitHub Issues (two-way sync) and pull existing issues;
                              GitHub becomes the source of truth (the local store is gitignored).
   --policy …                 conflict-resolution default for a linked tracker (default merge).
+
+Beyond the default store, .volter/tracker-config.json accepts a \`sources\` array to declare more:
+each entry is {path, format: "issue-per-file"|"document", readonly?} — a "document" source is
+one markdown file holding many issues (id-bearing headings become issues; nesting becomes parents).
 `);
     return true;
   }

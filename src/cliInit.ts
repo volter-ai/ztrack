@@ -94,6 +94,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     '',
     ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
     ui.dim('Edit the installed validation preset to encode your project rules.'),
+    ui.dim('Declare more stores in .volter/tracker-config.json\'s `sources` array — a "document" source is one markdown file holding many issues.'),
     '',
   ].join('\n'));
   return true;
