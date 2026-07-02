@@ -17,6 +17,7 @@ function ztrackIn(cwd: string, args: string[]): { code: number; out: string } {
   const r = spawnSync('bun', ['run', CLI, ...args], { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
+const gitIn = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' });
 
 describe('issue create defaults conform to the installed preset (markdown backend)', () => {
   let root = '';
@@ -24,6 +25,13 @@ describe('issue create defaults conform to the installed preset (markdown backen
     root = mkdtempSync(join(tmpdir(), 'ztrk-create-defaults-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
     symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
+    // The default assignee IS `git config user.name` (markdownBackend.defaultAssignee), so the
+    // fixture must pin its own repo-local identity — otherwise the test silently depends on the
+    // runner's GLOBAL git config (present on a dev machine, absent on a CI runner, where the
+    // default resolves to '' and the create is nonconforming).
+    gitIn(root, 'init', '-q');
+    gitIn(root, 'config', 'user.email', 't@t.co');
+    gitIn(root, 'config', 'user.name', 't');
   });
   afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
 

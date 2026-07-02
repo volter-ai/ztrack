@@ -2,6 +2,13 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.35.1
+
+The first published release of the 0.35 line — v0.35.0 was tagged but its publish run was
+blocked by a CI-only test failure (a fixture depending on the runner's global git identity;
+no product code was affected). Fixed the fixture to pin its own repo-local identity. All
+0.35.0 changes below ship in this version.
+
 ## 0.35.0
 
 Declared sources — a tracker can now span more than one markdown store, including a single file
