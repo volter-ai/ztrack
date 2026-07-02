@@ -17,9 +17,11 @@ new_repo() { local d="$tmp/$1"; mkdir -p "$d"; ( cd "$d"
   echo "# $1" > README.md; git add README.md; git commit -q -m init
   npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
   npx ztrack init --team APP --preset "${2:-default}" >/dev/null ); printf '%s' "$d"; }
-# mkissue <repo> <title> <body> [state=ready] [assignee=t]  (pass assignee="" to omit it)
+# mkissue <repo> <title> <body> [state=ready] [assignee=t]  (pass assignee="" to create an
+# EXPLICITLY unassigned issue — a bare create with no --assignee now defaults the assignee
+# from git identity (ZTB-7), so the flag must be passed, empty, to mint an unassigned record)
 mkissue() { local asg="${5-t}"; ( cd "$1" && printf '%b' "$3" > _b.md \
-  && npx ztrack issue create --title "$2" --label type:case --state "${4:-ready}" ${asg:+--assignee "$asg"} --body-file _b.md >/dev/null ); }
+  && npx ztrack issue create --title "$2" --label type:case --state "${4:-ready}" ${asg+--assignee "$asg"} --body-file _b.md >/dev/null ); }
 check_out() { ( cd "$1" && npx ztrack check 2>&1 ) || true; }
 chk() { local rc; ( cd "$1" && npx ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
 has() { printf '%s' "$1" | grep -c "$2" || true; }

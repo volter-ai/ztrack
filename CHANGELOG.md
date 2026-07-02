@@ -2,12 +2,19 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.35.2
+
+The first published release of the 0.35 line — v0.35.0 and v0.35.1 were tagged but their
+publish runs were blocked by two CI-only test-harness failures (no product code was
+affected): a fixture depending on the runner's global git identity, and the check-e2e
+script's "no assignee" case predating `issue create`'s assignee default (it must now pass
+an explicit empty `--assignee` to mint an unassigned record). All 0.35.0 changes below
+ship in this version.
+
 ## 0.35.1
 
-The first published release of the 0.35 line — v0.35.0 was tagged but its publish run was
-blocked by a CI-only test failure (a fixture depending on the runner's global git identity;
-no product code was affected). Fixed the fixture to pin its own repo-local identity. All
-0.35.0 changes below ship in this version.
+Tagged, never published (see 0.35.2): fixed the create-defaults e2e fixture to pin its own
+repo-local git identity instead of depending on the runner's global config.
 
 ## 0.35.0
 
