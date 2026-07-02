@@ -371,4 +371,86 @@ Relates: D-6
     });
   });
 
+  // ZTB-10 (residual R4): bare leading prose — content before the FIRST "## " heading that is
+  // not a recognized metadata line — used to vanish silently on a patch/fmt round trip. See the
+  // `prose` schema field comment. These tests prove the carry, its idempotence, and zero churn
+  // for bodies that have none. simple-gh-sdlc duplicates simple-sdlc's grammar (see that file for
+  // the twin coverage) with the extra `PR:` metadata line.
+  describe('bare leading prose (ZTB-10)', () => {
+    test('a bare leading prose paragraph round-trips (structured round-trip)', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `Bare leading prose paragraph not under any subsection heading.\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 do the thing\n  - status: pending\n`,
+      };
+      const root = DefaultRootSchema.parse(parseDefault([rec]));
+      const issue = root.issues[0]!;
+      expect(issue.prose).toBe('Bare leading prose paragraph not under any subsection heading.');
+      const { body, columns } = serializeIssue(issue);
+      expect(body).toBe(rec.body); // byte-identical (canonical spacing already matched)
+      const reparsed = DefaultRootSchema.parse(parseDefault([{ id: issue.id, title: columns.title!, status: columns.status!, assignee: columns.assignee, labels: columns.labels, body }]));
+      expect(reparsed.issues[0]).toEqual(issue);
+    });
+
+    test('prose interleaved with metadata lines (including PR:) is preserved without duplication (serialize -> parse -> serialize fixed point)', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `Intro prose\nSummary: x\nPR: ${PR}\nMore prose\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n`,
+      };
+      const root1 = DefaultRootSchema.parse(parseDefault([rec]));
+      const issue1 = root1.issues[0]!;
+      expect(issue1.summary).toBe('x');
+      expect(issue1.pr).toEqual({ url: PR });
+      expect(issue1.prose).toBe('Intro prose\nMore prose');
+      const { body: body1, columns } = serializeIssue(issue1);
+      expect((body1.match(/^Summary:/gm) ?? []).length).toBe(1); // metadata not duplicated
+      expect((body1.match(/^PR:/gm) ?? []).length).toBe(1);
+      const root2 = DefaultRootSchema.parse(parseDefault([{ id: issue1.id, title: columns.title!, status: columns.status!, assignee: columns.assignee, labels: columns.labels, body: body1 }]));
+      const issue2 = root2.issues[0]!;
+      expect(issue2).toEqual(issue1); // fixed point on the model
+      const { body: body2 } = serializeIssue(issue2);
+      expect(body2).toBe(body1); // fixed point on the bytes
+    });
+
+    test('a preamble with a ### sub-heading and a fenced code block is carried verbatim', () => {
+      const preamble = '### Design notes\n\nSome context.\n\n```ts\nconst x = 1;\n```';
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `${preamble}\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n`,
+      };
+      const root = DefaultRootSchema.parse(parseDefault([rec]));
+      const issue = root.issues[0]!;
+      expect(issue.prose).toBe(preamble);
+      const { body } = serializeIssue(issue);
+      expect(body).toContain(preamble);
+    });
+
+    test('a body with no bare leading prose serializes to identical bytes to a model with no `prose` field (no churn)', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `Summary: no prose here\nChildren: D-2\n\n## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n`,
+      };
+      const root = DefaultRootSchema.parse(parseDefault([rec]));
+      const issue = root.issues[0]!;
+      expect(issue.prose).toBeUndefined();
+      const { body } = serializeIssue(issue);
+      const { prose: _drop, ...withoutProseField } = issue as typeof issue & { prose?: string };
+      const { body: bodyWithoutProseField } = serializeIssue(withoutProseField as typeof issue);
+      expect(body).toBe(bodyWithoutProseField);
+      expect(body).toBe(rec.body); // exact byte round trip, matching the pre-ZTB-10 behavior
+    });
+
+    test('a checkbox line in the preamble is carried as prose AND still raises ac_outside_section', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `- [ ] fix the thing outside any section\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 the real AC\n  - status: pending\n`,
+      };
+      // parseDefault (not schema.parse) — this fixture also raises a `diagnostics` key, which the
+      // strict DefaultRootSchema rejects (see the existing ac_outside_section test above).
+      const root = parseDefault([rec]) as { issues: { prose?: string }[] };
+      expect(root.issues[0]!.prose).toBe('- [ ] fix the thing outside any section');
+      const r = checkDefault([rec], ctx);
+      expect(r.findings.some((f) => f.code === 'ac_outside_section')).toBe(true);
+    });
+  });
+
 });

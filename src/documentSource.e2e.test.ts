@@ -538,3 +538,106 @@ describe('document source write-back (ZTB-9 dev/21): splices land on LEAF items 
     expect(readFileSync(nDocPath(), 'utf8')).toBe(before);
   });
 });
+
+// ZTB-10 (residual R4): the plain-file bug — `ac patch` silently dropping a bare leading prose
+// paragraph (text before the first "## " heading that isn't a recognized metadata line) — also
+// hit document-source items: the record body the preset sees is `decomposeSection().middle`
+// (documentSource.ts), so bare prose sitting between an item's `status:`/`assignee:` header block
+// and its first (shifted) subsection heading was dropped exactly like the plain-file case. Proven
+// through the real CLI, splice byte-local via `assertOnlySpanChanged` (ZTB-9's helper, reused).
+describe('document source write-back (ZTB-10): bare leading prose survives a real `ac patch`', () => {
+  let pRoot = '';
+  let pRootReal = '';
+  const pDocPath = () => join(pRootReal, 'doc.md');
+  let pHeadSha = '';
+
+  // PROSE-1's own content, between its header block and "### Acceptance Criteria" (shifts to
+  // "## Acceptance Criteria" for the preset — see documentSource.ts's `shiftHeadings` call), is a
+  // bare prose paragraph — the R4 shape, one nesting level in.
+  const PROSE_DOC = [
+    '# Team backlog (no `Title:` header — no umbrella issue)',
+    '',
+    '## PROSE-1 — Item with bare leading prose',
+    '',
+    'status: draft',
+    'assignee: kim',
+    '',
+    'Bare leading prose paragraph not under any subsection heading.',
+    '',
+    '### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 do the thing',
+    '  - status: pending',
+    '',
+    '## PROSE-2 — Unrelated sibling item',
+    '',
+    'status: draft',
+    'assignee: sam',
+    '',
+    '### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 sibling criterion',
+    '  - status: pending',
+    '',
+  ].join('\n');
+
+  beforeAll(() => {
+    pRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-prose-'));
+    pRootReal = realpathSync(pRoot);
+    mkdirSync(join(pRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(pRoot, 'node_modules', 'ztrack'));
+    gitIn(pRoot, 'init', '-q'); gitIn(pRoot, 'config', 'user.email', 't@t.co'); gitIn(pRoot, 'config', 'user.name', 't');
+    expect(ztIn(pRoot, 'init', '--team', 'APP').code).toBe(0);
+    writeFileSync(pDocPath(), PROSE_DOC);
+    setSources(pRoot, [{ path: '.volter/tracker/markdown' }, { path: 'doc.md', format: 'document' }]);
+    gitIn(pRoot, 'add', '-A');
+    gitIn(pRoot, 'commit', '-q', '-m', 'seed');
+    pHeadSha = gitIn(pRoot, 'rev-parse', 'HEAD').stdout.trim();
+    expect(pHeadSha).toMatch(/^[0-9a-f]{7,40}$/);
+  }, 60_000);
+  afterAll(() => { if (pRoot) rmSync(pRoot, { recursive: true, force: true }); });
+
+  test('a real `ac patch` on PROSE-1 keeps its bare leading prose AND lands the AC change; the splice is byte-local', () => {
+    const viewBefore = J(ztIn(pRoot, 'issue', 'view', 'PROSE-1', '--json')) as { lineStart: number; lineEnd: number };
+    const beforeText = readFileSync(pDocPath(), 'utf8');
+    expect(beforeText).toContain('Bare leading prose paragraph not under any subsection heading.');
+
+    const patchJson = JSON.stringify({
+      checked: true, status: 'passed',
+      evidence: [{ id: 'ev1', commit: pHeadSha, acVersion: 1 }],
+      proof: { explanation: 'the seed commit establishes the criterion', evidenceRefs: ['ev1'] },
+    });
+    const patch = ztIn(pRoot, 'ac', 'patch', 'PROSE-1', 'AC-1', '--json', patchJson);
+    expect(patch.code).toBe(0);
+    expect(JSON.parse(patch.out)).toMatchObject({ issue: 'PROSE-1', acId: 'AC-1', changed: true });
+
+    const afterText = readFileSync(pDocPath(), 'utf8');
+    expect(afterText).not.toBe(beforeText);
+    // byte-local: only PROSE-1's own recorded span changed (ZTB-9's helper, reused)
+    assertOnlySpanChanged(beforeText, afterText, viewBefore.lineStart, viewBefore.lineEnd);
+
+    // R4: the prose paragraph must STILL be in the document after the patch...
+    expect(afterText).toContain('Bare leading prose paragraph not under any subsection heading.');
+    // ...at its original position, right after the header block and before the AC heading.
+    const afterLines = afterText.split('\n');
+    const proseIdx = afterLines.indexOf('Bare leading prose paragraph not under any subsection heading.');
+    const acHeadingIdx = afterLines.indexOf('### Acceptance Criteria');
+    expect(proseIdx).toBeGreaterThan(0);
+    expect(acHeadingIdx).toBeGreaterThan(proseIdx);
+    // ...and it moved neither before the patch's index nor into PROSE-2's section.
+    expect(afterLines.indexOf('Bare leading prose paragraph not under any subsection heading.'))
+      .toBe(beforeText.split('\n').indexOf('Bare leading prose paragraph not under any subsection heading.'));
+
+    // AND the AC change actually landed.
+    const view = J(ztIn(pRoot, 'issue', 'view', 'PROSE-1', '--json')) as { body: string };
+    expect(view.body).toContain('- [x] AC-1 v1 do the thing');
+    expect(view.body).toContain('status: passed');
+
+    // PROSE-2's whole section — the tail of the file — is untouched.
+    const tailMarker = '## PROSE-2 — Unrelated sibling item';
+    const tailAt = beforeText.indexOf(tailMarker);
+    expect(tailAt).toBeGreaterThan(0);
+    const tail = beforeText.slice(tailAt);
+    expect(afterText.endsWith(tail)).toBe(true);
+  });
+});

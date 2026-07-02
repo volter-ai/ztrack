@@ -345,7 +345,8 @@ an edit anywhere clobbers a human's surrounding prose. The contract:
 2. A round trip after editing **one** model element changes only the bytes that element OWNS.
    "Owns" is defined per preset — for `simple-sdlc`/`simple-gh-sdlc`: an AC owns its lines
    within the `## Acceptance Criteria` section; issue-level fields (Summary/Children/Blocks/…)
-   own their header lines; an unknown `## X` section owns its own lines, wherever it sits.
+   own their header lines; an unknown `## X` section owns its own lines, wherever it sits; the
+   bare leading prose preamble (before the first `## ` heading — see below) owns its own lines too.
 3. A preset with no `serialize` (`speckit`) is **exempt** by construction: `requireWritable`
    (src/modelEdit.ts) already throws before either preset is ever asked to round-trip, so the
    contract is satisfied vacuously — there is nothing to build for the exemption itself.
@@ -359,6 +360,16 @@ carved-out section sat BEFORE or AFTER `## Acceptance Criteria` in the original 
 (`notesBefore` / `notes` respectively on the parsed model — `notesBefore` is new; `notes` keeps
 its old name and meaning for the common after-AC case), and `serializeIssue` re-emits each
 group where it was instead of appending everything last.
+
+The carry extends one layer further out (ZTB-10): content before even the FIRST `## ` heading —
+i.e. before any `notesBefore` section begins — that isn't a recognized metadata line
+(`Summary:`/`Children:`/`Blocks:`/`Blocked by:`/`Relates:`, plus `PR:` in `simple-gh-sdlc`) is
+ALSO carried verbatim, in a separate `prose` model field, emitted right after the metadata lines
+and before `notesBefore`'s sections. This closes the plain-file/document-source bug where a bare
+leading paragraph (or a stray checkbox, a `###` sub-heading, a fenced code block) sitting before
+any `## ` heading vanished silently on a patch/fmt round trip. Known remaining gap: prose sitting
+INSIDE `## Acceptance Criteria` itself (between the heading and the checkbox list, or after the
+list) is still dropped — only the pre-first-heading preamble is carried.
 
 **The narrowing.** Byte-identity in case 1 is proven for CANONICAL bodies — ones already shaped
 like the preset's own `serialize()` output (single blank-line section separators, the exact

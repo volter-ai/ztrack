@@ -42,6 +42,15 @@ preset authors.
   position, not just content, so a patch never relocates a human's untouched prose. Every shipped
   preset proves this through the shared kit (`src/testkit/presetConformance.ts`); see
   `docs/PRESETS.md`'s "Round-Trip Fidelity" section for the full contract.
+- **`ac patch`/`fmt` no longer drop bare leading prose.** In the default-family SDLC presets
+  (`simple-sdlc`, `simple-gh-sdlc`), content before an issue body's first `## ` heading that isn't
+  a recognized metadata line (`Summary:`/`Children:`/`Blocks:`/`Blocked by:`/`Relates:`, plus
+  `PR:` in `simple-gh-sdlc`) — a bare paragraph, a stray checkbox, a `###` sub-heading, a fenced
+  code block — used to vanish silently on a patch/fmt round trip. It's now carried verbatim (a new
+  `prose` model field), the same round-trip-fidelity choice this preset family already makes for
+  unknown `## X` sections (`notes`/`notesBefore`). **Known remaining gap:** prose sitting INSIDE
+  the `## Acceptance Criteria` section itself (between the heading and the checkbox list, or after
+  the list) is still dropped — only the pre-first-heading preamble is carried by this fix.
 - **Provenance on records and findings.** Every `IssueRecord` now carries an `origin: {path,
   lineStart?, lineEnd?}` and every `Finding` an `origin: {path, line?}`, populated from the
   markdown backend's already-resolved file path (and, for a document source, the issue's line
