@@ -61,7 +61,10 @@ describe('mcp serve — the agent-facing stdio server', () => {
     const r = await mcpSession([
       { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'tracker_issue_list', arguments: {} } },
       { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'tracker_check', arguments: {} } },                         // baseline: green
-      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'tracker_issue_create', arguments: { title: 'Bad' } } },   // minimal create (no state) — an incomplete issue
+      // 'ready' with no ACs is nonconforming (ready_requires_dev_ac). A bare title-only create no
+      // longer serves as the "bad issue": since ZTB-7 its defaults (state draft, assignee from
+      // git user.name) conform to the installed preset by design.
+      { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'tracker_issue_create', arguments: { title: 'Bad', state: 'ready' } } },
       { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'tracker_check', arguments: {} } },                         // now: caught
     ]);
 

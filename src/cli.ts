@@ -5,6 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exportTrackerRoot } from './export.ts';
+import { checkTracker } from './check.ts';
 import { lintIssueBody } from './lint.ts';
 import { applyTx, planTx } from './tx.ts';
 import type { TxEdit } from './tx.ts';
@@ -448,7 +449,21 @@ GraphQL-shaped query against the local tracker store.
   if (isCreate && result.stdout && !result.stderr) {
     try {
       const id = (JSON.parse(result.stdout) as { identifier?: string }).identifier;
-      if (id) process.stderr.write(`${statusMark('pass')} ${ui.green(`created ${id}`)}\n`);
+      if (id) {
+        process.stderr.write(`${statusMark('pass')} ${ui.green(`created ${id}`)}\n`);
+        // A create is never silently invalid: run the new record through the installed preset's
+        // parse+schema (the same pipeline `ztrack check` runs) and surface any findings. Defaults
+        // keep a bare create conformant; an explicit flag override that isn't (e.g. --state
+        // in-review with no ACs) is now visible instead of a silent mint. Best-effort — `ztrack
+        // check` remains the source of truth, this is just immediate feedback.
+        try {
+          const verify = await checkTracker({ issues: [id] });
+          if (verify.findings.length) {
+            process.stderr.write(`${statusMark('warn')} ${ui.yellow(`${id} does not fully conform to the installed preset:`)}\n`);
+            for (const f of verify.findings) process.stderr.write(`  ${ui.dim(`${f.code}: ${f.message}`)}\n`);
+          }
+        } catch { /* validation entrypoint not resolvable here — skip, `ztrack check` still catches it */ }
+      }
     } catch { /* non-JSON output (e.g. a non-markdown backend) — skip the confirmation */ }
   }
   // A backend error (unknown verb, not-found, not-implemented) reports on stderr with no stdout.
