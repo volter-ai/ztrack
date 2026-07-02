@@ -5,11 +5,12 @@
 export type TrackerBackendName = 'local' | 'markdown';
 
 /** One declared markdown source (ZTB-3). `path` is project-root-relative: a DIRECTORY of
- *  one-issue-per-file markdown (`issue-per-file`), or a single markdown FILE holding many issues
- *  (`document` — not yet implemented; landing in ZTB-4, and rejected as a config error until then).
- *  `format` defaults from the shape of `path` when omitted: a `.md` file → `document`, anything
- *  else → `issue-per-file`. `readonly: true` marks a source ztrack may read but never write —
- *  writes routed at it (by the target record's `origin.path`) are rejected. */
+ *  one-issue-per-file markdown (`issue-per-file`), or a single markdown FILE decomposed into many
+ *  issues by its id-bearing headings (`document` — ZTB-4; see src/documentParser.ts). `format`
+ *  defaults from the shape of `path` when omitted: a `.md` file → `document`, anything else →
+ *  `issue-per-file`. `readonly: true` marks a source ztrack may read but never write — writes
+ *  routed at it (by the target record's `origin.path`) are rejected; a `document` source rejects
+ *  every write regardless of this flag (read-only until write-back lands in ZTB-4 dev/09). */
 export interface TrackerSourceConfig {
   path: string;
   format?: 'issue-per-file' | 'document';

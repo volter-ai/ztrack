@@ -63,9 +63,10 @@ export interface CoreIssue {
 }
 export interface CoreRoot { issues: CoreIssue[] }
 
-// Where a record's content lives on disk: the file (and, once document sources land in ZTB-4,
-// the line span within it) the record was read from. Populated at construction, never authored
-// by a rule. Named `origin`, NOT `Source` — `Source` (above) is the unrelated domain type for
+// Where a record's content lives on disk: the file (and, for a `document`-sourced issue — ZTB-4 —
+// the line span of its section within that file) the record was read from. Populated at
+// construction, never authored by a rule. Named `origin`, NOT `Source` — `Source` (above) is the
+// unrelated domain type for
 // evidence sources on issues.
 export interface Origin { path: string; lineStart?: number; lineEnd?: number }
 

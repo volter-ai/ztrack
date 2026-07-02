@@ -161,7 +161,7 @@ describe('markdown backend — declared `sources` (ZTB-3)', () => {
   test('every declared source readonly: create fails clean instead of writing anywhere', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));
     const be = createMarkdownBackend(root, 'PH', [src(join(root, 'a'), true), src(join(root, 'b'), true)]);
-    await expect(be.command(['issue', 'create', '--title', 'nope'])).rejects.toThrow('no writable source');
+    await expect(be.command(['issue', 'create', '--title', 'nope'])).rejects.toThrow('no writable issue-per-file source');
   });
 
   // Composition pin (ZTB-6 × ZTB-3): reparentChildren writes the parent through writeIssue, so a

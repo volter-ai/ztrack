@@ -34,6 +34,17 @@ type Row = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
 const strList = (v: unknown): string[] => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
 
+// A row's line span (ZTB-4): present only for a document-sourced issue, where one file backs many
+// issues and each occupies a section span within it. `null` (the markdown backend's
+// not-requested/not-applicable sentinel — see backends/markdownBackend.ts's `listRow`) and
+// `undefined` (field not requested at all) both mean "no span".
+function span(row: Row): { lineStart?: number; lineEnd?: number } {
+  return {
+    ...(typeof row.lineStart === 'number' ? { lineStart: row.lineStart } : {}),
+    ...(typeof row.lineEnd === 'number' ? { lineEnd: row.lineEnd } : {}),
+  };
+}
+
 // Read one backend row into the structured IssueRecord the preset consumes: metadata straight
 // from the columns, content from the body. Core NEVER synthesizes metadata-as-markdown — the
 // metadata stays structured all the way to the preset, so there is no body↔column split-brain.
@@ -46,9 +57,10 @@ export function rowToRecord(row: Row): IssueRecord {
     ...(Array.isArray(row.labels) ? { labels: strList(row.labels) } : {}),
     ...(Array.isArray(row.children) ? { children: strList(row.children) } : {}),
     body: str(row.body) || str(row.description),
-    // The markdown backend attaches the issue's absolute file path to every row (ZTB-2); one
-    // whole file backs one issue, so there's no line span to populate.
-    ...(str(row.path) ? { origin: { path: str(row.path) } } : {}),
+    // The markdown backend attaches the issue's absolute file path to every row (ZTB-2); an
+    // issue-per-file row has no line span (the whole file is the issue) — a document-sourced row
+    // (ZTB-4) carries its section's span too, when requested (see the `json` field list below).
+    ...(str(row.path) ? { origin: { path: str(row.path), ...span(row) } } : {}),
   };
 }
 
@@ -74,7 +86,7 @@ export function viewToRecord(view: Record<string, unknown>, fallbackId: string):
     ...(labels.length ? { labels } : {}),
     ...(children.length ? { children } : {}),
     body: str(view.body),
-    ...(str(view.path) ? { origin: { path: str(view.path) } } : {}),
+    ...(str(view.path) ? { origin: { path: str(view.path), ...span(view) } } : {}),
   };
 }
 
@@ -102,7 +114,9 @@ export async function loadValidationInput<R extends CoreRoot>(
   const rows = await client.issue.list({
     state: 'all',
     limit: opts.limit ?? 5000,
-    json: 'identifier,title,body,description,state,stateType,assignee,labels,children,path',
+    // `lineStart`/`lineEnd` (ZTB-4): a document-sourced issue's section span; null/absent for
+    // issue-per-file rows (see backends/markdownBackend.ts's `listRow`).
+    json: 'identifier,title,body,description,state,stateType,assignee,labels,children,path,lineStart,lineEnd',
   });
   const all = Array.isArray(rows) ? (rows as Row[]) : [];
   const wanted = opts.issues ? new Set(opts.issues.map(String)) : null;
