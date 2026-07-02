@@ -70,7 +70,7 @@ assignee: sam
 
 Register the route in the router.
 
-### Acceptance Criteria
+#### Acceptance Criteria
 
 - [ ] dev/01 v1 GET /health returns 200
   - status: pending
@@ -98,13 +98,12 @@ reports four issues:
 | `APP-1a` | Wire the route | `APP-1` | sam | draft |
 | `APP-2` | Add the /ready endpoint | `BACKLOG` | alex | draft |
 
-`APP-1`'s presented body is level-shifted so the installed preset sees it in the exact shape it
-expects from an issue-per-file store — its own `### Acceptance Criteria` subsection is promoted to
-`## Acceptance Criteria`, and `APP-1a`'s subtree is excised (it's a separate issue, not duplicated
-content):
+`APP-1a`'s presented body is level-shifted so the installed preset sees it in the exact shape it
+expects from an issue-per-file store — its own `#### Acceptance Criteria` subsection (level 4 in
+the document) is promoted to `## Acceptance Criteria`:
 
 ```markdown
-Implement a liveness endpoint the load balancer can poll.
+Register the route in the router.
 
 ## Acceptance Criteria
 
@@ -112,8 +111,13 @@ Implement a liveness endpoint the load balancer can poll.
   - status: pending
 ```
 
+`APP-1`'s presented body excises `APP-1a`'s subtree (it's a child issue, not duplicated content).
 `ztrack check` runs the installed preset over every one of these issues exactly as it would an
-issue-per-file store — `ac patch`, evidence rules, lifecycle gates, all of it.
+issue-per-file store — evidence rules, lifecycle gates, all of it. Splice write-backs (`ac patch`,
+title/body edits) currently land only on **top-level leaf** items like `APP-2`: an item with an
+id-bearing child (`APP-1`), or an item nested inside another's section (`APP-1a`), reads fine but
+refuses splices, failing closed with an error naming the file (see
+[Writing back](#writing-back)) — so keep the ACs you intend to `ac patch` on top-level items.
 
 ### Grammar rules
 
@@ -125,10 +129,10 @@ issue-per-file store — `ac patch`, evidence rules, lifecycle gates, all of it.
   body — **except** any nested id-bearing heading inside it, which becomes a **child issue**
   instead (the nesting is the parent link) and is excised from the parent's body.
 - Directly under an item's heading, an optional header block of `status: <state>` /
-  `assignee: <name>` lines (one per line, stop at the first non-matching line or a blank line)
-  sets that item's presented state/assignee. A header block that never gets going (the first line
-  after the heading doesn't match) is simply absent — the item just keeps its defaults (`draft` /
-  unassigned).
+  `assignee: <name>` lines (one per line, terminated by a blank line) sets that item's presented
+  state/assignee. The block is all-or-nothing: if any other non-matching line interrupts it before
+  the blank line, the whole block is treated as absent — its lines read as plain body content and
+  the item keeps its defaults (`draft` / unassigned).
 - A per-item `Acceptance Criteria` subsection (any heading level, e.g. `### Acceptance Criteria`
   directly under a `##` item) attaches ACs to that item. Read-side, an item's own subsection
   headings are level-shifted so the preset's grammar sees them in canonical (issue-per-file)
@@ -166,6 +170,7 @@ Two kinds of edit reach a document source:
 | `issue delete` | **always** fails closed — removing a section is a file edit, not a tracker operation |
 | any write to the **umbrella** issue | **always** fails closed — the umbrella *is* the file, not a spliceable section within it |
 | a write to an item whose subtree was **excised** (it has an id-bearing child) | fails closed regardless of field — its recorded span doesn't map cleanly onto just its own bytes |
+| a write to a **nested** item (its section lives inside an ancestor item's section) | currently fails closed — the splice integrity guard requires every *other* issue's section to be byte-identical, and an ancestor's section contains the nested span |
 | a write to a `readonly: true` source | fails closed at the source layer, before any document-specific guard runs |
 | a **stale** document (changed on disk since it was read) | fails closed — re-run against current contents |
 
@@ -190,9 +195,9 @@ preset's own grammar (`simple-sdlc`/`simple-gh-sdlc`) — they fire identically 
 lives in its own file or inside a document source's item, since a document item's body is
 level-shifted into the same shape before the preset ever parses it. `loose_header_ignored` is
 specific to checking a bare file as one issue (`ztrack check ./some-file.md`); a document source's
-own `Title:`/`status:`/`assignee:` header-block scan does not currently emit it — an aborted
-header block there falls back to defaults silently, the same way loose-file parsing did before
-that diagnostic existed.
+own `Title:`/`status:`/`assignee:` header-block scans do not currently emit it — an aborted
+umbrella header block is absorbed silently (a known gap), the same hazard loose-file parsing had
+before that diagnostic existed.
 
 ## Round-trip fidelity
 
