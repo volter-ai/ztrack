@@ -63,6 +63,62 @@ fire "$d" CAP >/dev/null; fire "$d" CAP >/dev/null   # iterations 1,2 (held)
 ok "$(fire "$d" CAP)" 0 "the iteration past --max trips the cap and releases"
 ok "$(armed "$d")" NO "hitting the cap disarms the loop"
 
+echo "## SubagentStop decision table (real hook, real ztrack, SubagentStop-shaped payloads: session_id + agent_id)"
+# ACTOR = agent_id when present (a subagent turn), else session_id — see stop-loop.sh. These
+# helpers craft SubagentStop-shaped payloads; fire()/fire_msg() above still cover bare-session
+# (Stop) payloads, and the R3/gitignore sections above prove those are byte-for-byte unaffected.
+fire_sub() { local rc; ( cd "$1" && printf '{"session_id":"%s","agent_id":"%s","hook_event_name":"SubagentStop"}' "$2" "$3" | bash "$hook" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+fire_sub_msg() { ( cd "$1" && printf '{"session_id":"%s","agent_id":"%s","hook_event_name":"SubagentStop"}' "$2" "$3" | bash "$hook" 2>&1 >/dev/null ) || true; }
+
+d="$(new_repo subarmedred)"; mk_issue "$d" "$red"; arm "$d"
+ok "$(fire_sub "$d" S1 A1)" 2 "SubagentStop: armed + red -> held (exit 2)"
+ok "$(armed "$d")" YES "a held subagent turn keeps the loop armed"
+
+d="$(new_repo subarmedgreen)"; mk_issue "$d" "$green"; arm "$d"
+ok "$(fire_sub "$d" S1 A1)" 0 "SubagentStop: armed + green -> released (exit 0)"
+ok "$(armed "$d")" NO "going green disarms the loop from a subagent's turn too"
+
+d="$(new_repo subexempt)"; mk_issue "$d" "$red"; arm "$d"
+: > "$d/.volter/.ztrack-loop-exempt-A1"
+ok "$(fire_sub "$d" S1 A1)" 0 "A1's own exemption is honored for A1"
+ok "$(fire_sub "$d" S1 A2)" 2 "a DIFFERENT agent_id (A2), same session S1, is still held -- the exemption does not leak"
+ok "$(fire "$d" S1)" 2 "the bare session S1 (no agent_id) is still held too -- A1's exemption doesn't cover its parent session"
+ok "$(armed "$d")" YES "an exemption keeps the loop armed for every other actor"
+
+d="$(new_repo subiter)"; mk_issue "$d" "$red"; arm "$d" 2
+fire_sub "$d" S1 A1 >/dev/null; fire_sub "$d" S1 A1 >/dev/null   # A1's iterations 1,2 (held) -- must not touch S1's own counter
+ok "$(fire "$d" S1)" 2 "a bare-S1 payload after two A1-held turns is STILL held (S1's own counter is only at 1), not capped"
+ok "$(armed "$d")" YES "per-actor counters: A1's held turns didn't push the bare session's counter past the cap"
+
+echo "## arm-collision refusal (src/cliLoop.ts \`loop start\`)"
+collision_rc()  { local rc; ( cd "$1" && npx ztrack loop start "$2" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+collision_msg() { ( cd "$1" && npx ztrack loop start "$2" 2>&1 >/dev/null ) || true; }
+
+d="$(new_repo collision)"; mk_issue "$d" "$red"
+( cd "$d" && npx ztrack issue create --title Second --label type:case --state ready --assignee t --body-file body.md >/dev/null )  # APP-2
+arm "$d"   # arms APP-1
+before="$(cat "$d/.volter/.ztrack-loop.json")"
+ok "$(collision_rc "$d" APP-2)" 1 "arming a DIFFERENT target while armed refuses (nonzero exit)"
+msg="$(collision_msg "$d" APP-2)"
+ok "$([ "$(printf '%s' "$msg" | grep -c 'already armed')" -ge 1 ] && echo YES || echo NO)" YES "the refusal names what's already armed"
+after="$(cat "$d/.volter/.ztrack-loop.json")"
+ok "$([ "$before" = "$after" ] && echo YES || echo NO)" YES "the marker is unchanged by the refused arm"
+ok "$(collision_rc "$d" APP-1)" 0 "re-arming the SAME target succeeds (a refresh, not a collision)"
+
+echo "## ZTRACK_TRACKER_ROOT (cross-repo/cross-worktree shape, e.g. a subagent cwd'd elsewhere)"
+fire_envroot()     { local rc; ( cd "$1" && printf '{"session_id":"%s"}' "$3" | ZTRACK_TRACKER_ROOT="$2" bash "$hook" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+fire_envroot_msg() { ( cd "$1" && printf '{"session_id":"%s"}' "$3" | ZTRACK_TRACKER_ROOT="$2" bash "$hook" 2>&1 >/dev/null ) || true; }
+
+d="$(new_repo envroot)"; mk_issue "$d" "$red"; arm "$d"
+outside="$tmp/outside-envroot"; mkdir -p "$outside"
+ok "$(fire_envroot "$outside" "$d" E1)" 2 "ZTRACK_TRACKER_ROOT pointing at the armed tracker holds, even though cwd is OUTSIDE it"
+ok "$(armed "$d")" YES "cross-repo hold via ZTRACK_TRACKER_ROOT doesn't disturb the armed marker"
+
+no_tracker="$tmp/no-tracker-envroot"; mkdir -p "$no_tracker"
+ok "$(fire_envroot "$outside" "$no_tracker" E1)" 0 "ZTRACK_TRACKER_ROOT pointing at a dir with no tracker -> exit 0 (fail open, never trap on a typo)"
+warn_msg="$(fire_envroot_msg "$outside" "$no_tracker" E1)"
+ok "$([ "$(printf '%s' "$warn_msg" | grep -c 'ZTRACK_TRACKER_ROOT')" -ge 1 ] && echo YES || echo NO)" YES "...and prints a one-line warning naming ZTRACK_TRACKER_ROOT on stderr"
+
 echo "## waiver CLI round-trip (eslint-disable-style: per-finding, signed off as git identity)"
 d="$(new_repo waiver)"; mk_issue "$d" "$red"
 ok "$(chk "$d")" 1 "the unwaived issue is red (passed AC, no proof)"

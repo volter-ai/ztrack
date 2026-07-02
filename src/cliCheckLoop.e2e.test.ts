@@ -114,16 +114,22 @@ describe('check targets', () => {
 });
 
 describe('loop target drives the Stop-hook gate', () => {
+  // ZTB-11: arming a DIFFERENT target while one is already armed now REFUSES (arm-collision
+  // guard), so each test below that arms a different target than its predecessor explicitly
+  // disarms first — this suite's own tests exercise the same rule the collision test does.
   test('loop start <id> scopes the gate to that issue (other red issues are informational)', () => {
+    ztrack(['loop', 'stop']); // isolate from whatever the previous test left armed
     expect(ztrack(['loop', 'start', 'ZT-1']).code).toBe(0);
     // ZT-2 is red under --verify-commits, but the armed loop gates on ZT-1 → turn may end.
     expect(ztrack(['check', '--auto-scope', '--verify-commits']).code).toBe(0);
   });
   test('loop start on the red issue gates on it → the turn is held (nonzero)', () => {
+    ztrack(['loop', 'stop']); // ZT-1 is still armed from the previous test; disarm before re-targeting
     expect(ztrack(['loop', 'start', 'ZT-2']).code).toBe(0);
     expect(ztrack(['check', '--auto-scope', '--verify-commits']).code).not.toBe(0);
   });
   test('loop start <file.md> gates on that file', () => {
+    ztrack(['loop', 'stop']); // ZT-2 is still armed from the previous test; disarm before re-targeting
     writeFileSync(join(root, 'loop-target.md'), `Status: ready\n\n${FAILING_AC}`);
     expect(ztrack(['loop', 'start', './loop-target.md']).code).toBe(0);
     const r = ztrack(['check', '--auto-scope', '--verify-commits']);
@@ -146,6 +152,7 @@ describe('loop target drives the Stop-hook gate', () => {
   // store (a letter-suffixed id isn't one the backend itself mints, but is one it MUST serve —
   // this is the workspace-observed shape, e.g. ZL-A9) and prove both verbs now accept it.
   test('loop start/check accept a letter-suffixed issue id, as the backend mints/serves (e.g. ZL-A9)', () => {
+    ztrack(['loop', 'stop']); // nothing should be armed here, but disarm defensively before re-targeting
     const storeDir = join(root, '.volter', 'tracker', 'markdown');
     const zt1 = readFileSync(join(storeDir, 'ZT-1.md'), 'utf8');
     writeFileSync(join(storeDir, 'ZT-A9.md'), zt1.replace('identifier: "ZT-1"', 'identifier: "ZT-A9"'));
@@ -154,6 +161,23 @@ describe('loop target drives the Stop-hook gate', () => {
     expect(ztrack(['check', '--auto-scope']).code).toBe(0);
     ztrack(['loop', 'stop']);
   }, 30_000);
+  // ZTB-11: the gate is root-scoped, not agent-scoped — there's no reliable agent identity at
+  // arm time (see plugins/ztrack-gate/hooks/stop-loop.sh), so arming a DIFFERENT target while
+  // one is already armed refuses rather than silently stealing the gate out from under whoever
+  // armed it (including a subagent's own loop). Re-arming the SAME target (a refresh — new
+  // --max, runtime sweep, cap-breadcrumb clear) still succeeds.
+  test('loop start refuses a DIFFERENT target while armed; re-arming the SAME target still succeeds', () => {
+    ztrack(['loop', 'stop']); // clean slate regardless of prior test order
+    expect(ztrack(['loop', 'start', 'ZT-1']).code).toBe(0);
+    const before = readFileSync(join(root, '.volter', '.ztrack-loop.json'), 'utf8');
+    const collide = ztrack(['loop', 'start', 'ZT-2']);
+    expect(collide.code).not.toBe(0);
+    expect(collide.out).toMatch(/already armed/);
+    const after = readFileSync(join(root, '.volter', '.ztrack-loop.json'), 'utf8');
+    expect(after).toBe(before); // the refused arm left the marker byte-for-byte untouched
+    expect(ztrack(['loop', 'start', 'ZT-1', '--max', '3']).code).toBe(0); // same target -> refresh, allowed
+    ztrack(['loop', 'stop']);
+  });
 });
 
 describe('CLI footguns: --help/--version never have side effects, and delete works', () => {

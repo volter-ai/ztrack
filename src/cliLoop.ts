@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { ensureTrackerGitignore, projectRootFrom, stateDirName } from './config.ts';
 import { positionalArgs, resolveTarget } from './cliTarget.ts';
-import { describeTarget } from './loopState.ts';
+import { describeTarget, readLoopMarker } from './loopState.ts';
 import { optionValue } from './cliArgs.ts';
 import { commandName } from './cliHelp.ts';
 import { statusMark, ui } from './cliStyle.ts';
@@ -40,6 +40,17 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     const label = describeTarget(target);
     const maxRaw = optionValue(args, '--max');
     const maxIterations = maxRaw && Number.isInteger(Number(maxRaw)) && Number(maxRaw) > 0 ? Number(maxRaw) : 8;
+    // Arm-collision guard: the gate is root-scoped, not agent-scoped (there's no reliable agent
+    // identity at arm time — see stop-loop.sh), so re-arming for a DIFFERENT target while one is
+    // already armed would silently steal the gate out from under whoever armed it, including a
+    // subagent's own loop. Refuse instead; isolation between unrelated loops comes from running
+    // in a separate worktree (each has its own marker namespace — src/config.ts), not from
+    // overwriting. Compare the canonical target (not the human label) so re-arming the SAME
+    // target — a refresh: new --max, runtime sweep, cap-breadcrumb clear — stays allowed.
+    const existingMarker = readLoopMarker(root);
+    if (existingMarker && JSON.stringify(existingMarker.target) !== JSON.stringify(target)) {
+      throw new Error(`${command} loop: already armed for ${existingMarker.label} — refusing to re-arm for ${label} (this would silently steal the gate). Run '${command} loop stop' to disarm first, or arm ${label} in a separate worktree — each worktree has its own loop.`);
+    }
     mkdirSync(stateDir, { recursive: true });
     ensureTrackerGitignore(root); // so the loop's runtime/exempt files are ignored even on a repo init'd before the loop existed
     sweepRuntime();
