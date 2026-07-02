@@ -119,6 +119,7 @@ Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
 Beyond the default store, .volter/tracker-config.json accepts a \`sources\` array to declare more:
 each entry is {path, format: "issue-per-file"|"document", readonly?} — a "document" source is
 one markdown file holding many issues (id-bearing headings become issues; nesting becomes parents).
+Grammar, write-back, and diagnostics: docs/SOURCES.md.
 `);
     return true;
   }

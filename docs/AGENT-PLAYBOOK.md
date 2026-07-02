@@ -38,8 +38,10 @@ because a `ztrack check` finding cites a path like `PLAN.md:42` instead of an is
 the config says `format:"document"`. The document itself is the source of truth, authored directly by
 humans and agents.
 
-For a document source, `ac patch` and title/body edits (`issue edit --title`/`--body`) still work —
-they splice the change back into the issue's recorded line span, leaving every other byte untouched.
+For a document source, `ac patch` and title/body edits (`issue edit --title`/`--body`) still work
+on **top-level leaf items** — they splice the change back into the issue's recorded line span,
+leaving every other byte untouched. (An item with an id-bearing child, or one nested inside another
+item's section, currently fails closed too.)
 Everything else **fails closed** by design: state, assignee, label, parent/children, comments, any
 write to the umbrella issue (the file's preamble `Title:`/`Status:`/`Assignee:` block), delete, and
 any write to a `readonly:true` source all raise an error naming the file. When you hit one of these,

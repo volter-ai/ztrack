@@ -15,8 +15,9 @@ preset authors.
   undeduped across sources on purpose — the same id backed by two different files is now a
   reported `issue_id_conflict` finding (error, unwaivable, names both paths) instead of silent
   precedence. A `readonly: true` source rejects every write (edit/comment/close/delete/`ac patch`)
-  with an error naming the source, and `issue create` mints into the first writable source while
-  still counting ids across all of them so a new id never collides with a readonly one. Unrecognized
+  with an error naming the source, and `issue create` mints into the first writable
+  `issue-per-file` source (a document source is never a mint target) while still counting ids
+  across all of them so a new id never collides with a readonly one. Unrecognized
   config keys (top level or nested — e.g. a `source:` typo) now throw a config error naming the key
   and, via edit distance, its nearest valid sibling; this used to be silently spread through and
   ignored.
@@ -27,7 +28,9 @@ preset authors.
   itself an umbrella issue, and a per-item `status:`/`assignee:` header line inside its own section
   sets that issue's state/assignee. `ac patch` and an `issue edit` that only changes `title`/`body`
   splice the change back into the file byte-locally, touching only that issue's own span — every
-  other issue's bytes are re-verified unchanged before anything is written. Everything else
+  other issue's bytes are re-verified unchanged before anything is written (today that limits
+  splices to top-level leaf items: an item with an id-bearing child, or nested inside another
+  item's section, fails closed like the rest). Everything else
   (state, assignee, labels, parent/children, comments, delete) is not stored in the document's
   grammar and fails closed, naming the file and the field, rather than silently dropping the edit;
   edit those fields, or delete, in the file directly.
