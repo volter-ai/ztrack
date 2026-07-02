@@ -2,6 +2,65 @@
 
 All notable ztrack release changes are recorded here.
 
+## Unreleased
+
+Declared sources — a tracker can now span more than one markdown store, including a single file
+that holds many issues — plus provenance on every finding and a round-trip fidelity contract for
+preset authors.
+
+- **Declared `sources`.** `.volter/tracker-config.json` accepts a `sources` array —
+  `[{path, format?: "issue-per-file"|"document", readonly?}]` — so a tracker can union more than
+  one markdown store. Omitting `sources` is byte-identical to today: one implicit `issue-per-file`
+  store at the usual location. `issue list`/`issue view` union ids across every declared source,
+  undeduped across sources on purpose — the same id backed by two different files is now a
+  reported `issue_id_conflict` finding (error, unwaivable, names both paths) instead of silent
+  precedence. A `readonly: true` source rejects every write (edit/comment/close/delete/`ac patch`)
+  with an error naming the source, and `issue create` mints into the first writable source while
+  still counting ids across all of them so a new id never collides with a readonly one. Unrecognized
+  config keys (top level or nested — e.g. a `source:` typo) now throw a config error naming the key
+  and, via edit distance, its nearest valid sibling; this used to be silently spread through and
+  ignored.
+- **Document sources: one markdown file, many issues.** A source with `format: "document"` (or a
+  bare `.md` path) treats a single file as a whole sub-tree of issues: any heading that starts with
+  an id token (`## APP-1 — Title`) becomes an issue, heading nesting between id-bearing sections
+  becomes parent/children, an optional leading `Title:`/`Status:`/`Assignee:` block makes the file
+  itself an umbrella issue, and a per-item `status:`/`assignee:` header line inside its own section
+  sets that issue's state/assignee. `ac patch` and an `issue edit` that only changes `title`/`body`
+  splice the change back into the file byte-locally, touching only that issue's own span — every
+  other issue's bytes are re-verified unchanged before anything is written. Everything else
+  (state, assignee, labels, parent/children, comments, delete) is not stored in the document's
+  grammar and fails closed, naming the file and the field, rather than silently dropping the edit;
+  edit those fields, or delete, in the file directly.
+- **Round-trip fidelity contract + conformance testkit.** For a writable preset, an unmodified
+  `parse → serialize` is now required to be byte-identical for an already-canonical body, and
+  editing one model element (an AC, a field) must change only the bytes that element owns —
+  position, not just content, so a patch never relocates a human's untouched prose. Every shipped
+  preset proves this through the shared kit (`src/testkit/presetConformance.ts`); see
+  `docs/PRESETS.md`'s "Round-Trip Fidelity" section for the full contract.
+- **Provenance on records and findings.** Every `IssueRecord` now carries an `origin: {path,
+  lineStart?, lineEnd?}` and every `Finding` an `origin: {path, line?}`, populated from the
+  markdown backend's already-resolved file path (and, for a document source, the issue's line
+  span within the file). `ztrack check`'s report prints a dim, project-root-relative `path:line`
+  suffix on findings that have one.
+- **New fail-closed parsing diagnostics.** Four silent-failure shapes now surface as findings
+  instead of quietly mis-parsing: `loose_header_ignored` (a loose file's `Title:`/`Status:`/
+  `Assignee:` header block was aborted, or a header-shaped line survives in the body after the
+  scan stopped), `ac_sections_multiple` (two `## Acceptance Criteria` sections — they still merge,
+  but now warn instead of merging silently), `ac_outside_section` (a checkbox item outside any
+  recognized AC section), and `ac_id_malformed` (an AC line that only parsed via the whole-line
+  fallback).
+- **`loop start`/`check` accept every id the backend mints.** The CLI's id-detection grammar used
+  to demand an all-numeric suffix and rejected letter-suffixed ids (e.g. `ZL-A9`) that `issue
+  view`/`issue edit`/every other verb already worked on. One shared predicate (`src/issueId.ts`)
+  now backs it everywhere.
+- **Bare `issue create` mints preset-conforming defaults.** With no `--state`/`--assignee`, a new
+  issue used to default to state `Backlog` and no assignee — invalid against every shipped SDLC
+  preset, so a fresh `ztrack init && ztrack issue create --title x && ztrack check` failed its own
+  workspace's validation. Defaults are now `draft` (valid in every shipped preset) and the git
+  `user.name` identity waivers already use; explicit flags override exactly as before. A create is
+  never silently invalid: the new record is run through the installed preset immediately, and any
+  findings print as warnings.
+
 ## 0.34.1
 
 Reliability fixes for the visualizer and GitHub sync.
