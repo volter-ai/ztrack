@@ -72,6 +72,7 @@ export function fileToRecord(absPath: string, content: string): IssueRecord {
     status: meta.status || 'draft',
     ...(meta.assignee ? { assignee: meta.assignee } : {}),
     body,
+    origin: { path: absPath }, // the whole file is the issue — no line span
   };
 }
 

@@ -148,7 +148,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
       };
       if (outputPath) writeFileSync(isAbsolute(outputPath) ? outputPath : resolve(projectRoot, outputPath), `${JSON.stringify(scopedPayload, null, 2)}\n`);
       if (wantsJson) process.stdout.write(`${JSON.stringify(scopedPayload, null, 2)}\n`);
-      else process.stdout.write(renderScopedReport(result, { activeIssue: issueId, reason, blocking, informational, errorsOnly, maxFindings }));
+      else process.stdout.write(renderScopedReport(result, { activeIssue: issueId, reason, blocking, informational, errorsOnly, maxFindings, projectRoot }));
       process.exitCode = scopedFailed ? 1 : 0;
       return true;
     }
@@ -168,7 +168,7 @@ function emitPlain(result: TrackerCheckResult, o: { failOnWarning: boolean; outp
   if (wantsJson) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
-    process.stdout.write(renderCheckReport(result, { errorsOnly, maxFindings }));
+    process.stdout.write(renderCheckReport(result, { errorsOnly, maxFindings, projectRoot }));
   }
   process.exitCode = failed ? 1 : 0;
   return true;

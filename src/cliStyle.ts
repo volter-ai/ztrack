@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from 'node:path';
 import type { CheckResult, CoreRoot, Finding } from './core/engine.ts';
 
 const wantsColor = (stream: NodeJS.WriteStream): boolean => {
@@ -137,7 +138,17 @@ function codeLabel(code: string): string {
   return ui.dim(code);
 }
 
-export function renderCheckReport(result: CheckResult<CoreRoot>, options: { errorsOnly?: boolean; maxFindings?: number } = {}): string {
+// A dim ` — path:line` suffix citing where the finding's issue actually lives, project-root-
+// relative so terminals make it clickable (an absolute path in memory is fine; only the
+// RENDERED path must be root-relative — see Finding.origin, engine.ts).
+function originSuffix(finding: Finding, projectRoot?: string): string {
+  if (!finding.origin) return '';
+  const path = projectRoot && isAbsolute(finding.origin.path) ? relative(projectRoot, finding.origin.path) : finding.origin.path;
+  const loc = finding.origin.line !== undefined ? `${path}:${finding.origin.line}` : path;
+  return ` ${ui.dim(`— ${loc}`)}`;
+}
+
+export function renderCheckReport(result: CheckResult<CoreRoot>, options: { errorsOnly?: boolean; maxFindings?: number; projectRoot?: string } = {}): string {
   const summary = summarizeResult(result);
   const findings = result.findings
     .filter((finding) => !options.errorsOnly || finding.severity === 'error')
@@ -173,7 +184,7 @@ export function renderCheckReport(result: CheckResult<CoreRoot>, options: { erro
         const last = index === items.length - 1;
         const branch = last ? '╰─' : '├─';
         const detailPrefix = last ? '   └─' : '│  └─';
-        lines.push(`${ui.dim(branch)} ${findingLevel(finding)} ${codeLabel(finding.code)}`);
+        lines.push(`${ui.dim(branch)} ${findingLevel(finding)} ${codeLabel(finding.code)}${originSuffix(finding, options.projectRoot)}`);
         lines.push(`${ui.dim(detailPrefix)} ${finding.message}`);
         if (finding.fix) lines.push(`${ui.dim(last ? '      ' : '│     ')}${ui.cyan('↳')} ${ui.dim(finding.fix)}`);
         if (!last) lines.push(ui.dim('│'));
@@ -199,7 +210,7 @@ export function renderScopedReport(
   opts: {
     activeIssue: string | null; reason: string;
     blocking: Finding[]; informational: Finding[];
-    errorsOnly?: boolean; maxFindings?: number;
+    errorsOnly?: boolean; maxFindings?: number; projectRoot?: string;
   },
 ): string {
   const banner = opts.activeIssue
@@ -214,6 +225,7 @@ export function renderScopedReport(
   const body = renderCheckReport(blockingResult, {
     ...(opts.errorsOnly ? { errorsOnly: true } : {}),
     ...(opts.maxFindings !== undefined ? { maxFindings: opts.maxFindings } : {}),
+    ...(opts.projectRoot ? { projectRoot: opts.projectRoot } : {}),
   });
 
   let info = '';

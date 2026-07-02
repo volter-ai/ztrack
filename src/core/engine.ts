@@ -63,6 +63,12 @@ export interface CoreIssue {
 }
 export interface CoreRoot { issues: CoreIssue[] }
 
+// Where a record's content lives on disk: the file (and, once document sources land in ZTB-4,
+// the line span within it) the record was read from. Populated at construction, never authored
+// by a rule. Named `origin`, NOT `Source` — `Source` (above) is the unrelated domain type for
+// evidence sources on issues.
+export interface Origin { path: string; lineStart?: number; lineEnd?: number }
+
 // The backend's STRUCTURED view of one issue: the metadata it keeps in columns (id, title,
 // status, assignee, labels, children) plus the content `body` markdown. The preset's `parse`
 // reads metadata from these fields and content from `body` (mdast) — core NEVER synthesizes
@@ -76,6 +82,7 @@ export interface IssueRecord {
   labels?: string[];
   children?: string[];
   body: string;          // content markdown only (no synthesized `# id: title`/Status/… header)
+  origin?: Origin;        // where this record's content lives on disk (issue-per-file: no line span)
 }
 export interface IssueColumns {
   title?: string;
@@ -136,7 +143,12 @@ export interface Finding {
   // `ztrack ac patch …` to run). Preset-owned (via Preset.fixHint), shown under the finding
   // and returned over MCP so an agent can act directly instead of inferring the fix.
   fix?: string;
+  // Where this finding's issue record lives on disk — copied 1:1 from the record's `origin`
+  // (never authored by a rule), so a finding cites a real location. `line` (singular, not a
+  // span) is the record origin's `lineStart`, when known.
+  origin?: FindingOrigin;
 }
+export interface FindingOrigin { path: string; line?: number }
 export interface Context {
   now?: string;
   // which rule phases to run. 'all' (default) runs every rule — the strict,
@@ -386,12 +398,28 @@ export interface CheckResult<R extends CoreRoot> {
   export?: R; // the parsed Root — what every other surface reads
 }
 
-function shapeFindings(error: z.ZodError): Finding[] {
-  return error.issues.map((issue) => ({
-    code: 'wellformed_shape',
-    severity: 'error' as const,
-    message: `${issue.path.join('.') || '(root)'}: ${issue.message}`,
-  }));
+// Copy a record's `Origin` (path + optional line span) onto a `Finding`'s narrower
+// `{ path, line? }` — the finding cites a start line, not a span.
+function toFindingOrigin(origin: Origin): FindingOrigin {
+  return { path: origin.path, ...(origin.lineStart !== undefined ? { line: origin.lineStart } : {}) };
+}
+
+// `root` is the raw (pre-validation) candidate `{ issues: [...] }` — used only to recover which
+// issue a shape error's zod path (`root.issues.<n>.…`) belongs to, so the finding can carry that
+// issue's origin even though the input failed strict validation.
+function shapeFindings(error: z.ZodError, root: unknown, originById: Map<string, Origin>): Finding[] {
+  const issuesArr = root && typeof root === 'object' ? (root as { issues?: unknown }).issues : undefined;
+  return error.issues.map((issue) => {
+    const idx = issue.path[0] === 'root' && issue.path[1] === 'issues' && typeof issue.path[2] === 'number' ? issue.path[2] : undefined;
+    const issueId = idx !== undefined && Array.isArray(issuesArr) ? (issuesArr[idx] as { id?: unknown } | undefined)?.id : undefined;
+    const origin = typeof issueId === 'string' ? originById.get(issueId) : undefined;
+    return {
+      code: 'wellformed_shape',
+      severity: 'error' as const,
+      message: `${issue.path.join('.') || '(root)'}: ${issue.message}`,
+      ...(origin ? { origin: toFindingOrigin(origin) } : {}),
+    };
+  });
 }
 
 // A rule runs unless the request narrows it out: an absent/`wellformed` category is
@@ -439,7 +467,9 @@ export function deriveCoreModel<R extends CoreRoot>(root: R, context: Context, i
 
 // Evaluate one record: select a list off the model, keep the matches, describe each.
 // Location (issueId/acId/evidenceId) is read off the selected item, not authored.
-function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: DerivedModel<R>, statusById: Map<string, string>): Finding[] {
+// `originById` (record id -> Origin) copies the record's on-disk location onto every finding
+// for that issue — the engine attaches it, no rule authors it.
+function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: DerivedModel<R>, statusById: Map<string, string>, originById: Map<string, Origin>): Finding[] {
   // A state-tagged rule applies only to items whose owning issue is currently in one of
   // those states (looked up by issueId — every model fact carries one). Absent tag =
   // always-on invariant: no filter. Universal gating; the state vocabulary is the preset's.
@@ -449,15 +479,19 @@ function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: Derive
     .filter((item) => gateStates === null
       || (item.issueId !== undefined && gateStates.includes((statusById.get(item.issueId) ?? '').toLowerCase())))
     .filter((item) => (r.when ? r.when(item, model) : true))
-    .map((item): Finding => ({
-      code: r.code,
-      severity: r.severity ?? 'error',
-      message: r.message(item, model),
-      ...(item.issueId ? { issueId: item.issueId } : {}),
-      ...(item.acId ? { acId: item.acId } : {}),
-      ...(item.evidenceId ? { evidenceId: item.evidenceId } : {}),
-      ...(r.waivable === false ? { waivable: false } : {}),
-    }));
+    .map((item): Finding => {
+      const origin = item.issueId ? originById.get(item.issueId) : undefined;
+      return {
+        code: r.code,
+        severity: r.severity ?? 'error',
+        message: r.message(item, model),
+        ...(item.issueId ? { issueId: item.issueId } : {}),
+        ...(item.acId ? { acId: item.acId } : {}),
+        ...(item.evidenceId ? { evidenceId: item.evidenceId } : {}),
+        ...(r.waivable === false ? { waivable: false } : {}),
+        ...(origin ? { origin: toFindingOrigin(origin) } : {}),
+      };
+    });
 }
 
 // Order-independent structural fingerprint, so a waiver's anchor is stable across
@@ -540,7 +574,7 @@ function genericFixHint(f: Finding): string {
   return `Fix ${f.issueId}: ${inspect} — or, if you knowingly accept it: \`ztrack waiver sign ${f.issueId} --code ${f.code}${f.acId ? ` --ac ${f.acId}` : ''} --reason "…"\`.`;
 }
 
-function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<R>): CheckResult<R> {
+function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<R>, originById: Map<string, Origin>): CheckResult<R> {
   const ctx = input.context;
   const model = deriveCoreModel(input.root, ctx, preset.isIssueDone);
   if (preset.derive) {
@@ -556,7 +590,7 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
   // select/when/message must surface as a finding, not crash the whole check.
   const findings = active.flatMap((r) => {
     try {
-      return evalRecord(r, model, statusById);
+      return evalRecord(r, model, statusById, originById);
     } catch (error) {
       return [{ code: 'rule_threw', severity: 'error', waivable: false, message: `Rule '${r.code}' threw: ${String((error as Error)?.message ?? error)}` } as Finding];
     }
@@ -573,18 +607,24 @@ function runRules<R extends CoreRoot>(preset: Preset<R>, input: ValidationInput<
  *  pure rules. The validated Root is the export; nothing downstream re-parses or
  *  re-derives. */
 export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecord[], ctx: Context = {}): CheckResult<R> {
+  // Record id -> Origin, so downstream findings can cite where their issue's content lives.
+  const originById = new Map<string, Origin>();
+  for (const r of records) if (r.origin) originById.set(r.id, r.origin);
   let candidate: unknown;
   try {
     candidate = preset.parse(records);
   } catch (error) {
-    return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error) }] };
+    // A whole-input parse failure has no per-issue location yet; a single-record check (the
+    // loose-file `ztrack check ./FILE.md` path) has exactly one candidate, so cite it.
+    const origin = records.length === 1 ? records[0]!.origin : undefined;
+    return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error), ...(origin ? { origin: toFindingOrigin(origin) } : {}) }] };
   }
   // Waivers are core-parsed from each record's `## Waivers` body section (universal,
   // preset-agnostic) and merged into the context — `applyWaivers` then downgrades the
   // findings they name. The issue id comes from the record, not a synthesized heading.
   const parsed = parseWaivers(records);
   const merged: Context = parsed.length ? { ...ctx, waivers: [...(ctx.waivers ?? []), ...parsed] } : ctx;
-  return validateAndRun(preset, merged, candidate, false);
+  return validateAndRun(preset, merged, candidate, false, originById);
 }
 
 /** Validate an already-parsed Root (the exported, validated model) against the same
@@ -605,7 +645,7 @@ export function checkRoot<R extends CoreRoot>(preset: Preset<R>, root: unknown, 
 // safeParse is wrapped: composing/validating across a mismatched zod instance (a
 // repo-local preset built against a different zod major) must surface as a finding,
 // not a raw crash of `ztrack check`.
-function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, root: unknown, isExportedRoot: boolean): CheckResult<R> {
+function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, root: unknown, isExportedRoot: boolean, originById: Map<string, Origin> = new Map()): CheckResult<R> {
   let result: ReturnType<z.ZodType<ValidationInput<R>>['safeParse']>;
   try {
     const inputSchema = makeValidationInputSchema(preset.schema, preset.contextSchema);
@@ -615,8 +655,8 @@ function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, roo
   }
   if (!result.success) {
     return isExportedRoot
-      ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error)] }
-      : { ok: false, findings: shapeFindings(result.error) };
+      ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error, root, originById)] }
+      : { ok: false, findings: shapeFindings(result.error, root, originById) };
   }
-  return runRules(preset, result.data);
+  return runRules(preset, result.data, originById);
 }
