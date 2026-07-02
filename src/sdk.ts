@@ -1,6 +1,7 @@
 import { loadEnvFiles, loadTrackerConfig, projectRootFrom } from './config.ts';
 import { createMarkdownBackend } from './backends/markdownBackend.ts';
 import { executeTrackerGraphql } from './graphql.ts';
+import { resolveSources } from './sources.ts';
 import type { TrackerClient, TrackerIssueInput, TrackerIssueUpdate } from './types.ts';
 
 function parseJsonOrText(stdout: string): unknown {
@@ -65,7 +66,12 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
       + 'Run `ztrack migrate-local` once to convert them to the pure-JS markdown backend.',
     );
   }
-  const backend = createMarkdownBackend(projectRoot, config.local?.teamKey ?? 'PH');
+  // `sources` (ZTB-3): a declared list of markdown stores the backend unions by issue id. Absent
+  // config -> resolveSources returns the one implicit default (byte-identical to pre-ZTB-3).
+  // Resolved here (not lazily inside the backend) so an unsupported `format: "document"` entry
+  // (ZTB-4, not yet landed) fails closed on EVERY command, not just ones that happen to read it.
+  const sources = resolveSources(projectRoot, config);
+  const backend = createMarkdownBackend(projectRoot, config.local?.teamKey ?? 'PH', sources);
 
   return {
     command(args, inputText) {
