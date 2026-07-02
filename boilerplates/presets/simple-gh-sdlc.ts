@@ -210,7 +210,8 @@ function extractProse(known: string, metadataPatterns: RegExp[]): string | undef
 function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[]): Record<string, unknown> {
   // Metadata comes STRUCTURED from the record's columns; only the content (summary, pr,
   // relations, ACs) is parsed out of the body markdown. id/title/status/assignee/labels are
-  // never re-derived from synthesized markdown. Unknown `## X` sections are carried verbatim.
+  // never re-derived from synthesized markdown. Unknown `## X` sections and bare leading
+  // prose are carried verbatim.
   const issue: Record<string, unknown> = {
     id: record.id, title: record.title, status: record.status || 'draft',
     assignee: record.assignee ?? '', summary: '', acceptanceCriteria: [],
