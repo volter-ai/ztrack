@@ -24,7 +24,7 @@ describe('dev workflow: branch-scoped check/loop in a real git repo', () => {
     zt('init');
     writeFileSync(join(root, 'g.md'), zt('issue', 'scaffold', '--title', 'G').out);
     zt('issue', 'create', '--title', 'Green', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body-file', 'g.md'); // LOCAL-1 green
-    zt('issue', 'create', '--title', 'Red', '--label', 'type:case', '--state', 'draft', '--body-file', 'g.md');                       // LOCAL-2 red (no assignee)
+    zt('issue', 'create', '--title', 'Red', '--label', 'type:case', '--state', 'draft', '--assignee', '', '--body-file', 'g.md');      // LOCAL-2 red (explicitly no assignee — ZTB-7's default-assignee fill only applies when --assignee is omitted)
     git('add', '-A'); git('commit', '-q', '-m', 'init'); // a commit, so branch names resolve
   }, 30_000);
   afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });

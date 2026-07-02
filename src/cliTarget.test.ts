@@ -5,9 +5,21 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { positionalArgs, resolveTarget } from './cliTarget.ts';
+import { looksLikeIssueId, positionalArgs, resolveTarget } from './cliTarget.ts';
 
 const cwd = '/nonexistent-cwd';
+
+describe('looksLikeIssueId', () => {
+  test('accepts every id shape the backend mints or serves, including letter suffixes', () => {
+    expect(looksLikeIssueId('ZL-A9')).toBe(true);   // backend-minted-shaped id with a letter suffix
+    expect(looksLikeIssueId('ZTA-1')).toBe(true);   // multi-letter team key, numeric suffix
+    expect(looksLikeIssueId('PH-12')).toBe(true);   // plain numeric suffix (the common case)
+    expect(looksLikeIssueId('MY-TEAM-1')).toBe(true); // a dashed teamKey mints dashed-prefix ids
+  });
+  test('rejects a dot-bearing token (still fails the CLI grammar, unlike the backend\'s looser SAFE_ID)', () => {
+    expect(looksLikeIssueId('A.1-5')).toBe(false);
+  });
+});
 
 describe('positionalArgs', () => {
   test('skips flags and the values of value-taking flags', () => {
@@ -30,6 +42,14 @@ describe('resolveTarget', () => {
   });
   test('an issue-id positional resolves to that issue', () => {
     expect(resolveTarget({ positionals: ['ZT-1'], cwd })).toEqual({ kind: 'issues', ids: ['ZT-1'] });
+  });
+  test('a letter-suffixed issue id, as the backend mints/serves (ZL-A9, ZTA-1, PH-12), resolves to that issue', () => {
+    expect(resolveTarget({ positionals: ['ZL-A9'], cwd })).toEqual({ kind: 'issues', ids: ['ZL-A9'] });
+    expect(resolveTarget({ positionals: ['ZTA-1'], cwd })).toEqual({ kind: 'issues', ids: ['ZTA-1'] });
+    expect(resolveTarget({ positionals: ['PH-12'], cwd })).toEqual({ kind: 'issues', ids: ['PH-12'] });
+  });
+  test('a dot-bearing token still fails the CLI grammar (file detection wins first; the rejection message is unchanged)', () => {
+    expect(() => resolveTarget({ positionals: ['A.1-5'], cwd })).toThrow(/neither an issue id .* nor a markdown file/);
   });
   test('--issues feeds the issues target when no positional is given', () => {
     expect(resolveTarget({ positionals: [], issuesFlag: ['A-1', 'A-2'], cwd })).toEqual({ kind: 'issues', ids: ['A-1', 'A-2'] });

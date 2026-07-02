@@ -11,6 +11,7 @@
 // positional made `check <x>` a false green).
 import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { isIssueId } from './issueId.ts';
 
 export type CheckTarget =
   | { kind: 'file'; path: string }
@@ -18,13 +19,11 @@ export type CheckTarget =
   | { kind: 'auto' }            // resolve the active issue from the git branch/worktree
   | { kind: 'all' };
 
-const ISSUE_ID = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
-
 export function looksLikeFile(token: string, cwd: string): boolean {
   return token.endsWith('.md') || token.includes('/') || token.includes('\\')
     || existsSync(isAbsolute(token) ? token : resolve(cwd, token));
 }
-export const looksLikeIssueId = (token: string): boolean => ISSUE_ID.test(token);
+export const looksLikeIssueId = isIssueId;
 
 /** Pull the bare positional tokens out of an arg list, skipping flags and the values of
  *  flags that take one. Used to find a check/loop target among the flags. */

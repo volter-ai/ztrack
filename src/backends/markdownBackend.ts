@@ -10,6 +10,7 @@ import { basename, join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
 import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
 import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../config.ts';
+import { git } from '../core/gitWorld.ts';
 
 // Issue ids name files in the store; reject anything that isn't a plain id so a
 // crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
@@ -84,7 +85,9 @@ export class MarkdownBackend implements TrackerBackend {
   private readonly mainDir: string | null; // trunk's committed store — read fallback for a dangling index link
   private readonly shared: boolean;
   private readonly teamKey: string;
+  private readonly projectRoot: string;
   constructor(projectRoot: string, teamKey: string) {
+    this.projectRoot = projectRoot;
     this.dir = markdownStoreDir(projectRoot);
     this.indexDir = boardIndexDir(projectRoot);
     this.mainDir = mainWorktreeMarkdownDir(projectRoot);
@@ -92,6 +95,14 @@ export class MarkdownBackend implements TrackerBackend {
     this.teamKey = teamKey;
     mkdirSync(this.dir, { recursive: true });
     if (this.shared) mkdirSync(this.indexDir, { recursive: true });
+  }
+
+  // The default assignee for a create that omits `--assignee`: the same git identity `waiver
+  // sign` already uses (cliWaiver.ts) — a real owner instead of minting an unassigned issue the
+  // installed preset immediately rejects (`issue_missing_assignee`). '' if git has no identity
+  // configured (an explicit `--assignee ''` still wins either way — flags override defaults).
+  private defaultAssignee(): string {
+    return git(this.projectRoot, ['config', 'user.name']);
   }
 
   // Resolve the readable md for an id, preferring the LIVE owner: the index symlink target (the worktree
@@ -168,9 +179,16 @@ export class MarkdownBackend implements TrackerBackend {
     if (verb === 'issue' && sub === 'create') {
       const id = `${this.teamKey}-${this.loadAll().reduce((m, c) => Math.max(m, Number(c.identifier.split('-').pop()) || 0), 0) + 1}`;
       const now = new Date().toISOString();
+      // Defaults conform to the installed preset (simple-sdlc's status enum starts at 'draft'
+      // and requires a non-empty assignee), so a bare `issue create --title x` mints a record
+      // `ztrack check` doesn't immediately reject. An explicit `--state`/`--assignee` (even the
+      // empty string) still overrides, as before — only the OMITTED-flag case changes.
+      const state = flagVal(args, 'state') ?? 'draft';
+      const assigneeFlag = flagVal(args, 'assignee');
+      const assignee = assigneeFlag !== undefined ? assigneeFlag : this.defaultAssignee();
       const c: CanonicalIssue = {
         identifier: id, title: flagVal(args, 'title') ?? '', body: bodyArg(args) ?? '',
-        state: flagVal(args, 'state') ?? 'Backlog', stateType: stateTypeOf(flagVal(args, 'state') ?? 'Backlog'), assignees: flagVal(args, 'assignee') ? [flagVal(args, 'assignee')!] : [],
+        state, stateType: stateTypeOf(state), assignees: assignee ? [assignee] : [],
         labels: flagAll(args, 'label'), project: flagVal(args, 'project') ?? null, parent: flagVal(args, 'parent') ?? null,
         children: [], branchName: '', priority: 0, devProgress: '', createdAt: now, updatedAt: now,
         completedAt: null, canceledAt: null, url: `local://tracker/issue/${id}`, comments: [],
