@@ -2,6 +2,21 @@
 
 All notable ztrack release changes are recorded here.
 
+## Unreleased
+
+- **Fix: aborted header blocks no longer leak partially-parsed metadata.** `fileToRecord`
+  (loose `ztrack check <file.md>` mode) and `parseHeaderBlock` (document sources' preamble
+  `Title:`/`Status:`/`Assignee:` block) kept the title/status/assignee lines matched before a
+  header block was aborted by a non-header-shaped line, even though the `loose_header_ignored`
+  diagnostic already claimed those lines were discarded. Both scanners are now atomic, like
+  `decomposeSection`'s per-item header blocks already were: an abort discards every line matched
+  so far, not just the ones after it. For a loose file, an aborted block now falls back to the
+  same defaults a headerless file gets — title from the first `# heading` else the filename id,
+  status `draft`, no assignee. For a document source, an aborted **preamble** header block now
+  mints **no umbrella issue** at all (same as a document with no `Title:` line) instead of an
+  umbrella titled from the rejected block — its top-level id-bearing items get `parent: null`.
+  Well-formed header blocks and headerless files are unaffected.
+
 ## 0.35.2
 
 The first published release of the 0.35 line — v0.35.0 and v0.35.1 were tagged but their

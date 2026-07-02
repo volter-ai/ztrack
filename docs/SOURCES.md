@@ -196,8 +196,11 @@ lives in its own file or inside a document source's item, since a document item'
 level-shifted into the same shape before the preset ever parses it. `loose_header_ignored` is
 specific to checking a bare file as one issue (`ztrack check ./some-file.md`); a document source's
 own `Title:`/`status:`/`assignee:` header-block scans do not currently emit it — an aborted
-umbrella header block is absorbed silently (a known gap), the same hazard loose-file parsing had
-before that diagnostic existed.
+preamble header block is now discarded atomically, same as loose-file mode (ZTB-12): no umbrella
+issue is minted, and none of the aborted block's `Title:`/`Status:`/`Assignee:` lines leak into
+one. There is still no diagnostic naming the offending line for this case (a known gap) — a
+document whose preamble header block aborts just quietly has no umbrella, the same shape as a
+document with no `Title:` line at all.
 
 ## Round-trip fidelity
 
