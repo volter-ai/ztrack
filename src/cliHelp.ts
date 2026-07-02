@@ -79,11 +79,11 @@ export function printIssueActionHelp(action: string): boolean {
   const command = commandName();
   const usage: Record<string, string> = {
     scaffold: `${command} issue scaffold [--title text]`,
-    list: `${command} issue list [--search text] [--state name|open|closed|all] [--label name] [--limit n] [--json fields]`,
+    list: `${command} issue list [--search text] [--state name|open|closed|all] [--label name] [--parent id] [--limit n] [--json fields]`,
     view: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
     get: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
-    create: `${command} issue create --title text [--body text|--body-file path] [--label name] [--state name] [--assignee name]`,
-    edit: `${command} issue edit <issue> [--title text] [--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name]`,
+    create: `${command} issue create --title text [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id]`,
+    edit: `${command} issue edit <issue> [--title text] [--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent]`,
     close: `${command} issue close <issue> [--reason completed|canceled] [--comment text|--comment-file path]`,
     comment: `${command} issue comment <issue> --body text|--body-file path`,
     comments: `${command} issue comments <issue> [--jq expr]`,

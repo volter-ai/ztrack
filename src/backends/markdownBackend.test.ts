@@ -67,6 +67,32 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).body).toContain('edited via file');
   });
 
+  // ZTB-6: `children` is a denormalized VIEW of `parent` (markdown.ts:19-20) that nothing else
+  // maintains — `issue edit --parent`/`--remove-parent` must keep the OLD and NEW parents' `children`
+  // in sync, or `issue list --parent`/a parent's own view lies. `issue create --parent` intentionally
+  // does NOT (out of scope here — see docs/GUIDE.md's parent/children note).
+  test('edit --parent / --remove-parent keeps the OLD and NEW parents\' children arrays honest', async () => {
+    const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
+    await be.command(['issue', 'create', '--title', 'Parent A']);   // PH-1
+    await be.command(['issue', 'create', '--title', 'Parent B']);   // PH-2
+    await be.command(['issue', 'create', '--title', 'Child']);      // PH-3
+
+    // reparent PH-3 onto PH-1 (no prior parent) → PH-1.children gains PH-3
+    await be.command(['issue', 'edit', 'PH-3', '--parent', 'PH-1']);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).children.nodes.map((n: { identifier: string }) => n.identifier)).toEqual(['PH-3']);
+    expect(J(await be.command(['issue', 'view', 'PH-3', '--json'])).parent).toMatchObject({ identifier: 'PH-1' });
+
+    // re-parent PH-3 from PH-1 to PH-2 → PH-1 loses it, PH-2 gains it
+    await be.command(['issue', 'edit', 'PH-3', '--parent', 'PH-2']);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).children.nodes).toEqual([]);
+    expect(J(await be.command(['issue', 'view', 'PH-2', '--json'])).children.nodes.map((n: { identifier: string }) => n.identifier)).toEqual(['PH-3']);
+
+    // --remove-parent → PH-2 loses it, PH-3 is parentless again
+    await be.command(['issue', 'edit', 'PH-3', '--remove-parent']);
+    expect(J(await be.command(['issue', 'view', 'PH-2', '--json'])).children.nodes).toEqual([]);
+    expect(J(await be.command(['issue', 'view', 'PH-3', '--json'])).parent).toBeNull();
+  });
+
   test('list filters (state/label/search) + project list + deferred snapshot', async () => {
     const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
     await be.command(['issue', 'create', '--title', 'Alpha bug', '--state', 'Ready', '--label', 'type:bug']);

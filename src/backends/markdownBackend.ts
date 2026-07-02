@@ -149,6 +149,23 @@ export class MarkdownBackend implements TrackerBackend {
       try { rmSync(link, { force: true }); symlinkSync(realpathSync(real), link); } catch { /* index is best-effort; loadAll still unions the committed store */ }
     }
   }
+  // `parent` is a pointer; `children` is a DENORMALIZED VIEW of it (markdown.ts:19-20) that nothing
+  // else maintains — so a reparent via `issue edit` must update both endpoints of the edge itself, or
+  // `issue list --parent`/the old parent's `children` silently lie until someone fixes it by hand.
+  // Bounded cost: one load+write of the old parent (if any) and one of the new parent (if any) — not
+  // a scan of the store. `issue create --parent` does NOT backfill the parent's `children` —
+  // a residual gap documented in docs/GUIDE.md's parent/children note.
+  private reparentChildren(childId: string, oldParent: string | null, newParent: string | null): void {
+    if (oldParent === newParent) return;
+    if (oldParent) {
+      const op = this.loadOne(oldParent);
+      if (op && op.children.includes(childId)) { op.children = op.children.filter((id) => id !== childId); this.writeIssue(op); }
+    }
+    if (newParent) {
+      const np = this.loadOne(newParent);
+      if (np && !np.children.includes(childId)) { np.children = [...np.children, childId]; this.writeIssue(np); }
+    }
+  }
   private deleteIssue(id: string): void {
     rmSync(issueFile(this.dir, id), { force: true });
     if (this.shared) { try { rmSync(issueFile(this.indexDir, id), { force: true }); } catch { /* ignore */ } }
@@ -216,7 +233,14 @@ export class MarkdownBackend implements TrackerBackend {
       const s = flagVal(args, 'state'); if (s) { c.state = s; c.stateType = stateTypeOf(s); }
       const asg = flagVal(args, 'assignee'); if (asg !== undefined) c.assignees = asg ? [asg] : [];
       const p = flagVal(args, 'project'); if (p) c.project = p; if (args.includes('--remove-project')) c.project = null;
-      const pa = flagVal(args, 'parent'); if (pa) c.parent = pa; if (args.includes('--remove-parent')) c.parent = null;
+      // A reparent (either direction) keeps the OLD and NEW parents' `children` views in sync —
+      // see reparentChildren above.
+      const pa = flagVal(args, 'parent'); const removeParent = args.includes('--remove-parent');
+      if (pa || removeParent) {
+        const newParent = removeParent ? null : pa!;
+        this.reparentChildren(c.identifier, c.parent, newParent);
+        c.parent = newParent;
+      }
       for (const l of flagAll(args, 'add-label')) if (!c.labels.includes(l)) c.labels.push(l);
       const rm = new Set(flagAll(args, 'remove-label')); c.labels = c.labels.filter((l) => !rm.has(l));
       c.updatedAt = new Date().toISOString();
