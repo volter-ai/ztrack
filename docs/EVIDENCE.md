@@ -52,6 +52,11 @@ With an image:
 So a **fabricated screenshot path fails** the gate — the path must be a real file committed at the
 cited commit. `check` stays fully offline and deterministic; it never fetches a URL (see Verify).
 
+Every finding `ztrack check` reports — evidence findings included — cites where its issue record
+lives on disk (`origin: { path, line? }`), rendered in the check report as a root-relative
+`path:line` suffix. That's the on-disk location of the issue's declared **source** (see the
+disambiguation below), not the evidence file itself.
+
 ## Storing evidence
 
 `ztrack evidence add` ingests a file and prints what to cite. Two storage modes:
@@ -147,6 +152,16 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
 - `verify --bundle … --key <public.pem>` checks the envelope signatures.
 
 ## Advanced: validating against a mirrored world
+
+> **Disambiguation: "world sources" vs. declared `sources`.** This section's "world" and "source
+> books"/"world source rows" name **world event adapters** — read-only mirrors of external SaaS
+> systems (GitHub/Jira/Slack/Linear events, via `@volter-ai-dev/twin`) an installed preset can
+> ground claims against. That is a wholly different concept from a **declared source** in
+> `.volter/tracker-config.json`'s `sources: [...]` — where your issues themselves actually live
+> (one or more markdown directories/files; see `docs/SOURCES.md`). The exported package path
+> `ztrack/world-source-books` keeps its name unchanged; only the plain-English term "source" now
+> also means the tracker-config concept, so read "world source(s)" below as the former, never the
+> latter.
 
 Beyond commit-backed proof, ztrack can validate evidence against a mirrored **world** of external
 systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter-ai-dev/twin`** — a
