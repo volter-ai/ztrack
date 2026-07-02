@@ -9,8 +9,10 @@ export type TrackerBackendName = 'local' | 'markdown';
  *  issues by its id-bearing headings (`document` — ZTB-4; see src/documentParser.ts). `format`
  *  defaults from the shape of `path` when omitted: a `.md` file → `document`, anything else →
  *  `issue-per-file`. `readonly: true` marks a source ztrack may read but never write — writes
- *  routed at it (by the target record's `origin.path`) are rejected; a `document` source rejects
- *  every write regardless of this flag (read-only until write-back lands in ZTB-4 dev/09). */
+ *  routed at it (by the target record's `origin.path`) are rejected. A `document` source, even
+ *  when not `readonly: true`, only ever accepts a narrow `body`/title splice into an issue's
+ *  recorded span (ZTB-4 dev/09 — see backends/documentSource.ts); every wider write (status,
+ *  assignee, labels, reparent, comment, delete, create) still fails closed, naming the file. */
 export interface TrackerSourceConfig {
   path: string;
   format?: 'issue-per-file' | 'document';
