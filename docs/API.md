@@ -18,7 +18,7 @@ import { checkTracker } from 'ztrack';
 
 const result = await checkTracker({ projectRoot: process.cwd() });
 // result.ok       → boolean (no error-severity findings)
-// result.findings → [{ code, severity, message, issueId?, acId?, ... }]
+// result.findings → [{ code, severity, message, issueId?, acId?, origin?, ... }]
 // result.export   → the validated root ({ issues: [...] }) — this IS the snapshot
 
 if (!result.ok) {
@@ -26,6 +26,13 @@ if (!result.ok) {
   process.exitCode = 1;
 }
 ```
+
+Every `Finding` carries an optional `origin: { path: string; line?: number }` — where its issue
+record lives on disk (a directory-relative path for an `issue-per-file` source, or the containing
+file plus the section's starting line for a `document` source). A programmatic consumer can use it
+to route a finding straight to the file (and line) that produced it — e.g. group findings by file
+for an editor integration, or open the exact location in a PR comment — without re-deriving it from
+`issueId`.
 
 `TrackerCheckOptions`: `{ projectRoot?, config?, issues?, failOnWarning?, categories?, verifyCommits?, now?, phase? }`.
 - `issues: ['A-1']` scopes the check; `phase: 'gate'` runs only the continuous-gate rules (skip

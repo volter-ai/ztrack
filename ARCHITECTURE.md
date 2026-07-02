@@ -11,19 +11,48 @@ gates fail. This doc maps the pieces of the single validation pipeline and how d
 
 ---
 
-## 1. The data store
+## 1. Data sources
 
-Issues live in a **local markdown store** — one `.md` per issue:
+Issues live in one or more declared **sources** — `.volter/tracker-config.json`'s
+`sources: [{ path, format?, readonly? }]` (shape validated by `TrackerConfigSchema` in
+`src/configSchema.ts`; resolved to absolute entries by `resolveSources` in
+`src/sources.ts`). `sources` absent (the common case, and every project before this)
+is byte-identical to the old implicit single store: one `issue-per-file` source at
+`.volter/tracker/markdown/`.
 
-| backend | where | what |
-|---|---|---|
-| `markdown` (only) | `.volter/tracker/markdown/<id>.md` | one `.md` per issue: frontmatter metadata + body + `<!--tracker:comments-->` |
+| format | shape | where | what |
+|---|---|---|---|
+| `issue-per-file` (default) | a DIRECTORY | `.volter/tracker/markdown/<id>.md`, or any declared `path` | one `.md` per issue: frontmatter metadata + body + `<!--tracker:comments-->` |
+| `document` | a single markdown FILE | any declared `path` ending in `.md` | many issues decomposed from one file's heading tree (`documentParser.ts`): an id-bearing heading becomes an issue, heading nesting becomes parent/children links, a leading `Title:`/`Status:`/`Assignee:` preamble becomes an umbrella issue owning the top-level items |
 
-It is gitignored local runtime state, pure JS (`backends/markdownBackend.ts`, with
-`markdown.ts` as the (de)serializer). The former Python/SQLite `local` backend was
-removed; projects still on it run `ztrack migrate-local` once (reads the old
-`tracker.sqlite` and rewrites each issue as markdown). The store is **not** a SaaS —
-external systems sync through the worlds pipeline (see §5), never as live backends.
+`backends/markdownBackend.ts`'s `MarkdownBackend` dispatches each resolved source by
+`format` — `issue-per-file` to its `MarkdownSource`, `document` to
+`backends/documentSource.ts`'s `DocumentSource` — and unions every source's issues by
+id; both classes implement the same `IssueSource` contract (`backends/issueSource.ts`),
+so everything above them (`issue list`/`view`, GraphQL, the loader) is format-agnostic.
+The same id defined in two *different* sources is a data error, never silent
+precedence: `ztrack check` reports an `issue_id_conflict` finding
+(`core/engine.ts`'s `crossSourceConflicts`) naming every conflicting path. A source
+declared `readonly: true` accepts reads but fails closed on every write — a `document`
+source additionally fails closed on any write outside its own body/title (state,
+assignee, labels, parent, children, comments, the umbrella record itself — see
+`documentWriteBack.ts`).
+
+Every issue record carries its **origin** — the file it was read from, plus (for a
+`document` source) the line span of its section within that file
+(`core/engine.ts`'s `IssueRecord.origin { path, lineStart?, lineEnd? }`) — so findings
+can cite exactly where on disk they came from (see §2's Validate flow).
+
+The default source is gitignored local runtime state, pure JS
+(`backends/markdownBackend.ts`, with `markdown.ts` as the (de)serializer for
+`issue-per-file`; `documentParser.ts` + `backends/documentSource.ts` +
+`documentWriteBack.ts` for `document`). A declared source can point anywhere in the
+repo — e.g. a `document` source is typically a checked-in spec file, not gitignored
+runtime state. The former Python/SQLite `local` backend was removed; projects still on
+it run `ztrack migrate-local` once (reads the old `tracker.sqlite` and rewrites each
+issue as markdown). A source is **not** a SaaS — external systems sync through the
+worlds pipeline (see §5), never as live backends. See `docs/SOURCES.md` for the full
+declared-sources reference.
 
 ---
 
@@ -37,7 +66,7 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 |---|---|
 | `core/loader.ts` | the **only impure boundary**: reads issue markdown from the backend, frames issues into one bundle, then calls the active preset's `loadContext` to gather its observed facts and overlays the universal run selectors (`now`/`phase`/`categories`) into the typed `Context` |
 | `core/bundle.ts` | `buildIssueBundle` — frames every issue into ONE markdown bundle (`===ISSUE <id>===` envelope) the preset parses |
-| `core/engine.ts` | the contract: `Preset { name, schema, parse, serialize?, rules, loadContext?, contextSchema?, derive?, isIssueDone?, primitives?, scaffold? }`, `check(preset, markdown, ctx)` and `checkRoot(preset, root, ctx)`, the strict `ValidationInputSchema`/`makeValidationInputSchema`, `Rule.run = (input: ValidationInput) => Finding[]` (pure — no I/O, git, time, raw markdown; optional `category`/`depth`), returning `{ ok, findings, export: root }` |
+| `core/engine.ts` | the contract: `Preset { name, schema, parse, serialize?, rules, loadContext?, contextSchema?, derive?, isIssueDone?, primitives?, scaffold? }`, `check(preset, records, ctx)` and `checkRoot(preset, root, ctx)`, the strict `ValidationInputSchema`/`makeValidationInputSchema`, `Rule.run = (input: ValidationInput) => Finding[]` (pure — no I/O, git, time, raw markdown; optional `category`/`depth`), returning `{ ok, findings, export: root }` |
 | `modelEdit.ts` | the one mutation: parse → overlay a typed fragment → re-validate → the preset's `serialize` (`ac patch`/`issue patch`/`tracker_patch`). No universal write-grammar. |
 | `core/audit.ts` | append-only audit log (`.audit.jsonl`); timestamps derived; `observeChanges` catches external edits |
 | `core/gitWorld.ts` | preset-agnostic git facts (commits, PR/branch heads) a preset's `loadContext` calls — it knows nothing about any preset's schema |
@@ -48,18 +77,27 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 | `backends/markdownBackend.ts` | the `markdown` peer `TrackerBackend` (issue verbs over the `.md` store) |
 | `markdownDocument.ts` | the lenient issue-markdown parser/model (mdast tree-walk) — read model for `lint`/`fmt` |
 | `acVersion.ts` | content-hash of an acceptance criterion (`AC-Version`) for freshness/anchoring |
+| `sources.ts` | `resolveSources(projectRoot, config)` — the source-resolution module: resolves the config's declared `sources` (or the implicit default) into absolute, format-checked `ResolvedSource` entries; `MarkdownBackend` uses these to pick `MarkdownSource` vs `DocumentSource` per entry (§1) |
+| `backends/documentSource.ts` | `DocumentSource` — the `IssueSource` (`backends/issueSource.ts`) for a `document` source: parses the file into issues at construction, splices `body`/`title` writes back into each issue's recorded span, fails closed on every other field |
+| `documentParser.ts` | the `document`-format parser: turns one markdown file's heading tree into many issues (id-bearing headings, parent/children nesting, a `Title:`/`Status:`/`Assignee:` preamble → umbrella issue) |
+| `documentWriteBack.ts` | the splice primitives `DocumentSource.write` uses — `shiftHeadings` (renumber ATX headings inside a spliced section) and `decomposeSection`/`spliceSectionText` (byte-preserving section rewrite) |
+| `testkit/presetConformance.ts` | shared preset-conformance test harness (`assertSdlcGrammarConformance`, `assertRoundTripFidelity`, …) each boilerplate preset's test file wires in: pins that an unmodified parse→serialize round trip is byte-identical and that an edit touches only the bytes its element owns |
 
 **Validate flow:**
 ```
-loader.loadValidationInput(backend, preset)  (impure: backend read + frame bundle)
-  → buildIssueBundle(issues)                  (===ISSUE <id>=== envelope)
+loader.loadValidationInput(preset, opts)     (impure: reads the tracker client)
+  → config → resolveSources(config)           (declared sources, or the implicit default)
+     → format dispatch per source: issue-per-file → MarkdownSource, document → DocumentSource
+     → union every source's issues by id       (issue_id_conflict finding on a same-id collision)
+  → records: IssueRecord[]                    (each carries origin: { path, lineStart?, lineEnd? })
+  → buildIssueBundle(records)                  (===ISSUE <id>=== envelope)
   → ctx = preset.loadContext({ projectRoot, bundle })  (preset-owned: git/world/services)
           + universal { now, phase, categories }
-  → check(preset, bundle, ctx)
+  → check(preset, records, ctx)
      → preset.parse  (mdast → root)
      → ValidationInputSchema.parse({ context, root })   (one strict top-level schema)
      → rules.run(input)                       (pure; read git/world from input.context)
-  → { findings, export: root }                ← the validated root IS the export; no snapshot
+  → { findings, export: root }                ← findings carry origin; the validated root IS the export; no snapshot
 ```
 
 **Rule phases (`gate` vs `transition`).** A real SDLC enforces at two surfaces, and so
@@ -138,9 +176,10 @@ parser, serialize, and rules.
 **Validate flow (what `ztrack check` does):**
 ```
 cli.ts → cliCheck (check)
-  → checkTracker()                     (loader builds Context from backend + world + git)
+  → checkTracker()                     (loader resolves sources, unions issues by id,
+                                         builds Context from world + git — see §2)
      → preset.parse → ValidationInputSchema.parse → pure rules
-  → { ok, findings, export: root }     (the validated root)
+  → { ok, findings, export: root }     (the validated root; findings carry origin)
   → exit 0/1
 ```
 
@@ -211,7 +250,8 @@ never consults the world. The adapters are reachable from the
 
 ## 6. Do-not-confuse cheat sheet
 
-- **The store is a local markdown folder — never a SaaS.** GitHub/Jira/Slack are world sync spokes, not backends.
+- **Sources are local markdown — never a SaaS.** One or more declared sources (§1), always markdown; GitHub/Jira/Slack are world sync spokes, not backends.
 - **Validation is one pipeline.** `core/engine.ts` (`check`/`checkRoot`) over the repo-local standalone `preset.mts` is all there is; the "export" is just `check().export` (the validated `Root`). There is no separate snapshot model.
 - **The write-side layer is not validation.** `modelEdit.ts` (parse → edit the typed model → the preset's `serialize` — the one mutation path), `markdownDocument.ts`, `rawIssueMarkdown.ts`, and `lint.ts` edit/format issue bodies; the validation pipeline does not import them.
 - **"preset" means a validation preset only.** The markdown read-model lives in `markdownDocument.ts` (lenient mdast) and the raw structured model in `rawIssueMarkdown.ts` — neither is under a `presets/` path anymore.
+- **Sources are independent of presets.** `sources` (§1 — a `tracker-config.json` property saying WHERE issues live: one or more markdown directories/files) and a preset (§3 — HOW issues are validated: schema, parser, rules) are orthogonal; any preset can run over any source layout.
