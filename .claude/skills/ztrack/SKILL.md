@@ -1,6 +1,6 @@
 ---
 name: ztrack
-description: Work in a ztrack-verified repo — make `ztrack check`/`loop` green HONESTLY. Use when a Stop-hook gate or `ztrack check` is red, or when marking an acceptance criterion done.
+description: Work in a ztrack-verified repo — make `ztrack check`/`loop` green HONESTLY, whether issues live one-per-file or inside a hand-authored document source. Use when a Stop-hook gate or `ztrack check` is red, or when marking an acceptance criterion done.
 ---
 
 # ztrack: making the gate green honestly
@@ -19,13 +19,17 @@ APP-1  x error  passed_ac_missing_evidence
 ```
 
 ## The resolution verbs
-You never hand-edit issue markdown — the preset owns the grammar. You mutate through:
+Two source models — know which one you're in before you edit anything:
+- **Issue-per-file store (most repos, the default):** you never hand-edit issue markdown — the preset owns the grammar. Mutate only through the verbs below.
+- **Document source** (a hand-authored plan/backlog file holds many issues — tell by a finding citing a path like `PLAN.md:42`, or `format:"document"` in the config): `ac patch` and title/body edits still splice into the file at the issue's recorded span. State, assignee, label, parent/children, comments, writes to the umbrella issue, and delete all **fail closed** (the error names the file). For those, edit the document directly at the cited line, then re-run check — that's the sanctioned path, not a workaround.
+
+Verbs:
 - **`ztrack ac patch <issue> <acId> --json '{…}'`** — overlay AC fields (mark checked/passed, attach evidence, add proof). The JSON is the preset's AC schema shape; run `ztrack issue view <issue>` to see the exact shape for your preset (default: `{checked, status, evidence:[{id,image,commit,acVersion}], proof:{explanation,evidenceRefs}}`).
 - **`ztrack issue patch <issue> --json '{…}'`** — overlay issue-level fields.
 - **`ztrack issue edit <issue> --assignee … --state …`** — set issue columns (assignee, state).
 - **`ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "…"`** — only when you *knowingly accept* a finding you cannot satisfy; prefer fixing.
 
-The cited commit must EXIST in git (`ztrack check` enforces this by default) — so implement and commit the real work first, then cite that SHA. If a needed commit, PR, screenshot, or source does not exist, **leave the AC unchecked and report the blocker** — do not invent it.
+The cited commit must EXIST in git (`ztrack check` enforces this by default) — so implement and commit the real work first, then cite that SHA. If a needed commit, PR, screenshot, or evidence source does not exist, **leave the AC unchecked and report the blocker** — do not invent it.
 
 ## Targets
 `check` and `loop` take one target: nothing (whole tracker), `<issue-id>`, `<file.md>`, or — inside a worktree named for an issue — that issue automatically. `ztrack loop start <issue>` arms a Stop-hook gate that holds your turn until that issue is green.

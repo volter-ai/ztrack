@@ -25,6 +25,27 @@ then disarms), or take an honest escape. Your job:
 The target grammar is the same everywhere: an issue id, a `./body.md` file, or — inside a worktree
 named for an issue — that issue automatically.
 
+### Two source models: issue-per-file vs. document
+
+A tracker declares its `sources:` in `.volter/tracker-config.json`. Most repos use the default,
+**issue-per-file** (one `.md` per issue): mutate only through the verbs (`ac patch`, `issue patch`,
+`issue edit`) — never hand-edit the stored markdown.
+
+Some repos instead declare a **document** source: one hand-authored file (a plan, a backlog) where
+id-bearing headings (`## APP-1 — Title`) are issues, nesting is parenthood, and each item carries its
+own `status:`/`assignee:` header lines and an Acceptance Criteria subsection. You can recognize one
+because a `ztrack check` finding cites a path like `PLAN.md:42` instead of an issue-per-file path, or
+the config says `format:"document"`. The document itself is the source of truth, authored directly by
+humans and agents.
+
+For a document source, `ac patch` and title/body edits (`issue edit --title`/`--body`) still work —
+they splice the change back into the issue's recorded line span, leaving every other byte untouched.
+Everything else **fails closed** by design: state, assignee, label, parent/children, comments, any
+write to the umbrella issue (the file's preamble `Title:`/`Status:`/`Assignee:` block), delete, and
+any write to a `readonly:true` source all raise an error naming the file. When you hit one of these,
+**edit the document directly at the cited line, then re-run `ztrack check`** — that's the sanctioned
+path, not a workaround.
+
 ## Adopting ztrack into a repo (one-time)
 
 From a target repository, a user should be able to run an agent with a prompt like this:
@@ -55,6 +76,9 @@ npx ztrack issue scaffold --title "Adopt ztrack" > body.md
 npx ztrack issue create --title "Adopt ztrack" --label type:case --state ready --assignee agent --body-file body.md
 npx ztrack check
 ```
+
+(`--state`/`--assignee` are shown explicit above for the demo issue; they're not required — a bare
+`issue create` mints preset-conforming defaults: `state: draft`, `assignee:` your git `user.name`.)
 
 If the command fails because git is missing, report that environment blocker. Otherwise continue.
 Use `spec` or `speckit` only when the repository already has that workflow shape. After init,
