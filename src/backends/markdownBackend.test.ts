@@ -3,21 +3,30 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMarkdownBackend } from './markdownBackend.ts';
+import { markdownStoreDir } from '../config.ts';
 
 const J = (r: { stdout: string }) => JSON.parse(r.stdout);
 
 describe('markdown backend (peer to local) — CRUD + shapes over the .md store', () => {
   test('create → view → list → edit → comment → close round-trips', async () => {
-    const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
+    const dir = mkdtempSync(join(tmpdir(), 'mdbe-'));
+    const be = createMarkdownBackend(dir, 'PH');
+    const mdPath = join(markdownStoreDir(dir), 'PH-1.md');
 
     const created = J(await be.command(['issue', 'create', '--title', 'First', '--body', '# b', '--state', 'Backlog', '--label', 'type:bug']));
     expect(created).toMatchObject({ identifier: 'PH-1', title: 'First', state: { name: 'Backlog', type: 'open' } });
+    // ZTB-2: `path` is always on the view, even though the caller never asked for it — it's how
+    // the loader populates IssueRecord.origin.
+    expect(created.path).toBe(mdPath);
 
     const view = J(await be.command(['issue', 'view', 'PH-1', '--json']));
-    expect(view).toMatchObject({ id: 'PH-1', identifier: 'PH-1', number: 'PH-1', title: 'First', body: '# b', labels: { nodes: [{ name: 'type:bug' }] }, parent: null, children: { nodes: [] } });
+    expect(view).toMatchObject({ id: 'PH-1', identifier: 'PH-1', number: 'PH-1', title: 'First', body: '# b', labels: { nodes: [{ name: 'type:bug' }] }, parent: null, children: { nodes: [] }, path: mdPath });
 
     const list = J(await be.command(['issue', 'list', '--json', 'identifier,title,state,labels']));
-    expect(list).toEqual([{ identifier: 'PH-1', title: 'First', state: 'Backlog', labels: ['type:bug'] }]);
+    expect(list).toEqual([{ identifier: 'PH-1', title: 'First', state: 'Backlog', labels: ['type:bug'] }]); // `path` NOT requested -> not on the row
+
+    const listWithPath = J(await be.command(['issue', 'list', '--json', 'identifier,path']));
+    expect(listWithPath).toEqual([{ identifier: 'PH-1', path: mdPath }]); // requested -> present
 
     await be.command(['issue', 'edit', 'PH-1', '--add-label', 'P1', '--state', 'Ready']);
     await be.command(['issue', 'comment', 'PH-1', '--body', 'a note']);

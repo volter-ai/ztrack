@@ -109,4 +109,68 @@ describe('check() runner', () => {
     const codes = check(preset, rec(), { categories: { code: 1 } }).findings.map((f) => f.code).sort();
     expect(codes).toEqual(['inv', 'shallow']);
   });
+
+  // ZTB-2: IssueRecord.origin is copied onto the findings the engine emits for that issue, so a
+  // finding cites where its issue actually lives — never authored by a rule itself.
+  describe('origin propagation', () => {
+    const preset: Preset<R> = {
+      name: 'p', schema: RootSchema, parse: () => ({ issues: [emptyIssue] }),
+      rules: [rule<R, { issueId: string }>({ code: 'always', select: (m) => m.issues, message: () => 'x' })],
+    };
+
+    test('a record with origin propagates onto its issue\'s findings', () => {
+      const records: IssueRecord[] = [{ id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/issues/A-1.md' } }];
+      const result = check(preset, records);
+      expect(result.findings.find((f) => f.code === 'always')?.origin).toEqual({ path: '/repo/issues/A-1.md' });
+    });
+
+    test('a record with no origin leaves findings without one', () => {
+      const result = check(preset, rec());
+      expect(result.findings.find((f) => f.code === 'always')?.origin).toBeUndefined();
+    });
+
+    test('a document-source origin (lineStart) narrows to a single `line` on the finding', () => {
+      const records: IssueRecord[] = [{ id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/BACKLOG.md', lineStart: 42, lineEnd: 50 } }];
+      const result = check(preset, records);
+      expect(result.findings.find((f) => f.code === 'always')?.origin).toEqual({ path: '/repo/BACKLOG.md', line: 42 });
+    });
+
+    test('a single-record parse failure cites that record\'s origin', () => {
+      const throwyPreset: Preset<R> = { name: 'p', schema: RootSchema, parse: () => { throw new Error('bad shape'); }, rules: [] };
+      const records: IssueRecord[] = [{ id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/issues/A-1.md' } }];
+      const result = check(throwyPreset, records);
+      expect(result.findings[0]?.code).toBe('parse_failed');
+      expect(result.findings[0]?.origin).toEqual({ path: '/repo/issues/A-1.md' });
+    });
+
+    test('a multi-record parse failure has no single issue to cite — origin stays unset', () => {
+      const throwyPreset: Preset<R> = { name: 'p', schema: RootSchema, parse: () => { throw new Error('bad shape'); }, rules: [] };
+      const records: IssueRecord[] = [
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/issues/A-1.md' } },
+        { id: 'A-2', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/issues/A-2.md' } },
+      ];
+      const result = check(throwyPreset, records);
+      expect(result.findings[0]?.origin).toBeUndefined();
+    });
+
+    test('a wellformed_shape finding on one issue of a multi-issue root cites that issue\'s origin', () => {
+      // The second issue's `title` is malformed (a number, not a string) — the strict root schema
+      // rejects it at zod path `root.issues.1.title`; shapeFindings resolves index 1 back to
+      // A-2's record and attaches its origin (index 0's A-1 origin must NOT leak onto it).
+      const multiPreset: Preset<R> = {
+        name: 'p', schema: RootSchema,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        parse: () => ({ issues: [emptyIssue, { id: 'A-2', title: 123 as any, summary: '', status: 'open', acceptanceCriteria: [] }] }),
+        rules: [],
+      };
+      const records: IssueRecord[] = [
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/issues/A-1.md' } },
+        { id: 'A-2', title: 't', status: 'draft', body: 'x', origin: { path: '/repo/issues/A-2.md' } },
+      ];
+      const result = check(multiPreset, records);
+      expect(result.ok).toBe(false);
+      const finding = result.findings.find((f) => f.code === 'wellformed_shape');
+      expect(finding?.origin).toEqual({ path: '/repo/issues/A-2.md' });
+    });
+  });
 });
