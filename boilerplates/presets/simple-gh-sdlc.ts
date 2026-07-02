@@ -85,6 +85,15 @@ export const DefaultIssueSchema = z.object({
   // re-emits each where it originally sat instead of pushing everything to the end (ZTB-5).
   notes: z.array(z.string().min(1)).optional(),          // unknown sections AFTER "## Acceptance Criteria"
   notesBefore: z.array(z.string().min(1)).optional(),    // unknown sections BEFORE "## Acceptance Criteria"
+  // BARE LEADING PROSE: content before the FIRST "## " heading of any kind that is not a
+  // recognized metadata line (Summary:/PR:/Children:/Blocks:/Blocked by:/Relates:) is CARRIED
+  // verbatim — same rationale as notes/notesBefore above: this preset CHOOSES to carry so a
+  // patch/fmt round-trip never silently drops human-authored prose. This is the
+  // pre-first-"##"-heading complement of notes/notesBefore: notesBefore carries unknown `## X`
+  // sections that sit before "## Acceptance Criteria"; `prose` carries whatever plain preamble
+  // (paragraphs, a stray checkbox, a `###` sub-heading, a code fence, …) sits before even the
+  // first `## ` heading, i.e. before notesBefore's sections begin.
+  prose: z.string().min(1).optional(),
 }).strict();
 
 export const DefaultRootSchema = z.object({ issues: z.array(DefaultIssueSchema) }).strict();
@@ -169,6 +178,35 @@ function splitNotes(body: string): { known: string; notesBefore: string[]; notes
   return { known: known.join('\n'), notesBefore: notesBefore.filter(Boolean), notesAfter: notesAfter.filter(Boolean) };
 }
 
+// Per-line metadata patterns recognized in the preamble paragraph scan below (kept in sync with
+// the mdast metadata regexes in `parseDefaultIssue`'s paragraph branch — Summary/PR/Children/
+// Blocks/Blocked by/Relates). Used ONLY to decide which preamble lines are metadata (and so
+// excluded from `prose`); the mdast scan itself is untouched.
+const PREAMBLE_METADATA_PATTERNS: RegExp[] = [
+  /^Summary:\s*(.+)$/i,
+  /^PR:\s*(\S+)/i,
+  /^Children:\s*(.+)$/i,
+  /^Blocks:\s*(.+)$/i,
+  /^Blocked by:\s*(.+)$/i,
+  /^Relates:\s*(.+)$/i,
+];
+
+// Bare leading prose: the lines of `known` BEFORE its first "## " heading (or the whole of
+// `known` if it has none), with recognized metadata lines dropped and leading/trailing blank
+// lines trimmed — internal structure (blank lines, indentation) is otherwise preserved verbatim.
+function extractProse(known: string, metadataPatterns: RegExp[]): string | undefined {
+  const lines = known.split('\n');
+  const headingIdx = lines.findIndex((line) => /^##\s/.test(line));
+  const preamble = headingIdx === -1 ? lines : lines.slice(0, headingIdx);
+  const kept = preamble.filter((line) => !metadataPatterns.some((re) => re.test(line)));
+  let start = 0;
+  let end = kept.length;
+  while (start < end && kept[start]!.trim() === '') start++;
+  while (end > start && kept[end - 1]!.trim() === '') end--;
+  const trimmed = kept.slice(start, end);
+  return trimmed.length ? trimmed.join('\n') : undefined;
+}
+
 function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[]): Record<string, unknown> {
   // Metadata comes STRUCTURED from the record's columns; only the content (summary, pr,
   // relations, ACs) is parsed out of the body markdown. id/title/status/assignee/labels are
@@ -181,6 +219,8 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
   const { known, notesBefore, notesAfter } = splitNotes(record.body);
   if (notesBefore.length) issue.notesBefore = notesBefore;
   if (notesAfter.length) issue.notes = notesAfter;
+  const prose = extractProse(known, PREAMBLE_METADATA_PATTERNS);
+  if (prose) issue.prose = prose;
   const tree = toMdast(known);
   let inAc = false;
   let sawAcSection = false;
@@ -311,6 +351,10 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
   if (rel('blocks').length) out.push(`Blocks: ${rel('blocks').join(', ')}`);
   if (rel('blocked-by').length) out.push(`Blocked by: ${rel('blocked-by').join(', ')}`);
   if (rel('relates').length) out.push(`Relates: ${rel('relates').join(', ')}`);
+  // bare leading prose (see the `prose` schema comment) is re-emitted right after the metadata
+  // lines and before notesBefore's sections — the same canonical-spacing pattern as the
+  // notesBefore loop below, so it round-trips without churn.
+  if (issue.prose) { if (out.length) out.push(''); out.push(issue.prose); }
   // unknown sections that sat BEFORE "## Acceptance Criteria" go back there — separated by
   // exactly one blank line (the canonical spacing `splitNotes` normalizes everything to), so
   // POSITION survives an unmodified round trip, not just content (ZTB-5).
