@@ -4,6 +4,18 @@
 // systems (Linear, …) are sync spokes through the worlds pipeline, never live backends.
 export type TrackerBackendName = 'local' | 'markdown';
 
+/** One declared markdown source (ZTB-3). `path` is project-root-relative: a DIRECTORY of
+ *  one-issue-per-file markdown (`issue-per-file`), or a single markdown FILE holding many issues
+ *  (`document` — not yet implemented; landing in ZTB-4, and rejected as a config error until then).
+ *  `format` defaults from the shape of `path` when omitted: a `.md` file → `document`, anything
+ *  else → `issue-per-file`. `readonly: true` marks a source ztrack may read but never write —
+ *  writes routed at it (by the target record's `origin.path`) are rejected. */
+export interface TrackerSourceConfig {
+  path: string;
+  format?: 'issue-per-file' | 'document';
+  readonly?: boolean;
+}
+
 export interface TrackerConfig {
   backend: TrackerBackendName;
   local?: {
@@ -11,6 +23,16 @@ export interface TrackerConfig {
     database?: string;
     store?: string;
   };
+  /**
+   * Declared markdown sources the tracker unions by issue id. Absent (the common case) is
+   * EXACTLY today's single implicit store: one issue-per-file source at `markdownStoreDir()`
+   * (which itself honors `local.teamKey` for id minting and `VOLTER_STATE_DIR` for relocation —
+   * those stay properties of that implicit default entry, not a parallel mechanism). The same id
+   * appearing in two DIFFERENT declared sources is a config-data error (`issue_id_conflict`
+   * finding on `ztrack check`), never silent precedence — precedence is reserved for the
+   * worktree board index *within* one source (see `board`).
+   */
+  sources?: TrackerSourceConfig[];
   /**
    * Board scope for a LOCAL (unlinked) tracker. `branch` (default): the committed per-worktree
    * `.volter` store IS the board — branch-scoped, issues merge with the code, but a coordinator

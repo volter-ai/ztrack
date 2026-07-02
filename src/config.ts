@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { TrackerConfig } from './types.ts';
+import { assertValidTrackerConfigShape } from './configSchema.ts';
 
 /**
  * Name of the per-project state directory holding tracker config and data
@@ -178,6 +179,14 @@ export function loadTrackerConfig(projectRoot = projectRootFrom()): TrackerConfi
     raw = JSON.parse(readFileSync(configPath, 'utf8')) as Partial<TrackerConfig>;
   } catch (error) {
     throw new Error(`Tracker config at ${configPath} is not valid JSON: ${(error as Error).message}`);
+  }
+  // Fail closed on shape: an unrecognized key anywhere in the config (top-level or nested —
+  // e.g. `source:` typo'd for `sources:`) used to be silently spread through and ignored. Now
+  // it's a config error naming the key and its nearest valid sibling. (ZTB-3)
+  try {
+    assertValidTrackerConfigShape(raw);
+  } catch (error) {
+    throw new Error(`Tracker config at ${configPath} is invalid:\n  - ${(error as Error).message}`);
   }
   // markdown is the default and only live backend; a config still naming the removed
   // Python `local` backend is preserved verbatim so the client can point the user at

@@ -199,4 +199,50 @@ describe('check() runner', () => {
       expect(finding?.origin).toEqual({ path: '/repo/issues/A-2.md' });
     });
   });
+
+  // ZTB-3: a config-declared `sources` union can surface the SAME id from two DIFFERENT files
+  // (see MarkdownBackend.loadAll) — a data error the engine reports directly (`issue_id_conflict`),
+  // not silent precedence. This is distinct from — and must not disturb — the PRESET's own
+  // structural `duplicate_issue_id` (built on `root.issues`), which still fires independently
+  // once both records parse: see boilerplates/presets/simple-sdlc.test.ts's
+  // "cross-issue: duplicate issue ids across the tracker fail".
+  describe('issue_id_conflict (ZTB-3: cross-source id collision)', () => {
+    const echoPreset: Preset<R> = {
+      name: 'p', schema: RootSchema,
+      parse: (records) => ({ issues: records.map((r) => ({ id: r.id, title: r.title, summary: '', status: 'open', acceptanceCriteria: [] })) }),
+      rules: [],
+    };
+
+    test('the same id backed by two DIFFERENT origins is a waivable:false error naming both paths', () => {
+      const records: IssueRecord[] = [
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/store-a/A-1.md' } },
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/store-b/A-1.md' } },
+      ];
+      const result = check(echoPreset, records);
+      expect(result.ok).toBe(false);
+      const finding = result.findings.find((f) => f.code === 'issue_id_conflict');
+      expect(finding).toMatchObject({ severity: 'error', waivable: false, issueId: 'A-1' });
+      expect(finding?.message).toContain('/store-a/A-1.md');
+      expect(finding?.message).toContain('/store-b/A-1.md');
+    });
+
+    test('the same id with NO origin (or the same origin twice) is NOT a cross-source conflict — untouched', () => {
+      const noOrigin: IssueRecord[] = [rec()[0]!, rec()[0]!];
+      expect(check(echoPreset, noOrigin).findings.some((f) => f.code === 'issue_id_conflict')).toBe(false);
+
+      const sameOrigin: IssueRecord[] = [
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/store-a/A-1.md' } },
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/store-a/A-1.md' } },
+      ];
+      expect(check(echoPreset, sameOrigin).findings.some((f) => f.code === 'issue_id_conflict')).toBe(false);
+    });
+
+    test('an id unique to one origin among several records is unaffected', () => {
+      const records: IssueRecord[] = [
+        { id: 'A-1', title: 't', status: 'draft', body: 'x', origin: { path: '/store-a/A-1.md' } },
+        { id: 'A-2', title: 't', status: 'draft', body: 'x', origin: { path: '/store-b/A-2.md' } },
+      ];
+      expect(check(echoPreset, records).findings.some((f) => f.code === 'issue_id_conflict')).toBe(false);
+    });
+  });
 });

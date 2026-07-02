@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createMarkdownBackend } from './markdownBackend.ts';
 import { markdownStoreDir } from '../config.ts';
+import type { ResolvedSource } from '../sources.ts';
 
 const J = (r: { stdout: string }) => JSON.parse(r.stdout);
 
@@ -102,5 +103,64 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect(J(await be.command(['issue', 'list', '--search', 'alpha', '--json', 'title'])).map((r: { title: string }) => r.title)).toEqual(['Alpha bug']);
     expect(J(await be.command(['project', 'list', '--json', 'id,name']))).toEqual([]);
     expect((await be.command(['snapshot', 'project-manager', '--format', 'json'])).stderr).toContain('snapshot');
+  });
+});
+
+// ZTB-3: `createMarkdownBackend`'s third (optional) `sources` param generalizes the single
+// hardwired store to a declared list. These are UNIT-level (no CLI spawn); sourcesConfig.e2e.test.ts
+// covers the same behavior end to end through config + the real CLI.
+describe('markdown backend — declared `sources` (ZTB-3)', () => {
+  const src = (dir: string, readonly = false): ResolvedSource => ({ dir, format: 'issue-per-file', readonly, isDefault: false });
+
+  test('list unions ids across declared sources, each row carrying its OWN source path', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));
+    const dirA = join(root, 'a');
+    const dirB = join(root, 'b');
+    // Seed one issue into each dir via single-source backends (isolates "where it was created"
+    // from "what the multi-source backend under test sees").
+    await createMarkdownBackend(root, 'PH', [src(dirA)]).command(['issue', 'create', '--title', 'In A']);
+    await createMarkdownBackend(root, 'PH', [src(dirB)]).command(['issue', 'create', '--title', 'In B']);
+
+    const be = createMarkdownBackend(root, 'PH', [src(dirA), src(dirB)]);
+    const rows = J(await be.command(['issue', 'list', '--json', 'identifier,path'])) as Array<{ identifier: string; path: string }>;
+    expect(rows.sort((x, y) => x.identifier.localeCompare(y.identifier))).toEqual([
+      { identifier: 'PH-1', path: join(dirA, 'PH-1.md') },
+      { identifier: 'PH-1', path: join(dirB, 'PH-1.md') }, // SAME id, DIFFERENT source — undeduped on purpose (see engine.ts crossSourceConflicts)
+    ]);
+  });
+
+  test('create mints into the first WRITABLE declared source, continuing the id counter across ALL sources', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));
+    const dirA = join(root, 'a');
+    const dirB = join(root, 'b');
+    await createMarkdownBackend(root, 'PH', [src(dirB)]).command(['issue', 'create', '--title', 'Seeded in B']); // PH-1, in B
+
+    const be = createMarkdownBackend(root, 'PH', [src(dirA), src(dirB, true)]); // A writable, B readonly, A first
+    const created = J(await be.command(['issue', 'create', '--title', 'Minted in A']));
+    expect(created.identifier).toBe('PH-2'); // global counter (max across BOTH sources), not per-source
+    expect(created.path).toBe(join(dirA, 'PH-2.md'));
+  });
+
+  test('a readonly source rejects edit/comment/close/delete, naming the source dir; the other source is unaffected', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));
+    const dirA = join(root, 'a');
+    const dirB = join(root, 'b');
+    await createMarkdownBackend(root, 'PH', [src(dirB)]).command(['issue', 'create', '--title', 'Seeded in B']); // PH-1, in B
+    const be = createMarkdownBackend(root, 'PH', [src(dirA), src(dirB, true)]);
+    const created = J(await be.command(['issue', 'create', '--title', 'Minted in A']));
+    expect(created.identifier).toBe('PH-2');
+
+    await expect(be.command(['issue', 'edit', 'PH-1', '--title', 'renamed'])).rejects.toThrow('read-only');
+    await expect(be.command(['issue', 'edit', 'PH-1', '--title', 'renamed'])).rejects.toThrow(dirB);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).title).toBe('Seeded in B'); // genuinely unwritten
+
+    await be.command(['issue', 'edit', 'PH-2', '--title', 'Renamed A']); // the writable source is unaffected
+    expect(J(await be.command(['issue', 'view', 'PH-2', '--json'])).title).toBe('Renamed A');
+  });
+
+  test('every declared source readonly: create fails clean instead of writing anywhere', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));
+    const be = createMarkdownBackend(root, 'PH', [src(join(root, 'a'), true), src(join(root, 'b'), true)]);
+    await expect(be.command(['issue', 'create', '--title', 'nope'])).rejects.toThrow('no writable source');
   });
 });

@@ -11,6 +11,7 @@ import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
 import { type CanonicalIssue, parseIssue, serializeIssue } from './markdown.ts';
 import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../config.ts';
 import { git } from '../core/gitWorld.ts';
+import { resolveSources, type ResolvedSource } from '../sources.ts';
 
 // Issue ids name files in the store; reject anything that isn't a plain id so a
 // crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
@@ -82,23 +83,82 @@ function stateTypeOf(name: string): 'open' | 'completed' | 'canceled' {
 }
 const ok = (stdout: string): TrackerCommandResult => ({ stdout, stderr: '' });
 
-export class MarkdownBackend implements TrackerBackend {
-  readonly name = 'markdown' as const;
-  private readonly dir: string; // committed per-worktree store (this checkout) — the board stays IN GIT
-  private readonly indexDir: string; // central symlink index (shared mode); === dir in branch mode (no-op)
-  private readonly mainDir: string | null; // trunk's committed store — read fallback for a dangling index link
-  private readonly shared: boolean;
-  private readonly teamKey: string;
-  private readonly projectRoot: string;
-  constructor(projectRoot: string, teamKey: string) {
-    this.projectRoot = projectRoot;
-    this.dir = markdownStoreDir(projectRoot);
-    this.indexDir = boardIndexDir(projectRoot);
-    this.mainDir = mainWorktreeMarkdownDir(projectRoot);
+// One declared source's on-disk machinery: the CRUD logic that used to be the whole backend
+// (one dir, at most one shared-board index/trunk pair) is unchanged — it just now belongs to
+// ONE of potentially several sources instead of being the only one. Only `isDefault` sources
+// (today: exactly the implicit `markdownStoreDir()`) get the index/trunk union; a plain declared
+// source is a single directory, read/written directly.
+class MarkdownSource {
+  readonly dir: string; // this source's directory (default: THIS checkout's committed store)
+  readonly indexDir: string; // central symlink index (default source, shared mode); === dir otherwise (no-op)
+  readonly mainDir: string | null; // trunk's committed store — read fallback for a dangling index link (default source only)
+  readonly shared: boolean;
+  readonly readonlySource: boolean;
+  readonly isDefault: boolean;
+  constructor(resolved: ResolvedSource, opts: { indexDir?: string; mainDir?: string | null } = {}) {
+    this.dir = resolved.dir;
+    this.indexDir = opts.indexDir ?? resolved.dir;
+    this.mainDir = opts.mainDir ?? null;
     this.shared = this.indexDir !== this.dir;
-    this.teamKey = teamKey;
+    this.readonlySource = resolved.readonly;
+    this.isDefault = resolved.isDefault;
     mkdirSync(this.dir, { recursive: true });
     if (this.shared) mkdirSync(this.indexDir, { recursive: true });
+  }
+  ids(): string[] {
+    return [...new Set([...mdIds(this.dir), ...mdIds(this.indexDir), ...(this.mainDir ? mdIds(this.mainDir) : [])])];
+  }
+  // Resolve the readable md for an id, preferring the LIVE owner: the index symlink target (the worktree
+  // currently working it), then this checkout's committed copy, then trunk's (post-merge / fallback).
+  resolveBody(id: string): string | null {
+    if (this.shared) { const fromIndex = readableMd(issueFile(this.indexDir, id)); if (fromIndex !== null) return fromIndex; }
+    const here = readableMd(issueFile(this.dir, id)); if (here !== null) return here;
+    if (this.shared && this.mainDir) return readableMd(issueFile(this.mainDir, id));
+    return null;
+  }
+  // The absolute path the issue's content actually resolved from — same precedence as
+  // resolveBody, so a finding's origin points at the file that was read, not just this
+  // checkout's copy. Falls back to this checkout's path (e.g. right after a fresh write).
+  originPath(id: string): string {
+    if (this.shared) { const p = issueFile(this.indexDir, id); if (readableMd(p) !== null) return p; }
+    const here = issueFile(this.dir, id); if (readableMd(here) !== null) return here;
+    if (this.shared && this.mainDir) { const p = issueFile(this.mainDir, id); if (readableMd(p) !== null) return p; }
+    return issueFile(this.dir, id);
+  }
+  // Write the committed md to THIS checkout (board stays in git, on this branch); in shared mode (re)point
+  // the central index symlink at it — making this worktree the live owner of the issue.
+  write(c: CanonicalIssue): void {
+    const real = issueFile(this.dir, c.identifier);
+    mkdirSync(this.dir, { recursive: true });
+    writeFileSync(real, serializeIssue(c));
+    if (this.shared) {
+      const link = issueFile(this.indexDir, c.identifier);
+      try { rmSync(link, { force: true }); symlinkSync(realpathSync(real), link); } catch { /* index is best-effort; ids() still unions the committed store */ }
+    }
+  }
+  delete(id: string): void {
+    rmSync(issueFile(this.dir, id), { force: true });
+    if (this.shared) { try { rmSync(issueFile(this.indexDir, id), { force: true }); } catch { /* ignore */ } }
+  }
+}
+
+export class MarkdownBackend implements TrackerBackend {
+  readonly name = 'markdown' as const;
+  private readonly sources: MarkdownSource[];
+  private readonly teamKey: string;
+  private readonly projectRoot: string;
+  // `sources` (resolved by `resolveSources`) is optional so direct callers (unit tests, and any
+  // caller that never reads tracker-config.json) keep TODAY's exact single-store behavior: one
+  // implicit issue-per-file source at `markdownStoreDir(projectRoot)`, with the shared-board
+  // index/trunk union it already had.
+  constructor(projectRoot: string, teamKey: string, sources?: ResolvedSource[]) {
+    this.projectRoot = projectRoot;
+    this.teamKey = teamKey;
+    const resolved = sources && sources.length ? sources : resolveSources(projectRoot, {});
+    this.sources = resolved.map((s) => new MarkdownSource(
+      s,
+      s.isDefault ? { indexDir: boardIndexDir(projectRoot), mainDir: mainWorktreeMarkdownDir(projectRoot) } : {},
+    ));
   }
 
   // The default assignee for a create that omits `--assignee`: the same git identity `waiver
@@ -109,44 +169,16 @@ export class MarkdownBackend implements TrackerBackend {
     return git(this.projectRoot, ['config', 'user.name']);
   }
 
-  // Resolve the readable md for an id, preferring the LIVE owner: the index symlink target (the worktree
-  // currently working it), then this checkout's committed copy, then trunk's (post-merge / fallback).
-  private resolveBody(id: string): string | null {
-    if (this.shared) { const fromIndex = readableMd(issueFile(this.indexDir, id)); if (fromIndex !== null) return fromIndex; }
-    const here = readableMd(issueFile(this.dir, id)); if (here !== null) return here;
-    if (this.shared && this.mainDir) return readableMd(issueFile(this.mainDir, id));
-    return null;
+  // The FIRST source (declared order) that currently holds `id` — deterministic when an id is
+  // unique (the expected/normal case; `ztrack check` is what flags a genuine cross-source
+  // collision, via `issue_id_conflict`). Absent sources param default = exactly one source, so
+  // this is a no-op lookup in the byte-identical-compat case.
+  private sourceOf(id: string): MarkdownSource | undefined {
+    return this.sources.find((s) => s.resolveBody(id) !== null);
   }
-  // The absolute path the issue's content actually resolved from — same precedence as
-  // resolveBody, so a finding's origin points at the file that was read, not just this
-  // checkout's copy. Falls back to this checkout's path (e.g. right after a fresh write).
-  private originPath(id: string): string {
-    if (this.shared) { const p = issueFile(this.indexDir, id); if (readableMd(p) !== null) return p; }
-    const here = issueFile(this.dir, id); if (readableMd(here) !== null) return here;
-    if (this.shared && this.mainDir) { const p = issueFile(this.mainDir, id); if (readableMd(p) !== null) return p; }
-    return issueFile(this.dir, id);
-  }
-  private loadOne(id: string): CanonicalIssue | null {
-    const body = this.resolveBody(id); return body === null ? null : parseIssue(body);
-  }
-  private loadAll(): CanonicalIssue[] {
-    if (!this.shared) return mdIds(this.dir).map((id) => parseIssue(readFileSync(issueFile(this.dir, id), 'utf8')));
-    // shared: union ids across this checkout, the central index (other worktrees), and trunk; resolve each
-    // to its live owner. Robust to a missing/stale index (a fresh clone has committed mds but no index).
-    const ids = new Set<string>([...mdIds(this.dir), ...mdIds(this.indexDir), ...(this.mainDir ? mdIds(this.mainDir) : [])]);
-    const out: CanonicalIssue[] = [];
-    for (const id of ids) { const c = this.loadOne(id); if (c) out.push(c); }
-    return out;
-  }
-  // Write the committed md to THIS checkout (board stays in git, on this branch); in shared mode (re)point
-  // the central index symlink at it — making this worktree the live owner of the issue.
-  private writeIssue(c: CanonicalIssue): void {
-    const real = issueFile(this.dir, c.identifier);
-    mkdirSync(this.dir, { recursive: true });
-    writeFileSync(real, serializeIssue(c));
-    if (this.shared) {
-      const link = issueFile(this.indexDir, c.identifier);
-      try { rmSync(link, { force: true }); symlinkSync(realpathSync(real), link); } catch { /* index is best-effort; loadAll still unions the committed store */ }
+  private requireSourceWritable(source: MarkdownSource): void {
+    if (source.readonlySource) {
+      throw new Error(`the source '${source.dir}' is read-only (declared readonly: true in tracker-config.json); its issues cannot be written through ztrack — edit the source it reads instead.`);
     }
   }
   // `parent` is a pointer; `children` is a DENORMALIZED VIEW of it (markdown.ts:19-20) that nothing
@@ -154,7 +186,9 @@ export class MarkdownBackend implements TrackerBackend {
   // `issue list --parent`/the old parent's `children` silently lie until someone fixes it by hand.
   // Bounded cost: one load+write of the old parent (if any) and one of the new parent (if any) — not
   // a scan of the store. `issue create --parent` does NOT backfill the parent's `children` —
-  // a residual gap documented in docs/GUIDE.md's parent/children note.
+  // a residual gap documented in docs/GUIDE.md's parent/children note. Writes route through
+  // writeIssue, so a parent living in a `readonly: true` source fails the whole edit closed
+  // (the read-only error names that source) rather than leaving the edge half-updated.
   private reparentChildren(childId: string, oldParent: string | null, newParent: string | null): void {
     if (oldParent === newParent) return;
     if (oldParent) {
@@ -166,9 +200,59 @@ export class MarkdownBackend implements TrackerBackend {
       if (np && !np.children.includes(childId)) { np.children = [...np.children, childId]; this.writeIssue(np); }
     }
   }
+  private loadOne(id: string): CanonicalIssue | null {
+    const source = this.sourceOf(id);
+    if (!source) return null;
+    const body = source.resolveBody(id);
+    return body === null ? null : parseIssue(body);
+  }
+  // Every (issue, source-path) pair across ALL declared sources, UNDEDUPED across distinct
+  // sources — an id present in two different sources surfaces as two entries here on purpose
+  // (see engine.ts `crossSourceConflicts`: `ztrack check` turns that into an `issue_id_conflict`
+  // finding rather than this layer silently picking a winner). Within ONE source, `ids()`
+  // already unions/dedupes its own checkout/index/trunk locations via a Set, so that precedence
+  // is untouched.
+  private loadAllRaw(): Array<{ c: CanonicalIssue; path: string }> {
+    const out: Array<{ c: CanonicalIssue; path: string }> = [];
+    for (const source of this.sources) {
+      for (const id of source.ids()) {
+        const body = source.resolveBody(id);
+        if (body === null) continue;
+        out.push({ c: parseIssue(body), path: source.originPath(id) });
+      }
+    }
+    return out;
+  }
+  private loadAll(): CanonicalIssue[] { return this.loadAllRaw().map((r) => r.c); }
+  // The absolute path id's content actually resolved from (first source that has it — see
+  // sourceOf). Every caller of this method has already confirmed the id exists (via loadOne), so
+  // the fallback to sources[0] (always non-empty — see the constructor) is unreachable in
+  // practice; it exists only so this stays a plain getter, never a throw.
+  private originPath(id: string): string {
+    const source = this.sourceOf(id) ?? this.sources[0]!;
+    return source.originPath(id);
+  }
+  // Resolve the owning source of an EXISTING issue and write it there, after confirming that
+  // source isn't `readonly: true`. Used by edit/comment/close — never by create (see
+  // mintTargetSource: a NEW issue has no existing source to route to).
+  private writeIssue(c: CanonicalIssue): void {
+    const source = this.sourceOf(c.identifier);
+    if (!source) throw new Error(`markdown backend: cannot resolve the source of issue ${c.identifier}.`);
+    this.requireSourceWritable(source);
+    source.write(c);
+  }
   private deleteIssue(id: string): void {
-    rmSync(issueFile(this.dir, id), { force: true });
-    if (this.shared) { try { rmSync(issueFile(this.indexDir, id), { force: true }); } catch { /* ignore */ } }
+    const source = this.sourceOf(id);
+    if (!source) return;
+    this.requireSourceWritable(source);
+    source.delete(id);
+  }
+  // `issue create` mints into the first WRITABLE issue-per-file source (declared order); with no
+  // `sources` config that's the one implicit default, exactly as before.
+  private mintTargetSource(): MarkdownSource {
+    const target = this.sources.find((s) => !s.readonlySource);
+    if (!target) throw new Error('markdown backend: no writable source is configured for new issues (every declared source has readonly: true).');
+    return target;
   }
 
   // eslint-disable-next-line @typescript-eslint/require-await
@@ -176,19 +260,19 @@ export class MarkdownBackend implements TrackerBackend {
     const [verb, sub, ...rest] = args;
     if (verb === 'issue' && sub === 'list') {
       const fields = (flagVal(args, 'json') ?? 'identifier').split(',').map((s) => s.trim()).filter(Boolean);
-      let rows = this.loadAll();
+      let rows = this.loadAllRaw();
       // `--state` is either a status TYPE (`open` = not closed, `closed` = completed/canceled,
       // `all` = no filter — what the local backend and the recovery scripts use) or a literal
       // state name ("In Progress"). Matching `open` as a literal name returns nothing.
       const state = flagVal(args, 'state');
-      if (state === 'open') rows = rows.filter((c) => c.stateType !== 'completed' && c.stateType !== 'canceled');
-      else if (state === 'closed') rows = rows.filter((c) => c.stateType === 'completed' || c.stateType === 'canceled');
-      else if (state && state !== 'all') rows = rows.filter((c) => c.state === state);
-      const label = flagVal(args, 'label'); if (label) rows = rows.filter((c) => c.labels.includes(label));
-      const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((c) => c.parent === parent);
-      const search = flagVal(args, 'search'); if (search) rows = rows.filter((c) => `${c.title}\n${c.body}`.toLowerCase().includes(search.toLowerCase()));
+      if (state === 'open') rows = rows.filter((r) => r.c.stateType !== 'completed' && r.c.stateType !== 'canceled');
+      else if (state === 'closed') rows = rows.filter((r) => r.c.stateType === 'completed' || r.c.stateType === 'canceled');
+      else if (state && state !== 'all') rows = rows.filter((r) => r.c.state === state);
+      const label = flagVal(args, 'label'); if (label) rows = rows.filter((r) => r.c.labels.includes(label));
+      const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((r) => r.c.parent === parent);
+      const search = flagVal(args, 'search'); if (search) rows = rows.filter((r) => `${r.c.title}\n${r.c.body}`.toLowerCase().includes(search.toLowerCase()));
       const limit = flagVal(args, 'limit'); const limitN = Number(limit); if (limit && Number.isFinite(limitN) && limitN >= 0) rows = rows.slice(0, limitN);
-      return ok(JSON.stringify(rows.map((c) => listRow(c, fields, this.originPath(c.identifier))), null, 2));
+      return ok(JSON.stringify(rows.map((r) => listRow(r.c, fields, r.path)), null, 2));
     }
     if (verb === 'issue' && sub === 'view') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
@@ -207,6 +291,7 @@ export class MarkdownBackend implements TrackerBackend {
       return ok(JSON.stringify(fullView(c), null, 2));
     }
     if (verb === 'issue' && sub === 'create') {
+      const target = this.mintTargetSource();
       const id = `${this.teamKey}-${this.loadAll().reduce((m, c) => Math.max(m, Number(c.identifier.split('-').pop()) || 0), 0) + 1}`;
       const now = new Date().toISOString();
       // Defaults conform to the installed preset (simple-sdlc's status enum starts at 'draft'
@@ -223,8 +308,8 @@ export class MarkdownBackend implements TrackerBackend {
         children: [], branchName: '', priority: 0, devProgress: '', createdAt: now, updatedAt: now,
         completedAt: null, canceledAt: null, url: `local://tracker/issue/${id}`, comments: [],
       };
-      this.writeIssue(c);
-      return ok(JSON.stringify(viewJson(c, this.originPath(c.identifier)), null, 2));
+      target.write(c);
+      return ok(JSON.stringify(viewJson(c, target.originPath(c.identifier)), null, 2));
     }
     if (verb === 'issue' && sub === 'edit') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
@@ -274,6 +359,6 @@ export class MarkdownBackend implements TrackerBackend {
   }
 }
 
-export function createMarkdownBackend(projectRoot: string, teamKey: string): TrackerBackend {
-  return new MarkdownBackend(projectRoot, teamKey);
+export function createMarkdownBackend(projectRoot: string, teamKey: string, sources?: ResolvedSource[]): TrackerBackend {
+  return new MarkdownBackend(projectRoot, teamKey, sources);
 }

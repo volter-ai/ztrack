@@ -638,6 +638,34 @@ export function liftDiagnostics(candidate: unknown, originById?: Map<string, Ori
   return { root: rest, findings };
 }
 
+// ZTB-3: two records sharing an id but backed by DIFFERENT files — a declared `sources` union
+// surfaces every source's rows undeduped (see MarkdownBackend.loadAll) — is a data-integrity
+// error the engine reports directly, not silent precedence (precedence stays reserved for the
+// worktree board index *inside* one source; see MarkdownBackend.resolveBody). Structural
+// intra-source duplication (no origin at all, or the same origin twice) is untouched by this: it
+// still flows through to `preset.parse` and the preset's own `duplicate_issue_id` rule via
+// `root.issues`, exactly as before — this only fires when the origins genuinely differ.
+function crossSourceConflicts(records: IssueRecord[]): Finding[] {
+  const originsById = new Map<string, Origin[]>();
+  for (const r of records) {
+    if (!r.origin) continue;
+    const list = originsById.get(r.id);
+    if (list) list.push(r.origin); else originsById.set(r.id, [r.origin]);
+  }
+  const findings: Finding[] = [];
+  for (const [issueId, origins] of originsById) {
+    const paths = [...new Set(origins.map((o) => o.path))];
+    if (paths.length < 2) continue;
+    findings.push({
+      code: 'issue_id_conflict', severity: 'error', waivable: false, issueId,
+      message: `Issue id '${issueId}' is defined in more than one configured source: ${paths.join(', ')}. `
+        + 'ztrack does not silently pick a winner across sources — rename one of them or remove the duplicate.',
+      origin: toFindingOrigin(origins[0]!),
+    });
+  }
+  return findings;
+}
+
 /** The one entry point: parse -> ValidationInputSchema.parse({context, root}) ->
  *  pure rules. The validated Root is the export; nothing downstream re-parses or
  *  re-derives. */
@@ -645,6 +673,7 @@ export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecor
   // Record id -> Origin, so downstream findings can cite where their issue's content lives.
   const originById = new Map<string, Origin>();
   for (const r of records) if (r.origin) originById.set(r.id, r.origin);
+  const conflicts = crossSourceConflicts(records);
   let candidate: unknown;
   try {
     candidate = preset.parse(records);
@@ -652,7 +681,8 @@ export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecor
     // A whole-input parse failure has no per-issue location yet; a single-record check (the
     // loose-file `ztrack check ./FILE.md` path) has exactly one candidate, so cite it.
     const origin = records.length === 1 ? records[0]!.origin : undefined;
-    return { ok: false, findings: [{ code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error), ...(origin ? { origin: toFindingOrigin(origin) } : {}) }] };
+    const findings: Finding[] = [...conflicts, { code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error), ...(origin ? { origin: toFindingOrigin(origin) } : {}) }];
+    return { ok: false, findings };
   }
   const { root, findings: diagnosticFindings } = liftDiagnostics(candidate, originById);
   // Waivers are core-parsed from each record's `## Waivers` body section (universal,
@@ -661,8 +691,9 @@ export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecor
   const parsed = parseWaivers(records);
   const merged: Context = parsed.length ? { ...ctx, waivers: [...(ctx.waivers ?? []), ...parsed] } : ctx;
   const result = validateAndRun(preset, merged, root, false, originById);
-  if (!diagnosticFindings.length) return result;
-  return { ...result, ok: result.ok && !diagnosticFindings.some((f) => f.severity === 'error'), findings: [...diagnosticFindings, ...result.findings] };
+  const extra = [...conflicts, ...diagnosticFindings];
+  if (!extra.length) return result;
+  return { ...result, ok: result.ok && !extra.some((f) => f.severity === 'error'), findings: [...extra, ...result.findings] };
 }
 
 /** Validate an already-parsed Root (the exported, validated model) against the same
