@@ -21,21 +21,12 @@ function assertCorePreset(value: unknown, source: string): Preset<CoreRoot> {
   return value as Preset<CoreRoot>;
 }
 
-async function loadValidationEntrypoint(entrypoint: string, projectRoot: string): Promise<Preset<CoreRoot>> {
-  // SECURITY: loading the entrypoint executes it as Node code. Confine it to the
-  // project so a config can't point the import at an arbitrary file on the host;
-  // running `ztrack` on a repo still executes that repo's preset (see SECURITY.md).
-  const root = resolve(projectRoot);
-  const absolutePath = resolve(projectRoot, entrypoint);
-  if (absolutePath !== root && !absolutePath.startsWith(root + sep)) {
-    throw new Error(`Tracker validation entrypoint must live inside the project — '${entrypoint}' escapes ${root}.`);
-  }
-  if (!existsSync(absolutePath)) {
-    throw new Error(`Configured tracker validation entrypoint does not exist: ${absolutePath}`);
-  }
-  // Loaded via dynamic import so a preset can be a plain ESM `.ts`/`.js` module (no `.cjs`
-  // bundle, no `require`). Dynamic import also loads CommonJS, so an existing `.cjs` preset
-  // keeps resolving — the export is read off `default`.
+// Loaded via dynamic import so a preset can be a plain ESM `.ts`/`.js` module (no `.cjs`
+// bundle, no `require`). Dynamic import also loads CommonJS, so an existing `.cjs` preset
+// keeps resolving — the export is read off `default`. Shared by both load routes
+// (config-named entrypoint and operator `--preset`) so the import machinery — including the
+// `.mts` type-stripping and 'ztrack'-not-installed error translations — isn't duplicated.
+async function importPresetModule(absolutePath: string, describeSource: string): Promise<Preset<CoreRoot>> {
   let loaded: { default?: unknown; preset?: unknown };
   try {
     loaded = await import(pathToFileURL(absolutePath).href) as { default?: unknown; preset?: unknown };
@@ -50,14 +41,14 @@ async function loadValidationEntrypoint(entrypoint: string, projectRoot: string)
     // turn that cryptic error into a clear "upgrade Node" message.
     if (code === 'ERR_UNKNOWN_FILE_EXTENSION' || /Unknown file extension "\.?mts"/.test(msg)) {
       throw new Error(
-        `The validation preset (${entrypoint}) is a .mts file, loaded via Node's native TypeScript type `
+        `The validation preset (${describeSource}) is a .mts file, loaded via Node's native TypeScript type `
         + `stripping — which this Node (${process.version}) does not support. ztrack needs Node >= 22.18.0 `
         + `(or >= 23.6, or >= 24). Upgrade Node and re-run.`,
       );
     }
     if (/Cannot find package 'ztrack'|Cannot find module 'ztrack/.test(msg)) {
       throw new Error(
-        `The validation preset (${entrypoint}) imports 'ztrack/preset-kit', but the 'ztrack' package isn't resolvable from this project. `
+        `The validation preset (${describeSource}) imports 'ztrack/preset-kit', but the 'ztrack' package isn't resolvable from this project. `
         + `Install it as a dependency so the preset can load it:\n\n    npm install -D ztrack\n\n`
         + `(ztrack works like eslint — the preset is your config and imports the mechanism from the installed package; a global or one-off 'npx' install is not enough.)`,
       );
@@ -68,10 +59,44 @@ async function loadValidationEntrypoint(entrypoint: string, projectRoot: string)
   return assertCorePreset(candidate, absolutePath);
 }
 
+async function loadValidationEntrypoint(entrypoint: string, projectRoot: string): Promise<Preset<CoreRoot>> {
+  // SECURITY: loading the entrypoint executes it as Node code. Confine it to the
+  // project so a config can't point the import at an arbitrary file on the host;
+  // running `ztrack` on a repo still executes that repo's preset (see SECURITY.md).
+  const root = resolve(projectRoot);
+  const absolutePath = resolve(projectRoot, entrypoint);
+  if (absolutePath !== root && !absolutePath.startsWith(root + sep)) {
+    throw new Error(`Tracker validation entrypoint must live inside the project — '${entrypoint}' escapes ${root}.`);
+  }
+  if (!existsSync(absolutePath)) {
+    throw new Error(`Configured tracker validation entrypoint does not exist: ${absolutePath}`);
+  }
+  return importPresetModule(absolutePath, entrypoint);
+}
+
+/** Load an operator-supplied validation preset (`ztrack check --preset <path>`) in place of
+ *  the repo's configured entrypoint. Deliberately SKIPS the inside-project confinement above:
+ *  that confinement guards against the REPO's config (untrusted input — e.g. a fork PR's
+ *  tracker-config.json) naming an arbitrary host path to escape into. This function is reached
+ *  only via an explicit CLI flag, which is the OPERATOR's own trust decision — the same origin
+ *  as the `ztrack` invocation itself, exactly like `eslint -c <path>` naming a config outside
+ *  the linted project. Still shape-asserted via `assertCorePreset` like every other route. */
+async function loadOperatorPreset(presetPath: string): Promise<Preset<CoreRoot>> {
+  const absolutePath = resolve(process.cwd(), presetPath);
+  if (!existsSync(absolutePath)) {
+    throw new Error(`--preset path does not exist: ${absolutePath}`);
+  }
+  return importPresetModule(absolutePath, presetPath);
+}
+
 /** Resolve the active preset — a standalone core `Preset` exported by the repo-local
- *  `validation.entrypoint` (its own schema/parser/rules; see ARCHITECTURE.md §3). One
- *  pipeline; there is no separate snapshot runtime. */
-export async function resolveTrackerValidation(config: TrackerConfig, projectRoot = process.cwd()): Promise<Preset<CoreRoot>> {
+ *  `validation.entrypoint` (its own schema/parser/rules; see ARCHITECTURE.md §3), OR, when
+ *  `presetPath` is given (operator `--preset <path>`, `check` only — see cliCheck.ts), that
+ *  module instead. One pipeline; there is no separate snapshot runtime. This is the SINGLE
+ *  resolution point shared by checkTracker/checkTrackerRoot/checkFile (check.ts) and
+ *  exportTrackerRoot (export.ts) — no per-caller duplication. */
+export async function resolveTrackerValidation(config: TrackerConfig, projectRoot = process.cwd(), presetPath?: string): Promise<Preset<CoreRoot>> {
+  if (presetPath) return loadOperatorPreset(presetPath);
   const entrypoint = config.validation?.entrypoint?.trim();
   if (entrypoint) return loadValidationEntrypoint(entrypoint, projectRoot);
   return noTrackerValidation(config.organization?.validationPreset);

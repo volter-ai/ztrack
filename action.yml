@@ -2,6 +2,15 @@
 #   - uses: volter-ai/ztrack@v0      (moving major tag; or pin an exact vX.Y.Z)
 # Runs `ztrack check` as a PR gate: checked ACs must cite evidence that verifies,
 # or the job fails.
+#
+# HONEST CONTRACT (read before wiring this up for fork PRs / pull_request_target):
+# validation ALWAYS executes a preset — there is no no-code check. The `root` input only
+# changes WHICH DATA is validated (a committed root, not the live tracker store); it does
+# NOT change which preset runs. By default that preset is the checkout's own
+# .volter/tracker/validation/preset.mts, so on a fork-PR checkout that is untrusted code
+# on your runner regardless of `root`. To validate untrusted data with TRUSTED code, also
+# set `preset` to a preset file from a checkout you trust (e.g. the base ref) — see
+# SECURITY.md's pull_request_target recipe.
 name: ztrack-check
 description: Run ztrack as a CI gate
 inputs:
@@ -11,11 +20,21 @@ inputs:
   root:
     description: >
       Path to a committed validated root (the JSON written by `ztrack export`,
-      shape { "issues": [ ... ] }). When set, ztrack validates this root with
-      --verify-commits instead of reading a live tracker. Recommended for CI
-      because a fresh checkout does not preserve the local tracker store. (If you
-      have an old `.volter/snapshot.json` from a previous ztrack version, re-run
-      `ztrack export` to regenerate it as a validated root.)
+      shape { "issues": [ ... ] }). When set, ztrack validates this root instead of
+      reading a live tracker store, with --verify-commits. Recommended for CI
+      because a fresh checkout does not preserve the local tracker store. This does
+      NOT change which preset executes — see `preset` below and SECURITY.md for the
+      fork-PR-safe combination. (If you have an old `.volter/snapshot.json` from a
+      previous ztrack version, re-run `ztrack export` to regenerate it as a
+      validated root.)
+    default: ''
+  preset:
+    description: >
+      Path to a validation preset module to load INSTEAD OF the checkout's configured
+      .volter/tracker/validation/preset.mts (forwarded as `ztrack check --preset`).
+      Unconfined to `working-directory` — point it at a preset from a checkout you
+      trust (e.g. the base ref in a pull_request_target workflow) so an untrusted
+      PR head's edited preset.mts never runs on your runner. See SECURITY.md.
     default: ''
 runs:
   using: composite
@@ -27,9 +46,10 @@ runs:
     - shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        # Pass the `root` input through the environment, never interpolated into the
+        # Pass `root`/`preset` through the environment, never interpolated into the
         # script body — `${{ inputs.root }}` spliced into `run:` is a shell-injection sink.
         ROOT: ${{ inputs.root }}
+        PRESET: ${{ inputs.preset }}
       run: |
         set -euo pipefail
         AP="$GITHUB_ACTION_PATH"
@@ -41,17 +61,25 @@ runs:
           [ -d "$AP/node_modules" ] || (cd "$AP" && bun install --frozen-lockfile >/dev/null)
           ZTRACK=(bun "$AP/src/cli.ts")
         fi
+        # ${PRESET_ARGS[@]+...} guard: expanding an EMPTY array under `set -u` is an
+        # "unbound variable" error on bash 3.2 (GitHub's macOS runners' /bin/bash).
+        PRESET_ARGS=()
+        [ -n "$PRESET" ] && PRESET_ARGS=(--preset "$PRESET")
         if [ -n "$ROOT" ]; then
-          # Safe path: validate a committed root; the repo's preset.mts is NOT executed.
-          "${ZTRACK[@]}" check --input "$ROOT" --verify-commits
+          # `root` avoids reading the live tracker store — it does NOT avoid executing a
+          # preset. Without `preset`, this still runs the checkout's own preset.mts.
+          "${ZTRACK[@]}" check --input "$ROOT" --verify-commits ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
         else
           if [ ! -f .volter/tracker-config.json ]; then
             echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2
             exit 2
           fi
-          # SECURITY: this path executes the repo's .volter/tracker/validation/preset.mts.
-          # On fork-PR events that is untrusted code on your runner — prefer the `root`
-          # input (a committed validated root) for pull_request_target / fork PRs.
-          echo "::warning title=ztrack::Live 'ztrack check' executes this repo's validation preset (preset.mts). For untrusted/fork PRs, pass the 'root' input (a committed validated root) instead."
-          "${ZTRACK[@]}" check
+          if [ -z "$PRESET" ]; then
+            # SECURITY: this path executes the repo's .volter/tracker/validation/preset.mts.
+            # On fork-PR events that is untrusted code on your runner — validation always
+            # executes A preset, so for untrusted/fork PRs pass `root` (a committed
+            # validated root) AND `preset` pointed at a TRUSTED (e.g. base-ref) preset copy.
+            echo "::warning title=ztrack::'ztrack check' always executes a validation preset — currently this repo's own validation preset (preset.mts). For untrusted/fork PRs, pass 'root' (a committed validated root) AND 'preset' pointed at a trusted (e.g. base-ref) preset copy."
+          fi
+          "${ZTRACK[@]}" check ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
         fi

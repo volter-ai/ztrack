@@ -19,6 +19,11 @@ export type TrackerCheckOptions = {
   verifyCommits?: boolean;
   now?: string;
   phase?: 'all' | 'gate';
+  /** `ztrack check --preset <path>`: an operator-supplied validation preset module, loaded in
+   *  place of the repo's configured `validation.entrypoint` — unconfined to the project (see
+   *  presetRegistry.ts's `loadOperatorPreset`). `check` only; threaded through to the single
+   *  resolution point (`resolveTrackerValidation`) shared by all three functions below. */
+  presetPath?: string;
 };
 
 export type TrackerCheckResult = CheckResult<CoreRoot>;
@@ -38,7 +43,7 @@ function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
 export async function checkTracker(options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
-  const preset = await resolveTrackerValidation(config, projectRoot);
+  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const { records, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
   const result = check(preset, records, context);
   // Cross-cutting sync conflicts gate the check (until resolved), scoped to the checked issues.
@@ -115,7 +120,7 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
 export async function checkFile(filePath: string, options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
-  const preset = await resolveTrackerValidation(config, projectRoot);
+  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const abs = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
   if (!existsSync(abs)) throw new Error(`ztrack check: file not found: ${filePath}`);
   const diagnostics: Finding[] = [];
@@ -132,7 +137,7 @@ export async function checkFile(filePath: string, options: TrackerCheckOptions =
 export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
-  const preset = await resolveTrackerValidation(config, projectRoot);
+  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   // Observed facts are preset-owned (gathered via loadContext); no backend read is
   // needed for an already-exported root. A preset with no loadContext needs none.
   const observed = preset.loadContext

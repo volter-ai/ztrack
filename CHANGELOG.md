@@ -4,6 +4,22 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **Security fix: the GitHub Action's "safe path" claim was false — `--input`/`root` never
+  avoided executing a preset.** The action.yml header comment, its `::warning`, and SECURITY.md
+  all claimed that `ztrack check --input root.json --verify-commits` (the Action's `root`
+  input) does NOT execute the repository's `preset.mts`, and recommended it specifically for
+  untrusted fork PRs. That was wrong: `--input` skips reading the *live tracker store*, but
+  `checkTrackerRoot` still calls `resolveTrackerValidation`, which always loads and executes a
+  preset — there was no no-code fallback. A fork PR that edited `preset.mts` ran arbitrary code
+  on the runner even when a workflow followed our own guidance exactly.
+  **The honest contract now:** `--input`/`root` avoids reading the live tracker store; it does
+  NOT avoid executing a preset — validation always executes one. `ztrack check --preset <path>`
+  is new: it loads an operator-supplied preset module in place of the repo's configured
+  entrypoint (unconfined to the project — the flag is the operator's own trust decision, like
+  `eslint -c`), in every check mode (`--input`, live tracker, loose file). The GitHub Action
+  gains a matching `preset` input. For fork PRs / `pull_request_target`, the safe combination is
+  `root` (the PR head's committed data) **+** `preset` pointed at a preset from a checkout you
+  trust (e.g. the base ref) — see SECURITY.md for the full recipe.
 - **Fix: aborted header blocks no longer leak partially-parsed metadata.** `fileToRecord`
   (loose `ztrack check <file.md>` mode) and `parseHeaderBlock` (document sources' preamble
   `Title:`/`Status:`/`Assignee:` block) kept the title/status/assignee lines matched before a
