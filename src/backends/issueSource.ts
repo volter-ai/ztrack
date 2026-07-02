@@ -23,9 +23,12 @@ export interface IssueSource {
   ids(): string[];
   load(id: string): CanonicalIssue | null;
   origin(id: string): SourceOrigin;
-  /** Persist `c` into this source. A `document` source always throws (fail closed — see
-   *  documentSource.ts's `documentWriteError`; write-back lands in ZTB-4 dev/09). */
+  /** Persist `c` into this source. A `document` source (ZTB-4 dev/09 — documentSource.ts) accepts
+   *  only a narrow delta (`body`/`title`, splicing into the issue's recorded span) and fails
+   *  closed, naming the file and the reason, for anything wider (status/assignee/labels/
+   *  project/parent/children/comments, an excised subtree, the umbrella issue, a stale read). */
   write(c: CanonicalIssue): void;
-  /** Remove `id` from this source. A `document` source always throws, same as `write`. */
+  /** Remove `id` from this source. A `document` source always throws (removing a section is a
+   *  file edit, not a tracker op — see documentSource.ts's `documentDeleteError`). */
   delete(id: string): void;
 }
