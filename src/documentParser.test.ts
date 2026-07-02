@@ -188,3 +188,24 @@ describe('umbrella Status:/Assignee: header lines (ZTB-4 dev/10)', () => {
     expect(umbrella.assignee).toBeUndefined();
   });
 });
+
+// ── ZTB-12: an aborted preamble header block must not mint an umbrella issue from rejected meta ──
+describe('an aborted preamble header block mints no umbrella issue (ZTB-12 dev/27)', () => {
+  test('`Title:` followed by a non-header line before the blank line aborts the block: no umbrella issue, top-level items get parent null, the preamble text appears in no issue', () => {
+    const issues = parseMarkdownDocumentSource(
+      'Title: Plan\nthis line breaks the header block\n\n## AB-1 — Item\n\nBody.\n',
+      '/x/plan.md',
+    );
+    // no umbrella issue minted from the rejected header block (id would have been "plan")
+    expect(issues.find((i) => i.id === 'plan')).toBeUndefined();
+    const item = issues.find((i) => i.id === 'AB-1')!;
+    expect(item).toBeDefined();
+    expect(item.parent).toBeNull(); // no umbrella to own it — same as the headerless-document shape
+    for (const issue of issues) {
+      expect(issue.status).toBeUndefined();
+      expect(issue.assignee).toBeUndefined();
+      expect(issue.body).not.toContain('Title: Plan');
+      expect(issue.body).not.toContain('this line breaks the header block');
+    }
+  });
+});

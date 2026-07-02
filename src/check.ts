@@ -64,6 +64,10 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
   const lines = content.split('\n');
   const meta: Record<string, string> = {};
   let i = 0;
+  // Atomic like decomposeSection (documentWriteBack.ts): an abort discards EVERY line matched so
+  // far, not just the ones after it — `aborted` gates meta use below so the diagnostic's own claim
+  // ("discarding any Title:/Status:/Assignee: lines already read") is actually true.
+  let aborted = false;
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.trim() === '') { i++; break; }
@@ -77,6 +81,7 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
           message: `${absPath}: the header block was aborted by a non-header-shaped line and fell back to plain body (discarding any Title:/Status:/Assignee: lines already read): "${line}"`,
         });
       }
+      aborted = true;
       i = 0; break;      // not a metadata block — the whole file is the body
     }
     meta[m[1]!.toLowerCase()] = m[2]!.trim();
@@ -97,9 +102,9 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
   const titleFromHeading = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
   return {
     id,
-    title: meta.title || titleFromHeading || id,
-    status: meta.status || 'draft',
-    ...(meta.assignee ? { assignee: meta.assignee } : {}),
+    title: (!aborted && meta.title) || titleFromHeading || id,
+    status: (!aborted && meta.status) || 'draft',
+    ...(!aborted && meta.assignee ? { assignee: meta.assignee } : {}),
     body,
     origin: { path: absPath }, // the whole file is the issue — no line span
   };

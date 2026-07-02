@@ -28,8 +28,23 @@ describe('fileToRecord — loose-file header scan (ZTB-1)', () => {
     expect(diagnostics[0]).toMatchObject({ code: 'loose_header_ignored', severity: 'warning' });
     expect(diagnostics[0]?.message).toContain('this line breaks the header block');
     // the WHOLE file (including the valid `Title:`/`Status:` lines) fell back to plain body —
-    // pinning today's fallback shape so a future fix to it is a deliberate, visible change.
+    // pinning this fallback shape so a future change to it is deliberate and visible.
     expect(record.body).toBe(content);
+  });
+
+  test('(a, ZTB-12) an aborted header block does not leak its partially-parsed meta: title/status/' +
+    'assignee come from the fallback chain, not the rejected Title:/Status: lines — matching what ' +
+    'the diagnostic above already claimed ("discarding any Title:/Status:/Assignee: lines already read")', () => {
+    const diagnostics: Finding[] = [];
+    const content = 'Title: X\nthis line breaks the header block\n\n# Real Heading\n\nbody\n';
+    const record = fileToRecord('/x/aborted-leak.md', content, diagnostics);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ code: 'loose_header_ignored', severity: 'warning' });
+    // title falls back to the first `# heading` in the (now whole-file) body, NOT the aborted
+    // block's `Title: X`
+    expect(record.title).toBe('Real Heading');
+    expect(record.status).toBe('draft');
+    expect(record.assignee).toBeUndefined();
   });
 
   test('a bad line as the VERY FIRST line is not "aborted" — no header was ever in progress, so no diagnostic', () => {

@@ -102,16 +102,20 @@ function parseHeaderBlock(preamble: string): { title?: string; status?: string; 
   const lines = preamble.split('\n');
   const meta: Record<string, string> = {};
   let i = 0;
+  // Atomic like decomposeSection (documentWriteBack.ts): an abort discards EVERY line matched so
+  // far — `aborted` gates meta use below, so a rejected block can't still mint an umbrella title.
+  let aborted = false;
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.trim() === '') { i++; break; }
     const m = HEADER_LINE.exec(line.trim());
-    if (!m) { i = 0; break; } // not a header block after all — nothing consumed
+    if (!m) { aborted = true; i = 0; break; } // not a header block after all — nothing consumed
     meta[m[1]!.toLowerCase()] = m[2]!.trim();
   }
   // status/assignee ride along with title: fileToRecord (src/check.ts) — which this scan
   // deliberately mirrors — USES all three; dropping two of them left the umbrella issue
   // permanently unassigned/draft even when the header block says otherwise (ZTB-4 dev/10 fix).
+  if (aborted) return { headerLineCount: i };
   return { title: meta.title, status: meta.status, assignee: meta.assignee, headerLineCount: i };
 }
 
