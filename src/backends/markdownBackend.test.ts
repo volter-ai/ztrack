@@ -163,4 +163,20 @@ describe('markdown backend — declared `sources` (ZTB-3)', () => {
     const be = createMarkdownBackend(root, 'PH', [src(join(root, 'a'), true), src(join(root, 'b'), true)]);
     await expect(be.command(['issue', 'create', '--title', 'nope'])).rejects.toThrow('no writable source');
   });
+
+  // Composition pin (ZTB-6 × ZTB-3): reparentChildren writes the parent through writeIssue, so a
+  // reparent onto a parent living in a readonly source fails the WHOLE edit closed — the child's
+  // parent pointer must not change when the parent's children array can't.
+  test('edit --parent onto a parent in a READONLY source fails closed, leaving the child unchanged', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));
+    const dirA = join(root, 'a');
+    const dirB = join(root, 'b');
+    await createMarkdownBackend(root, 'PH', [src(dirB)]).command(['issue', 'create', '--title', 'Parent in B']); // PH-1, in B
+    const be = createMarkdownBackend(root, 'PH', [src(dirA), src(dirB, true)]);
+    const child = J(await be.command(['issue', 'create', '--title', 'Child in A'])) as { identifier: string }; // PH-2, in A
+
+    await expect(be.command(['issue', 'edit', child.identifier, '--parent', 'PH-1'])).rejects.toThrow('read-only');
+    expect(J(await be.command(['issue', 'view', child.identifier, '--json'])).parent).toBeNull(); // pointer untouched
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).children.nodes).toEqual([]); // array untouched
+  });
 });
