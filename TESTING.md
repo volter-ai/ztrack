@@ -44,6 +44,27 @@ Reserved for complex pure logic, and for code the CLI can't reach:
   round-trips, fenced-code blocks, CRLF, `fmt` fixed-point — exactly the things a CLI E2E
   can't isolate.
 
+## Running the suite fast
+
+`npm run test:parallel` (scripts/test-parallel.mjs) shards the test files across N
+`bun test` processes (default `min(8, cores − 2)`, override with `--jobs N`) and prints
+one aggregated summary. `bun test` itself runs files serially in one process, and the
+e2e tier is a few hundred *blocking* `spawnSync` calls into the real CLI — so serial
+wall time is the sum of every subprocess, while the files themselves are fully
+independent (each fixture is its own `mkdtemp` git repo). Sharding is safe and turns
+~1–3 minutes into ~10s.
+
+The runner also points the children's `TMPDIR` at a fresh dir under `/tmp`. This
+matters more than it looks: bun's module resolver readdirs every ancestor of the cwd
+on each spawn, and fixture cwds default to the per-user temp dir (`/var/folders/…/T`),
+which on real dev machines accumulates hundreds of thousands of leaked entries (e.g.
+SwiftPM's `TemporaryDirectory.*`). At ~650k entries that scan cost **~0.6s per CLI
+spawn** — it alone once inflated this suite from ~40s to ~160s. If plain `bun test`
+is mysteriously slow, check `ls "$TMPDIR" | wc -l`.
+
+Use plain `bun test <file>` while iterating on one file; use `npm run test:parallel`
+for the full gate.
+
 ## Adding a feature
 
 Prove it **E2E through the real CLI first** (extend `check-e2e.sh` / `loop-gate-ci.sh`). Add a

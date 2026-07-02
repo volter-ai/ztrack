@@ -66,6 +66,7 @@
     "visualizer": "bun run visualizer/server.ts",
     "prepack": "npm run build:node-cli",
     "test": "bun test",
+    "test:parallel": "node scripts/test-parallel.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
