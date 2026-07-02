@@ -28,9 +28,11 @@ preset authors.
   itself an umbrella issue, and a per-item `status:`/`assignee:` header line inside its own section
   sets that issue's state/assignee. `ac patch` and an `issue edit` that only changes `title`/`body`
   splice the change back into the file byte-locally, touching only that issue's own span — every
-  other issue's bytes are re-verified unchanged before anything is written (today that limits
-  splices to top-level leaf items: an item with an id-bearing child, or nested inside another
-  item's section, fails closed like the rest). Everything else
+  other issue is re-verified unchanged before anything is written (a non-ancestor's section
+  byte-for-byte, an ancestor's own content instead of its raw bytes, since an ancestor's raw
+  necessarily embeds a nested target's span). This lands splices on **leaf items at any nesting
+  depth**: an item with an id-bearing child, or the umbrella, still fails closed like the rest.
+  Everything else
   (state, assignee, labels, parent/children, comments, delete) is not stored in the document's
   grammar and fails closed, naming the file and the field, rather than silently dropping the edit;
   edit those fields, or delete, in the file directly.

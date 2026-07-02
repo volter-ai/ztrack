@@ -15,9 +15,14 @@
 // fresh, requires it to still hold the exact bytes last parsed (else "changed since read"),
 // re-shifts the new body back to the file's heading depth, splices the new section text into the
 // recorded span, and — before writing anything — re-parses the CANDIDATE file to prove every
-// other issue's section is byte-identical and the target re-presents to exactly the new body. Any
-// guard failing means NOTHING is written. `delete` still always fails closed (removing a section
-// is a file edit, not a tracker op).
+// OTHER issue is unaffected: a non-ancestor's section must be byte-identical (raw comparison), an
+// ANCESTOR of the target (a section whose recorded span contains the target's — necessarily true
+// for any item nested above a spliced leaf) must have its own post-excision `body`/`title`
+// unchanged instead (its raw legitimately differs, since raw embeds the now-changed nested bytes),
+// and the target itself must re-present to exactly the new body. Any guard failing means NOTHING
+// is written — this legalizes splices on leaf items at ANY nesting depth while an item with
+// id-bearing children (the `parsedBody !== raw` excision gate, above) and the umbrella still fail
+// closed. `delete` still always fails closed (removing a section is a file edit, not a tracker op).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
 import { type CanonicalIssue, stateTypeOf } from './markdown.ts';
@@ -291,7 +296,28 @@ export class DocumentSource implements IssueSource {
     for (const other of freshIssues) {
       if (other.id === c.identifier) continue;
       const candidateOther = candidateById.get(other.id);
-      if (!candidateOther || candidateOther.raw !== other.raw) {
+      if (!candidateOther) {
+        throw integrityFailedError(this.location, `issue ${other.id}'s section would change (write-back must touch only issue ${c.identifier}'s span)`);
+      }
+      // An ANCESTOR of the target (a section whose recorded span CONTAINS the target's span) is
+      // expected to have different RAW bytes after a nested splice — its raw is heading + full
+      // subtree, which necessarily embeds the target's now-changed bytes. What must stay unchanged
+      // is the ancestor's OWN content: its post-excision `body` (id-bearing descendant subtrees,
+      // including the target's, are already excised from it — documentParser.ts) and its `title`.
+      // The umbrella issue has no recorded span (`lineStart`/`lineEnd` undefined) and is therefore
+      // never classified as an ancestor here — it keeps the raw comparison below, which for it
+      // compares `undefined !== undefined` and passes; the umbrella's own parsed body legitimately
+      // changes whenever a nested section changes, so it must NOT get a body/title comparison.
+      const isAncestor = other.lineStart !== undefined && other.lineEnd !== undefined
+        && other.lineStart <= freshParsed.lineStart! && other.lineEnd >= freshParsed.lineEnd!;
+      if (isAncestor) {
+        if (candidateOther.body !== other.body || candidateOther.title !== other.title) {
+          throw integrityFailedError(
+            this.location,
+            `issue ${other.id}'s own content (outside its child issues' sections) would change (write-back must touch only issue ${c.identifier}'s span)`,
+          );
+        }
+      } else if (candidateOther.raw !== other.raw) {
         throw integrityFailedError(this.location, `issue ${other.id}'s section would change (write-back must touch only issue ${c.identifier}'s span)`);
       }
     }
