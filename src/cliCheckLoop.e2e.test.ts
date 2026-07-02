@@ -5,7 +5,7 @@
 // Stop-hook gate (`check --auto-scope`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -58,6 +58,26 @@ describe('check targets', () => {
     const r = ztrack(['check', './loose.md', '--verify-commits']);
     expect(r.code).not.toBe(0);
     expect(r.out).toMatch(/deadbeef/);
+  });
+  // ZTB-2: findings carry `origin` (where they came from) — a store-backed issue's finding
+  // cites the real committed .md file, and a loose-file check cites that file.
+  test('a loose-file check finding carries origin.path pointing at that file', () => {
+    const loosePath = join(root, 'loose-origin.md');
+    writeFileSync(loosePath, `Status: ready\n\n${FAILING_AC}`);
+    const r = ztrack(['check', './loose-origin.md', '--verify-commits', '--json']);
+    expect(r.code).not.toBe(0);
+    const payload = JSON.parse(r.out) as { findings: Array<{ code: string; origin?: { path: string; line?: number } }> };
+    const finding = payload.findings.find((f) => f.origin);
+    // realpathSync: macOS's tmpdir() is a symlink (/var/... -> /private/var/...); the CLI subprocess
+    // resolves its cwd through it, so compare against the resolved path, not the raw mkdtemp() one.
+    expect(finding?.origin?.path).toBe(realpathSync(loosePath));
+  });
+  test('a store-backed check finding carries origin.path pointing at the real .md file', () => {
+    const r = ztrack(['check', 'ZT-2', '--verify-commits', '--json']); // ZT-2's fake commit fails under commit verification
+    expect(r.code).not.toBe(0);
+    const payload = JSON.parse(r.out) as { findings: Array<{ code: string; issueId?: string; origin?: { path: string; line?: number } }> };
+    const finding = payload.findings.find((f) => f.issueId === 'ZT-2' && f.origin);
+    expect(finding?.origin?.path).toBe(realpathSync(join(root, '.volter', 'tracker', 'markdown', 'ZT-2.md')));
   });
   test('a missing file ERRORS', () => {
     const r = ztrack(['check', './nope.md']);

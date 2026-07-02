@@ -29,13 +29,15 @@ function mdIds(dir: string): string[] {
   return readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => basename(f, '.md'));
 }
 
-// canonical → the full nested `issue view --json` shape (matches the local backend)
-export function viewJson(c: CanonicalIssue): Record<string, unknown> {
+// canonical → the full nested `issue view --json` shape (matches the local backend). `path` is
+// the absolute on-disk file this issue was read from — always present (not `--json`-gated,
+// unlike list's field selection), so the loader can populate IssueRecord.origin (ZTB-2).
+export function viewJson(c: CanonicalIssue, path: string): Record<string, unknown> {
   return {
     id: c.identifier, identifier: c.identifier, number: c.identifier,
     title: c.title, branchName: c.branchName, description: c.body, body: c.body,
     state: { name: c.state, type: c.stateType }, stateType: c.stateType, devProgress: c.devProgress,
-    priority: c.priority, url: c.url,
+    priority: c.priority, url: c.url, path,
     labels: { nodes: c.labels.map((name) => ({ name })) },
     assignee: c.assignees.length ? { name: c.assignees[0] } : null,
     assignees: { nodes: c.assignees.map((name) => ({ name })) },
@@ -46,13 +48,15 @@ export function viewJson(c: CanonicalIssue): Record<string, unknown> {
     createdAt: c.createdAt, updatedAt: c.updatedAt, completedAt: c.completedAt, canceledAt: c.canceledAt,
   };
 }
-// canonical → a flat `issue list --json <fields>` row (matches the local backend: state/assignee as strings, parent "")
-function listRow(c: CanonicalIssue, fields: string[]): Record<string, unknown> {
+// canonical → a flat `issue list --json <fields>` row (matches the local backend: state/assignee as strings, parent "").
+// `path` is a selectable field like any other — the loader (loader.ts) requests it explicitly
+// so IssueRecord.origin can be populated, without changing the shape of any other caller's row.
+function listRow(c: CanonicalIssue, fields: string[], path: string): Record<string, unknown> {
   const all: Record<string, unknown> = {
     id: c.identifier, identifier: c.identifier, number: c.identifier, title: c.title,
     body: c.body, description: c.body, state: c.state, stateType: c.stateType,
     createdAt: c.createdAt, updatedAt: c.updatedAt, project: c.project, parent: c.parent ?? '',
-    labels: c.labels, url: c.url, priority: c.priority, assignee: c.assignees[0] ?? '', branchName: c.branchName,
+    labels: c.labels, url: c.url, priority: c.priority, assignee: c.assignees[0] ?? '', branchName: c.branchName, path,
   };
   const row: Record<string, unknown> = {};
   for (const f of fields) row[f] = all[f] ?? null;
@@ -113,6 +117,15 @@ export class MarkdownBackend implements TrackerBackend {
     if (this.shared && this.mainDir) return readableMd(issueFile(this.mainDir, id));
     return null;
   }
+  // The absolute path the issue's content actually resolved from — same precedence as
+  // resolveBody, so a finding's origin points at the file that was read, not just this
+  // checkout's copy. Falls back to this checkout's path (e.g. right after a fresh write).
+  private originPath(id: string): string {
+    if (this.shared) { const p = issueFile(this.indexDir, id); if (readableMd(p) !== null) return p; }
+    const here = issueFile(this.dir, id); if (readableMd(here) !== null) return here;
+    if (this.shared && this.mainDir) { const p = issueFile(this.mainDir, id); if (readableMd(p) !== null) return p; }
+    return issueFile(this.dir, id);
+  }
   private loadOne(id: string): CanonicalIssue | null {
     const body = this.resolveBody(id); return body === null ? null : parseIssue(body);
   }
@@ -158,7 +171,7 @@ export class MarkdownBackend implements TrackerBackend {
       const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((c) => c.parent === parent);
       const search = flagVal(args, 'search'); if (search) rows = rows.filter((c) => `${c.title}\n${c.body}`.toLowerCase().includes(search.toLowerCase()));
       const limit = flagVal(args, 'limit'); const limitN = Number(limit); if (limit && Number.isFinite(limitN) && limitN >= 0) rows = rows.slice(0, limitN);
-      return ok(JSON.stringify(rows.map((c) => listRow(c, fields)), null, 2));
+      return ok(JSON.stringify(rows.map((c) => listRow(c, fields, this.originPath(c.identifier))), null, 2));
     }
     if (verb === 'issue' && sub === 'view') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
@@ -166,7 +179,7 @@ export class MarkdownBackend implements TrackerBackend {
       // children are recursively denormalized to full child objects (matches local's view)
       const seen = new Set<string>();
       const fullView = (issue: CanonicalIssue): Record<string, unknown> => {
-        const v = viewJson(issue);
+        const v = viewJson(issue, this.originPath(issue.identifier));
         v.children = { nodes: issue.children.map((cid) => {
           if (seen.has(cid) || !SAFE_ID.test(cid)) return { id: cid, identifier: cid, number: cid };
           seen.add(cid); const ch = this.loadOne(cid);
@@ -194,7 +207,7 @@ export class MarkdownBackend implements TrackerBackend {
         completedAt: null, canceledAt: null, url: `local://tracker/issue/${id}`, comments: [],
       };
       this.writeIssue(c);
-      return ok(JSON.stringify(viewJson(c), null, 2));
+      return ok(JSON.stringify(viewJson(c, this.originPath(c.identifier)), null, 2));
     }
     if (verb === 'issue' && sub === 'edit') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
@@ -208,7 +221,7 @@ export class MarkdownBackend implements TrackerBackend {
       const rm = new Set(flagAll(args, 'remove-label')); c.labels = c.labels.filter((l) => !rm.has(l));
       c.updatedAt = new Date().toISOString();
       this.writeIssue(c);
-      return ok(JSON.stringify(viewJson(c), null, 2));
+      return ok(JSON.stringify(viewJson(c, this.originPath(c.identifier)), null, 2));
     }
     if (verb === 'issue' && sub === 'comment') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };

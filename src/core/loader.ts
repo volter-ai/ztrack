@@ -46,6 +46,9 @@ export function rowToRecord(row: Row): IssueRecord {
     ...(Array.isArray(row.labels) ? { labels: strList(row.labels) } : {}),
     ...(Array.isArray(row.children) ? { children: strList(row.children) } : {}),
     body: str(row.body) || str(row.description),
+    // The markdown backend attaches the issue's absolute file path to every row (ZTB-2); one
+    // whole file backs one issue, so there's no line span to populate.
+    ...(str(row.path) ? { origin: { path: str(row.path) } } : {}),
   };
 }
 
@@ -71,6 +74,7 @@ export function viewToRecord(view: Record<string, unknown>, fallbackId: string):
     ...(labels.length ? { labels } : {}),
     ...(children.length ? { children } : {}),
     body: str(view.body),
+    ...(str(view.path) ? { origin: { path: str(view.path) } } : {}),
   };
 }
 
@@ -98,7 +102,7 @@ export async function loadValidationInput<R extends CoreRoot>(
   const rows = await client.issue.list({
     state: 'all',
     limit: opts.limit ?? 5000,
-    json: 'identifier,title,body,description,state,stateType,assignee,labels,children',
+    json: 'identifier,title,body,description,state,stateType,assignee,labels,children,path',
   });
   const all = Array.isArray(rows) ? (rows as Row[]) : [];
   const wanted = opts.issues ? new Set(opts.issues.map(String)) : null;

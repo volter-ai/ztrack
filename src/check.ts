@@ -101,6 +101,7 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
     status: meta.status || 'draft',
     ...(meta.assignee ? { assignee: meta.assignee } : {}),
     body,
+    origin: { path: absPath }, // the whole file is the issue — no line span
   };
 }
 
