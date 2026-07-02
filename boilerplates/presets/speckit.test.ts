@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { buildSpeckitBundle, checkSpeckit, parseSpeckit, SpeckitPreset, SpeckitRootSchema } from './speckit.ts';
-import { checkRoot, type IssueRecord } from 'ztrack/preset-kit';
+import { checkRoot, type CoreRoot, type IssueRecord, type Preset } from 'ztrack/preset-kit';
+import { assertReadOnlyRoundTripExemption } from '../../src/testkit/presetConformance.ts';
 
 const HEAD = 'cafe1234beef';
 const SPEC = `# Feature Specification: Appointment Search
@@ -131,6 +132,11 @@ const records = (opts?: Parameters<typeof rec>[0]) => [rec(opts)];
 const ctx = { git: { existingCommits: [HEAD] } };
 
 describe('speckit core preset (full process capture)', () => {
+  // ZTB-5: speckit is a READ-ONLY adapter (no `serialize`) — the round-trip fidelity contract
+  // applies only to WRITABLE presets, and is satisfied here vacuously via the existing
+  // `requireWritable` mechanism (src/modelEdit.ts), not by anything new.
+  assertReadOnlyRoundTripExemption({ preset: SpeckitPreset as unknown as Preset<CoreRoot>, record: rec() });
+
   test('captures spec metadata', () => {
     const i = SpeckitRootSchema.parse(parseSpeckit(records())).issues[0]!;
     expect(i.metadata).toEqual({ featureBranch: '001-appointment-search', status: 'Draft', created: '2026-06-15', input: 'User description: "search appointments"' });

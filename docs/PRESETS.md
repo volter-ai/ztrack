@@ -327,6 +327,59 @@ ztrack waiver clear <issue> [--code <finding-code>]
 A waiver that matches nothing emits `waiver_unused`; an unreasoned or unsigned
 waiver is itself an error. Sign-off is your git identity, captured automatically.
 
+## Round-Trip Fidelity
+
+`parse → serialize` (via `applyModelPatch`/`canonicalizeBody`, src/modelEdit.ts) is the
+**sanctioned write path** — every `ac patch`, `issue patch`, and `fmt` goes through it. It is
+not enough for serialize to be the inverse of parse at the MODEL level (the structured
+round-trip tests above prove that); it must also be position-preserving at the BODY level, or
+an edit anywhere clobbers a human's surrounding prose. The contract:
+
+1. An **unmodified** `parse → serialize` round trip is byte-identical for a body already in the
+   preset's own canonical (`serialize()`) shape.
+2. A round trip after editing **one** model element changes only the bytes that element OWNS.
+   "Owns" is defined per preset — for `simple-sdlc`/`simple-gh-sdlc`: an AC owns its lines
+   within the `## Acceptance Criteria` section; issue-level fields (Summary/Children/Blocks/…)
+   own their header lines; an unknown `## X` section owns its own lines, wherever it sits.
+3. A preset with no `serialize` (`speckit`) is **exempt** by construction: `requireWritable`
+   (src/modelEdit.ts) already throws before either preset is ever asked to round-trip, so the
+   contract is satisfied vacuously — there is nothing to build for the exemption itself.
+
+**Position, not just content.** `simple-sdlc`/`simple-gh-sdlc` carry unknown `## X` body
+sections verbatim (the `notes` primitive, above `## Acceptance Criteria`'s schema) so a
+patch/fmt never silently drops human-authored prose — but content surviving isn't enough if it
+always reappears at the END of the document regardless of where it started. `splitNotes`
+(boilerplates/presets/simple-sdlc.ts, mirrored in simple-gh-sdlc.ts) now tracks whether each
+carved-out section sat BEFORE or AFTER `## Acceptance Criteria` in the original body
+(`notesBefore` / `notes` respectively on the parsed model — `notesBefore` is new; `notes` keeps
+its old name and meaning for the common after-AC case), and `serializeIssue` re-emits each
+group where it was instead of appending everything last.
+
+**The narrowing.** Byte-identity in case 1 is proven for CANONICAL bodies — ones already shaped
+like the preset's own `serialize()` output (single blank-line section separators, the exact
+field/line formats `serialize` emits) — not for arbitrary hand-formatting. A body with, say,
+extra blank lines or reordered header fields already normalizes on a round trip today (see
+`canonicalizeBody`/`fmt`); that normalization is intentional and out of scope here. What ZTB-5
+fixes is POSITION for content the parser already carries faithfully. Concretely, the shared
+test kit (`src/testkit/presetConformance.ts`, called from every boilerplate preset's own test
+file) proves:
+
+- a body written through the **real markdown backend** (frontmatter + body, the actual on-disk
+  shape) round-trips byte-identically (`assertRoundTripFidelity`);
+- editing one AC via `applyModelPatch` changes only the bytes that AC owns — everything outside
+  its line range, by position from both the start and the end of the document, is untouched
+  (`assertRoundTripFidelity`, the edit-locality half);
+- (default-family presets only) an unknown section sitting BETWEEN two known sections keeps its
+  position on an unmodified round trip, instead of moving to the end
+  (`assertNotePositionFidelity`);
+- a read-only preset's exemption is real: `serialize` is undefined and `applyModelPatch`/
+  `canonicalizeBody` throw (`assertReadOnlyRoundTripExemption`).
+
+The universal `## Waivers` section (above) is a preexisting instance of this same position
+problem — `modelEdit.ts`'s `withWaivers` always reattaches it at the end, unchanged by ZTB-5 (it
+is core-level, not per-preset, and folding it into the per-preset mechanism above is out of
+scope unless it can be proven a no-op).
+
 ## Evolving The Preset
 
 There is no separate public `custom` preset. Customization is the normal state:

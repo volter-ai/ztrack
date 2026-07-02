@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import type { IssueRecord } from 'ztrack/preset-kit';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
+import { applyModelPatch, canonicalizeBody } from '../modelEdit.ts';
+import { createMarkdownBackend } from '../backends/markdownBackend.ts';
+import { viewToRecord } from '../core/loader.ts';
 
 // Shared "SDLC-grammar" conformance: the parse / evidence-integrity / relevance / anti-tamper
 // properties that `simple-sdlc` and `simple-gh-sdlc` share BY CONSTRUCTION (same default-family
@@ -151,5 +157,101 @@ export function assertSdlcGrammarConformance(p: {
       const r = checkDefault([imageLast('shots/real.png')], blobCtx);
       expect(r.findings.some((f) => f.code === 'evidence_file_not_found')).toBe(false);
     });
+  });
+}
+
+// ── round-trip fidelity (ZTB-5 / dev/11 + dev/12) ────────────────────────────────────────────
+// `parse -> serialize` is the sanctioned write path (`applyModelPatch`, src/modelEdit.ts). The
+// contract (spelled out in docs/PRESETS.md "Round-Trip Fidelity"):
+//   1. An UNMODIFIED parse -> serialize round trip is byte-identical for a body already in the
+//      preset's OWN canonical (serialize()) shape — proven here two ways: a body written through
+//      the real markdown backend, and (for presets that carry unknown `## X` sections) one with a
+//      section sitting between two known sections.
+//   2. A round trip after editing ONE model element changes only the bytes that element OWNS (an
+//      AC owns its lines within the AC section; issue-level fields own their header lines) —
+//      proven by patching one AC via `applyModelPatch` and diffing outside its line range.
+//   3. A preset with no `serialize` is EXEMPT: `requireWritable` (src/modelEdit.ts) already
+//      throws for it, so the contract is satisfied vacuously — nothing new to build.
+// Grammar-agnostic and parameterized per preset, like `assertSdlcGrammarConformance` above, so
+// each boilerplate preset's own test file wires it in and a position-losing regression in ANY
+// writable preset is caught from one place.
+
+const J = (r: { stdout: string }) => JSON.parse(r.stdout);
+
+/**
+ * Cases 1 (real-store fixture) + 2 (edit-locality). `canonical` must already be rendered in the
+ * preset's OWN `serialize()` shape (byte-identity is proven for canonical store files — see the
+ * narrowing note in docs/PRESETS.md — not for arbitrary hand-formatting). `edit` names one AC in
+ * `edit.record.body` and a patch that changes it; the fixture must contain at least one OTHER
+ * top-level AC line (`- [ ] <id> …` / `- [x] <id> …`) so "outside the owned region" is provable.
+ */
+export function assertRoundTripFidelity(p: {
+  preset: Preset<CoreRoot>;
+  canonical: { title: string; status: string; body: string };
+  edit: { record: IssueRecord; acId: string; patch: Record<string, unknown> };
+}): void {
+  const { preset, canonical, edit } = p;
+
+  test('a body written through the real markdown backend round-trips byte-identically', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ztb5-rt-'));
+    const be = createMarkdownBackend(dir, 'RT');
+    const created = J(await be.command(['issue', 'create', '--title', canonical.title, '--state', canonical.status, '--body', canonical.body]));
+    const view = J(await be.command(['issue', 'view', created.identifier, '--json']));
+    const record = viewToRecord(view, created.identifier);
+    expect(record.body).toBe(canonical.body); // sanity: the backend's own round trip is invisible here
+
+    const root = preset.schema.parse(preset.parse([record]));
+    const { body } = preset.serialize!(root.issues[0]!);
+    expect(body).toBe(record.body);
+  });
+
+  test('applyModelPatch on one AC changes only the bytes that AC owns', () => {
+    const before = edit.record.body;
+    const { body: after } = applyModelPatch(preset, edit.record, { acId: edit.acId, patch: edit.patch });
+    expect(after).not.toBe(before); // sanity: the patch actually changed something
+
+    const beforeLines = before.split('\n');
+    const afterLines = after.split('\n');
+    const acLineRe = new RegExp(`^- \\[.\\] ${edit.acId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+    const startIdx = beforeLines.findIndex((l) => acLineRe.test(l));
+    expect(startIdx).toBeGreaterThanOrEqual(0); // the fixture must actually contain this AC
+    let endIdx = beforeLines.length;
+    for (let i = startIdx + 1; i < beforeLines.length; i++) {
+      if (/^- \[.\] /.test(beforeLines[i]!)) { endIdx = i; break; }
+    }
+    // everything BEFORE the AC's block (by line index from the start) is untouched
+    expect(afterLines.slice(0, startIdx)).toEqual(beforeLines.slice(0, startIdx));
+    // everything AFTER the AC's block (by line index from the END — the block's OWN length can
+    // change, e.g. gaining an evidence line) is untouched
+    const suffix = beforeLines.slice(endIdx);
+    expect(afterLines.slice(afterLines.length - suffix.length)).toEqual(suffix);
+  });
+}
+
+/**
+ * Case 1's position-specific edge: an unknown `## X` section BETWEEN two known sections (the
+ * header fields and "## Acceptance Criteria") keeps its ORIGINAL position on an unmodified round
+ * trip instead of being re-emitted at the end. Only meaningful for presets that carry unknown
+ * sections (the default-family SDLC presets) — `spec`/`speckit` have no such concept and don't
+ * call this.
+ */
+export function assertNotePositionFidelity(p: { preset: Preset<CoreRoot>; record: IssueRecord }): void {
+  test('an unknown section between two known sections keeps its position on an unmodified round trip', () => {
+    const root = p.preset.schema.parse(p.preset.parse([p.record]));
+    const { body } = p.preset.serialize!(root.issues[0]!);
+    expect(body).toBe(p.record.body);
+  });
+}
+
+/**
+ * Case 3: a preset with no `serialize` (a read-only adapter, e.g. `speckit`) is EXEMPT from the
+ * round-trip contract by construction — demonstrates the exemption path rather than asserting
+ * round-trip fidelity (there is no `serialize` to round-trip through).
+ */
+export function assertReadOnlyRoundTripExemption(p: { preset: Preset<CoreRoot>; record: IssueRecord }): void {
+  test('a read-only preset (no serialize) is exempt from the round-trip contract via requireWritable', () => {
+    expect(p.preset.serialize).toBeUndefined();
+    expect(() => applyModelPatch(p.preset, p.record, { patch: {} })).toThrow(/read-only/);
+    expect(() => canonicalizeBody(p.preset, p.record)).toThrow(/read-only/);
   });
 }

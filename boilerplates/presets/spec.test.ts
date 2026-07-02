@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
-import type { IssueRecord } from 'ztrack/preset-kit';
-import { checkSpec, parseSpec, serializeSpecIssue, SpecRootSchema } from './spec.ts';
+import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
+import { assertRoundTripFidelity } from '../../src/testkit/presetConformance.ts';
+import { checkSpec, parseSpec, serializeSpecIssue, SpecPreset, SpecRootSchema } from './spec.ts';
 
 const REAL = 'cafe1234beef';
 const ctx = { git: { existingCommits: [REAL] } };
@@ -16,6 +17,11 @@ const REC: IssueRecord = {
 - [ ] AC-2 Members can search by provider
 `,
 };
+
+// ZTB-5 round-trip fidelity: `spec` has no unknown-section concept (no `notes`), so only
+// assertRoundTripFidelity applies (no assertNotePositionFidelity call) — REC's body is ALREADY
+// in serializeSpecIssue's canonical shape and has two ACs (AC-1, AC-2), reused for edit-locality.
+const rtPreset = SpecPreset as unknown as Preset<CoreRoot>;
 
 describe('greenfield spec preset', () => {
   test('mdast parses markdown straight into the hard schema', () => {
@@ -42,6 +48,12 @@ describe('greenfield spec preset', () => {
     // re-parsing the serialized form yields the identical structured issue
     const reparsed = SpecRootSchema.parse(parseSpec([{ id: issue.id, title: columns.title!, status: columns.status!, body }]));
     expect(reparsed.issues[0]).toEqual(issue);
+  });
+
+  assertRoundTripFidelity({
+    preset: rtPreset,
+    canonical: { title: REC.title, status: REC.status, body: REC.body },
+    edit: { record: REC, acId: 'AC-2', patch: { status: 'passed', evidence: [{ id: 'AC-2/ev1', commit: REAL }] } },
   });
 
   test('rule: passed AC with no evidence fails', () => {

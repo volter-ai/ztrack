@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import type { IssueRecord } from 'ztrack/preset-kit';
-import { assertSdlcGrammarConformance } from '../../src/testkit/presetConformance.ts';
+import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
+import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance } from '../../src/testkit/presetConformance.ts';
 import { checkDefault, DefaultPreset, DefaultRootSchema, parseDefault, serializeIssue } from './simple-gh-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
@@ -18,6 +18,41 @@ PR: ${PR}
   - status: passed
   - evidence ev1: image=shots/ac1.png commit=${HEAD} acv=2
   - proof: "ev1 shows the status filter applied" -> ev1
+`,
+};
+
+// ZTB-5 round-trip fidelity fixtures — see assertRoundTripFidelity/assertNotePositionFidelity.
+const rtPreset = DefaultPreset as unknown as Preset<CoreRoot>;
+
+// two ACs, so editing one has an OTHER AC's lines to prove untouched (edit-locality).
+const EDIT_REC: IssueRecord = {
+  id: 'DEF-2', title: 'Two things to do', status: 'in-progress', assignee: 'otto',
+  body: `Summary: two independent criteria
+
+## Acceptance Criteria
+
+- [ ] AC-1 v1 First criterion
+  - status: pending
+- [ ] AC-2 v1 Second criterion
+  - status: pending
+`,
+};
+
+// an unknown "## Context" section sitting BETWEEN the header (Summary/PR) and "## Acceptance
+// Criteria" — the case that must FAIL before the ZTB-5 fix (notes always re-emitted last) and
+// PASS after it (notes re-emitted in their original position).
+const NOTE_BETWEEN_REC: IssueRecord = {
+  id: 'DEF-3', title: 'Has engineering context', status: 'draft', assignee: 'otto',
+  body: `Summary: something to do
+
+## Context
+
+Some engineering context that must stay exactly here, not at the end.
+
+## Acceptance Criteria
+
+- [ ] AC-1 v1 do it
+  - status: pending
 `,
 };
 
@@ -76,6 +111,12 @@ describe('simple-gh-sdlc preset', () => {
   });
 
   assertSdlcGrammarConformance({ checkDefault, parseDefault, HEAD, REC });
+  assertRoundTripFidelity({
+    preset: rtPreset,
+    canonical: { title: REC.title, status: REC.status, body: REC.body },
+    edit: { record: EDIT_REC, acId: 'AC-1', patch: { checked: true, status: 'passed', evidence: [{ id: 'ev1', commit: HEAD, acVersion: 1 }], proof: { explanation: 'ev1 shows it', evidenceRefs: ['ev1'] } } },
+  });
+  assertNotePositionFidelity({ preset: rtPreset, record: NOTE_BETWEEN_REC });
 
   test('rule: PR head unknown when git world has no head', () => {
     const r = checkDefault([REC], { git: { existingCommits: [HEAD], prs: {} } });
