@@ -14,6 +14,7 @@ describe('looksLikeIssueId', () => {
     expect(looksLikeIssueId('ZL-A9')).toBe(true);   // backend-minted-shaped id with a letter suffix
     expect(looksLikeIssueId('ZTA-1')).toBe(true);   // multi-letter team key, numeric suffix
     expect(looksLikeIssueId('PH-12')).toBe(true);   // plain numeric suffix (the common case)
+    expect(looksLikeIssueId('MY-TEAM-1')).toBe(true); // a dashed teamKey mints dashed-prefix ids
   });
   test('rejects a dot-bearing token (still fails the CLI grammar, unlike the backend\'s looser SAFE_ID)', () => {
     expect(looksLikeIssueId('A.1-5')).toBe(false);
