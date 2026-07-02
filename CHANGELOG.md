@@ -2,7 +2,7 @@
 
 All notable ztrack release changes are recorded here.
 
-## Unreleased
+## 0.35.0
 
 Declared sources — a tracker can now span more than one markdown store, including a single file
 that holds many issues — plus provenance on every finding and a round-trip fidelity contract for
