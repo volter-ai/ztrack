@@ -2,6 +2,28 @@
 
 All notable ztrack release changes are recorded here.
 
+## Unreleased
+
+- **The loop gate also holds `SubagentStop`.** `plugins/ztrack-gate/hooks/hooks.json` now
+  registers the identical hook command under `SubagentStop` as well as `Stop`, closing a gap
+  where a subagent's turn — which ends via `SubagentStop`, never `Stop` — was never gated: a
+  subagent that armed a loop for its own issue was never held by it, and an armed main agent
+  could bypass its own gate by delegating to a subagent that returned "done" while the target
+  stayed red. The gate is now root-scoped: while a root is armed, no turn ending in it — main
+  agent or subagent — ends until the target is green. Isolation between unrelated loops comes
+  from running them in separate worktrees, not from per-agent scoping within one root.
+  `stop-loop.sh` derives a per-turn actor id (a subagent's `agent_id` when present, else the
+  main-agent `session_id`) and keys the iteration cap and the self-exempt escape hatch to it,
+  so a subagent's held turns don't advance its parent session's counter (or vice versa), and
+  one actor's exemption doesn't leak to another. A bare `Stop` payload with no `agent_id`
+  behaves byte-for-byte as before. `ztrack loop start` now also refuses to arm a *different*
+  target while one is already armed in the same root (nonzero exit, marker unchanged) — so
+  delegating to a subagent that arms an easier target can't route around an armed gate;
+  re-arming the *same* target still succeeds as a refresh. A new `ZTRACK_TRACKER_ROOT` env var
+  pins the gate to an explicit tracker root (skipping the upward directory walk) for a subagent
+  whose cwd isn't under the tracker; an override that names a directory with no tracker fails
+  open (a one-line stderr warning, exit 0) rather than trapping the turn.
+
 ## 0.35.2
 
 The first published release of the 0.35 line — v0.35.0 and v0.35.1 were tagged but their

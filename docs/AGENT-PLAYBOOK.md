@@ -6,9 +6,10 @@ Two jobs an agent does with ztrack: **drive** work under it (the daily developme
 ## Driving work under ztrack (the main loop)
 
 The recommended flow: a user arms a loop with `ztrack loop start <issue>` and runs you on that issue.
-While the loop is armed, a Stop hook holds your turn and re-runs `ztrack check` — so **you cannot end
-your turn on a fabricated "done."** When it's red, keep working until it's genuinely green (the loop
-then disarms), or take an honest escape. Your job:
+While the loop is armed, a Stop/SubagentStop hook holds your turn — and any subagent's you delegate
+to — and re-runs `ztrack check` — so **you cannot end your turn (or hand off to a subagent that
+ends its turn) on a fabricated "done."** When it's red, keep working until it's genuinely green (the
+loop then disarms), or take an honest escape. Your job:
 
 - Do the work, then cite **real** evidence on each passed AC: a commit SHA that **exists** in git,
   plus a `proof:` line that names what it shows (and a committed image if the AC requires one).
@@ -16,7 +17,7 @@ then disarms), or take an honest escape. Your job:
   screenshot, video, or source to make the gate go green.
 - If a claim genuinely cannot be satisfied, take an **honest escape** — never fake it to end the turn:
   leave the AC pending and report the blocker; descope the AC; or, for a finding an authority
-  knowingly accepts, `ztrack waiver sign` it. (Per-session self-exempt and `ztrack loop stop` also
+  knowingly accepts, `ztrack waiver sign` it. (Per-actor self-exempt and `ztrack loop stop` also
   exist; none of them fabricate "done.")
 - Mirror this even without a loop: with MCP, call `tracker_check` before finishing; with no hooks at
   all, run `ztrack check` as your last step and treat a non-zero exit as incomplete work.

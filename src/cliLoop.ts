@@ -29,7 +29,7 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     }
   };
   if (!action || action === '--help' || action === '-h' || action === 'help') {
-    process.stdout.write(`Usage: ${command} loop <start [<issue>|<file.md>] [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate (a ralph loop). While armed, the Stop hook keeps the agent going until the target passes \`${command} check\` (then it disarms), or the iteration cap trips. The target uses the same grammar as \`check\`: an issue id, a markdown file, or — with no argument — this worktree's issue (resolved from the branch/worktree name). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it.\n`);
+    process.stdout.write(`Usage: ${command} loop <start [<issue>|<file.md>] [--max N] | stop | status>\n\nArms a loop-scoped ztrack gate (a ralph loop). While armed, the Stop/SubagentStop hooks keep every turn in this root going — the agent's and any subagent's — until the target passes \`${command} check\` (then it disarms), or the iteration cap trips. The target uses the same grammar as \`check\`: an issue id, a markdown file, or — with no argument — this worktree's issue (resolved from the branch/worktree name). start writes ${stateDirName()}/.ztrack-loop.json; stop removes it. Arming a DIFFERENT target while one is already armed refuses (\`${command} loop stop\` first, or arm in a separate worktree).\n`);
     return true;
   }
   if (action === 'start') {
@@ -58,7 +58,7 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     writeFileSync(marker, `${JSON.stringify({ target, maxIterations, startedAt: new Date().toISOString(), label }, null, 2)}\n`);
     // Pull the latest from a linked tracker before the ralph loop starts (best-effort).
     await githubSync.syncLinked(root, { pull: true }).catch(() => {});
-    process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); once the ztrack-gate Stop hook is wired (README → Agent workflows), it holds the turn until ${label} is green`)}\n`);
+    process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label} (max ${maxIterations}); once the ztrack-gate Stop/SubagentStop hooks are wired (README → Agent workflows), it holds every turn in this root — the agent's and any subagent's — until ${label} is green`)}\n`);
     return true;
   }
   if (action === 'stop') {

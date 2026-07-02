@@ -1,8 +1,9 @@
 # ztrack-gate
 
 A Claude Code plugin that runs an autonomy **loop** whose completion *oracle* is `ztrack`
-— a ralph loop that automatically knows how to prove success. While the loop is armed, the
-agent's turn can't end until the issue passes `ztrack check`; it's an executable gate, not a
+— a ralph loop that automatically knows how to prove success. While the loop is armed, no
+turn ending in the armed root can end until the issue passes `ztrack check` — the main
+agent's turn (`Stop`) or a subagent's (`SubagentStop`); it's an executable gate, not a
 phrase match or an LLM judging a transcript. Compose it with the
 [`ralph-loop`](https://github.com/anthropics/claude-code) plugin if you like: ralph
 re-prompts, ztrack-gate decides *done*.
@@ -14,8 +15,9 @@ re-prompts, ztrack-gate decides *done*.
 /plugin install ztrack-gate@ztrack
 ```
 
-Enabling the plugin registers the Stop hook automatically (no `settings.json` editing). It's
-**armed**, not always-on, so it leaves interactive work alone.
+Enabling the plugin registers the Stop **and** SubagentStop hooks automatically (no
+`settings.json` editing) — see [Subagents](#subagents) for why both. It's **armed**, not
+always-on, so it leaves interactive work alone.
 
 ## Use it
 
@@ -35,6 +37,47 @@ ztrack loop stop           # disarm (issue stays open/red; you just stop the loo
 - **Iteration cap** (`--max`, default 8) → if it can't go green, the loop stops and surfaces
   what's left, rather than grinding forever.
 
+## Subagents
+
+A subagent's turn ends via `SubagentStop`, not `Stop` — a different hook event, with its own
+payload (`agent_id` alongside `session_id`). ztrack-gate registers the identical hook under
+both events (`hooks/hooks.json`), so **while a root is armed, no turn ending in that root ends
+until the target is green — the main agent's or any subagent's it delegates to.** Delegating
+to a subagent is not a way to bypass an armed loop: a subagent that returns "done" while the
+target is still red is itself held by `SubagentStop`, exactly like the main agent would be at
+`Stop`.
+
+- **The gate is root-scoped, not agent-scoped.** There is no documented way to know, at `ztrack
+  loop start` time, which agent is arming the loop or which agents will later act in that root
+  — so the marker names a *target*, not an *owner*. Isolation between two unrelated loops comes
+  from running them in **separate worktrees** (each worktree has its own gitignored marker
+  namespace over the shared tracker — see `ztrack loop start`'s help), not from per-agent
+  scoping within one root.
+- **Per-actor counters and exemptions.** Within one armed root, the iteration cap and the
+  self-exempt escape hatch are keyed to an *actor id* — a subagent's `agent_id` when the
+  payload has one, else the (main-agent) `session_id`. A subagent's held turns advance only
+  its own iteration counter, never its parent session's (or a sibling subagent's); an
+  exemption file one actor creates (`.volter/.ztrack-loop-exempt-<actor id>`) is honored only
+  for that exact actor — not for the session that spawned it, and not for a different
+  subagent even in the same session. The held/exempt messages the hook prints name the actor
+  id, so the exact exemption path is always in the feedback.
+- **Where the feedback goes.** Per the Claude Code hook docs, a `SubagentStop` block's stderr
+  is fed back to **the subagent itself**, as its next instruction — the same decision
+  semantics as `Stop`. A held subagent sees the `ztrack check` findings and keeps working (or
+  self-exempts); it is not silently swallowed and it does not surface as a *main*-agent
+  message unless the subagent reports it up.
+- **Arm-collision refusal.** `ztrack loop start <target>` refuses — nonzero exit, marker
+  unchanged — if a *different* target is already armed in this root; re-arming the *same*
+  target (a refresh: new `--max`, a runtime sweep, clearing a cap breadcrumb) still succeeds.
+  This exists so a main agent can't route around its own armed gate by delegating to a
+  subagent that arms a different, easier-to-satisfy target — the second `loop start` simply
+  fails instead of silently stealing the gate.
+- **`ZTRACK_TRACKER_ROOT`** — set this env var to skip the upward directory walk and pin the
+  gate to a specific tracker root explicitly. Useful when a subagent's cwd isn't under the
+  tracker (e.g. it works in a scratch directory outside the repo). If the path has no tracker
+  at `$ZTRACK_TRACKER_ROOT/.volter/tracker-config.json`, the hook **fails open**: a one-line
+  warning to stderr and exit 0 — a typo in the override never traps a turn.
+
 ## Escapes
 
 A loop you can't get out of is a trap, so there are three honest ways out — graded by how
@@ -42,10 +85,12 @@ durable they are, none of which silently lies about "done":
 
 - **Disarm** — `ztrack loop stop`. Ends the loop for everyone; the issue stays red. The
   blunt instrument.
-- **Per-session self-exempt** — when blocked, the held turn's message prints an exact path
-  (`.volter/.ztrack-loop-exempt-<session_id>`). Create that file and *this* session's turn
-  may end. It's keyed to the live session id (so a fresh session is held again) and
-  gitignored (so it can't be committed) — it cannot outlive the session that made it.
+- **Per-actor self-exempt** — when blocked, the held turn's message prints an exact path
+  (`.volter/.ztrack-loop-exempt-<actor id>`, where the actor id is a subagent's `agent_id` or
+  the main session's `session_id` — see [Subagents](#subagents)). Create that file and *this*
+  actor's turn may end. It's keyed to the live actor id (so a fresh session, or any other
+  subagent, is still held) and gitignored (so it can't be committed) — it cannot outlive the
+  actor that made it.
 - **Durable waiver** — `ztrack waiver sign <issue> --reason "…"`. Records that the failing
   state is knowingly accepted; the issue's errors become `acknowledged` and `check` passes.
   Sign-off is your **git identity** (captured automatically — the same identity that authors
