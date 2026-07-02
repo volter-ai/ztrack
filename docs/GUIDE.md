@@ -126,6 +126,20 @@ Auth uses the `gh` CLI or `GITHUB_TOKEN` (never a prompted PAT).
   block into the body. Resolve by editing + re-syncing, or pick a `--policy hub-wins | twin-wins |
   merge` (default `merge`), settable on `sync`/`init` or as `sync.policy` in the config.
 
+### Parent/child issues
+
+`--parent <id>` filters `issue list`, and sets/clears the link on `issue create` and `issue edit`
+(`--remove-parent` detaches) — the CLI and SDK both take it. `parent` is the source of truth; the
+`children` array on the parent side is a **denormalized view** derived from it, not independently
+edited. `issue edit --parent`/`--remove-parent` keeps both ends honest: it updates the OLD and the
+NEW parent's `children` on every real reparent. `issue create --parent` does **not** backfill the new
+parent's `children` (a child minted with a parent from birth won't show up in the parent's `children`
+until something re-triggers the sync); nor does an `issue edit --parent` that names the SAME parent it
+already has (that's not a change, so nothing to sync) — detach (`issue edit <child> --remove-parent`)
+then reattach (`issue edit <child> --parent <id>`) if you need to force a backfill. `issue list
+--parent <id>` is unaffected either way — it filters by the `parent` pointer directly and never reads
+`children`.
+
 ## 3. Usage: drive an agent to green
 
 This is the **recommended development flow**. `ztrack loop start <issue>` arms a *ralph loop* whose
@@ -186,6 +200,68 @@ Tell the agent: *call `tracker_check` before finishing; if it's red, produce the
 rather than marking the task done.* The copy-paste one-shot adoption prompt and driving rules live in
 the [AI agent playbook](AGENT-PLAYBOOK.md). For a non-MCP harness with no hook system, run
 `npx ztrack check` as a final command and treat a non-zero exit as incomplete work.
+
+## When the checker is wrong
+
+`ztrack check` is deterministic, but that doesn't mean every finding applies to your repo — a legacy
+AC that predates evidence discipline, a rule that's genuinely wrong for this project. The sanctioned
+override is a **waiver**, not editing check's output or turning a rule off globally:
+
+```bash
+ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
+ztrack waiver status <issue>
+ztrack waiver clear <issue> [--code <finding-code>]
+```
+
+A waiver is stored in the issue body's `## Waivers` section, one row per waiver:
+
+```
+- code: evidence_commit_unrelated reason: pre-dates paths anchors by: Jane Doe (jane@co.com)
+```
+
+`sign` downgrades the matching finding's severity from `error` to `acknowledged` — `check` keeps
+reporting it (as `ack`) but exits `0`. Sign-off (the `by:` field) is captured automatically from your
+git identity (`git config user.name` / `user.email`), so a waiver always records who accepted the
+risk. An unreasoned or unsigned waiver is itself an error (`waiver_missing_reason`,
+`waiver_missing_signoff`); a waiver that stops matching any finding — the underlying issue got fixed,
+or the rule changed — is flagged `waiver_unused` (a warning, not blocking), so waivers don't silently
+accumulate as dead suppression. This is also the mechanism that keeps [`ztrack loop`](#3-usage-drive-an-agent-to-green)
+from grinding forever on a finding it can't honestly satisfy.
+
+Prefer fixing the issue; waive only a finding you knowingly accept. Full grammar (including AC-scoped
+waivers via `--ac`) is in [Presets → Waivers](PRESETS.md#waivers).
+
+## Relevance
+
+By default, `ztrack check` verifies that cited evidence *exists and is real* — it does not verify that
+the evidence is *about* the claimed work. An acceptance criterion can opt in to a **relevance
+anchor**: a `paths:` glob declaring which repo paths the AC concerns. Once an AC declares `paths:`,
+its cited commit(s) must touch at least one of them, or the checked claim is rejected:
+
+```markdown
+- [x] dev/01 v1 GET /health returns 200
+  - status: passed
+  - paths: src/**
+  - evidence ev1: commit=<sha> acv=1
+  - proof: "the commit adds the health endpoint" -> ev1
+```
+
+A commit here that only touches `docs/` fails with `evidence_commit_unrelated`; one that touches a
+`src/` file passes. `paths:` takes globs (`*` within one path segment, `**` across segments,
+literal files or directories, a comma-separated list of several) and is satisfied if ANY cited commit
+touches ANY declared path.
+
+`paths:` is opt-in by default — a passed AC that omits it is never relevance-checked, so existing repos
+are unaffected. To make it mandatory repo-wide, set in `.volter/tracker-config.json`:
+
+```json
+{ "relevance": "required" }
+```
+
+With `relevance: "required"`, every passed AC must declare `paths:`, or `passed_ac_missing_paths`
+fires — so no passed AC can skip the relevance check by omission. Either way, this is still not full
+semantic judgment (a commit that touches the right files for the wrong reason still passes) — it's a
+deterministic floor: the cited proof must at least land in the area it claims to fix.
 
 ## 4. Customize the preset
 

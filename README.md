@@ -48,10 +48,13 @@ Lint errors are fixed by editing text. Type errors are fixed by producing eviden
 
 **What it does _not_ verify** (be honest with your team): the `simple-sdlc` preset checks that the
 cited commit **exists** and — if you cite an image — that the image is committed at that commit (a
-fabricated screenshot path fails). What it can't check is *relevance*: an unrelated real commit with
-a real screenshot still passes. That semantic judgment is the irreducible thing a deterministic
-checker can't make. It raises the floor from "prose can lie" to "the proof must exist and be real";
-encode stricter, project-specific grounding in the editable `preset.mts`.
+fabricated screenshot path fails). By default it does not check *relevance* — a real, unrelated commit
+with a real screenshot still passes — but an AC can opt in to a `paths:` **relevance anchor** (or the
+repo can require one on every passed AC) so a claimed commit must at least touch the area it claims;
+see [Relevance](#relevance) below. Full semantic judgment ("is this commit really the right fix for
+the right reason") is still the irreducible thing a deterministic checker can't make. It raises the
+floor from "prose can lie" to "the proof must exist, be real, and land in the claimed area"; encode
+stricter, project-specific grounding in the editable `preset.mts`.
 
 ---
 
@@ -197,6 +200,60 @@ ztrack loop stop              # disarm
 ```
 
 You set the target; the loop holds the standard.
+
+## When the checker is wrong
+
+`ztrack check` is deterministic, but deterministic isn't the same as always right for your repo — a
+legacy AC that predates evidence discipline, or a finding that genuinely doesn't apply. The sanctioned
+override is a **waiver**, signed by a human (or an agent acting under one), not editing the check's
+output or disabling a rule globally:
+
+```bash
+ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
+ztrack waiver status <issue>
+ztrack waiver clear <issue> [--code <finding-code>]
+```
+
+A waiver lives in the issue body's `## Waivers` section, one line per waiver:
+
+```
+- code: evidence_commit_unrelated reason: pre-dates paths anchors by: Jane Doe (jane@co.com)
+```
+
+`sign` downgrades the matching finding from `error` to `acknowledged` — `check` still reports it, but
+exits `0`. Sign-off is captured automatically from your git identity (`git config user.name` /
+`user.email`); you can't waive anonymously. Hygiene is enforced both directions: an unreasoned or
+unsigned waiver is itself an error (`waiver_missing_reason`, `waiver_missing_signoff`), and a waiver
+that stops matching anything — you fixed the underlying issue, or the code changed — is flagged
+`waiver_unused` (a warning, not blocking) so a stale waiver doesn't silently keep suppressing forever.
+
+Prefer fixing the issue; waive only a finding you knowingly accept. Full grammar in
+[Presets → Waivers](docs/PRESETS.md#waivers).
+
+## Relevance
+
+By default `ztrack check` verifies that cited evidence *exists and is real* — not that it's *about*
+the claimed work. An acceptance criterion can opt in to a **relevance anchor**: a `paths:` glob
+declaring the repo area it concerns. Once declared, a passed AC's cited commit(s) must touch at least
+one of those paths, or the claim is rejected:
+
+```markdown
+- [x] dev/01 v1 GET /health returns 200
+  - status: passed
+  - paths: src/**
+  - evidence ev1: commit=<sha> acv=1
+  - proof: "the commit adds the health endpoint" -> ev1
+```
+
+A commit that only touches `docs/` here fails with `evidence_commit_unrelated`; one that touches a
+`src/` file passes. `paths:` accepts globs (`*` within a segment, `**` across segments, literal
+files/dirs, comma-separated lists) and is satisfied by ANY cited commit touching ANY declared path.
+
+`paths:` is opt-in — a passed AC that omits it is never relevance-checked (existing repos are
+unaffected). Set `"relevance": "required"` in `.volter/tracker-config.json` to make it mandatory:
+every passed AC must then declare `paths:`, or `passed_ac_missing_paths` fires. This is still not full
+semantic judgment (a commit that touches the right files for the wrong reason still passes) — it's a
+deterministic floor: the cited proof must at least be **in** the area it claims to fix.
 
 ---
 
