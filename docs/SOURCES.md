@@ -114,10 +114,10 @@ Register the route in the router.
 `APP-1`'s presented body excises `APP-1a`'s subtree (it's a child issue, not duplicated content).
 `ztrack check` runs the installed preset over every one of these issues exactly as it would an
 issue-per-file store — evidence rules, lifecycle gates, all of it. Splice write-backs (`ac patch`,
-title/body edits) currently land only on **top-level leaf** items like `APP-2`: an item with an
-id-bearing child (`APP-1`), or an item nested inside another's section (`APP-1a`), reads fine but
-refuses splices, failing closed with an error naming the file (see
-[Writing back](#writing-back)) — so keep the ACs you intend to `ac patch` on top-level items.
+title/body edits) land on **leaf items at any nesting depth** — both `APP-2` and the nested
+`APP-1a` are spliceable; an item with an id-bearing child (`APP-1`) reads fine but refuses splices,
+failing closed with an error naming the file (see [Writing back](#writing-back)) — so keep the ACs
+you intend to `ac patch` on leaf items.
 
 ### Grammar rules
 
@@ -170,7 +170,7 @@ Two kinds of edit reach a document source:
 | `issue delete` | **always** fails closed — removing a section is a file edit, not a tracker operation |
 | any write to the **umbrella** issue | **always** fails closed — the umbrella *is* the file, not a spliceable section within it |
 | a write to an item whose subtree was **excised** (it has an id-bearing child) | fails closed regardless of field — its recorded span doesn't map cleanly onto just its own bytes |
-| a write to a **nested** item (its section lives inside an ancestor item's section) | currently fails closed — the splice integrity guard requires every *other* issue's section to be byte-identical, and an ancestor's section contains the nested span |
+| a write to a **nested leaf** item (its section lives inside an ancestor item's section, but it has no id-bearing children of its own) | spliced into the recorded span, same as any other leaf item — the integrity guard checks the ancestor's own content (outside its child issues' sections), not its raw bytes, so the ancestor's raw legitimately changing to embed the new span doesn't trip it |
 | a write to a `readonly: true` source | fails closed at the source layer, before any document-specific guard runs |
 | a **stale** document (changed on disk since it was read) | fails closed — re-run against current contents |
 
