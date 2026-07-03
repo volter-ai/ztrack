@@ -9,7 +9,7 @@ import { git } from './core/gitWorld.ts';
 import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
 import { positionalArgs, resolveTarget } from './cliTarget.ts';
 import { readLoopMarker } from './loopState.ts';
-import type { RuleCategory } from './checkRules.ts';
+import { RULE_CATEGORIES, type RuleCategory } from './checkRules.ts';
 
 async function writeOutput(text: string, outPath: string): Promise<void> {
   if (!outPath) { process.stdout.write(text); return; }
@@ -17,6 +17,11 @@ async function writeOutput(text: string, outPath: string): Promise<void> {
   process.stdout.write(`${outPath}\n`);
 }
 
+// ZTB-19 (ZL-E4): the shape check (`name=N`) used to be the ONLY validation — an unknown
+// category name (a typo, or a name from a different preset ecosystem) was accepted silently and
+// then matched no rule's `category`, so the flag quietly did nothing. Now the name itself is
+// checked against the engine's real `RuleCategory` vocabulary (src/checkRules.ts) — a hard error
+// naming the valid options, not a warning, since this is bad flag input, not a soft finding.
 function parseCategories(flag: string): Partial<Record<RuleCategory, number>> | undefined {
   if (!flag) return undefined;
   return Object.fromEntries(flag.split(',').map((pair) => {
@@ -25,7 +30,11 @@ function parseCategories(flag: string): Partial<Record<RuleCategory, number>> | 
     if (!c?.trim() || d === undefined || !Number.isInteger(depth) || depth < 0) {
       throw new Error(`invalid --categories entry '${pair}' (expected name=N where N is a non-negative integer)`);
     }
-    return [c.trim(), depth];
+    const name = c.trim();
+    if (!(RULE_CATEGORIES as readonly string[]).includes(name)) {
+      throw new Error(`invalid --categories entry '${pair}': unknown category '${name}'. Valid categories: ${RULE_CATEGORIES.join(', ')}`);
+    }
+    return [name, depth];
   })) as Partial<Record<RuleCategory, number>>;
 }
 

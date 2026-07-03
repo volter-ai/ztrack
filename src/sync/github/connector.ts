@@ -17,6 +17,15 @@ type Row = Record<string, unknown>;
 const nameList = (v: unknown, key: 'login' | 'name'): string[] =>
   Array.isArray(v) ? v.map((e) => (e && typeof e === 'object' ? String((e as Record<string, unknown>)[key] ?? '') : '')).filter(Boolean) : [];
 
+// Per-status error message: name the repo + the operation, then add the likely fix so a sync
+// failure is actionable from the log line alone, not a bare "(HTTP 404)" that could be any repo.
+function listIssuesFailedMessage(repository: string, page: number, status: number): string {
+  const op = `list issues (page ${page}) for ${repository}`;
+  if (status === 404) return `github connector: ${op} failed (HTTP 404) — the repo doesn't exist, is private, or the token can't see it; check the owner/repo spelling and the token's repo access`;
+  if (status === 401 || status === 403) return `github connector: ${op} failed (HTTP ${status}) — the token is missing, expired, or lacks the scope to read issues on ${repository}; check the token's 'repo'/'issues' scope`;
+  return `github connector: ${op} failed (HTTP ${status})`;
+}
+
 export function githubIssueConnector(execute: GithubExecute, owner: string, repo: string): WorldConnector {
   const repository = `${owner}/${repo}`;
   return {
@@ -29,7 +38,7 @@ export function githubIssueConnector(execute: GithubExecute, owner: string, repo
         const params: Row = { owner, repo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100, page };
         if (cursor) params.since = cursor;           // empty cursor = full bootstrap
         const res = await execute.request('GET /repos/{owner}/{repo}/issues', params);
-        if (res.status >= 400) throw new Error(`github connector: list issues failed (HTTP ${res.status})`);
+        if (res.status >= 400) throw new Error(listIssuesFailedMessage(repository, page, res.status));
         const nodes = Array.isArray(res.data) ? (res.data as Row[]) : [];
         for (const n of nodes) {
           if (n.pull_request != null) continue;       // the issues endpoint also returns PRs — drop them

@@ -90,7 +90,10 @@ export function summarizeResult(result: CheckResult<CoreRoot>): CheckSummary {
   const acknowledged = result.findings.filter((f) => f.severity === 'acknowledged').length;
   const warnings = result.findings.length - errors - acknowledged;
   return {
-    issues: result.export?.issues.length ?? 0,
+    // Prefer the validated export's count; when validation failed before `export` could be
+    // populated, fall back to how many issues were actually examined (ZL-E9c) — never a bare 0
+    // while findings simultaneously cite `root.issues.<n>` for one of them.
+    issues: result.export?.issues.length ?? result.examinedIssues ?? 0,
     errors,
     warnings,
     acknowledged,

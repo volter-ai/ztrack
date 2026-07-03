@@ -58,3 +58,29 @@ describe('githubIssueConnector.fetchSince', () => {
     expect(observations).toHaveLength(10);
   });
 });
+
+// ZTB-19 (ZL-E9a): a generic `(HTTP 404)` with no repo/operation/hint leaves an operator
+// guessing which of N connectors failed and why. Each 4xx/5xx path now names the repo, the
+// operation, and (for the two most common causes) a likely fix.
+function statusExecute(status: number): GithubExecute {
+  return { async request() { return { status, data: [] }; } };
+}
+
+describe('githubIssueConnector.fetchSince — error messages (ZL-E9a)', () => {
+  test('404 names the repo, the operation, and suggests access/typo/privacy', async () => {
+    await expect(githubIssueConnector(statusExecute(404), 'acme', 'widgets').fetchSince({ cursor: '', limit: 100, root: '/x' }))
+      .rejects.toThrow(/github connector: list issues .* for acme\/widgets failed \(HTTP 404\).*(private|access|spelling)/is);
+  });
+
+  test('401 and 403 name the repo and suggest a token scope problem', async () => {
+    await expect(githubIssueConnector(statusExecute(401), 'acme', 'widgets').fetchSince({ cursor: '', limit: 100, root: '/x' }))
+      .rejects.toThrow(/github connector: list issues .* for acme\/widgets failed \(HTTP 401\).*(token|scope)/is);
+    await expect(githubIssueConnector(statusExecute(403), 'acme', 'widgets').fetchSince({ cursor: '', limit: 100, root: '/x' }))
+      .rejects.toThrow(/github connector: list issues .* for acme\/widgets failed \(HTTP 403\).*(token|scope)/is);
+  });
+
+  test('other statuses (e.g. 500) still name the repo + operation, without a false token/privacy hint', async () => {
+    await expect(githubIssueConnector(statusExecute(500), 'acme', 'widgets').fetchSince({ cursor: '', limit: 100, root: '/x' }))
+      .rejects.toThrow('github connector: list issues (page 1) for acme/widgets failed (HTTP 500)');
+  });
+});

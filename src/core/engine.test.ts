@@ -97,6 +97,30 @@ describe('check() runner', () => {
     expect(bad.findings[0]?.code).toBe('root_shape_invalid');
   });
 
+  // ZTB-19 (ZL-E9c): a shape-invalid root has no `export` (validation never got that far), but
+  // the raw candidate still HAD issues — cliStyle's old `export?.issues.length ?? 0` reported
+  // "issues 0" while findings simultaneously cited `root.issues.0`. `examinedIssues` is the
+  // engine's honest fallback count so a summary reader downstream never has to choose between
+  // the two.
+  test('a shape-invalid root/candidate still reports how many issues were examined, even though export is unset', () => {
+    const preset: Preset<R> = { name: 'p', schema: RootSchema, parse: () => ({ issues: [] }), rules: [] };
+    // one malformed issue (title empty, status not a real one) — exactly the 0.37.0 repro shape.
+    const badRoot = { issues: [{ id: 'X-1', title: '', summary: '', status: 123, acceptanceCriteria: [] }] };
+    const bad = checkRoot(preset, badRoot);
+    expect(bad.ok).toBe(false);
+    expect(bad.export).toBeUndefined();
+    expect(bad.examinedIssues).toBe(1); // NOT 0 — one issue really was there and was examined
+    // and every wellformed_shape finding does cite that one issue, by construction:
+    expect(bad.findings.some((f) => f.code === 'wellformed_shape' && f.message.startsWith('root.issues.0.'))).toBe(true);
+
+    // check() (the whole-input parse-failure path) reports the same honest count from `records`.
+    const throwyPreset: Preset<R> = { name: 'throwy', schema: RootSchema, parse: () => { throw new Error('nope'); }, rules: [] };
+    const viaCheck = check(throwyPreset, [{ id: 'X-1', title: 't', status: 'draft', body: 'b' }]);
+    expect(viaCheck.ok).toBe(false);
+    expect(viaCheck.export).toBeUndefined();
+    expect(viaCheck.examinedIssues).toBe(1);
+  });
+
   test('a diagnostics side-channel on parse() is lifted into findings (default severity warning), stripped before schema validation', () => {
     const preset: Preset<R> = {
       name: 'diag', schema: RootSchema,

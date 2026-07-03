@@ -98,11 +98,50 @@ describe('check targets', () => {
     expect(r.out).toMatch(/this line is not Title:\/Status:\/Assignee:-shaped/);
     expect(r.out).toMatch(/issue_missing_assignee/);         // the actual gate — not the (non-fatal) header warning
   });
+  // ZTB-19 (ZL-E5 residual): the original repro — `Summary: x` (non-header-shaped) as the FIRST
+  // line meant the header scan never even started, so `Assignee: me` on the very next line was
+  // silently swallowed into the body with NO diagnostic at all (unlike the aborted-mid-block case
+  // above, which at least warned). Both orderings of this repro must now warn, and — since a
+  // dropped assignee is genuinely dropped either way — both must still fail on the real gate
+  // (`issue_missing_assignee`), not just on the (non-fatal) header warning.
+  test('loose_header_ignored fires for BOTH orderings of the Summary:/Assignee: repro; both still fail on missing assignee', () => {
+    writeFileSync(join(root, 'loose-never-started.md'), 'Summary: x\nAssignee: me\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 something\n  - status: pending\n');
+    const neverStarted = ztrack(['check', './loose-never-started.md']);
+    expect(neverStarted.code).not.toBe(0);
+    expect(neverStarted.out).toMatch(/loose_header_ignored/);
+    expect(neverStarted.out).toMatch(/Assignee: me/);
+    expect(neverStarted.out).toMatch(/issue_missing_assignee/);
+
+    // the reordered case (a real header block started, then aborted) — already fixed; must not regress.
+    writeFileSync(join(root, 'loose-reordered.md'), 'Assignee: me\nSummary: x\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 something\n  - status: pending\n');
+    const reordered = ztrack(['check', './loose-reordered.md']);
+    expect(reordered.code).not.toBe(0);
+    expect(reordered.out).toMatch(/loose_header_ignored/);
+    expect(reordered.out).toMatch(/issue_missing_assignee/);
+  });
   test('a bare check validates the WHOLE tracker (the bad ZT-2 fails it, unlike `check ZT-1`)', () => {
     const all = ztrack(['check']);
     expect(all.code).not.toBe(0);            // whole tracker includes the bad issue
     expect(all.out).toMatch(/ZT-2/);
     expect(ztrack(['check', 'ZT-1']).code).toBe(0); // but the clean issue, alone, passes
+  });
+  // ZTB-19 (ZL-E4): `--categories` used to accept ANY name=N shape silently — a typo'd category
+  // matched no rule and quietly filtered nothing. It's now validated against the engine's real
+  // RuleCategory vocabulary; an unknown name is a hard error (exit 1) naming the valid options.
+  test('--categories <unknown>=N exits 1 naming the valid categories; a real category name is still accepted', () => {
+    const bad = ztrack(['check', 'ZT-1', '--categories', 'bogus=1']);
+    expect(bad.code).not.toBe(0);
+    expect(bad.out).toMatch(/unknown category 'bogus'/);
+    expect(bad.out).toMatch(/wellformed/);
+    expect(bad.out).toMatch(/sourced/);
+    expect(bad.out).toMatch(/code/);
+    expect(bad.out).toMatch(/visual/);
+    expect(bad.out).toMatch(/behavioral/);
+
+    const good = ztrack(['check', 'ZT-1', '--categories', 'visual=1']);
+    expect(good.out).not.toMatch(/unknown category/);
+    expect(good.out).not.toMatch(/unknown flag/);
+    expect(good.code).toBe(0); // ZT-1 is the clean issue; a real category name changes nothing about that
   });
   // Commit existence is verified by DEFAULT (the core guarantee). `--no-verify-commits` is the
   // escape hatch for shallow/CI checkouts that lack the cited commits; `--verify-commits` is kept

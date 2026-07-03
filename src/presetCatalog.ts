@@ -187,7 +187,14 @@ export function initTrackerProject(
       entrypoint: `${stateDirName()}/tracker/validation/preset.mts`,
       installedFrom: preset,
     },
-    organization: { check: { categories: { sourced: 1, code: 2 } } },
+    // ZTB-19 (ZL-E4): this used to write `organization.check.categories`, but nothing reads that
+    // config path — `ztrack check --categories` only ever reads its own CLI flag (cliCheck.ts),
+    // never this block, and no shipped preset assigns any rule a category (all three declare
+    // `category: false`) for it to select among anyway. Writing it at init made every fresh
+    // project carry config that looked load-bearing but did nothing. The engine's per-rule
+    // category/depth machinery (Context.categories, core/engine.ts) is untouched — a preset
+    // author who DOES declare categories still gets `--categories` filtering; init just stops
+    // writing this particular dead block.
     ...(options.sync ? { sync: options.sync } : {}),
     // Record the board scope explicitly (default 'shared' — a central, cross-worktree board); linked
     // trackers ignore it (they already have one central store), so only record it for an unlinked tracker.
