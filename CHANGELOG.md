@@ -2,6 +2,27 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.38.1
+
+A fast patch for two shipped features that failed ztrack's own validation, found by a
+post-0.38.0 fresh-eyes review (ZTB-22).
+
+- **`ztrack issue close` no longer poisons the store against `ztrack check`.** It used to write
+  Title-case `Done`/`Canceled` into the state field while every shipped preset's status enum is
+  lowercase — so the documented happy path (create → work → close) ended in `wellformed_shape`
+  failures. `close` (and `--reason completed`) now writes `done`; stores already containing the
+  legacy `Done`/`Canceled` values heal automatically on read (exactly those two strings — custom
+  preset vocabularies pass through untouched, and Title-case `Done` left by old local-store
+  migrations heals the same way). `close --reason canceled` now fails closed with an honest
+  error: no shipped preset has a `canceled` status, so recording a cancellation as `done` would
+  falsely claim completion — delete the issue or set a real status (plus a label) instead. The
+  `issue close` help line reflects this.
+- **`organization.lint.rules` (per-rule lint severity, `"warn"|"error"|"off"`) is now actually
+  usable.** `ztrack lint` documented and read the knob, but the strict config schema didn't know
+  the key, so any config that set it was rejected outright ("unknown key"). The schema, the
+  `TrackerConfig` type, and the did-you-mean key table now all know `organization.lint.rules`,
+  and the untyped cast that hid the gap is gone.
+
 ## 0.38.0
 
 A trust-and-polish release, built from launch-week dogfooding: `ztrack` now installs lean by
