@@ -73,18 +73,23 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
   // far, not just the ones after it — `aborted` gates meta use below so the diagnostic's own claim
   // ("discarding any Title:/Status:/Assignee: lines already read") is actually true.
   let aborted = false;
+  // true only when the scan aborted on the VERY FIRST line (no header block was ever in
+  // progress) — distinguished from an abort mid-block, which case (a) below already warns on.
+  let neverStarted = false;
   for (; i < lines.length; i++) {
     const line = lines[i]!;
     if (line.trim() === '') { i++; break; }
     const m = HEADER_LINE.exec(line.trim());
     if (!m) {
-      // Only loud when a header block was already under way (i > 0) — a file that never looked
-      // like it had a header at all (the very first line doesn't match) is the normal case.
+      // Only loud here when a header block was already under way (i > 0) — case (c) below
+      // covers the i === 0 case (the scan never started) separately.
       if (i > 0) {
         diagnostics?.push({
           code: 'loose_header_ignored', severity: 'warning', issueId: id,
           message: `${absPath}: the header block was aborted by a non-header-shaped line and fell back to plain body (discarding any Title:/Status:/Assignee: lines already read): "${line}"`,
         });
+      } else {
+        neverStarted = true;
       }
       aborted = true;
       i = 0; break;      // not a metadata block — the whole file is the body
@@ -100,6 +105,21 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
         diagnostics?.push({
           code: 'loose_header_ignored', severity: 'warning', issueId: id,
           message: `${absPath}: a Title:/Status:/Assignee:-shaped line appears in the body (after the header scan stopped) and was read as plain text, not metadata: "${line.trim()}"`,
+        });
+      }
+    }
+  } else if (neverStarted) {
+    // (c, ZL-E5 residual): the scan never started because the FIRST line wasn't header-shaped
+    // (e.g. `Summary: x` before `Assignee: me`) — the original repro's exact shape. Without this,
+    // a header-shaped line anywhere later in the same first paragraph vanished into the body with
+    // NO diagnostic at all (unlike (a)/(b), which at least warn once a block was in progress).
+    // Bounded to the first paragraph, the same span the header scan itself would have covered.
+    for (const line of lines.slice(1)) {
+      if (line.trim() === '') break; // end of the first paragraph
+      if (HEADER_LINE.test(line.trim())) {
+        diagnostics?.push({
+          code: 'loose_header_ignored', severity: 'warning', issueId: id,
+          message: `${absPath}: the header scan never started (the first line is not header-shaped) but a later line in the same paragraph looks like a Title:/Status:/Assignee: header and was read as plain text: "${line.trim()}"`,
         });
       }
     }

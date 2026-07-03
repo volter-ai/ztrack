@@ -53,6 +53,42 @@ describe('fileToRecord — loose-file header scan (ZTB-1)', () => {
     expect(diagnostics).toEqual([]);
   });
 
+  // ZTB-19 (ZL-E5 residual, (c)): the ORIGINAL repro — `Summary: x` (non-header-shaped) as the
+  // first line means the scan never starts at all, so `Assignee: me` on the next line used to
+  // vanish into the body with NO diagnostic (unlike (a) above, which at least warns once a block
+  // was in progress). Extend the warning to this case too, without regressing (a)'s reordered
+  // sibling (`Assignee: me` first, `Summary: x` second — already warns via the abort-mid-block path).
+  test('(c) the scan NEVER STARTS (first line non-header-shaped) but a later line in the same paragraph IS header-shaped: now warns too', () => {
+    const diagnostics: Finding[] = [];
+    const content = 'Summary: x\nAssignee: me\n\nbody\n';
+    const record = fileToRecord('/x/never-started.md', content, diagnostics);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({ code: 'loose_header_ignored', severity: 'warning' });
+    expect(diagnostics[0]?.message).toContain('Assignee: me');
+    // the assignee is genuinely dropped — this is the WHOLE point of the warning
+    expect(record.assignee).toBeUndefined();
+    expect(record.body).toBe(content);
+  });
+
+  test('(c) both orderings of the repro warn; the reordered (already-fixed, case (a)) sibling is unregressed', () => {
+    const neverStarted: Finding[] = [];
+    fileToRecord('/x/a.md', 'Summary: x\nAssignee: me\n\nbody\n', neverStarted);
+    expect(neverStarted).toHaveLength(1);
+    expect(neverStarted[0]?.code).toBe('loose_header_ignored');
+
+    const reordered: Finding[] = [];
+    const reorderedRecord = fileToRecord('/x/b.md', 'Assignee: me\nSummary: x\n\nbody\n', reordered);
+    expect(reordered).toHaveLength(1);
+    expect(reordered[0]?.code).toBe('loose_header_ignored');
+    expect(reorderedRecord.assignee).toBeUndefined(); // still discarded (case (a)'s atomicity, ZTB-12)
+  });
+
+  test('(c) a later paragraph (past the first blank line) is out of scope — only the first paragraph is scanned', () => {
+    const diagnostics: Finding[] = [];
+    fileToRecord('/x/later-paragraph.md', 'Not a header line\n\nAssignee: me\n\nbody\n', diagnostics);
+    expect(diagnostics).toEqual([]); // "Assignee: me" is in the SECOND paragraph — not a header candidate at all
+  });
+
   test('(b) a Title:/Status:/Assignee:-shaped line stranded in the body after the scan stopped: loose_header_ignored names it', () => {
     const diagnostics: Finding[] = [];
     const content = 'Title: Loose\nStatus: ready\n\nSummary: something\n\nStatus: this-looks-like-metadata-but-is-just-text\n\n## Acceptance Criteria\n';
