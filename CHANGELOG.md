@@ -2,6 +2,28 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.41.0
+
+The dispatch frontier (ZTB-30): `issue list` learns to answer "what can I work on right now?"
+
+- **`issue list --actionable`** lists the dispatch frontier — issues that are not yet done and
+  whose transitive blockers are all satisfied. An orchestrator can map `--json` rows (default
+  fields `identifier,title,state`) straight to subagent dispatches. In-progress/in-review issues
+  stay on the frontier with their status visible, so callers can distinguish claimed work.
+- **`issue list --blocked`** names, per blocked issue, the *nearest* unmet upstream node(s) with
+  their status — the first unmet hop along each dependency edge, not the full transitive closure.
+  Satisfied intermediates are transparent (the walk continues through them), and cross-level
+  blockers surface as AC refs (e.g. `ZT-1:dev/01`). A stalled wave is diagnosable from one command.
+- Both views share one computation (`issueFrontier` over the unified dependency graph), are
+  read-only/deterministic/offline, compose with `--state`/`--label`/`--search`/`--limit`/`--json`,
+  and degrade honestly: with no relations anywhere, `--actionable` lists all non-done issues and
+  `--blocked` lists none. Nonsensical combos (`--actionable --blocked`, `--parent`) fail loud.
+- **Docs**: GUIDE and AGENT-PLAYBOOK now teach the full single-session orchestrator lifecycle —
+  intake (backlog file / folder of mds / github import) → groom (`loop start <id> --until ready`)
+  → order (blocked-by/blocks; `check` proves the DAG) → dispatch (query the frontier, one
+  `--until done` loop-armed subagent per actionable issue, merge sequentially, re-query) — with
+  the single-issue loop as the degenerate form.
+
 ## 0.40.0
 
 Drive-to-stage loops (ZTB-29): `ztrack loop start` learns what "done" means.
