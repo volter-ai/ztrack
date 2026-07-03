@@ -97,6 +97,16 @@ export interface DecomposedSection {
    *  caller (spliceStatusLine, below) rewrite exactly one field's value without re-deriving the
    *  header-block scan. Empty when `header` is `null`; a key is present iff `header` has it. */
   headerLineIndex: { status?: number; assignee?: number };
+  /** ZTB-23 dev/04: set when a header block was genuinely IN PROGRESS (at least one `status:`/
+   *  `assignee:` line already matched) but then discarded because a non-blank, non-header-shaped
+   *  line followed instead of the blank line the block needs to terminate — e.g. `assignee: me`
+   *  immediately followed by prose, no blank line in between. `header` is `null` in this case,
+   *  same as "there was never a header block at all"; this field is what lets a caller (
+   *  DocumentSource) tell the two apart and emit a diagnostic instead of silently losing the
+   *  metadata (mirrors `fileToRecord`'s `loose_header_ignored`, src/check.ts). The offending
+   *  line, verbatim. Undefined whenever there was no partial match to discard (no header
+   *  attempted at all, or a clean header + blank line). */
+  discardedHeaderLine?: string;
 }
 
 function toLines(raw: string): { lines: string[]; trailingNewline: boolean } {
@@ -132,6 +142,7 @@ export function decomposeSection(raw: string): DecomposedSection {
   let header: { status?: string; assignee?: string } | null = null;
   let headerLineIndex: { status?: number; assignee?: number } = {};
   let prefixEnd = skipStart;
+  let discardedHeaderLine: string | undefined;
   {
     let idx = skipStart;
     const meta: Record<string, string> = {};
@@ -150,6 +161,10 @@ export function decomposeSection(raw: string): DecomposedSection {
       header = meta;
       headerLineIndex = metaLines;
       prefixEnd = idx;
+    } else if (aborted && Object.keys(meta).length > 0) {
+      // A field WAS matched (status: or assignee:) before the abort — the block is being
+      // silently discarded, not merely absent. Record the line that killed it (ZTB-23 dev/04).
+      discardedHeaderLine = lines[idx]!;
     }
   }
   // Swallow any further blank lines up to the first content line — covers a multi-blank-line run
@@ -164,7 +179,7 @@ export function decomposeSection(raw: string): DecomposedSection {
   const middle = slice(prefixEnd, suffixStart);
   const suffixBlanks = slice(suffixStart, lines.length);
 
-  return { headingLineRaw, prefixRaw, middle, suffixBlanks, header, headerLineIndex };
+  return { headingLineRaw, prefixRaw, middle, suffixBlanks, header, headerLineIndex, ...(discardedHeaderLine !== undefined ? { discardedHeaderLine } : {}) };
 }
 
 // ── spliceSectionText ────────────────────────────────────────────────────────────────────────

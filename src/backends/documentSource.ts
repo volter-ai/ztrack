@@ -150,6 +150,12 @@ interface LoadedIssue {
    *  it — documentWriteBack.ts's `HeadingShiftError`); the issue still reads fine (falls back to
    *  the unshifted body, exactly like a pre-dev/09 document issue) but `write` refuses it. */
   reshapeError?: string;
+  /** ZTB-23 dev/04: set when this item's own `status:`/`assignee:` header block was silently
+   *  discarded for lack of a blank-line terminator (decomposeSection's `discardedHeaderLine`) —
+   *  the human-readable diagnostic `DocumentSource.headerDiagnostics()` surfaces for it. Mirrors
+   *  `fileToRecord`'s `loose_header_ignored` (src/check.ts), extended to the multi-issue document
+   *  scan path, which had no such diagnostic before. */
+  headerDiagnostic?: string;
 }
 
 /** Reshape one non-umbrella parsed issue's section into its presented CanonicalIssue. Never
@@ -172,6 +178,7 @@ function buildLoadedIssue(parsed: DocumentParsedIssue): LoadedIssue {
   }
   let issue = base;
   let reshapeError: string | undefined;
+  let headerDiagnostic: string | undefined;
   try {
     const decomposed = decomposeSection(parsed.body);
     const body = shiftHeadings(decomposed.middle, 1 - parsed.level); // -(level-1)
@@ -179,6 +186,11 @@ function buildLoadedIssue(parsed: DocumentParsedIssue): LoadedIssue {
     const assignee = decomposed.header?.assignee;
     const state = status ?? 'draft';
     issue = { ...base, body, state, stateType: stateTypeOf(state), assignees: assignee ? [assignee] : [] };
+    if (decomposed.discardedHeaderLine !== undefined) {
+      headerDiagnostic = `issue ${parsed.id}'s status:/assignee: header block was aborted by a non-blank, ` +
+        `non-header-shaped line (it needs a blank line to end the header block) and fell back to plain ` +
+        `content — discarding any status:/assignee: lines already read: "${decomposed.discardedHeaderLine}"`;
+    }
   } catch (e) {
     reshapeError = e instanceof Error ? e.message : String(e);
     // `issue` stays `base` (unshifted) — a conservative fallback so a read never corrupts, it just
@@ -186,7 +198,7 @@ function buildLoadedIssue(parsed: DocumentParsedIssue): LoadedIssue {
   }
   return {
     issue, lineStart: parsed.lineStart, lineEnd: parsed.lineEnd,
-    level: parsed.level, raw: parsed.raw, parsedBody: parsed.body, reshapeError,
+    level: parsed.level, raw: parsed.raw, parsedBody: parsed.body, reshapeError, headerDiagnostic,
   };
 }
 
@@ -244,6 +256,15 @@ export class DocumentSource implements IssueSource {
   load(id: string): CanonicalIssue | null {
     const entry = this.byId.get(id);
     return entry ? cloneCanonicalIssue(entry.issue) : null;
+  }
+  // ZTB-23 dev/04: every item whose own header block was silently discarded (see
+  // buildLoadedIssue's `headerDiagnostic` above) — a cross-cutting `ztrack check` finding
+  // (documentHeaderFindings, src/documentDiagnostics.ts), read directly off this source the same
+  // way sync conflicts are (independent of the backend's `issue list` JSON contract).
+  headerDiagnostics(): Array<{ issueId: string; message: string }> {
+    const out: Array<{ issueId: string; message: string }> = [];
+    for (const [id, entry] of this.byId) if (entry.headerDiagnostic) out.push({ issueId: id, message: entry.headerDiagnostic });
+    return out;
   }
   origin(id: string): SourceOrigin {
     const entry = this.byId.get(id);
