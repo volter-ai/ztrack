@@ -2,6 +2,42 @@
 
 All notable ztrack release changes are recorded here.
 
+## Unreleased
+
+Five honesty fixes to ztrack's own error/summary surfaces (check/sync/backend), so what ztrack
+tells you never contradicts what it actually did.
+
+- **GitHub sync errors now name the repo, the operation, and the likely fix.** `github connector:
+  list issues failed (HTTP 404)` gave no repo name, no operation beyond the verb, and no hint —
+  every failing repo in a multi-repo sync looked identical in the log. Each 4xx/5xx now reads
+  `github connector: list issues (page N) for <owner>/<repo> failed (HTTP <status>)`, plus a
+  targeted hint: 404 suggests the repo doesn't exist / is private / the token can't see it (check
+  spelling and access); 401/403 suggests the token is missing, expired, or lacks scope.
+- **The markdown backend's unsupported-command error now ends in a newline and points at `ztrack
+  --help`.** The old stderr (`markdown backend: unsupported command "…"`) had no trailing newline
+  (it could run into the next line of terminal output) and left the operator nowhere to go for the
+  real command list.
+- **`ztrack check`'s summary line can no longer contradict its own findings.** A malformed issue
+  that fails shape validation (e.g. an empty title or an invalid status) has no `export` — the
+  validated root never gets that far — so the old summary read `issues 0 • errors 2` while both
+  errors cited `root.issues.0`, the one issue that supposedly didn't exist. `CheckResult` now
+  carries `examinedIssues`, an honest fallback count of issues actually seen when validation
+  failed before `export` could be populated; the summary prefers `export.issues.length` and falls
+  back to it, never printing 0 while a finding cites that very issue.
+- **`loose_header_ignored` now also fires when the header scan never starts at all.** The warning
+  previously only fired once a header block was already in progress (`Assignee: me` then a bad
+  line aborts it) — but when the FIRST line isn't header-shaped at all (e.g. `Summary: x` before
+  `Assignee: me`), the scan never started, and the assignee silently vanished into the body with
+  no diagnostic whatsoever. A later Title:/Status:/Assignee:-shaped line in that same first
+  paragraph now emits the same warning. The already-fixed aborted-mid-block case is unregressed.
+- **`ztrack init` no longer writes the dead `organization.check.categories` block, and `check
+  --categories` now validates category names.** No shipped preset assigns any rule a category (all
+  three declare `category: false`), so the block init wrote at every fresh project was inert —
+  and `check --categories bogus=1` used to accept any name silently, filtering nothing. Unknown
+  category names in `--categories` now exit 1, naming the valid options (`wellformed`, `sourced`,
+  `code`, `visual`, `behavioral`); real category names are unaffected, and the engine's per-rule
+  category/depth machinery is untouched for preset authors who do declare categories.
+
 ## 0.37.0
 
 Freeform backlogs become first-class: `ztrack import` rewrites mixed markdown (headings,
