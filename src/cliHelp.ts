@@ -94,10 +94,12 @@ export function printIssueActionHelp(action: string): boolean {
     unrelate: `${command} issue unrelate <issue> --blocks <blocked-issue>`,
   };
   // Extra explanatory line for an action whose usage grammar alone doesn't say enough —
-  // `create`'s title derivation, and `close`'s deliberate refusal of --reason canceled.
+  // `create`'s title derivation, `edit`'s write-time --state check, and `close`'s deliberate
+  // refusal of --reason canceled (and of anything else it doesn't recognize).
   const notes: Record<string, string> = {
-    create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title).`,
-    close: `--reason canceled is refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or 'issue edit --state <status>' instead.`,
+    create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title). An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match.`,
+    edit: `An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match, instead of writing a value 'ztrack check' would reject later.`,
+    close: `--reason accepts only 'completed' (the default) or 'canceled'; any other value is refused. --reason canceled is itself refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or 'issue edit --state <status>' instead.`,
   };
   const line = usage[action];
   if (!line) return false;

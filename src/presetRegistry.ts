@@ -3,6 +3,7 @@ import { resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { TrackerConfig } from './types.ts';
 import type { CoreRoot, Preset } from './core/engine.ts';
+import { loadTrackerConfig } from './config.ts';
 
 export function noTrackerValidation(value: string | undefined): never {
   throw new Error(value
@@ -100,4 +101,43 @@ export async function resolveTrackerValidation(config: TrackerConfig, projectRoo
   const entrypoint = config.validation?.entrypoint?.trim();
   if (entrypoint) return loadValidationEntrypoint(entrypoint, projectRoot);
   return noTrackerValidation(config.organization?.validationPreset);
+}
+
+// ── ZTB-23 dev/01: write-time status validation ──────────────────────────────────────────────
+// The active preset's issue `status` field is, in every shipped preset, a bare `z.enum([...])` —
+// a closed, small vocabulary the SAME `check` pipeline enforces AFTER the fact (wellformed_shape).
+// This reads that enum BEFORE a write, so `issue edit --state <typo>` fails at the point of the
+// typo instead of silently succeeding and surfacing as an unrelated `wellformed_shape` finding
+// later (real 0.38.0 bug this closes). Duck-typed zod introspection (`schema.shape.issues.element
+// .shape.status.options`) rather than a new preset-authoring contract — no preset changes
+// required, and a preset that shapes `status` as something other than a plain `z.enum` (e.g. a
+// bare `z.string()`) simply has no enum to check here, which is intentionally indistinguishable
+// from "no validation entrypoint configured": both mean "this write path stays permissive".
+function issueStatusEnumOf(preset: Preset<CoreRoot>): string[] | null {
+  try {
+    const shape = (preset.schema as unknown as { shape?: Record<string, unknown> }).shape;
+    const issuesField = shape?.issues as { element?: { shape?: Record<string, unknown> } } | undefined;
+    const statusField = issuesField?.element?.shape?.status as { options?: unknown } | undefined;
+    const options = statusField?.options;
+    return Array.isArray(options) && options.length > 0 && options.every((o) => typeof o === 'string')
+      ? (options as string[])
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The active preset's issue status vocabulary, for write-time validation — `null` means "no
+ *  write-time check should engage" (config unreadable, no validation entrypoint configured, the
+ *  entrypoint fails to load, or its schema exposes no plain-enum `status` field). Always resolves
+ *  the REPO's configured entrypoint (never an operator `--preset` override — that flag is a
+ *  `check`-only escape hatch, see loadOperatorPreset above); this never throws. */
+export async function activeStatusEnum(projectRoot: string): Promise<string[] | null> {
+  try {
+    const config = loadTrackerConfig(projectRoot);
+    const preset = await resolveTrackerValidation(config, projectRoot);
+    return issueStatusEnumOf(preset);
+  } catch {
+    return null;
+  }
 }

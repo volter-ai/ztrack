@@ -14,6 +14,8 @@ import { git } from '../core/gitWorld.ts';
 import { resolveSources, type ResolvedSource } from '../sources.ts';
 import { DocumentSource } from './documentSource.ts';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
+import { activeStatusEnum } from '../presetRegistry.ts';
+import { nearestKey } from '../configSchema.ts';
 
 // Issue ids name files in the store; reject anything that isn't a plain id so a
 // crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
@@ -181,6 +183,26 @@ export class MarkdownBackend implements TrackerBackend {
     return git(this.projectRoot, ['config', 'user.name']);
   }
 
+  // ZTB-23 dev/01 + dev/02: validate a `--state` value against the ACTIVE preset's status
+  // vocabulary BEFORE writing it — the single choke point every state-writing lifecycle command
+  // (create/edit; close never takes an arbitrary value, see its own --reason gate below) routes
+  // through, so a typo (`in_progress` for `in-progress`) fails at the point of the mistake with a
+  // did-you-mean, instead of writing silently and surfacing later as an unrelated
+  // `wellformed_shape` finding from `ztrack check` (the real 0.38.0 bug this closes). Degrades to
+  // undefined (no error — today's permissive behavior) whenever `activeStatusEnum` can't resolve a
+  // vocabulary at all: no validation entrypoint configured, the entrypoint fails to load, or the
+  // preset's `status` field isn't a plain zod enum. Returns an error STRING (never throws) so
+  // every call site can `if (msg) return { stdout: '', stderr: msg };` uniformly.
+  private async invalidStateError(commandLabel: string, state: string): Promise<string | undefined> {
+    const enumValues = await activeStatusEnum(this.projectRoot);
+    if (!enumValues || enumValues.includes(state)) return undefined;
+    const suggestion = nearestKey(state, enumValues);
+    return (
+      `${commandLabel}: "${state}" is not a valid status for the active preset — its status vocabulary is ` +
+      `[${enumValues.join(', ')}]${suggestion ? `, did you mean "${suggestion}"?` : ''}. Nothing was written.\n`
+    );
+  }
+
   // The FIRST source (declared order) that currently holds `id` — deterministic when an id is
   // unique (the expected/normal case; `ztrack check` is what flags a genuine cross-source
   // collision, via `issue_id_conflict`). Absent sources param default = exactly one source, so
@@ -276,7 +298,6 @@ export class MarkdownBackend implements TrackerBackend {
     return target;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async command(args: string[]): Promise<TrackerCommandResult> {
     const [verb, sub, ...rest] = args;
     if (verb === 'issue' && sub === 'list') {
@@ -331,6 +352,18 @@ export class MarkdownBackend implements TrackerBackend {
           };
         }
       }
+      // ZTB-23 dev/01: an EXPLICIT --state is checked against the active preset's status
+      // vocabulary before minting — same typo-catching gate `issue edit --state` gets below. The
+      // OMITTED-flag default ('draft', next line) is deliberately NOT run through this gate: it's
+      // a preset-specific convenience (matches simple-sdlc/simple-gh-sdlc/spec, not speckit's
+      // vocabulary) that predates this check, not a value the OPERATOR typed — validating it here
+      // would turn a bare `issue create --title x` into a hard failure on a preset whose
+      // vocabulary doesn't happen to include 'draft', which is strictly worse than today.
+      const stateFlag = flagVal(args, 'state');
+      if (stateFlag !== undefined) {
+        const err = await this.invalidStateError('issue create --state', stateFlag);
+        if (err) return { stdout: '', stderr: err };
+      }
       const target = this.mintTargetSource();
       const id = `${this.teamKey}-${this.loadAll().reduce((m, c) => Math.max(m, Number(c.identifier.split('-').pop()) || 0), 0) + 1}`;
       const now = new Date().toISOString();
@@ -338,7 +371,7 @@ export class MarkdownBackend implements TrackerBackend {
       // and requires a non-empty assignee), so a bare `issue create --title x` mints a record
       // `ztrack check` doesn't immediately reject. An explicit `--state`/`--assignee` (even the
       // empty string) still overrides, as before — only the OMITTED-flag case changes.
-      const state = flagVal(args, 'state') ?? 'draft';
+      const state = stateFlag ?? 'draft';
       const assigneeFlag = flagVal(args, 'assignee');
       const assignee = assigneeFlag !== undefined ? assigneeFlag : this.defaultAssignee();
       const c: CanonicalIssue = {
@@ -355,7 +388,16 @@ export class MarkdownBackend implements TrackerBackend {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
       const t = flagVal(args, 'title'); if (t) c.title = t;
       const b = bodyArg(args); if (b !== undefined) c.body = b;
-      const s = flagVal(args, 'state'); if (s) { c.state = s; c.stateType = stateTypeOf(s); }
+      // ZTB-23 dev/01: validate an explicit --state against the active preset's status vocabulary
+      // BEFORE mutating anything — `issue edit <id> --state in_progress` (the underscore typo)
+      // now fails closed with a did-you-mean, instead of writing silently and surfacing later as
+      // an unrelated `wellformed_shape` finding from `ztrack check`.
+      const s = flagVal(args, 'state');
+      if (s) {
+        const err = await this.invalidStateError(`issue edit ${rest[0]} --state`, s);
+        if (err) return { stdout: '', stderr: err };
+        c.state = s; c.stateType = stateTypeOf(s);
+      }
       const asg = flagVal(args, 'assignee'); if (asg !== undefined) c.assignees = asg ? [asg] : [];
       const p = flagVal(args, 'project'); if (p) c.project = p; if (args.includes('--remove-project')) c.project = null;
       // A reparent (either direction) keeps the OLD and NEW parents' `children` views in sync —
@@ -387,7 +429,18 @@ export class MarkdownBackend implements TrackerBackend {
     if (verb === 'issue' && sub === 'close') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
       const id = rest[0]!;
-      if (flagVal(args, 'reason') === 'canceled') {
+      const reason = flagVal(args, 'reason');
+      // ZTB-22 reviewer finding, closed here: an unrecognized --reason used to fall through to the
+      // completed path silently (any value other than the exact string 'canceled' was treated as
+      // "not canceled", i.e. completed) — `issue close foo --reason oops` recorded it as done with
+      // no indication the flag was ignored. Fail closed and name the two values close accepts.
+      if (reason !== undefined && reason !== 'completed' && reason !== 'canceled') {
+        return {
+          stdout: '',
+          stderr: `issue close --reason "${reason}": not a recognized reason — accepted values are 'completed' or 'canceled'. Nothing was written.\n`,
+        };
+      }
+      if (reason === 'canceled') {
         // Fail closed: every shipped preset (simple-sdlc, simple-gh-sdlc, spec, speckit) has a
         // lowercase status vocabulary with `done` as its only terminal member and NO "canceled"
         // state — so recording a cancellation would mean either writing a status value the

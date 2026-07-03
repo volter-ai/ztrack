@@ -6,10 +6,10 @@
 // `assertCorePreset` shape-check, without spawning the CLI. See cliCheckPreset.e2e.test.ts for
 // the black-box proof (identical gating, sentinel-not-imported, --input/live-tracker modes).
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveTrackerValidation } from './presetRegistry.ts';
+import { activeStatusEnum, resolveTrackerValidation } from './presetRegistry.ts';
 import type { TrackerConfig } from './types.ts';
 
 // A minimal but SHAPE-VALID core preset (name/schema/parse/rules) — deliberately does not import
@@ -97,5 +97,74 @@ describe('resolveTrackerValidation — operator --preset (ZTB-13)', () => {
   test('without presetPath and without a configured entrypoint, the existing no-entrypoint error is unchanged', async () => {
     await expect(resolveTrackerValidation(NO_ENTRYPOINT_CONFIG, process.cwd()))
       .rejects.toThrow(/No tracker validation entrypoint configured/);
+  });
+});
+
+// ZTB-23 dev/01: `activeStatusEnum` is the mechanism markdownBackend.ts's write-time --state gate
+// reads. It duck-types a preset's schema for a plain `z.enum` `status` field
+// (`schema.shape.issues.element.shape.status.options`) — proven here against hand-built fixture
+// shapes (no zod import needed: only the `.shape`/`.options` duck-type matters), covering every
+// "no write-time check should engage" branch the write path relies on to stay permissive.
+describe('activeStatusEnum — the write-time status vocabulary (ZTB-23 dev/01)', () => {
+  function project(prefix: string): string {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    mkdirSync(join(root, '.volter'), { recursive: true });
+    return root;
+  }
+  function writeConfig(root: string, entrypoint: string): void {
+    writeFileSync(join(root, '.volter', 'tracker-config.json'), JSON.stringify({
+      backend: 'markdown', local: { teamKey: 'X' }, validation: { entrypoint },
+    }, null, 2));
+  }
+
+  test('a preset whose status field is a plain enum resolves its options', async () => {
+    const root = project('ztrk-statusenum-ok-');
+    try {
+      writeConfig(root, 'preset.mjs');
+      writeFileSync(join(root, 'preset.mjs'), `
+        export default {
+          name: 'fixture', parse: (r) => ({ issues: r }), rules: [],
+          schema: { shape: { issues: { element: { shape: { status: { options: ['draft', 'ready', 'done'] } } } } } },
+        };
+      `);
+      expect(await activeStatusEnum(root)).toEqual(['draft', 'ready', 'done']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('a preset whose status field is NOT an enum (no `.options`) resolves to null — write path stays permissive', async () => {
+    const root = project('ztrk-statusenum-nonenum-');
+    try {
+      writeConfig(root, 'preset.mjs');
+      writeFileSync(join(root, 'preset.mjs'), `
+        export default {
+          name: 'fixture', parse: (r) => ({ issues: r }), rules: [],
+          schema: { shape: { issues: { element: { shape: { status: {} } } } } }, // e.g. a bare z.string()
+        };
+      `);
+      expect(await activeStatusEnum(root)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('no tracker config at all resolves to null (never throws)', async () => {
+    const root = project('ztrk-statusenum-noconfig-');
+    try {
+      expect(await activeStatusEnum(root)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('a configured entrypoint that fails to load resolves to null (never throws)', async () => {
+    const root = project('ztrk-statusenum-badentry-');
+    try {
+      writeConfig(root, 'does-not-exist.mjs');
+      expect(await activeStatusEnum(root)).toBeNull();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
