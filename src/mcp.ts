@@ -2,6 +2,7 @@
 // surface third-party agents use to get typechecked bookkeeping. Newline-
 // delimited JSON-RPC 2.0; no SDK dependency. Tools mirror the CLI surface:
 // issue read/write, scoped AC mutations, fmt, and the rulebook check.
+import { readFileSync } from 'node:fs';
 import { checkTracker } from './check.ts';
 import { summarizeResult } from './cliStyle.ts';
 import { loadTrackerConfig, projectRootFrom } from './config.ts';
@@ -12,6 +13,17 @@ import { resolveTrackerValidation } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
 
 type JsonRpcRequest = { jsonrpc: '2.0'; id?: number | string | null; method: string; params?: Record<string, any> };
+
+// Same source cli.ts's `--version` reads (the package this server shipped from) — a hardcoded
+// string here would drift from every release the moment it's cut, and an agent introspecting
+// `initialize` deserves the real number.
+function packageVersion(): string {
+  try {
+    return (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version?: string }).version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
 
 const TOOLS = [
   {
@@ -153,7 +165,7 @@ export async function serveMcp(): Promise<void> {
           write({ jsonrpc: '2.0', id: request.id, result: {
             protocolVersion: request.params?.protocolVersion ?? '2024-11-05',
             capabilities: { tools: {} },
-            serverInfo: { name: 'ztrack', version: '0.4.0' },
+            serverInfo: { name: 'ztrack', version: packageVersion() },
           } });
         } else if (request.method === 'tools/list') {
           write({ jsonrpc: '2.0', id: request.id, result: { tools: TOOLS } });
