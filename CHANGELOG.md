@@ -24,6 +24,26 @@ All notable ztrack release changes are recorded here.
   already-declared source. CRLF input is rejected with a clear error, matching document-source
   write-back's own LF-only constraint. See
   [Sources → Importing a freeform backlog](docs/SOURCES.md#importing-a-freeform-backlog).
+- **`simple-sdlc`/`simple-gh-sdlc`: prose inside a recognized `## Acceptance Criteria` section is
+  no longer silently invisible.** ZTB-1 made a checkbox item OUTSIDE the section loud
+  (`ac_outside_section`); the section's own interior had no matching guard — a bare paragraph, a
+  blockquote, or a plain (non-checkbox) list item sitting between/around real AC lines had no
+  branch in the mdast walk and no model field, so it vanished with zero trace (and a plain list
+  item was silently mangled into a bogus AC entry). Both presets now emit a new warning diagnostic,
+  `ac_prose_in_section`, for any such node — naming the issue id, an excerpt (first ~60 chars) of
+  the content, and its source line — and no longer mint a spurious AC from a non-checkbox list
+  item. Severity `warning`: it never gates a previously-green workspace, and every fixture that
+  parsed clean before this change still emits zero diagnostics.
+  **The round-trip guarantee:** this content sits inside the AC section, which `serializeIssue`
+  rebuilds purely from the model — so writing an issue back would silently drop it on the very
+  next `ac patch`/`issue patch`/`fmt`, the same defect class ZTB-10 fixed for bare leading prose.
+  Because AC-interior prose can sit anywhere among the AC list items (not just once, before the
+  first `## ` heading), preserving it byte-for-byte would need a much larger, position-tracking
+  model change; instead, `ac patch`/`issue patch`/`fmt` now FAIL CLOSED whenever `ac_prose_in_section`
+  fires for the target issue — the write is refused (nothing is written) with a clear error naming
+  the prose, before any splice is attempted, matching every other document-source write guard's
+  "nothing written on refusal" contract. Pinned by a real-CLI round-trip test against a
+  document-source fixture: the file stays byte-identical after the refused patch.
 
 ## 0.36.0
 

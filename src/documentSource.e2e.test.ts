@@ -641,3 +641,119 @@ describe('document source write-back (ZTB-10): bare leading prose survives a rea
     expect(afterText.endsWith(tail)).toBe(true);
   });
 });
+
+// ZTB-15 dev/36: prose interleaved INSIDE a recognized "## Acceptance Criteria" section (between
+// two checkbox AC lines) is a harder case than ZTB-10's bare leading prose above (which sits once,
+// before the first "## " heading): it can sit anywhere among the AC list items, and the model has
+// no field that tracks AC-interior position (see `boilerplates/presets/simple-sdlc.ts`'s
+// `serializeIssue`, which rebuilds the AC section purely from `issue.acceptanceCriteria`). PINNING
+// what today's splice actually does: without a fix, `serializeIssue` silently drops this prose on
+// reserialize, so a real `ac patch` would destroy it byte-for-byte. ZTB-15's chosen fix is FAIL
+// CLOSED (documented in `src/modelEdit.ts`'s `parseOneIssue`) rather than growing the model to
+// track interior-prose position: `ac patch`/`issue patch`/`fmt` refuse the write — naming the
+// prose in the error — before any splice is attempted, so nothing is ever written. Proven through
+// the real CLI: the file is byte-identical after the refused patch, and the diagnostic that blocks
+// it is the same one `ztrack check` already surfaces.
+describe('document source write-back (ZTB-15 dev/36): prose INSIDE the AC section refuses `ac patch`, naming it', () => {
+  let qRoot = '';
+  let qRootReal = '';
+  const qDocPath = () => join(qRootReal, 'doc.md');
+  let qHeadSha = '';
+
+  // ACPROSE-1's "### Acceptance Criteria" section (shifts to "## Acceptance Criteria" for the
+  // preset) has a stray paragraph BETWEEN its two checkbox AC lines — content with no field in
+  // the model to carry it.
+  const AC_PROSE_DOC = [
+    '# Team backlog (no `Title:` header — no umbrella issue)',
+    '',
+    '## ACPROSE-1 — Item with prose inside its AC section',
+    '',
+    'status: draft',
+    'assignee: kim',
+    '',
+    '### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 first criterion',
+    '  - status: pending',
+    '',
+    'A stray note left between two ACs, inside the section itself.',
+    '',
+    '- [ ] AC-2 v1 second criterion',
+    '  - status: pending',
+    '',
+    '## ACPROSE-2 — Unrelated sibling item',
+    '',
+    'status: draft',
+    'assignee: sam',
+    '',
+    '### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 sibling criterion',
+    '  - status: pending',
+    '',
+  ].join('\n');
+
+  beforeAll(() => {
+    qRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-acprose-'));
+    qRootReal = realpathSync(qRoot);
+    mkdirSync(join(qRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(qRoot, 'node_modules', 'ztrack'));
+    gitIn(qRoot, 'init', '-q'); gitIn(qRoot, 'config', 'user.email', 't@t.co'); gitIn(qRoot, 'config', 'user.name', 't');
+    expect(ztIn(qRoot, 'init', '--team', 'APP').code).toBe(0);
+    writeFileSync(qDocPath(), AC_PROSE_DOC);
+    setSources(qRoot, [{ path: '.volter/tracker/markdown' }, { path: 'doc.md', format: 'document' }]);
+    gitIn(qRoot, 'add', '-A');
+    gitIn(qRoot, 'commit', '-q', '-m', 'seed');
+    qHeadSha = gitIn(qRoot, 'rev-parse', 'HEAD').stdout.trim();
+    expect(qHeadSha).toMatch(/^[0-9a-f]{7,40}$/);
+  }, 60_000);
+  afterAll(() => { if (qRoot) rmSync(qRoot, { recursive: true, force: true }); });
+
+  test('`ztrack check` surfaces ac_prose_in_section naming the stray note', () => {
+    const out = ztIn(qRoot, 'check').out;
+    expect(out).toContain('ac_prose_in_section');
+    // the diagnostic excerpts the first ~60 chars — check the prefix, not the (truncated) tail
+    expect(out).toContain('A stray note left between two ACs, inside the section');
+  });
+
+  test('a real `ac patch` on ACPROSE-1 REFUSES — nothing is written, the file stays byte-identical, and the error names the prose', () => {
+    const beforeText = readFileSync(qDocPath(), 'utf8');
+    expect(beforeText).toContain('A stray note left between two ACs, inside the section itself.');
+
+    const patchJson = JSON.stringify({
+      checked: true, status: 'passed',
+      evidence: [{ id: 'ev1', commit: qHeadSha, acVersion: 1 }],
+      proof: { explanation: 'the seed commit establishes the criterion', evidenceRefs: ['ev1'] },
+    });
+    const patch = ztIn(qRoot, 'ac', 'patch', 'ACPROSE-1', 'AC-1', '--json', patchJson);
+    expect(patch.code).not.toBe(0);
+    expect(patch.out).toContain('ACPROSE-1');
+    // the error reuses the diagnostic's own message, which excerpts the first ~60 chars
+    expect(patch.out).toContain('A stray note left between two ACs, inside the section');
+
+    // Nothing was written: byte-identical to before the attempted patch — this is the "prose
+    // survives" guarantee, achieved by refusing rather than by silently dropping the bytes.
+    const afterText = readFileSync(qDocPath(), 'utf8');
+    expect(afterText).toBe(beforeText);
+  });
+
+  test('the sibling issue (no AC-interior prose) is completely unaffected and still patchable', () => {
+    const before = readFileSync(qDocPath(), 'utf8');
+    const patchJson = JSON.stringify({
+      checked: true, status: 'passed',
+      evidence: [{ id: 'ev1', commit: qHeadSha, acVersion: 1 }],
+      proof: { explanation: 'the seed commit establishes the criterion', evidenceRefs: ['ev1'] },
+    });
+    const patch = ztIn(qRoot, 'ac', 'patch', 'ACPROSE-2', 'AC-1', '--json', patchJson);
+    expect(patch.code).toBe(0);
+    expect(JSON.parse(patch.out)).toMatchObject({ issue: 'ACPROSE-2', acId: 'AC-1', changed: true });
+
+    const after = readFileSync(qDocPath(), 'utf8');
+    expect(after).not.toBe(before);
+    // ACPROSE-1's own section (including its stray prose) is untouched by the sibling's patch.
+    expect(after).toContain('A stray note left between two ACs, inside the section itself.');
+
+    const view = J(ztIn(qRoot, 'issue', 'view', 'ACPROSE-2', '--json')) as { body: string };
+    expect(view.body).toContain('- [x] AC-1 v1 sibling criterion');
+  });
+});

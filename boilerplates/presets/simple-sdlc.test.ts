@@ -356,6 +356,67 @@ Relates: D-6
     });
   });
 
+  // ZTB-15: non-checkbox content (a bare paragraph, a blockquote, a plain non-checkbox list item)
+  // sitting INSIDE a recognized "## Acceptance Criteria" section has no branch in the mdast walk
+  // and no model field to carry it — it vanished with no trace at all. `ac_outside_section`
+  // (ZTB-1) covers the OUTSIDE case; this is the section's own interior blind spot.
+  describe('ac_prose_in_section (ZTB-15)', () => {
+    test('a bare paragraph between two checkbox ACs yields ac_prose_in_section, naming the excerpt and line', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `## Acceptance Criteria\n\n- [ ] dev/01 v1 first\n  - status: pending\n\nA stray note left between two ACs.\n\n- [ ] dev/02 v1 second\n  - status: pending\n`,
+      };
+      const r = checkDefault([rec], ctx);
+      const finding = r.findings.find((f) => f.code === 'ac_prose_in_section');
+      expect(finding?.severity).toBe('warning');
+      expect(finding?.message).toContain('D-1');
+      expect(finding?.message).toContain('A stray note left between two ACs.');
+      expect(finding?.message).toMatch(/line 6/);
+      expect(finding?.issueId).toBe('D-1');
+      // the model is untouched: both real ACs still parse, nothing extra
+      const root = parseDefault([rec]) as { issues: { acceptanceCriteria: { id: string }[] }[] };
+      expect(root.issues[0]!.acceptanceCriteria.map((ac) => ac.id)).toEqual(['dev/01', 'dev/02']);
+    });
+
+    test('a blockquote inside the AC section yields ac_prose_in_section', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `## Acceptance Criteria\n\n- [ ] dev/01 v1 first\n  - status: pending\n\n> a quoted aside inside the AC section\n\n- [ ] dev/02 v1 second\n  - status: pending\n`,
+      };
+      const r = checkDefault([rec], ctx);
+      const finding = r.findings.find((f) => f.code === 'ac_prose_in_section');
+      expect(finding?.severity).toBe('warning');
+      expect(finding?.message).toContain('a quoted aside inside the AC section');
+      const root = parseDefault([rec]) as { issues: { acceptanceCriteria: { id: string }[] }[] };
+      expect(root.issues[0]!.acceptanceCriteria.map((ac) => ac.id)).toEqual(['dev/01', 'dev/02']);
+    });
+
+    test('a plain (non-checkbox) list item inside the AC section yields ac_prose_in_section and is NOT mangled into a bogus AC', () => {
+      const rec: IssueRecord = {
+        id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
+        body: `## Acceptance Criteria\n\n- [ ] dev/01 v1 first\n  - status: pending\n\n- a plain bullet, not a checkbox\n\n- [ ] dev/02 v1 second\n  - status: pending\n`,
+      };
+      const r = checkDefault([rec], ctx);
+      const finding = r.findings.find((f) => f.code === 'ac_prose_in_section');
+      expect(finding?.severity).toBe('warning');
+      expect(finding?.message).toContain('a plain bullet, not a checkbox');
+      // only the two REAL (checkbox) ACs are in the model — the plain bullet never became a
+      // spurious third AC (which is what happened before this fix: see the git history for the
+      // pre-fix probe showing it minted a bogus AC id "a").
+      const root = parseDefault([rec]) as { issues: { acceptanceCriteria: { id: string }[] }[] };
+      expect(root.issues[0]!.acceptanceCriteria.map((ac) => ac.id)).toEqual(['dev/01', 'dev/02']);
+    });
+
+    // Every fixture in this file that was green BEFORE ZTB-15 must stay green AFTER it — zero NEW
+    // diagnostics, proven explicitly (not just inferred from "the other tests still pass").
+    test('previously-green fixtures (REC, EDIT_REC, NOTE_BETWEEN_REC) emit zero ac_prose_in_section diagnostics', () => {
+      for (const rec of [REC, EDIT_REC, NOTE_BETWEEN_REC]) {
+        const r = checkDefault([rec], ctx);
+        expect(r.findings.filter((f) => f.code === 'ac_prose_in_section')).toHaveLength(0);
+      }
+    });
+  });
+
   // ZTB-10 (residual R4): bare leading prose — content before the FIRST "## " heading that is
   // not a recognized metadata line — used to vanish silently on a patch/fmt round trip. See the
   // `prose` schema field comment. These tests prove the carry, its idempotence, and zero churn
