@@ -2,7 +2,14 @@
 
 All notable ztrack release changes are recorded here.
 
-## Unreleased
+## 0.38.0
+
+A trust-and-polish release, built from launch-week dogfooding: `ztrack` now installs lean by
+default (the GitHub sync packages become optional peers, #13), and the surfaces that lied or
+went silent under pressure now tell the truth — honesty fixes across check/sync/backend,
+first-touch CLI traps (ZTB-18), a `ztrack lint` that reports its clean runs, dogfooding
+friction fixes (ZTB-21), document-source/import robustness (ZTB-16), and the trust-boundary
+fixes from upstream #12 and #19.
 
 `ztrack` now installs lean by default — the GitHub sync packages are optional (#13).
 
