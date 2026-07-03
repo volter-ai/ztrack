@@ -104,6 +104,17 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect(J(await be.command(['project', 'list', '--json', 'id,name']))).toEqual([]);
     expect((await be.command(['snapshot', 'project-manager', '--format', 'json'])).stderr).toContain('snapshot');
   });
+
+  // ZTB-19 (ZL-E9b): the unsupported-command stderr had no trailing newline and no pointer to
+  // `ztrack --help`, so it ran into the next line of terminal output and left the operator with
+  // nowhere to go for the real command list.
+  test('an unsupported command\'s stderr ends in a newline and points at `ztrack --help`', async () => {
+    const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
+    const res = await be.command(['bogus', 'verb']);
+    expect(res.stderr).toContain('unsupported command "bogus verb"');
+    expect(res.stderr.endsWith('\n')).toBe(true);
+    expect(res.stderr).toContain("ztrack --help");
+  });
 });
 
 // ZTB-3: `createMarkdownBackend`'s third (optional) `sources` param generalizes the single

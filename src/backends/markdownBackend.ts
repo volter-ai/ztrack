@@ -377,7 +377,7 @@ export class MarkdownBackend implements TrackerBackend {
     }
     if (verb === 'project' && sub === 'list') return ok('[]');
     if (verb === 'snapshot') return { stdout: '', stderr: 'the project-manager snapshot report is not yet implemented for the markdown backend' };
-    return { stdout: '', stderr: `markdown backend: unsupported command "${args.join(' ')}"` };
+    return { stdout: '', stderr: `markdown backend: unsupported command "${args.join(' ')}"\nrun 'ztrack --help' for supported commands\n` };
   }
 }
 
