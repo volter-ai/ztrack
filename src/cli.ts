@@ -29,6 +29,7 @@ import { handleCompletionsCommand } from './cliCompletions.ts';
 import { handleWaiverCommand } from './cliWaiver.ts';
 import { handleLoopCommand } from './cliLoop.ts';
 import { handleInitCommand } from './cliInit.ts';
+import { handleIssueListFrontier } from './cliFrontier.ts';
 import { heading, statusMark, ui } from './cliStyle.ts';
 
 // The installed preset is `.volter/tracker/validation/preset.mts`, loaded at runtime via Node's
@@ -274,6 +275,13 @@ async function main(): Promise<void> {
     });
     return;
   }
+
+  // ZTB-30: `issue list --actionable|--blocked` (the dispatch frontier) — same "resolves its own
+  // project, dispatched before createTrackerClient" shape as check/export just below, because it
+  // needs the VALIDATED root + preset.isIssueDone (checkTracker), not the raw canonical rows the
+  // generic backend dispatch reads. A plain `issue list` (neither flag) returns false and falls
+  // through to the unchanged path.
+  if (await handleIssueListFrontier(args)) return;
 
   // `check`/`export` resolve their own project (and `check <file.md>` needs none) — dispatch
   // before createTrackerClient so zero-config file mode doesn't trip the no-config error.

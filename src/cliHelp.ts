@@ -80,7 +80,7 @@ export function printIssueActionHelp(action: string): boolean {
   const command = commandName();
   const usage: Record<string, string> = {
     scaffold: `${command} issue scaffold [--title text]`,
-    list: `${command} issue list [--search text] [--state name|open|closed|all] [--label name] [--parent id] [--limit n] [--json fields]`,
+    list: `${command} issue list [--search text] [--state name|open|closed|all] [--label name] [--parent id] [--limit n] [--json fields] | --actionable|--blocked [--state ...] [--label ...] [--search ...] [--limit n] [--json fields]`,
     view: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
     get: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
     create: `${command} issue create [--title text] [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id] [--project name]`,
@@ -100,6 +100,7 @@ export function printIssueActionHelp(action: string): boolean {
     create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title). An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match.`,
     edit: `An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match, instead of writing a value 'ztrack check' would reject later.`,
     close: `--reason accepts only 'completed' (the default) or 'canceled'; any other value is refused. --reason canceled is itself refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or 'issue edit --state <status>' instead.`,
+    list: `--actionable: the dispatch frontier — not-done issues with no unmet (transitive) blocker, safe to dispatch right now. --blocked: the complement — not-done AND blocked, each row naming its NEAREST unmet blocker(s) (direct hop, not the whole transitive closure) in a "blockers" field. The two are mutually exclusive over the SAME underlying computation (core/blocking.ts's issueFrontier); --parent isn't supported on either (the validated model has no parent pointer). Default fields are identifier,title,state; --json overrides them (--blocked always includes "blockers").`,
   };
   const line = usage[action];
   if (!line) return false;
