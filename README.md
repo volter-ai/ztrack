@@ -180,17 +180,28 @@ Code; non-plugin wiring is in the [Guide](docs/GUIDE.md#3-usage-drive-an-agent-t
 /plugin install ztrack-gate@ztrack
 ```
 
-**2. Arm a loop** on the issue you're working:
+**2. Arm a loop** on the issue you're working — two modes, same `start`:
 
 ```bash
-ztrack loop start LOCAL-1     # while armed, the agent's turn won't end until LOCAL-1 passes check
+ztrack loop start LOCAL-1                 # validate-current-stage: hold until LOCAL-1's CURRENT status passes check
+ztrack loop start LOCAL-1 --until done    # drive-to-stage: hold until LOCAL-1's status reaches "done" (or later) AND passes check there
 ```
+
+`--until <stage>` is for driving an issue somewhere it isn't yet — the stage is any value in the
+active preset's status vocabulary (e.g. `ready`, `in-review`, `done`), validated at arm time (an
+unknown stage fails loud, naming the real vocabulary). It's the difference between "is the current
+stage real?" and "get this all the way to done" — without pre-flipping the issue to a stage that
+isn't true yet just to make the oracle look at it. Flipping the status early doesn't cheat this:
+that stage's own lifecycle gates (e.g. every AC passed before `in-review`) still have to pass for
+real, so an early `--state done` with unpassed ACs stays red on its own. `--until` only makes
+sense for a single issue (an id, or the bare/auto-resolved worktree issue) — a file or the whole
+tracker has no one status to drive.
 
 **3. Point your agent at the issue** — hand it the id (its working rules are in the
 [agent playbook](docs/AGENT-PLAYBOOK.md)). When the agent — or a subagent it delegates to — tries
-to stop, the Stop/SubagentStop hook runs `ztrack check`; if the issue is still red, the turn is
-held and the agent keeps working — until the work is genuinely green (then the loop disarms), or
-it hits the iteration cap.
+to stop, the Stop/SubagentStop hook runs `ztrack check`; if the issue is still red — or, under
+`--until`, its status hasn't reached the target stage yet — the turn is held and the agent keeps
+working — until the work is genuinely green (then the loop disarms), or it hits the iteration cap.
 
 It's **cooperative**, not a sandbox: the agent can disarm (`ztrack loop stop`), self-exempt for a
 session, or an authority can [waive](docs/PRESETS.md#waivers) a finding it knowingly accepts — so it

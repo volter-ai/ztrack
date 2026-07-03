@@ -11,6 +11,19 @@ to — and re-runs `ztrack check` — so **you cannot end your turn (or hand off
 ends its turn) on a fabricated "done."** When it's red, keep working until it's genuinely green (the
 loop then disarms), or take an honest escape. Your job:
 
+Two things a loop can be armed to do — check which one you were given:
+- **Bare** `ztrack loop start <issue>` — validate the issue's CURRENT stage. It disarms as soon as
+  `check` is green at whatever status the issue already has; it says nothing about whether that
+  status is far enough along.
+- `ztrack loop start <issue> --until <stage>` — drive the issue's status all the way to `<stage>`
+  (e.g. `ready`, `done`). The turn is held until the issue's status has genuinely reached `<stage>`
+  AND `check` is green there. **Do not flip the status to `<stage>` early to end the turn** — the
+  stage's own lifecycle gates (e.g. every AC passed before `in-review`) still fire for real, so an
+  early `--state done` before the ACs are actually passed just trades one held reason for another.
+  Reach the stage by doing the work: pass every AC with real evidence, THEN move the status.
+  You may also be run under `--until ready` while WRITING an issue — that's a loop for drafting: it
+  holds until the order has real dev ACs and passes `ready`'s own gates, not until any code exists.
+
 - Do the work, then cite **real** evidence on each passed AC: a commit SHA that **exists** in git,
   plus a `proof:` line that names what it shows (and a committed image if the AC requires one).
 - **Never** mark an AC passed without evidence you can cite. **Never** invent a commit SHA, PR number,
