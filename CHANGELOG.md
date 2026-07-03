@@ -2,6 +2,30 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.40.0
+
+Drive-to-stage loops (ZTB-29): `ztrack loop start` learns what "done" means.
+
+- **`loop start <issue> --until <stage>`** records a target stage in the loop marker; the
+  Stop/SubagentStop oracle (`check --auto-scope`) now holds the turn until the issue's status
+  is at-or-beyond `<stage>` in the active preset's status-enum order AND check is green. A
+  synthetic blocking `loop_until_not_reached` finding (explicitly non-waivable) carries the
+  "not there yet" signal. Flipping the status early doesn't help — the target stage's own
+  lifecycle gates keep check red until the work is real. Bare `loop start` keeps today's
+  validate-current-stage semantics byte-for-byte; the hook script is untouched, so mixed
+  plugin/CLI versions keep working.
+- **Arm-time honesty.** Unknown `--until` stages fail loud at arm time with the preset's full
+  vocabulary and a did-you-mean ("Nothing was armed."); no loadable status vocabulary refuses
+  the arm rather than silently degrading; `--until` with a file or multi-issue target refuses.
+  `loop start` also detects whether the ztrack-gate hooks are actually wired (plugin manifest +
+  Claude settings heuristic) and warns — never refuses — when the gate can't fire, and warns
+  when a bare arm targets something already green (the loop would disarm having held nothing).
+- **`loop status` shows the target** (e.g. `loop armed → ZTB-24 until done`), and legacy
+  markers (no `until`, or the old flat `issue` field) keep working everywhere.
+- **Docs**: README, GUIDE, and AGENT-PLAYBOOK loop sections now teach both modes, including
+  the authoring pattern — `loop start ZTB-x --until ready` holds a drafting agent until the
+  issue has real ACs and passes ready's gates.
+
 ## 0.39.0
 
 Schema-aware lifecycle writes (ZTB-23): the basic CLI write path now speaks the active
