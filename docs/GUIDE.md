@@ -98,23 +98,64 @@ npx ztrack check --phase gate    # skip promotion/transition checks on already-l
 ```
 
 **GitHub-linked tracker.** In linked mode your issues live on GitHub (the local store is gitignored),
-so there's no committed `root.json`. Pull then check, as raw steps (the Action gates a committed
-root; it does not sync):
+so there's no committed `root.json`. Pull then check (the Action gates a committed root; it does not
+sync) — this needs the optional sync peers installed and must run under bun; see the canonical
+recipe just below.
 
-```yaml
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # auth for sync; no PAT prompt
-    steps:
-      - uses: actions/checkout@v6
-        with: { fetch-depth: 0 }
-      - uses: actions/setup-node@v5
-        with: { node-version: 22 }
-      - run: npx ztrack sync github --pull         # repo/policy come from the init link
-      - run: npx ztrack check --phase gate
-```
+### GitHub sync since 0.38: install the peers, run under bun
+
+Two-way GitHub sync (`ztrack sync github`) is powered by `@volter-ai-dev/twin` and
+`@volter-ai-dev/twin-github`. Since 0.38.0 (the twin/twin-github split — see CHANGELOG) these are
+**optional peer dependencies**, not regular dependencies of `ztrack`. Everything else — `check`,
+`evidence`, `issue *`, every preset — works with nothing extra installed; only `sync github` (and a
+preset that opts into world-backed evidence, see [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world))
+needs them.
+
+1. **Install the peers explicitly** — a plain `npm install ztrack` does not pull them in:
+
+   ```bash
+   npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github
+   ```
+
+   Without them, any twin-touching command fails closed with: *"ztrack sync github requires the
+   optional sync packages. Install them with: npm install -D @volter-ai-dev/twin
+   @volter-ai-dev/twin-github"*.
+
+2. **Run `sync github` under bun, not npx/node.** `@volter-ai-dev/twin-github` ships TypeScript
+   source only (no compiled JS entry point). Node — even with the peer correctly installed —
+   refuses to type-strip a `.ts` file that lives under `node_modules`
+   (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`); this is a hard platform restriction, not
+   something a flag lifts. bun is TS-native and loads it directly — but note the `--bun` flag:
+   ztrack's CLI has a `#!/usr/bin/env node` shebang, and a plain `bunx ztrack` honors it and hands
+   off to real node, reproducing the very error you're avoiding. Force bun's runtime explicitly:
+
+   ```bash
+   bunx --bun ztrack sync github --pull
+   # or, if ztrack is already a devDependency:
+   bun node_modules/.bin/ztrack sync github --pull
+   ```
+
+   `npx ztrack sync github` (or a plain `node` run) fails by design with a hint to use bun instead.
+   Every other command keeps working fine under npx/node — only `sync github` needs bun.
+
+3. **CI recipe** — install bun, install the peers, run sync under bun, then gate with the usual
+   Action (which stays on Node — `check` itself never touches twin):
+
+   ```yaml
+   jobs:
+     check:
+       runs-on: ubuntu-latest
+       env:
+         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # auth for sync; no PAT prompt
+       steps:
+         - uses: actions/checkout@v6
+           with: { fetch-depth: 0 }
+         - uses: oven-sh/setup-bun@v2
+           with: { bun-version: 1.2.20 }
+         - run: npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github
+         - run: bunx --bun ztrack sync github --pull  # --bun overrides the CLI's node shebang
+         - run: npx ztrack check --phase gate          # check has no twin dependency; node is fine
+   ```
 
 Auth uses the `gh` CLI or `GITHUB_TOKEN` (never a prompted PAT).
 
@@ -144,6 +185,13 @@ already has (that's not a change, so nothing to sync) — detach (`issue edit <c
 then reattach (`issue edit <child> --parent <id>`) if you need to force a backfill. `issue list
 --parent <id>` is unaffected either way — it filters by the `parent` pointer directly and never reads
 `children`.
+
+**Project label.** `--project <name>` sets a free-form project/grouping label on `issue create` and
+`issue edit` (`--remove-project` clears it); the CLI and SDK both take it. Unlike `--parent`, it is
+**not** validated against a project registry and does **not** filter `issue list` — it's a plain
+string stored on the issue and surfaced on `issue view`/GraphQL as `project: { id }` (`id` is the
+string you passed). This is unrelated to the visualizer's own `--project <dir>` flag (a
+filesystem path — see [Visualize](#5-visualize)).
 
 ### Importing a freeform backlog
 

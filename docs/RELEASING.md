@@ -11,16 +11,26 @@ until all three surfaces point at the intended code.
 ## Before releasing
 
 1. Confirm `main` is green in CI.
-2. Run the local checks:
+2. Run the local checks — this is the exact CI + Publish gate set (`.github/workflows/ci.yml`'s
+   `test`/`compat` jobs and `publish.yml`; CI also repeats `bun test` under the pinned bun 1.2.20):
 
    ```bash
    bun install --frozen-lockfile
    bun run typecheck
+   npm run build:node-cli                # build before tests: e2e tests symlink the repo as
+                                          # node_modules/ztrack and resolve ztrack/preset-kit to dist/
    bun test
-   bash demos/real-project-cycle.sh
-   bash demos/full-dev-cycle.sh
    npm pack --dry-run
+   bash demos/fresh-project-dry-run.sh
+   bash demos/check-e2e.sh
+   bash demos/loop-gate-ci.sh
+   bash demos/import-backlog-demo.sh
+   bash demos/pm-matrix.sh
    ```
+
+   `demos/full-dev-cycle.sh`, `demos/real-project-cycle.sh`, `demos/real-project-marathon.sh`, and
+   `demos/loop-e2e.sh` are heavier adoption/endurance/live-agent exercises worth running for a
+   larger change, but they are **not** CI/Publish gates — see [demos/README.md](../demos/README.md).
 
 3. Update `package.json` with the new semver version.
 4. Update `CHANGELOG.md` with user-facing changes.

@@ -164,21 +164,25 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
 > latter.
 
 Beyond commit-backed proof, ztrack can validate evidence against a mirrored **world** of external
-systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter-ai-dev/twin`** — a
-regular dependency of ztrack (also the substrate behind `ztrack sync github`), bundled into the CLI
-and installed with the package. There is nothing extra to install. What's opt-in is the *policy*: a
-baseline tracker never consults the world. You wire world-backed checks into your installed preset
-only when validation needs claims to trace back to external conversations, tickets, reviews, or
-other mirrored vendor events. Day-one usage (`init` → `scaffold` → `create` → `check`) touches none
-of it.
+systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter-ai-dev/twin`** — since
+0.38.0 this is an **optional peer dependency** of ztrack (also the substrate behind `ztrack sync
+github`) — it does not ship inside the CLI's own install and is absent unless you add it. You must
+`npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github` yourself before any world-backed or
+sync codepath runs — see the [canonical GitHub-sync recipe](GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun) for the
+install + the bun-only invocation `sync github` requires. What's opt-in beyond the install is the
+*policy*: a baseline tracker never consults the world. You wire world-backed checks into your
+installed preset only when validation needs claims to trace back to external conversations, tickets,
+reviews, or other mirrored vendor events. Day-one usage (`init` → `scaffold` → `create` → `check`)
+touches none of it, and needs neither peer installed.
 
 **Package boundary:**
 
 - `@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`): the external event log, world config, and
-  service-event APIs — and the engine behind `ztrack sync github`. A regular dependency on the
-  public npm registry, so it's always present.
+  service-event APIs — and the engine behind `ztrack sync github`. An **optional peer dependency**
+  on the public npm registry — absent unless you install it explicitly, and (for
+  `@volter-ai-dev/twin-github` specifically) loadable only under bun, never plain node/npx.
 - `ztrack`: issue validation and the installed-preset boundary where world source rows can be
-  consumed.
+  consumed; this half never requires either peer.
 
 **Using it from a preset.** A preset that grounds claims in the world imports the adapters from
 ztrack's published world subpaths in its `loadContext`:
@@ -189,8 +193,9 @@ import { loadWorldSourceBooks } from 'ztrack/world-source-books';
 import { listAnnotations, isAnnotationExemptEvent } from 'ztrack/world-annotations';
 ```
 
-These resolve against the installed `@volter-ai-dev/twin` — no extra install or registry
-configuration. A baseline preset that imports neither stays world-free.
+These resolve against `@volter-ai-dev/twin` at runtime, so it must be installed (see above) wherever
+this preset actually runs — no extra registry configuration beyond the install. A baseline preset
+that imports neither stays world-free and needs no peer installed.
 
 ## See also
 

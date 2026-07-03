@@ -379,9 +379,12 @@ release re-proves in CI that a fabricated commit SHA fails the check.
 **Stability & dependencies (be honest before adopting).** ztrack is pre-1.0 — minor versions can
 rename presets or flags, so **pin an exact version** and read the [CHANGELOG](CHANGELOG.md) before
 upgrading. The deterministic **local** core (check, evidence, presets) depends only on the markdown
-store and git. **GitHub two-way sync** and **world-backed evidence** route through
-`@volter-ai-dev/twin` (a regular dependency, same publisher) — adopt only local verification and you
-carry no such risk; adopt sync and you scope the risk to that surface.
+store and git, and needs nothing beyond `ztrack` itself. **GitHub two-way sync** and **world-backed
+evidence** route through `@volter-ai-dev/twin` (same publisher) — since 0.38.0 that's an **optional
+peer dependency**, not a regular one: adopt only local verification and nothing extra installs or
+runs; adopt sync and you must `npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github`
+yourself, and run the sync command under **bun** (not npx/node) — see the [canonical
+recipe](docs/GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun).
 
 ## How it compares
 
