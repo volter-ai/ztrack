@@ -30,7 +30,9 @@ export type { RawBlockRef } from './core/blocking.ts';
 // World annotations pull in `@volter-ai-dev/twin`, so they are deliberately NOT re-exported
 // here — keeping preset-kit (and thus every baseline installed preset) from loading twin's
 // world runtime just to parse. A preset whose loadContext uses them imports the dedicated
-// `ztrack/world-annotations` subpath instead (twin is a regular dependency, always present).
+// `ztrack/world-annotations` subpath instead (twin is an OPTIONAL peer dependency, lazily loaded
+// via src/sync/github/twinRuntime.ts and NOT present unless the consumer installs it explicitly —
+// see docs/GUIDE.md's GitHub-sync recipe).
 
 // ── mdast mechanism: a standalone preset's parser walks this tree ─────────────
 // The `mdast-*` deps live in the kit, not in each installed preset.
