@@ -37,6 +37,8 @@ jobs:
         run: bash demos/check-e2e.sh
       - name: Loop gate (Stop hook + waiver, no live agent)
         run: bash demos/loop-gate-ci.sh
+      - name: Import backlog (freeform -> native document source e2e)
+        run: bash demos/import-backlog-demo.sh
       - name: Export smoke (the public surface resolves)
         run: |
           node --input-type=module -e "const paths=['ztrack','ztrack/sdk','ztrack/check','ztrack/preset-kit','ztrack/world-annotations','ztrack/world-source-books']; for (const p of paths) await import(p);"

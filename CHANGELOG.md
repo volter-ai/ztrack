@@ -2,7 +2,13 @@
 
 All notable ztrack release changes are recorded here.
 
-## Unreleased
+## 0.37.0
+
+Freeform backlogs become first-class: `ztrack import` rewrites mixed markdown (headings,
+prose, checkboxes, `TODO:` lines) in place into the strict document-source grammar, so a
+planning doc that previously parsed to zero issues becomes a fully gated source. Paired
+with it, a round-trip integrity fix: prose inside an `Acceptance Criteria` section is now
+diagnosed instead of silently dropped, and writes that would destroy it fail closed.
 
 - **New: `ztrack import <path-or-glob>...` materializes a freeform backlog into a native document
   source, in place, idempotently.** Today, a plan/backlog file written as mixed markdown (headings,

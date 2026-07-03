@@ -55,6 +55,11 @@ jobs:
         # Also on the release gate: the installed package's Stop hook + `ztrack waiver`
         # CLI round-trip, driven deterministically (no model calls).
         run: bash demos/loop-gate-ci.sh
+      - name: Import backlog (freeform -> native document source e2e)
+        # The 0.37.0 headline feature through the real CLI: materialize a freeform
+        # backlog, re-import is a byte-identical no-op, output checks green and accepts
+        # a real ac patch.
+        run: bash demos/import-backlog-demo.sh
       - name: Package-manager matrix (pnpm / yarn / PnP / bun)
         # Gate the release on the resolution layouts npm doesn't exercise — this is how the
         # require(esm) break (Node 20 / PnP) and the unexported package.json would be caught.
