@@ -175,10 +175,47 @@ forever. It takes the [same target grammar](#2-usage-verify-on-demand) as `check
 (id, file, or the current worktree's issue).
 
 ```bash
-ztrack loop start LOCAL-1     # arm: the agent's turn won't end until LOCAL-1 passes check
-ztrack loop status           # is a loop armed? capped?
-ztrack loop stop             # disarm
+ztrack loop start LOCAL-1                 # arm: the agent's turn won't end until LOCAL-1's CURRENT stage passes check
+ztrack loop start LOCAL-1 --until done    # arm, driving further: hold until LOCAL-1's status reaches "done" (or later) AND passes check there
+ztrack loop status                       # is a loop armed? capped? shows the --until stage, if any
+ztrack loop stop                         # disarm
 ```
+
+**Two modes, same `start`.** Bare `loop start` answers "is the CURRENT stage real?" — the loop
+disarms the moment `check` is green at whatever status the issue already has. `--until <stage>`
+answers a different question: "drive this issue all the way to `<stage>`." That distinction matters
+because, without it, driving an agent to completion meant pre-flipping the issue into a
+gate-triggering status (e.g. `in-review`, so `review_requires_all_acs_passed` fires) just to give
+the loop something to hold on — gaming the oracle with a status that wasn't true yet. With
+`--until`, the loop itself holds the turn until the status genuinely gets there.
+
+`<stage>` is a value from the active preset's status vocabulary, in its declaration order (the same
+order the preset's own lifecycle gates use to mean "at or beyond") — `ready`, `in-progress`,
+`in-review`, `done` for the default `simple-sdlc` preset. It's validated at ARM TIME: an unknown
+stage fails immediately, naming the real vocabulary with a did-you-mean, and a project with no
+loadable validation preset fails the arm outright (a stage target is meaningless without a
+vocabulary to rank it in) — never a silent degrade to bare semantics. `--until` only applies to a
+target that resolves to ONE issue (an explicit id, or the bare/auto-resolved worktree issue); a
+file or the whole tracker has no single status to drive, and arming one with `--until` fails loud.
+
+Flipping the issue's status to the target stage early does **not** defeat this: that stage's own
+lifecycle gates still evaluate for real, so `ztrack issue edit LOCAL-1 --state done` before every AC
+is actually passed just trades one red finding (`loop_until_not_reached`) for another
+(`review_requires_all_acs_passed`) — the loop stays held either way. This also means `--until` is
+useful WHILE AUTHORING an issue, not just while implementing one: `ztrack loop start LOCAL-1 --until
+ready` arms before the issue even has real dev ACs, and holds the drafting agent until the order has
+acceptance criteria and passes `ready`'s own gates — a loop for writing a good ticket, not just for
+closing one.
+
+`loop start` also does two arm-time honesty checks, warning (never refusing) rather than silently
+doing something surprising: it best-effort detects whether the ztrack-gate Stop/SubagentStop hooks
+are actually wired anywhere it can see (the plugin enabled, or the hooks wired by hand in Claude
+Code settings) and warns with the install pointer below if not — another harness may wire the hooks
+invisibly to this check, so a negative result only warns; and a BARE arm (no `--until`) on a target
+that's already green right now warns that the loop has nothing to hold on and will disarm on the
+very first turn — still arms, since that's occasionally exactly what you want (a quick "did I break
+anything" check-and-release). Arming the same already-green issue WITH `--until` is the intended
+use and gets no such warning.
 
 **Honest escapes (none fakes "done"):** disarm, a per-actor self-exempt (a session or a subagent)
 that can't outlive it, and a durable [`ztrack waiver sign`](PRESETS.md#waivers) for a finding an
