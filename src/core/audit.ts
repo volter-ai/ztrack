@@ -1,11 +1,26 @@
 // The audit log — a SEPARATE append-only log (NOT git history, NOT the markdown
-// body), recorded automatically whenever tracker data changes. Two sources, both
-// land here: (1) the mutation affordances write rich entries (actor + semantic
-// op) for tracker-mediated edits; (2) `observeChanges` diffs the validated export
-// against the last-seen state and logs whatever changed, so edits made OUTSIDE
-// our affordances (e.g. an SDLC whose files are edited by its own tooling, like
-// Spec Kit) are still audited. So audit is universal across presets.
-// Timestamps (created / updated / state-since) are derived from it. One per repo.
+// body). Timestamps (created / updated / state-since) are derived from it. One per repo.
+//
+// ztrack issue #19 (audit unwired from CLI write paths): this file was designed for two sources —
+// (1) rich, actor-attributed entries from the mutation affordances themselves (`setBaselineIssue`
+// exists for exactly this: advance the baseline without double-logging after writing your own
+// entry) and (2) `observeChanges`, a diff-based fallback that catches edits made OUTSIDE those
+// affordances (e.g. an SDLC whose files are hand-edited or edited by its own tooling). Only (2) is
+// actually wired up today, and only from `visualizer/serverCore.ts`/`visualizer/server.ts`, which
+// calls `observeChanges` on every request after validating the live tracker. `setBaselineIssue` has
+// ZERO callers — no CLI mutation path (issue create/edit/patch, `ac patch`, `tx`, waivers) calls it
+// or `appendAudit`, so running only the CLI (no visualizer) never writes `.audit.jsonl` at all.
+//
+// Why it isn't wired into the CLI: every CLI/SDK/MCP/tx mutation funnels through ONE choke point
+// (`MarkdownBackend.command`, src/backends/markdownBackend.ts:280), but that layer only ever sees a
+// `CanonicalIssue` (title/body/state/labels) — backends are deliberately preset-agnostic and know
+// nothing about acceptance criteria. `observeChanges`'s `ObservableIssue` shape (id/status/AC
+// status/evidence count) only exists after a FULL preset-validated export (`exportTrackerRoot`,
+// resolving and running the repo's preset), which several mutation call sites
+// (`ac`/`issue patch` in cli.ts, the raw `issue edit/create` passthrough, `cliWaiver.ts`) don't
+// currently run. Wiring it in properly means adding a preset-validation pass to each of those
+// paths — a real feature, not a smallest-honest fix — so today's audit log is VISUALIZER-ONLY:
+// don't rely on `.audit.jsonl` (or the timestamps derived from it) to reflect CLI-only usage.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
