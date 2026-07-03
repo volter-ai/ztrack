@@ -150,6 +150,8 @@ export interface TrackerConfig {
         categories?: Partial<Record<'sourced' | 'code' | 'visual' | 'behavioral' | 'wellformed', number>>;
       }>;
     };
+    /** Per-rule severity override for `ztrack check` findings (lint.ts). Keys are rule codes. */
+    lint?: { rules?: Record<string, 'warn' | 'error' | 'off'> };
   };
 }
 

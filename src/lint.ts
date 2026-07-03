@@ -89,7 +89,7 @@ function weakClaimBlocks(sectionBody: string): string[] {
 }
 
 export function lintIssueBody(body: string, issue?: string, config?: TrackerConfig): LintFinding[] {
-  const rules = (config?.organization as Record<string, any> | undefined)?.lint?.rules ?? {};
+  const rules = config?.organization?.lint?.rules ?? {};
   const severity = (rule: string): LintSeverity => rules[rule] ?? LINT_RULES[rule]?.default ?? 'warn';
   const findings: LintFinding[] = [];
   const seen = new Set<string>();

@@ -98,6 +98,22 @@ describe('loadTrackerConfig — shape validation (ZTB-3)', () => {
     const root = project({ backend: 'markdown', board: 'nope' });
     expect(() => loadTrackerConfig(root)).toThrow(/board/);
   });
+
+  // ZTB-22 dev/02: `organization.lint.rules` was documented (lint.ts:5-6) and read (lint.ts:92)
+  // but absent from this schema — every config using the documented knob was rejected as an
+  // unknown key. `rules`' own keys are arbitrary rule names (not enumerated in KNOWN_KEYS).
+  test('`organization.lint.rules` (documented in lint.ts) loads without an unknown-key rejection', () => {
+    const root = project({
+      backend: 'markdown',
+      organization: { lint: { rules: { 'todo-marker': 'off' } } },
+    });
+    expect(loadTrackerConfig(root).organization).toEqual({ lint: { rules: { 'todo-marker': 'off' } } });
+  });
+
+  test('an unrecognized key under `organization.lint` still throws', () => {
+    const root = project({ backend: 'markdown', organization: { lint: { wat: true } } });
+    expect(() => loadTrackerConfig(root)).toThrow(/unknown key "wat" at "organization\.lint"/);
+  });
 });
 
 describe('resolveSources (ZTB-3)', () => {
