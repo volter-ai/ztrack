@@ -61,6 +61,27 @@ fixed, all pinned by tests.
   case), naming the exact fix (`npm install -D ztrack`), instead of leaving that discovery to a
   later `ztrack check` failure with no forward pointer from init.
 
+`ztrack lint` becomes real: it used to print NOTHING on a clean run (0 findings, silent, exit 0
+— indistinguishable from a broken command) and shipped only three mechanical rules despite its
+own help text promising weak/unverifiable-claim detection.
+
+- **Plain-text `ztrack lint` always ends with a summary line.** `✓ ztrack lint: 0 findings across
+  N issues` on a clean run, `✗ ztrack lint: M findings across N issues` when something fires —
+  audible either way, never silent. Exit codes are unchanged (still 0 unless an `error`-severity
+  finding fires or `--fail-on-warn` is passed with any finding); `--json` is unchanged, still
+  exactly `{"findings": [...]}`.
+- **New `weak_claim` warning rule**: a curated, case-insensitive, word-boundary lexicon of
+  assertive-verification phrases ("all tests pass(ed)", "works perfectly", "fully verified",
+  "fully tested", "100% working", "should work", "verified end to end") flags prose that reads
+  like a verification claim. It skips fenced code blocks and inline code spans, and does not fire
+  when the same item (the claim's own line plus its own nested evidence/proof lines) already
+  cites evidence — a commit (`commit:`/`commit=` + hash), an `[E#]`/`[P#]`/`[source #]` ref, or an
+  `uploads/*.png` path. The rule is honest about scope: it reads prose, not truth — its message
+  says the claim "is not backed by cited evidence here," never that the claim is false.
+- `lint --help` (`src/cliHelp.ts`) now names all four rules and the summary line, instead of the
+  stale "flags weak or unverifiable claims" one-liner the three original mechanical rules never
+  actually implemented.
+
 ## 0.37.0
 
 Freeform backlogs become first-class: `ztrack import` rewrites mixed markdown (headings,

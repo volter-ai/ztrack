@@ -328,11 +328,20 @@ GraphQL-shaped query against the local tracker store.
     const config = loadTrackerConfig(projectRoot);
     const rows = await client.issue.list({ state: 'all', limit: 5000, json: 'identifier,body' });
     const cases = (Array.isArray(rows) ? rows : []) as Array<{ identifier?: string; body?: string }>;
-    const findings = cases
-      .filter((c) => !issueSet || issueSet.has(String(c.identifier ?? '')))
-      .flatMap((c) => lintIssueBody(String(c.body ?? ''), String(c.identifier ?? ''), config));
-    if (args.includes('--json')) process.stdout.write(`${JSON.stringify({ findings }, null, 2)}\n`);
-    else for (const f of findings) process.stdout.write(`${f.severity.toUpperCase()} ${f.rule}: issue=${f.issue} ${f.message} | ${f.excerpt ?? ''}\n`);
+    const linted = cases.filter((c) => !issueSet || issueSet.has(String(c.identifier ?? '')));
+    const findings = linted.flatMap((c) => lintIssueBody(String(c.body ?? ''), String(c.identifier ?? ''), config));
+    if (args.includes('--json')) {
+      process.stdout.write(`${JSON.stringify({ findings }, null, 2)}\n`);
+    } else {
+      for (const f of findings) process.stdout.write(`${f.severity.toUpperCase()} ${f.rule}: issue=${f.issue} ${f.message} | ${f.excerpt ?? ''}\n`);
+      // Audible success: silence used to be indistinguishable from a no-op (0 findings and a
+      // broken command both printed nothing). Now every plain-text run ends with one summary
+      // line, pass or fail, naming both the finding count and how many issues were scanned.
+      const summary = `${findings.length} findings across ${linted.length} issue${linted.length === 1 ? '' : 's'}`;
+      const mark = findings.length === 0 ? statusMark('pass') : statusMark('fail');
+      const colored = findings.length === 0 ? ui.green(summary) : ui.red(summary);
+      process.stdout.write(`${mark} ztrack lint: ${colored}\n`);
+    }
     process.exitCode = findings.some((f) => f.severity === 'error') || (args.includes('--fail-on-warn') && findings.length > 0) ? 1 : 0;
     return;
   }
