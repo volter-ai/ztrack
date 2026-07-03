@@ -318,6 +318,15 @@ closure is not yet satisfied, and *actionable* otherwise. A node is satisfied
 when an AC is passed, or when an issue's ACs are all passed (an AC-less issue,
 per its terminal status).
 
+`ztrack issue list --actionable` / `--blocked` (ZTB-30) is the CLI-facing consumer of this
+graph — the "which issues can I dispatch onto right now" query an orchestrator running a
+whole backlog needs. `--actionable` lists not-done issues with no unmet transitive
+dependency; `--blocked` lists the complement, naming each issue's **nearest** unmet
+blocker(s) (the first unmet hop along each dependency edge, not the whole closure
+`blockStatuses` returns) — see [Guide → Orchestrating a whole
+backlog](GUIDE.md#orchestrating-a-whole-backlog-one-long-lived-session-many-issues) for the
+end-to-end intake → groom → order → dispatch flow this feeds.
+
 ## Waivers
 
 Waivers are universal and eslint-style — core-parsed, not per-preset. A `##

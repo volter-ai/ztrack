@@ -39,6 +39,36 @@ Two things a loop can be armed to do — check which one you were given:
 The target grammar is the same everywhere: an issue id, a `./body.md` file, or — inside a worktree
 named for an issue — that issue automatically.
 
+### Running a whole backlog, not just one issue
+
+Everything above is written as if you're driving one issue. That's the short-running special case of
+a bigger job you may be given instead: **one long-lived orchestrator session** taking a whole backlog
+— write it down once, then drive it to done — without a human re-pointing you at the next issue by
+hand. Four moves, in order (full detail, with commands, in
+[Guide → Orchestrating a whole backlog](GUIDE.md#orchestrating-a-whole-backlog-one-long-lived-session-many-issues)):
+
+1. **Intake.** Get the backlog into the tracker: `ztrack import <file-or-folder>` for a freeform plan
+   or a folder of issue-shaped `.md` files, or `ztrack init --sync github --repo o/n` to pull from
+   GitHub Issues instead. Don't hand-write issue markdown when one of these fits.
+2. **Groom.** For every issue that's still a stub, run a drafting loop —
+   `ztrack loop start <id> --until ready` — until it has real acceptance criteria and passes `ready`'s
+   own gates. Evidence is a `done`-gate concern; grooming only needs the claim to be checkable, not
+   proven yet.
+3. **Order.** Encode what actually blocks what — `Blocked by:` / `Blocks:` lines on an issue, or a
+   per-AC `blocked-by:` when the dependency is narrower than the whole other issue. `ztrack check`
+   proves it's a genuine DAG (cycles, dangling refs, and one-sided relations all fail closed or warn).
+4. **Dispatch.** Query the frontier — `ztrack issue list --actionable --json identifier,title,state` —
+   and, for each row, arm a loop (`ztrack loop start <id> --until done`) and run one subagent per
+   issue, **each in its own worktree** (so concurrent subagents never share a loop marker or files).
+   Merge each back **sequentially**, running `ztrack check` after every merge. Then re-query
+   `--actionable` — the wave that just landed unblocks the next one — and dispatch again. Repeat until
+   the query returns nothing. `ztrack issue list --blocked --json identifier,title,blockers` is the
+   diagnostic when a wave stalls: it names the nearest unmet blocker per stuck issue (not the whole
+   transitive pile behind it), so you know exactly what to go unblock next.
+
+The single-issue loop above is this same lifecycle degenerated to a backlog of one: intake and
+grooming already done by hand, nothing to order, one dispatch, one wave.
+
 ### Two source models: issue-per-file vs. document
 
 A tracker declares its `sources:` in `.volter/tracker-config.json`. Most repos use the default,
