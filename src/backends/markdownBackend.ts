@@ -386,9 +386,24 @@ export class MarkdownBackend implements TrackerBackend {
     }
     if (verb === 'issue' && sub === 'close') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
-      const canceled = flagVal(args, 'reason') === 'canceled';
-      c.state = canceled ? 'Canceled' : 'Done'; c.stateType = canceled ? 'canceled' : 'completed';
-      const now = new Date().toISOString(); c.updatedAt = now; if (canceled) c.canceledAt = now; else c.completedAt = now;
+      const id = rest[0]!;
+      if (flagVal(args, 'reason') === 'canceled') {
+        // Fail closed: every shipped preset (simple-sdlc, simple-gh-sdlc, spec, speckit) has a
+        // lowercase status vocabulary with `done` as its only terminal member and NO "canceled"
+        // state — so recording a cancellation would mean either writing a status value the
+        // preset rejects, or falsely claiming completion. Neither is honest; write nothing and
+        // say so (matches the tone of documentSource.ts's fail-closed errors).
+        return {
+          stdout: '',
+          stderr:
+            `issue close --reason canceled: no shipped preset's status vocabulary has a "canceled" state, so ` +
+            `cancellation cannot be recorded without falsely claiming completion — nothing was written. Use ` +
+            `'ztrack issue delete ${id}' to remove the issue instead, or 'ztrack issue edit ${id} --state <status> ` +
+            `--add-label <label>' to record it under a status your preset actually has.\n`,
+        };
+      }
+      c.state = 'done'; c.stateType = 'completed';
+      const now = new Date().toISOString(); c.updatedAt = now; c.completedAt = now;
       const cmt = flagVal(args, 'comment'); if (cmt) c.comments.push({ user: 'local', createdAt: now, body: cmt });
       this.writeIssue(c);
       return ok('');

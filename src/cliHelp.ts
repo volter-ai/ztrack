@@ -85,7 +85,7 @@ export function printIssueActionHelp(action: string): boolean {
     get: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
     create: `${command} issue create [--title text] [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id] [--project name]`,
     edit: `${command} issue edit <issue> [--title text] [--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent] [--project name] [--remove-project]`,
-    close: `${command} issue close <issue> [--reason completed|canceled] [--comment text|--comment-file path]`,
+    close: `${command} issue close <issue> [--reason completed] [--comment text|--comment-file path]`,
     comment: `${command} issue comment <issue> --body text|--body-file path`,
     comments: `${command} issue comments <issue> [--jq expr]`,
     history: `${command} issue history <issue> [--json] [--limit n] [--jq expr]`,
@@ -94,9 +94,10 @@ export function printIssueActionHelp(action: string): boolean {
     unrelate: `${command} issue unrelate <issue> --blocks <blocked-issue>`,
   };
   // Extra explanatory line for an action whose usage grammar alone doesn't say enough —
-  // today just `create`'s title derivation, so an omitted `--title` isn't a silent surprise.
+  // `create`'s title derivation, and `close`'s deliberate refusal of --reason canceled.
   const notes: Record<string, string> = {
     create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title).`,
+    close: `--reason canceled is refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or 'issue edit --state <status>' instead.`,
   };
   const line = usage[action];
   if (!line) return false;

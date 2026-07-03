@@ -36,9 +36,11 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect(v2.labels.nodes.map((n: { name: string }) => n.name)).toEqual(['type:bug', 'P1']);
     expect(v2.comments.nodes[0]).toMatchObject({ body: 'a note', user: { name: 'local' } });
 
+    // ZTB-22 dev/01: `close` writes lowercase 'done' (not 'Done') — every shipped preset's
+    // status enum is lowercase with no Title-case member, so 'Done' failed `wellformed_shape`.
     await be.command(['issue', 'close', 'PH-1']);
     const v3 = J(await be.command(['issue', 'view', 'PH-1', '--json']));
-    expect(v3.state).toEqual({ name: 'Done', type: 'completed' });
+    expect(v3.state).toEqual({ name: 'done', type: 'completed' });
     expect(v3.completedAt).not.toBeNull();
 
     expect(J(await be.command(['issue', 'create', '--title', 'Second'])).identifier).toBe('PH-2'); // id increments

@@ -57,7 +57,10 @@ describe.if(hasPython)('migrate-local: Python SQLite store → markdown files', 
         expect(v.labels.nodes.map((n: { name: string }) => n.name)).toEqual(['type:case']);
       }),
       be.command(['issue', 'view', 'APP-2', '--json']).then((r) => {
-        expect(J(r).state).toEqual({ name: 'Done', type: 'completed' }); // stateType preserved → check honors closed
+        // ZTB-22 dev/01: the legacy Python store's Title-case 'Done' is healed to lowercase 'done'
+        // on read (markdown.ts's parseIssue) — the same normalization `issue close`'s own legacy
+        // output gets, since both wrote the identical exact string. stateType is untouched/preserved.
+        expect(J(r).state).toEqual({ name: 'done', type: 'completed' }); // stateType preserved → check honors closed
       }),
       // `list --state open` (what recovery uses) excludes the migrated Done issue by TYPE
       be.command(['issue', 'list', '--state', 'open', '--json', 'identifier']).then((r) => {
