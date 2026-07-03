@@ -412,6 +412,20 @@ export interface CheckResult<R extends CoreRoot> {
   ok: boolean;
   findings: Finding[];
   export?: R; // the parsed Root — what every other surface reads
+  // How many issue records were actually examined, set ONLY when validation failed before
+  // `export` could be populated (a shape-invalid root, or a whole-input parse failure) — so a
+  // summary line can report an honest count instead of falling back to 0 while findings cite
+  // `root.issues.<n>` for an issue the count implies never existed (ZL-E9c). Success paths leave
+  // this undefined; readers should prefer `export.issues.length` and fall back to this.
+  examinedIssues?: number;
+}
+
+// Best-effort count of a pre-validation candidate root's issues, for `examinedIssues` on a
+// shape-failure CheckResult — the root failed strict validation, but "how many issues did we
+// even attempt" is still knowable from its raw (untyped) shape.
+function countCandidateIssues(root: unknown): number | undefined {
+  const arr = root && typeof root === 'object' ? (root as { issues?: unknown }).issues : undefined;
+  return Array.isArray(arr) ? arr.length : undefined;
 }
 
 // Copy a record's `Origin` (path + optional line span) onto a `Finding`'s narrower
@@ -683,7 +697,7 @@ export function check<R extends CoreRoot>(preset: Preset<R>, records: IssueRecor
     // loose-file `ztrack check ./FILE.md` path) has exactly one candidate, so cite it.
     const origin = records.length === 1 ? records[0]!.origin : undefined;
     const findings: Finding[] = [...conflicts, { code: 'parse_failed', severity: 'error', message: String((error as Error)?.message ?? error), ...(origin ? { origin: toFindingOrigin(origin) } : {}) }];
-    return { ok: false, findings };
+    return { ok: false, findings, examinedIssues: records.length };
   }
   const { root, findings: diagnosticFindings } = liftDiagnostics(candidate, originById);
   // Waivers are core-parsed from each record's `## Waivers` body section (universal,
@@ -721,12 +735,13 @@ function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, roo
     const inputSchema = makeValidationInputSchema(preset.schema, preset.contextSchema);
     result = inputSchema.safeParse({ context: ctx, root });
   } catch (error) {
-    return { ok: false, findings: [{ code: 'schema_error', severity: 'error', message: `Could not validate against the preset schema (a preset/zod version mismatch?): ${String((error as Error)?.message ?? error)}` }] };
+    return { ok: false, findings: [{ code: 'schema_error', severity: 'error', message: `Could not validate against the preset schema (a preset/zod version mismatch?): ${String((error as Error)?.message ?? error)}` }], examinedIssues: countCandidateIssues(root) };
   }
   if (!result.success) {
+    const examinedIssues = countCandidateIssues(root);
     return isExportedRoot
-      ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error, root, originById)] }
-      : { ok: false, findings: shapeFindings(result.error, root, originById) };
+      ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error, root, originById)], examinedIssues }
+      : { ok: false, findings: shapeFindings(result.error, root, originById), examinedIssues };
   }
   return runRules(preset, result.data, originById);
 }
