@@ -153,6 +153,23 @@ async function main(): Promise<void> {
 
   if (await handleImportCommand(args)) return;
 
+  // ZTB-21 dev/03: `ingest` is not, and has never been, a top-level verb — the only prior
+  // `ingest` was `evidence ingest` (a signed DSSE-bundle importer), long since renamed to
+  // `evidence add` (see cliEvidence.ts's `evidence add`, "Ingest an evidence file"). A bare
+  // `ztrack ingest <file>` (as reported) has the exact shape of `ztrack import <path-or-glob>`
+  // (ZTB-14: materialize a freeform backlog in place) — almost certainly what's meant. Caught
+  // HERE, before any backend is reached, instead of a generic "unsupported command" from the
+  // markdown backend with no hint at all.
+  if (args[0] === 'ingest') {
+    const rest = args.slice(1).join(' ');
+    const suggested = rest ? `${command} import ${rest}` : `${command} import <path-or-glob>`;
+    throw new Error(
+      `ztrack: 'ingest' is not a command — did you mean '${suggested}'? ` +
+      `(materializes a freeform backlog into tracked issues; see '${command} import --help'). ` +
+      `If you meant the old signed-evidence importer, that's now '${command} evidence add <file>'.`
+    );
+  }
+
   if (args[0] === 'issue' && args[1] === 'scaffold') {
     const title = optionValue(args, '--title') || 'New case';
     process.stdout.write((await activePresetScaffold(title)) ?? (await scaffoldCaseBody(title)));
@@ -369,6 +386,9 @@ GraphQL-shaped query against the local tracker store.
     if (onlyPull) {
       const r = await githubSync.pull(o); out.pull = r;
       process.stdout.write(`${statusMark('pass')} pull: ${r.created.length} created, ${r.updated.length} updated locally\n`);
+      // ZTB-21 dev/02: a first pull that found nothing (even after the built-in retry) looks
+      // identical to "really has zero issues" unless we say so — GitHub's list API can still lag.
+      if (r.note) process.stderr.write(`${statusMark('warn')} ${ui.yellow(r.note)}\n`);
     } else if (onlyPush) {
       const r = await githubSync.push(o); out.push = r;
       process.stdout.write(`${statusMark('pass')} push: ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
