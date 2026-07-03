@@ -10,6 +10,7 @@ bash demos/local-red-green.sh
 bash demos/fresh-project-dry-run.sh
 bash demos/full-dev-cycle.sh
 bash demos/real-project-cycle.sh
+bash demos/import-backlog-demo.sh
 ```
 
 `local-red-green.sh` proves the `default` `ztrack check` contract with a
@@ -28,6 +29,12 @@ exercises the CI validated-root path, SDK, MCP, and verifies a fresh clone.
 multi-package workspace with inventory, API, admin, docs, tests, runbooks, an
 ADR, custom project validation in the installed preset, review/rework loops, the
 CI validated-root path, SDK, MCP, and fresh-clone validation.
+
+`import-backlog-demo.sh` proves `ztrack import` end to end through the real
+packed+installed CLI: a messy freeform backlog file, `--dry-run` (writes
+nothing), a real materialize + `--register`, `ztrack check` green, `ztrack ac
+patch` splicing into an imported AC with check staying green, and a FOLDER
+import (default excludes, whole-batch no-op on re-import).
 
 ## SDK API
 

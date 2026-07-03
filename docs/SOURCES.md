@@ -210,3 +210,92 @@ position-preserving contract every preset write already has to satisfy — see
 (unmodified round trip is byte-identical; an edit changes only the bytes the changed element
 owns). The document layer adds one more constraint on top: the span it splices into must still be
 exactly the bytes it last read, or the write refuses (the staleness guard above).
+
+## Importing a freeform backlog
+
+A real backlog usually isn't written in the grammar above — it's headings, prose, and checkboxes
+with no id tokens, which today parses to **zero issues, silently**. `ztrack import` materializes
+that freeform/mixed markdown into the strict document grammar, **in place**, so it becomes an
+ordinary document source with full gating and round-trip:
+
+```bash
+ztrack import notes/backlog.md --dry-run     # preview: planned issue tree + diff, writes nothing
+ztrack import notes/backlog.md               # materialize in place
+ztrack import notes/backlog.md --register    # ...and append it to tracker-config.json's `sources`
+```
+
+`<path-or-glob>` accepts one or more of a `.md` file, a directory (recursive), or a quoted glob
+(e.g. `"notes/**/backlog*.md"`) — a directory/glob import treats **each file as its own document
+source** (its own tree; no folder-level parent issue is ever invented) and applies default excludes
+(`node_modules`, `.volter`, and any directory already covered by a configured `issue-per-file`
+source). Numbering across a multi-file batch is a single pass, so ids never collide even across
+files imported together.
+
+### Recognized shapes
+
+| In the freeform file | Becomes |
+|---|---|
+| A heading whose text already starts with an id token (`APP-1 …`) | The existing issue — **never** altered or renumbered. |
+| A heading with no id token | A **new issue** — an id token is inserted into the heading; nesting (heading depth) becomes the parent/child link, exactly the grammar above. |
+| `- [ ]` / `* [ ]` checkbox items under an issue, outside a recognized `Acceptance Criteria` section | Promoted into a canonical `## Acceptance Criteria` subsection, each gaining a minted `dev/NN v1` id. |
+| `TODO:`-prefixed lines | Same as a checkbox item — a planned AC, text preserved verbatim after the minted id. |
+| Prose paragraphs | Left exactly where they are — an issue's body. |
+| A headingless file (pure checklist, no headings at all) | Each **top-level** checkbox item promotes to its own issue (its text becomes the minted heading); that item's **nested** checkboxes become its Acceptance Criteria. |
+| Content the importer can't map (e.g. preamble prose with no `Title:` header to attach it to) | **Left in place, untouched, and named in the run's report** — never guessed, never dropped. |
+
+Id numbering: `--prefix <PREFIX>` if given, else inferred from an id already present in the file,
+else the tracker config's `local.teamKey`, else a clear error asking for `--prefix`. Issue numbering
+is the max existing numeric suffix **across every configured source** plus one, ascending in
+document order (mirrors `issue create`'s own minting rule — never scoped per-prefix). AC ids
+(`dev/NN`) are scoped **per issue**, continuing after that issue's own existing max.
+
+### The `[x]` (pre-checked) policy
+
+A checked box in a freeform backlog usually just means "someone's mental model says this is done"
+— it carries no commit, no proof, nothing `ztrack check` could ever verify. Importing it as
+`checked: true` would either mint a false claim or make the freshly materialized file immediately
+fail its own gate. So **every pre-checked item imports as an UNCHECKED AC**, with the original claim
+preserved by a marker appended to its text:
+
+```markdown
+- [ ] dev/03 v1 Write the onboarding doc (imported: previously marked done — needs evidence)
+```
+
+The run's report prints a count and a list of every item this happened to (issue, AC id, original
+text) so nothing silently downgrades unnoticed. ztrack **never** mints `checked: true` or fabricates
+evidence — closing the loop (citing the real commit that did the work) is a normal `ztrack ac patch`
+afterward, same as any other AC.
+
+### The idempotence contract
+
+`ztrack import` is safe to run over and over:
+
+- **Already-canonical input is a no-op**: byte-identical output, exit 0, reported as
+  `no-op (already canonical)` — a whole directory/glob import is safe to re-run blindly for exactly
+  this reason.
+- **Incremental import touches only the new content**: append a freeform section to an
+  already-materialized file and re-import — every byte of the previously materialized content is
+  untouched; only the new section gains ids/AC scaffolding.
+- **Existing ids are never altered or renumbered**, at either the issue or the AC level.
+- The writer is **insert-only**: unmappable content is left in place, never deleted or reordered
+  (the one exception is documented above — a headingless top-level checkbox line is converted into
+  its own heading, and checkboxes/`TODO:` lines outside an AC section relocate INTO one, since that
+  relocation is the whole point of materializing a freeform backlog; every other byte survives).
+- CRLF input is rejected with a clear error (same LF-only constraint as document-source
+  write-back) rather than silently mis-positioning an edit.
+
+### `--register`
+
+Without `--register`, `ztrack import` never touches `tracker-config.json` — it prints the exact
+`sources` snippet to add. With `--register`, it appends precisely those entries (one
+`{"path": "...", "format": "document"}` per materialized/no-op file), skipping any file that's
+already a declared source (so re-running `--register` is idempotent, never a duplicate). If
+`sources` wasn't declared at all yet, `--register` also makes the pre-existing implicit default
+store explicit — declaring any source turns off the "no `sources:` key" default fallback (above),
+so silently losing your existing board on your first `--register` would be a nasty surprise;
+instead it's one more visible, printed, additive entry.
+
+**Non-goals** (a different tool's job): extracting `TODO`/`FIXME` comments out of source code
+(that's copy-out-with-provenance, a different semantic, not materialize-in-place); importing from
+an external tracker (GitHub/Jira — the sync/twin layer's job, see
+[`ztrack sync`](GUIDE.md#how-linked-sync-works)); non-markdown inputs.
