@@ -145,11 +145,13 @@ describe('docs consistency', () => {
       // `dist` is prepack build output (scripts/build-node-cli.mjs), not committed source — a
       // fresh checkout legitimately doesn't have it yet, so it (and its sub-globs) are exempt.
       if (entry === 'dist' || entry.startsWith('dist/')) continue;
+      // Any negated entry may legitimately point at nothing (there's nothing to exclude yet —
+      // e.g. `!visualizer/node_modules` on a fresh clone before the visualizer ever installs);
+      // only inclusion entries that resolve to nothing are the phantom-entry bug this guards.
+      if (negated) continue;
       if (/[*?{}]/.test(entry)) {
         const matches = [...new Glob(entry).scanSync({ cwd: REPO, onlyFiles: true })];
-        // A negation glob may legitimately match nothing (there's nothing to exclude yet); a
-        // real inclusion glob with zero matches is itself the phantom-entry bug this guards.
-        if (!negated && matches.length === 0) missing.push(raw);
+        if (matches.length === 0) missing.push(raw);
       } else if (!existsSync(join(REPO, entry))) {
         missing.push(raw);
       }

@@ -125,10 +125,12 @@ needs them.
    source only (no compiled JS entry point). Node — even with the peer correctly installed —
    refuses to type-strip a `.ts` file that lives under `node_modules`
    (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`); this is a hard platform restriction, not
-   something a flag lifts. bun is TS-native and loads it directly:
+   something a flag lifts. bun is TS-native and loads it directly — but note the `--bun` flag:
+   ztrack's CLI has a `#!/usr/bin/env node` shebang, and a plain `bunx ztrack` honors it and hands
+   off to real node, reproducing the very error you're avoiding. Force bun's runtime explicitly:
 
    ```bash
-   bunx ztrack sync github --pull
+   bunx --bun ztrack sync github --pull
    # or, if ztrack is already a devDependency:
    bun node_modules/.bin/ztrack sync github --pull
    ```
@@ -151,7 +153,7 @@ needs them.
          - uses: oven-sh/setup-bun@v2
            with: { bun-version: 1.2.20 }
          - run: npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github
-         - run: bunx ztrack sync github --pull        # repo/policy come from the init link
+         - run: bunx --bun ztrack sync github --pull  # --bun overrides the CLI's node shebang
          - run: npx ztrack check --phase gate          # check has no twin dependency; node is fine
    ```
 
@@ -187,8 +189,8 @@ then reattach (`issue edit <child> --parent <id>`) if you need to force a backfi
 **Project label.** `--project <name>` sets a free-form project/grouping label on `issue create` and
 `issue edit` (`--remove-project` clears it); the CLI and SDK both take it. Unlike `--parent`, it is
 **not** validated against a project registry and does **not** filter `issue list` — it's a plain
-string stored on the issue and surfaced on `issue view`/GraphQL as `project: { id, name }` (both set
-to the string you passed). This is unrelated to the visualizer's own `--project <dir>` flag (a
+string stored on the issue and surfaced on `issue view`/GraphQL as `project: { id }` (`id` is the
+string you passed). This is unrelated to the visualizer's own `--project <dir>` flag (a
 filesystem path — see [Visualize](#5-visualize)).
 
 ### Importing a freeform backlog
