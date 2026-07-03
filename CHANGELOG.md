@@ -38,6 +38,29 @@ tells you never contradicts what it actually did.
   `code`, `visual`, `behavioral`); real category names are unaffected, and the engine's per-rule
   category/depth machinery is untouched for preset authors who do declare categories.
 
+First-touch CLI polish (ZTB-18): five traps re-verified against the published ztrack@0.37.0 are
+fixed, all pinned by tests.
+
+- **`<verb> --help` is now a total function for every verb, including `api` and `migrate-local`.**
+  Both used to fall through the hoisted `--help` check (cliHelp.ts had no branch for either), so
+  `ztrack api --help` in an uninitialized repo hit `createTrackerClient()` and exited 1 with "No
+  tracker config found", and `ztrack migrate-local --help` with a legacy `tracker.sqlite` present
+  PERFORMED THE REAL MIGRATION. Both now print usage and exit 0 without touching config, creating a
+  client, or running any migration.
+- **Two "tracker"-branded strings now say "ztrack"**, and MCP's `serverInfo.version` now reads
+  `package.json` (same source `--version` reads) instead of a hardcoded stale `"0.4.0"`.
+- **`issue create` never mints a record the installed preset immediately rejects for a blank
+  title.** An omitted `--title` now derives the title from the body's first `# Heading` line
+  (mirroring `check.ts`'s loose-file fallback); with neither a flag nor a heading, create refuses
+  at create time instead of minting a record `ztrack check` would reject. An explicit `--title`
+  (including `''`) is unchanged.
+- **`--project`/`--remove-project` are now documented** in `issue create --help` / `issue edit
+  --help` (mirroring already-documented `--parent`) — verified against the backend: create honors
+  `--project`, edit honors both; `issue list` has no `--project` filter, so it isn't claimed.
+- **`ztrack init` now warns when `'ztrack'` isn't resolvable from the project** (the bare-`npx`
+  case), naming the exact fix (`npm install -D ztrack`), instead of leaving that discovery to a
+  later `ztrack check` failure with no forward pointer from init.
+
 ## 0.37.0
 
 Freeform backlogs become first-class: `ztrack import` rewrites mixed markdown (headings,

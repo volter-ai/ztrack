@@ -180,7 +180,7 @@ async function main(): Promise<void> {
     const result = canonicalizeBody(preset, record);
     const canonical = result.body === record.body;
     if (checkOnly) {
-      process.stdout.write(canonical ? 'canonical\n' : 'NOT canonical (run tracker fmt --write)\n');
+      process.stdout.write(canonical ? 'canonical\n' : 'NOT canonical (run ztrack fmt --write)\n');
       process.exitCode = canonical ? 0 : 1;
       return;
     }
@@ -350,7 +350,7 @@ GraphQL-shaped query against the local tracker store.
     // --repo is optional once the project is linked (`init --sync github --repo o/n`).
     const repo = optionValue(args, '--repo') || githubSync.linkedRepo(projectRootFrom()) || '';
     if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
-      throw new Error("tracker sync github: no repo. Pass --repo <owner/name>, or link one with `ztrack init --sync github --repo <owner/name>`.");
+      throw new Error("ztrack sync github: no repo. Pass --repo <owner/name>, or link one with `ztrack init --sync github --repo <owner/name>`.");
     }
     const [owner, name] = repo.split('/');
     const o = { projectRoot: projectRootFrom(), owner: owner!, repo: name!, execute: githubSync.resolveGithubExecute(), client, occurredAt: new Date().toISOString() };

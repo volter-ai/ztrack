@@ -3,7 +3,7 @@
 // actually work against a real tracker. Black-box + subprocess-isolated like the other CLI e2es.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -55,6 +55,16 @@ describe('mcp serve — the agent-facing stdio server', () => {
     expect(r.get(1)?.result?.serverInfo?.name).toBe('ztrack');
     const tools = (r.get(2)?.result?.tools ?? []).map((t: { name: string }) => t.name);
     expect(tools).toEqual(expect.arrayContaining(['tracker_check', 'tracker_issue_list', 'tracker_issue_view', 'tracker_issue_create', 'tracker_patch', 'tracker_fmt']));
+  }, 30_000);
+
+  // ZTB-18 dev/39: serverInfo.version used to be hardcoded to a stale "0.4.0" (mcp.ts:156), while
+  // package.json (the package this server ships from) was already at a real released version —
+  // an agent introspecting `initialize` got a lie. Read, not hardcoded: must equal package.json's.
+  test('serverInfo.version equals package.json\'s version, not a hardcoded stale one', async () => {
+    const pkgVersion = (JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8')) as { version: string }).version;
+    const r = await mcpSession([{ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }]);
+    expect(r.get(1)?.result?.serverInfo?.version).toBe(pkgVersion);
+    expect(r.get(1)?.result?.serverInfo?.version).not.toBe('0.4.0');
   }, 30_000);
 
   test('a real DEVELOP loop over MCP: list → check passes → create a bad issue → check CATCHES it', async () => {

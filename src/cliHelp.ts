@@ -83,8 +83,8 @@ export function printIssueActionHelp(action: string): boolean {
     list: `${command} issue list [--search text] [--state name|open|closed|all] [--label name] [--parent id] [--limit n] [--json fields]`,
     view: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
     get: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
-    create: `${command} issue create --title text [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id]`,
-    edit: `${command} issue edit <issue> [--title text] [--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent]`,
+    create: `${command} issue create [--title text] [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id] [--project name]`,
+    edit: `${command} issue edit <issue> [--title text] [--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent] [--project name] [--remove-project]`,
     close: `${command} issue close <issue> [--reason completed|canceled] [--comment text|--comment-file path]`,
     comment: `${command} issue comment <issue> --body text|--body-file path`,
     comments: `${command} issue comments <issue> [--jq expr]`,
@@ -93,9 +93,15 @@ export function printIssueActionHelp(action: string): boolean {
     relations: `${command} issue relations <issue>|--all`,
     unrelate: `${command} issue unrelate <issue> --blocks <blocked-issue>`,
   };
+  // Extra explanatory line for an action whose usage grammar alone doesn't say enough —
+  // today just `create`'s title derivation, so an omitted `--title` isn't a silent surprise.
+  const notes: Record<string, string> = {
+    create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title).`,
+  };
   const line = usage[action];
   if (!line) return false;
   process.stdout.write(`Usage: ${line}\n`);
+  if (notes[action]) process.stdout.write(`${notes[action]}\n`);
   return true;
 }
 
@@ -121,6 +127,26 @@ Beyond the default store, .volter/tracker-config.json accepts a \`sources\` arra
 each entry is {path, format: "issue-per-file"|"document", readonly?} — a "document" source is
 one markdown file holding many issues (id-bearing headings become issues; nesting becomes parents).
 Grammar, write-back, and diagnostics: docs/SOURCES.md.
+`);
+    return true;
+  }
+  if (resource === 'migrate-local') {
+    process.stdout.write(`Usage: ${command} migrate-local [--root dir]
+
+One-shot migration off the (removed) Python \`local\` SQLite backend: reads the old
+tracker.sqlite and rewrites every issue as a markdown file, then flips the project's
+config to \`backend: "markdown"\`. The old tracker.sqlite is left in place as a backup.
+No-op (exit 0, nothing written) if no tracker.sqlite is found.
+`);
+    return true;
+  }
+  if (resource === 'api') {
+    process.stdout.write(`Usage: ${command} api <query|serve> [args...]
+
+GraphQL-shaped query against the local tracker store.
+
+  ${command} api query --query '{ issues(first: 10) { nodes { identifier title } } }'
+  ${command} api serve --host 127.0.0.1 --port 8765
 `);
     return true;
   }
