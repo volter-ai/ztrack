@@ -52,3 +52,43 @@ describe('init: warns when \'ztrack\' is not resolvable from the project (ZTB-18
     expect(r.out).toMatch(WARNING);
   }, 30_000);
 });
+
+// ztrack issue #12: a repo's installed preset (.volter/tracker/validation/preset.mts) is Node code
+// that check/export/lint/ac/tx and the MCP server import and EXECUTE — the trust model lived only
+// in SECURITY.md, never surfaced at `init` (where the file is scaffolded) or `check` (where it
+// first runs). Regression coverage for the one-line notice added at both spots.
+describe('init: surfaces the preset trust boundary (ztrack issue #12)', () => {
+  let root = '';
+  afterEach(() => { if (root) rmSync(root, { recursive: true, force: true }); root = ''; });
+
+  test('a fresh init prints a one-line notice that the preset executes as code, pointing at SECURITY.md', () => {
+    root = mkdtempSync(join(tmpdir(), 'ztrk-init-trust-'));
+    const r = ztrackIn(root, ['init', '--team', 'ZT']);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/preset.*executes as code/);
+    expect(r.out).toMatch(/SECURITY\.md/);
+  }, 30_000);
+
+  test('re-running `init` (the "Already initialized" path) still prints the notice', () => {
+    root = mkdtempSync(join(tmpdir(), 'ztrk-init-trust-again-'));
+    ztrackIn(root, ['init', '--team', 'ZT']); // first run
+    const r = ztrackIn(root, ['init', '--team', 'ZT']); // second run: alreadyInitialized branch
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/Already initialized/);
+    expect(r.out).toMatch(/SECURITY\.md/);
+  }, 30_000);
+});
+
+describe('check --help: names the preset-execution trust boundary (ztrack issue #12)', () => {
+  test('`ztrack check --help` states the installed preset executes as code and cites SECURITY.md', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ztrk-check-help-'));
+    try {
+      const r = ztrackIn(root, ['check', '--help']);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatch(/EXECUTES it/);
+      expect(r.out).toMatch(/SECURITY\.md/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+});

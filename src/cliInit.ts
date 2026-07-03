@@ -31,6 +31,15 @@ function unresolvableZtrackWarning(): string {
   return `${statusMark('warn')} ${ui.yellow("'ztrack' isn't resolvable as a project dependency here")} ${ui.dim('— the installed preset imports \'ztrack/preset-kit\', so `ztrack check` will fail until you run `npm install -D ztrack` (a one-off `npx` install is not enough; see README Setup).')}`;
 }
 
+// ZT-issue-12: the scaffolded preset (.volter/tracker/validation/preset.mts) is a Node module that
+// `check`/`export`/`lint`/`ac`/`tx` and the MCP server import and EXECUTE — the trust model lives
+// in SECURITY.md, but until now nothing at `init` (where the file is written) or `check` (where it
+// first runs) ever mentioned that. One line, here, at the point the file is created — not repeated
+// on every `check` run, which would be nagging rather than informative.
+function presetTrustNotice(): string {
+  return ui.dim(`Note: the installed preset (.volter/tracker/validation/preset.mts) executes as code on every check/export/lint/ac/tx run — see SECURITY.md before pointing ${commandName()} at a repo you don't trust.`);
+}
+
 /** `ztrack init` — scaffolds the per-project tracker: writes the config, installs the chosen
  *  validation preset (default = the recommended baseline), and optionally links an external tracker
  *  (`--sync github --repo o/n`) with a best-effort initial pull. Returns true once it has handled
@@ -73,6 +82,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}), board });
   if (result.alreadyInitialized) {
     process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
+    process.stdout.write(`${presetTrustNotice()}\n`);
     if (!ztrackResolvableFrom(root)) process.stdout.write(`${unresolvableZtrackWarning()}\n`);
     return true;
   }
@@ -121,6 +131,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
     ui.dim('Edit the installed validation preset to encode your project rules.'),
     ui.dim('Declare more stores in .volter/tracker-config.json\'s `sources` array — a "document" source is one markdown file holding many issues.'),
+    presetTrustNotice(),
     ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
     '',
   ].join('\n'));
