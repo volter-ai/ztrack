@@ -51,3 +51,55 @@ describe('issue create defaults conform to the installed preset (markdown backen
     expect(ztrackIn(root, ['check', 'ZT-2']).code).not.toBe(0); // and `ztrack check` catches it for real
   }, 30_000);
 });
+
+// ZTB-18 dev/40: `issue create` without --title used to mint a record with title '' —
+// markdownBackend.ts:327 — which the installed preset's `wellformed_shape` immediately rejects
+// ("title: Too small") the moment `ztrack check` runs. Never mint a record the preset rejects for
+// a missing title: derive it from the body's first `# Heading` line, or refuse at create time.
+describe('issue create: title derivation / refusal when --title is omitted (ZTB-18 dev/40)', () => {
+  let root = '';
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), 'ztrk-create-title-'));
+    mkdirSync(join(root, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    gitIn(root, 'init', '-q');
+    gitIn(root, 'config', 'user.email', 't@t.co');
+    gitIn(root, 'config', 'user.name', 't');
+    ztrackIn(root, ['init', '--team', 'ZT']);
+  });
+  afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+
+  test('body with a `# Heading` and no --title → title is derived from it; check is green', () => {
+    const created = ztrackIn(root, ['issue', 'create', '--body', '# From The Body\n\n## Summary\n\nok']); // ZT-1
+    expect(created.code).toBe(0);
+    expect(created.out).toMatch(/"title": "From The Body"/);
+    expect(ztrackIn(root, ['check', 'ZT-1']).code).toBe(0);
+  }, 30_000);
+
+  test('body with no heading and no --title → create refuses, exit 1, nothing minted', () => {
+    const listBefore = ztrackIn(root, ['issue', 'list', '--json', 'identifier']);
+    const created = ztrackIn(root, ['issue', 'create', '--body', 'just some prose, no heading at all']);
+    expect(created.code).toBe(1);
+    expect(created.out).toMatch(/no --title given and the body has no '# Heading' line/);
+    const listAfter = ztrackIn(root, ['issue', 'list', '--json', 'identifier']);
+    expect(listAfter.out).toBe(listBefore.out); // no new issue was minted
+  }, 30_000);
+
+  test('no body at all and no --title → create refuses the same way (empty body has no heading)', () => {
+    const created = ztrackIn(root, ['issue', 'create']);
+    expect(created.code).toBe(1);
+    expect(created.out).toMatch(/no --title given and the body has no '# Heading' line/);
+  }, 30_000);
+
+  test('an explicit --title is unchanged: heading present is NOT used when --title is also given', () => {
+    const created = ztrackIn(root, ['issue', 'create', '--title', 'Explicit', '--body', '# Heading Wins Nothing Here']); // ZT-2ish
+    expect(created.code).toBe(0);
+    expect(created.out).toMatch(/"title": "Explicit"/);
+  }, 30_000);
+
+  test('an explicit --title \'\' is unchanged (still minted, as before — only the omitted-flag case changed)', () => {
+    const created = ztrackIn(root, ['issue', 'create', '--title', '', '--body', '# Would Have Derived']);
+    expect(created.code).toBe(0);
+    expect(created.out).toMatch(/"title": ""/);
+  }, 30_000);
+});

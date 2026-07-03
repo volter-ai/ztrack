@@ -313,6 +313,24 @@ export class MarkdownBackend implements TrackerBackend {
       return ok(JSON.stringify(fullView(c), null, 2));
     }
     if (verb === 'issue' && sub === 'create') {
+      const body = bodyArg(args) ?? '';
+      // A bare `--title` is optional: an omitted flag derives the title from the body's first
+      // `# Heading` line (mirroring the loose-file fallback in check.ts's title derivation) so a
+      // `--body-file` authored the normal way ("start with a heading") doesn't ALSO need
+      // --title. Only the omitted-flag case derives/refuses — an explicit `--title` (even `''`)
+      // is unchanged, as before. Never mint a record the installed preset immediately rejects
+      // for a blank title: with neither a flag nor a heading, refuse at create time.
+      const titleFlag = flagVal(args, 'title');
+      let title = titleFlag;
+      if (title === undefined) {
+        title = /^#\s+(.+)$/m.exec(body)?.[1]?.trim();
+        if (!title) {
+          return {
+            stdout: '',
+            stderr: "issue create: no --title given and the body has no '# Heading' line to derive one from — the installed preset rejects a blank title. Pass --title, or start the body with `# Heading`.",
+          };
+        }
+      }
       const target = this.mintTargetSource();
       const id = `${this.teamKey}-${this.loadAll().reduce((m, c) => Math.max(m, Number(c.identifier.split('-').pop()) || 0), 0) + 1}`;
       const now = new Date().toISOString();
@@ -324,7 +342,7 @@ export class MarkdownBackend implements TrackerBackend {
       const assigneeFlag = flagVal(args, 'assignee');
       const assignee = assigneeFlag !== undefined ? assigneeFlag : this.defaultAssignee();
       const c: CanonicalIssue = {
-        identifier: id, title: flagVal(args, 'title') ?? '', body: bodyArg(args) ?? '',
+        identifier: id, title, body,
         state, stateType: stateTypeOf(state), assignees: assignee ? [assignee] : [],
         labels: flagAll(args, 'label'), project: flagVal(args, 'project') ?? null, parent: flagVal(args, 'parent') ?? null,
         children: [], branchName: '', priority: 0, devProgress: '', createdAt: now, updatedAt: now,
