@@ -25,7 +25,7 @@ import { loadConflicts, saveConflicts, stripConflictSection, withConflictSection
 
 export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
 export type PullResult = { created: string[]; updated: string[]; total: number; note?: string };
-export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; total: number };
+export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; skipped: number; total: number };
 export type ReconcileResult = { pulled: string[]; pushed: string[]; created: Array<{ ztrack: string; number: number }>; conflicts: Array<{ issue: string; number: number; fields: string[] }> };
 
 // PUSH-side egress timestamp — a STABLE constant keeps re-confirming the same content idempotent
@@ -163,22 +163,28 @@ export async function push(o: SyncOpts): Promise<PushResult> {
   const rows = await o.client.issue.list({ state: 'all', limit: 5000, json: 'identifier,title,state,body' }) as Array<Record<string, unknown>>;
   const list = Array.isArray(rows) ? rows : [];
   const updated: string[] = [];
+  // ZTB-21 dev/04: `skipped` counts bound issues examined but left alone (unchanged since the
+  // last sync's base) — the third bucket every row in `list` falls into (created | updated |
+  // skipped), so `total` below can be COMPUTED from the same three numbers instead of read
+  // independently from `list.length` (every local issue, including ones untouched by this push),
+  // which is what silently produced a `total` that contradicted `created`/`updated`.
+  let skipped = 0;
   for (const row of list) {
     const id = String(row.identifier ?? '');
     const number = id ? b.byZtrack[id] : undefined;
-    if (!number) continue;
+    if (!number) continue; // unbound — handled as a create, below; not a "skip"
     const title = String(row.title ?? '');
     const body = stripConflictSection(String(row.body ?? ''));
     const ghState = statusToGithubState(stateName(row.state));
     const base = baseline.get(number);
-    if (base && (base.title ?? '') === title && (base.body ?? '') === body && (base.state ?? 'open') === ghState) continue;
+    if (base && (base.title ?? '') === title && (base.body ?? '') === body && (base.state ?? 'open') === ghState) { skipped += 1; continue; }
     await applyGithubWrite({ method: 'PATCH', path: `/repos/${o.owner}/${o.repo}/issues/${number}`, body: JSON.stringify({ title, body, state: ghState }), root: o.projectRoot, occurredAt: OBSERVED_AT });
     updated.push(id);
   }
   if (updated.length) await pushPendingGithubActions(o.execute, { root: o.projectRoot, occurredAt: OBSERVED_AT });
   const created = await createOnGithub(o, b, unboundForkRows(list, b));
   saveBindings(o.projectRoot, b);
-  return { created, updated, total: list.length };
+  return { created, updated, skipped, total: created.length + updated.length + skipped };
 }
 
 // project to a TwinResource carrying only the reconciled fields (state in GitHub vocabulary).
