@@ -166,9 +166,9 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
 Beyond commit-backed proof, ztrack can validate evidence against a mirrored **world** of external
 systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter-ai-dev/twin`** — since
 0.38.0 this is an **optional peer dependency** of ztrack (also the substrate behind `ztrack sync
-github`), *not* bundled into the CLI or installed with the package. You must `npm install -D
-@volter-ai-dev/twin @volter-ai-dev/twin-github` yourself before any world-backed or sync codepath
-runs — see the [canonical GitHub-sync recipe](GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun) for the
+github`) — it does not ship inside the CLI's own install and is absent unless you add it. You must
+`npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github` yourself before any world-backed or
+sync codepath runs — see the [canonical GitHub-sync recipe](GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun) for the
 install + the bun-only invocation `sync github` requires. What's opt-in beyond the install is the
 *policy*: a baseline tracker never consults the world. You wire world-backed checks into your
 installed preset only when validation needs claims to trace back to external conversations, tickets,

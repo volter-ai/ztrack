@@ -238,12 +238,17 @@ ztrack can use a **mirrored world** of the SaaS systems your code talks to
 | `worldSourceBooks.ts` | adapter: twin events → "source books" the loader feeds into `Context` |
 | `sync/<provider>/` | two-way issue sync (e.g. `sync/github/`: `execute`/`map`/`bindings`/`sync`). A **standalone provider module** — ztrack has no universal sync engine; the twin is the shared event-sourced substrate that makes pull/push incremental + idempotent. `ztrack sync github` is the user surface; identity bindings live at `.volter/sync/<provider>.json` |
 
-`@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`) is a regular dependency on
-the public npm registry — bundled into the CLI and installed with the package, so
-sync and world-backed validation work with no extra step. World integration is
-still opt-in by *policy*: a baseline tracker validates over the store + git and
-never consults the world. The adapters are reachable from the
-`ztrack/world-annotations` / `ztrack/world-source-books` subpaths; see
+`@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`) is an **optional peer
+dependency** on the public npm registry (since 0.38.0) — absent unless a consumer
+installs it explicitly, and `@volter-ai-dev/twin-github` specifically only loads
+under bun (its TS-only source can't type-strip from `node_modules` under plain
+node/npx). Sync and world-backed validation need the explicit install plus the
+bun-only invocation; see the canonical recipe at
+[docs/GUIDE.md § GitHub sync since 0.38](docs/GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun).
+World integration is still opt-in by *policy* on top of that: a baseline tracker
+validates over the store + git and never consults the world. The adapters are
+reachable from the `ztrack/world-annotations` / `ztrack/world-source-books`
+subpaths; see
 [docs/EVIDENCE.md § Advanced: validating against a mirrored world](docs/EVIDENCE.md#advanced-validating-against-a-mirrored-world).
 
 ---
