@@ -2,6 +2,29 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.39.0
+
+Schema-aware lifecycle writes (ZTB-23): the basic CLI write path now speaks the active
+preset's vocabulary at write time instead of letting `ztrack check` discover the damage later.
+
+- **`issue create --state` / `issue edit --state` validate against the active preset's status
+  enum at write time.** An unknown value (e.g. `in_progress` instead of `in-progress`) now fails
+  with exit 1, the preset's full status vocabulary, and a did-you-mean suggestion — nothing is
+  written. Validation only engages when a preset with a status enum is loadable; repos without a
+  validation entrypoint keep the previous permissive behavior.
+- **`issue close --reason <unrecognized>` fails loud.** Unknown reasons used to fall through to
+  the completed path silently; now they exit 1 listing the accepted values (`completed`,
+  `canceled`) with no store mutation.
+- **`issue_missing_assignee` fix hints are source-aware** (simple-sdlc and simple-gh-sdlc
+  presets). For document-sourced issues the hint now points at the `assignee:` header line in
+  the source file instead of suggesting `issue edit --assignee`, which does not work on document
+  sources. Installed preset copies pick this up via `ztrack preset upgrade`.
+- **Silently discarded header blocks now get a diagnostic on multi-issue documents.** A header
+  line (e.g. `assignee: me`) glued to prose with no blank-line terminator used to be dropped
+  without a trace, leaving only a puzzling `issue_missing_assignee`; the multi-issue document
+  scan now emits `loose_header_ignored` naming the file and the offending line, matching the
+  single-file path. Warning-only: it never flips a green `check` red.
+
 ## 0.38.1
 
 A fast patch for two shipped features that failed ztrack's own validation, found by a
