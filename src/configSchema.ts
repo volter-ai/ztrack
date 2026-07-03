@@ -58,12 +58,20 @@ const GrammarSchema = z.object({
   slotAliases: z.record(z.string(), z.array(z.string())).optional(),
 }).strict();
 
+// Per-rule severity override for `ztrack check`'s findings (lint.ts:5-6 documents this knob,
+// lint.ts:92 reads it). `rules` keys are arbitrary rule names/codes — not enumerable here, so
+// KNOWN_KEYS below deliberately does not list them (see the 'organization.lint' entry).
+const LintSchema = z.object({
+  rules: z.record(z.string(), z.enum(['warn', 'error', 'off'])).optional(),
+}).strict();
+
 const OrganizationSchema = z.object({
   validationPreset: z.string().optional(),
   externalBrowseUrls: z.record(z.string(), z.string()).optional(),
   caseTypeLabels: z.array(z.string()).optional(),
   grammar: GrammarSchema.optional(),
   check: CheckSchema.optional(),
+  lint: LintSchema.optional(),
 }).strict();
 
 // `backend` is intentionally loose (any string, not the `TrackerBackendName` enum): loadTrackerConfig
@@ -93,10 +101,13 @@ const KNOWN_KEYS: Record<string, string[]> = {
   sync: ['provider', 'repo', 'policy'],
   evidence: ['store', 'dir'],
   validation: ['entrypoint', 'installedFrom'],
-  organization: ['validationPreset', 'externalBrowseUrls', 'caseTypeLabels', 'grammar', 'check'],
+  organization: ['validationPreset', 'externalBrowseUrls', 'caseTypeLabels', 'grammar', 'check', 'lint'],
   'organization.grammar': ['extends', 'slotAliases'],
   'organization.check': ['categories', 'profiles', 'verify'],
   'organization.check.verify[]': ['matchTypes', 'matchLabels', 'inspect', 'categories'],
+  // `rules`' own keys are arbitrary rule names, not an enumerable set — no "did you mean"
+  // suggestion is offered for a typo'd rule name, only for a typo'd key of `lint` itself.
+  'organization.lint': ['rules'],
 };
 
 function pathTemplate(path: ReadonlyArray<PropertyKey>): string {

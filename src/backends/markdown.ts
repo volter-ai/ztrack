@@ -110,8 +110,16 @@ export function parseIssue(md: string): CanonicalIssue {
   if (cIdx >= 0) { const cm = /<!--tracker:comments\r?\n([\s\S]*?)\r?\n-->/.exec(rest.slice(cIdx)); if (cm) { try { comments = JSON.parse(cm[1]!); } catch { comments = []; } } }
   const sA = (k: string): string => (typeof fm[k] === 'string' ? (fm[k] as string) : '');
   const arr = (k: string): string[] => (Array.isArray(fm[k]) ? (fm[k] as string[]) : []);
+  // Legacy healing (ZTB-22 dev/01): `issue close` on ztrack <=0.38.0 wrote Title-case
+  // `state: 'Done'`/`state: 'Canceled'`, which no shipped preset's (lowercase) status enum
+  // accepts — so every issue closed under the old code fails `wellformed_shape` forever. Heal
+  // ONLY these two exact legacy strings back to the lowercase 'done' new `close` now writes.
+  // `stateType` is left untouched — it was already correct ('completed'/'canceled') and is not
+  // part of this bug. Any other value (a custom preset's own vocabulary, e.g. "In Review")
+  // passes through completely untouched; this is not a general case-folder.
+  const healLegacyState = (s: string): string => (s === 'Done' || s === 'Canceled' ? s.toLowerCase() : s);
   return {
-    identifier: sA('identifier'), title: sA('title'), body, state: sA('state'), stateType: sA('stateType'),
+    identifier: sA('identifier'), title: sA('title'), body, state: healLegacyState(sA('state')), stateType: sA('stateType'),
     assignees: arr('assignees'), labels: arr('labels'),
     project: (fm.project as string | null) ?? null, parent: (fm.parent as string | null) ?? null, children: arr('children'),
     branchName: sA('branchName'), priority: typeof fm.priority === 'number' ? fm.priority : 0,
