@@ -7,8 +7,12 @@
 // all edits, re-exports and re-runs the rulebook, and — if validation got
 // WORSE (new error findings vs the pre-state baseline) — reverts every
 // write by compensation and reports the would-be findings. "Atomic" is
-// therefore net-zero at the record level; the audit log retains the
-// attempt+revert pair by design (an attempted tx is auditable history).
+// therefore net-zero at the record level. This module does NOT touch the audit
+// log (core/audit.ts) — that log is only ever written by the visualizer server
+// today (see audit.ts's top comment for why CLI paths, including this one, aren't
+// wired to it), so an attempted-then-reverted tx leaves no `.audit.jsonl` trace;
+// its only record is whatever the backend's own history (e.g. git, if the store
+// is committed) retains.
 import { createHash } from 'node:crypto';
 import { checkTracker } from './check.ts';
 import { loadTrackerConfig } from './config.ts';
