@@ -157,6 +157,69 @@ export function blockStatuses(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
   return out;
 }
 
+/** Per node, the NEAREST unmet upstream node(s) — the first unmet hop along each edge out of
+ *  the node, as opposed to `blockStatuses`' full transitive closure. Walks the same graph: from
+ *  each direct dependency, an UNSATISFIED one is reported and the walk stops there (no point
+ *  naming what's behind an already-named wall); a SATISFIED one is transparent — the walk
+ *  continues through it, since a satisfied node can still sit in front of unmet work further
+ *  upstream (e.g. it was completed out of order — a `completionViolations` case — or it simply
+ *  has no bearing on its own upstream once done). Cycle-safe (each node visited once per walk,
+ *  same as blockStatuses). This is the "which blocker, and its status" view a stalled dispatch
+ *  wave is diagnosed from — `blockStatuses` alone only says THAT something is blocked. */
+export function nearestBlockers(root: CoreRoot, opts: BlockingOpts = {}): Map<string, BlockRef[]> {
+  const nodes = nodeIndex(root);
+  const deps = dependencyGraph(root, { containment: false });
+  const out = new Map<string, BlockRef[]>();
+  for (const startKey of nodes.keys()) {
+    const nearestKeys: string[] = [];
+    const seen = new Set<string>([startKey]);
+    const walk = (k: string) => {
+      for (const dep of deps.get(k) ?? []) {
+        if (seen.has(dep)) continue;
+        seen.add(dep);
+        if (!nodeSatisfied(nodes.get(dep)!, opts)) nearestKeys.push(dep); // wall — stop here
+        else walk(dep); // transparent — keep looking upstream through it
+      }
+    };
+    walk(startKey);
+    out.set(startKey, nearestKeys.map((k) => nodeRef(nodes.get(k)!)));
+  }
+  return out;
+}
+
+/** The issue-level "dispatch frontier" view (ZTB-30): per issue, whether it can be worked on
+ *  RIGHT NOW, and if not, the nearest external blocker(s) holding it up. Two things feed
+ *  "blocked" here, deliberately more than `blockStatuses(root).get(issue.id)` alone:
+ *   1. the issue's OWN issue-level relations (`blocked-by`/`blocks` lines) — exactly what
+ *      `blockStatuses`/`nearestBlockers` already compute for the issue's node key.
+ *   2. any of the issue's OWN acceptance criteria blocked on work OUTSIDE the issue (an AC's
+ *      `blocked-by` naming another issue, or a specific AC of another issue). From a dispatch
+ *      standpoint a subagent assigned to this issue hits that wall the moment it reaches that
+ *      AC, so the issue isn't really actionable yet either — even though issue-level
+ *      `blockStatuses` (containment-free by design) doesn't see it, since that's an edge OFF an
+ *      AC node, not off the issue node.
+ *  An AC blocked on ANOTHER AC of the SAME issue is explicitly NOT external — that's ordinary
+ *  in-issue sequencing (do the other AC first, in the same session), not something outside the
+ *  issue holding it up, so it's excluded — the same "not blocked by its own open ACs" spirit
+ *  `blockStatuses` already applies at the issue level. */
+export function issueFrontier(root: CoreRoot, opts: BlockingOpts = {}): Map<string, NodeBlockStatus> {
+  const nearest = nearestBlockers(root, opts);
+  const out = new Map<string, NodeBlockStatus>();
+  for (const issue of root.issues) {
+    const direct = nearest.get(issue.id) ?? [];
+    const acExternal = issue.acceptanceCriteria.flatMap((ac) =>
+      (nearest.get(formatRef({ issue: issue.id, ac: ac.id })) ?? []).filter((b) => b.issue !== issue.id));
+    const seen = new Set<string>();
+    const blockers: BlockRef[] = [];
+    for (const b of [...direct, ...acExternal]) {
+      const k = refKey(b);
+      if (!seen.has(k)) { seen.add(k); blockers.push(b); }
+    }
+    out.set(issue.id, { blocked: blockers.length > 0, blockers });
+  }
+  return out;
+}
+
 export interface GateViolation { node: BlockNode; dep: BlockNode }
 
 /** Out-of-order completions: a satisfied node that directly depends on an unsatisfied

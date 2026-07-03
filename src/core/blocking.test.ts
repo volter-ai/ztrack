@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   blockCycles, blockStatuses, blockerRefProblems, completionViolations, dependencyGraph,
-  nodeIndex, nodeSatisfied, normalizeBlockRefs, parseBlockToken,
+  issueFrontier, nearestBlockers, nodeIndex, nodeSatisfied, normalizeBlockRefs, parseBlockToken,
 } from './blocking.ts';
 import { formatRef } from './ref.ts';
 import type { CoreAC, CoreIssue, CoreRoot, Relation } from './engine.ts';
@@ -105,6 +105,60 @@ describe('transitive blocked status', () => {
       issue('B', [ac('9', 'passed')]),
     );
     expect(blockStatuses(r).get('A:1')!.blocked).toBe(false);
+  });
+});
+
+describe('nearestBlockers (ZTB-30 dev/02): the first unmet hop, not the whole closure', () => {
+  test('a diamond (A blocks B and C, B+C block D): D\'s nearest is {B, C}, NOT the transitive A', () => {
+    const r = root(
+      issue('A', [ac('1', 'pending')]),
+      issue('B', [ac('1', 'pending')], [{ type: 'blocked-by', issueId: 'A' }]),
+      issue('C', [ac('1', 'pending')], [{ type: 'blocked-by', issueId: 'A' }]),
+      issue('D', [ac('1', 'pending')], [{ type: 'blocked-by', issueId: 'B' }, { type: 'blocked-by', issueId: 'C' }]),
+    );
+    // blockStatuses' FULL closure for D includes A too (transitive) — nearestBlockers must not.
+    expect(blockStatuses(r).get('D')!.blockers.map(formatRef).sort()).toEqual(['A', 'B', 'C']);
+    expect(nearestBlockers(r).get('D')!.map(formatRef).sort()).toEqual(['B', 'C']);
+    expect(nearestBlockers(r).get('B')!.map(formatRef)).toEqual(['A']);
+    expect(nearestBlockers(r).get('C')!.map(formatRef)).toEqual(['A']);
+  });
+
+  test('a satisfied intermediate node is transparent: the walk continues through it to the real wall', () => {
+    // X depends on Y; Y depends on Z. Y itself is done (all its ACs passed) even though its own
+    // blocker Z is not — an out-of-order state (a `completionViolations` case), but nearestBlockers
+    // must still degrade honestly and keep walking through the satisfied Y to find Z.
+    const r = root(
+      issue('X', [ac('1', 'pending')], [{ type: 'blocked-by', issueId: 'Y' }]),
+      issue('Y', [ac('1', 'passed')], [{ type: 'blocked-by', issueId: 'Z' }]),
+      issue('Z', [ac('1', 'pending')]),
+    );
+    expect(nearestBlockers(r).get('X')!.map(formatRef)).toEqual(['Z']);
+  });
+});
+
+describe('issueFrontier (ZTB-30 dev/01+dev/02): the dispatch frontier + nearest blocker per issue', () => {
+  test('cross-level: an issue with no issue-level relations is still blocked when its OWN AC depends on an external unmet AC', () => {
+    const r = root(
+      issue('A', [ac('1', 'pending')]),
+      issue('E', [ac('1', 'pending', { blockedBy: [{ issue: 'A', ac: '1' }] })]),
+    );
+    const fr = issueFrontier(r);
+    expect(fr.get('E')).toEqual({ blocked: true, blockers: [{ issue: 'A', ac: '1' }] });
+  });
+
+  test('an AC blocked on ANOTHER AC of the SAME issue is in-issue sequencing, not external — not blocked', () => {
+    const r = root(issue('A', [
+      ac('1', 'pending', { blockedBy: [{ issue: 'A', ac: '2' }] }),
+      ac('2', 'pending'),
+    ]));
+    expect(issueFrontier(r).get('A')).toEqual({ blocked: false, blockers: [] });
+  });
+
+  test('no relations anywhere: every not-done issue is on the frontier (unblocked)', () => {
+    const r = root(issue('A', [ac('1', 'pending')]), issue('B', [ac('1', 'pending')]));
+    const fr = issueFrontier(r);
+    expect(fr.get('A')).toEqual({ blocked: false, blockers: [] });
+    expect(fr.get('B')).toEqual({ blocked: false, blockers: [] });
   });
 });
 
