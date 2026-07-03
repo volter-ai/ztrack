@@ -111,6 +111,9 @@ describe('decomposeSection: prefixRaw + middle + suffixBlanks reproduces `raw` b
     expect(d.header).toBeNull();
     expect(d.prefixRaw).toBe('## DOC-4 — Delta item\n');
     expect(d.middle).toBe('status: pending\ntitle: not allowed here\n\nDelta body.\n');
+    // ZTB-23 dev/04: a field (status:) WAS matched before the abort — distinguishable from "no
+    // header block at all" (the next test) via `discardedHeaderLine`, so a caller can diagnose it.
+    expect(d.discardedHeaderLine).toBe('title: not allowed here');
   });
 
   test('an aborted header block (a non-header-shaped line right after the heading) consumes nothing', () => {
@@ -119,6 +122,17 @@ describe('decomposeSection: prefixRaw + middle + suffixBlanks reproduces `raw` b
     const d = decomposeSection(raw);
     expect(d.header).toBeNull();
     expect(d.middle).toBe('Just a sentence, not a header line.\n\nMore body.\n');
+    // nothing was ever matched — not a "discarded" header, just never one to begin with.
+    expect(d.discardedHeaderLine).toBeUndefined();
+  });
+
+  test('ZTB-23 dev/04: `assignee: me` immediately followed by prose (no blank-line terminator) is discarded — reported via discardedHeaderLine', () => {
+    const raw = '## DOC-9 — Zeta item\nassignee: me\nProse starts right away, no blank line first.\n\nMore body.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull(); // the assignee is lost from `header` — silently, absent this diagnostic
+    expect(d.discardedHeaderLine).toBe('Prose starts right away, no blank line first.');
+    expect(d.middle).toContain('assignee: me');
   });
 
   test('a section with heading only, nothing else (no trailing newline)', () => {

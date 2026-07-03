@@ -799,3 +799,74 @@ describe('document source write-back (ZTB-15 dev/36): prose INSIDE the AC sectio
     expect(view.body).toContain('- [x] AC-1 v1 sibling criterion');
   });
 });
+
+// ZTB-23 dev/03 + dev/04, through the real CLI on the MULTI-issue document scan path.
+describe('document source (ZTB-23): missing-assignee fix hint + silently-discarded header diagnostic', () => {
+  let zRoot = '';
+  let zRootReal = '';
+  const zDocPath = () => join(zRootReal, 'backlog.md');
+
+  // ZDOC-1: cleanly missing an assignee — no header block was ever attempted (no `assignee:`
+  // line at all). ZDOC-2: an `assignee:` line IS present, but a non-blank, non-header-shaped
+  // line follows immediately (no blank-line terminator) — dev/04's repro: the whole header block
+  // is silently discarded (documentWriteBack.ts's `decomposeSection` aborts), so ZDOC-2 ALSO ends
+  // up with no assignee, but for a different, previously-invisible reason.
+  const ZDOC = [
+    '# Team backlog (no `Title:` header — no umbrella issue)',
+    '',
+    '## ZDOC-1 — Cleanly missing an assignee',
+    '',
+    '### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 first criterion',
+    '  - status: pending',
+    '',
+    '## ZDOC-2 — Assignee header silently discarded (no blank line before the prose)',
+    '',
+    'assignee: me',
+    'Prose starts right away, no blank line before it.',
+    '',
+    '### Acceptance Criteria',
+    '',
+    '- [ ] AC-1 v1 second criterion',
+    '  - status: pending',
+    '',
+  ].join('\n');
+
+  beforeAll(() => {
+    zRoot = mkdtempSync(join(tmpdir(), 'ztrk-docsrc-hdr-'));
+    zRootReal = realpathSync(zRoot);
+    mkdirSync(join(zRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(zRoot, 'node_modules', 'ztrack'));
+    gitIn(zRoot, 'init', '-q'); gitIn(zRoot, 'config', 'user.email', 't@t.co'); gitIn(zRoot, 'config', 'user.name', 't');
+    expect(ztIn(zRoot, 'init', '--team', 'APP').code).toBe(0);
+    writeFileSync(zDocPath(), ZDOC);
+    setSources(zRoot, [{ path: '.volter/tracker/markdown' }, { path: 'backlog.md', format: 'document' }]);
+    gitIn(zRoot, 'add', '-A'); gitIn(zRoot, 'commit', '-q', '-m', 'seed');
+  }, 60_000);
+  afterAll(() => { if (zRoot) rmSync(zRoot, { recursive: true, force: true }); });
+
+  type CheckPayload = { ok: boolean; findings: Array<{ code: string; issueId?: string; message: string; fix?: string }> };
+
+  test('dev/03: `issue_missing_assignee`\'s fix hint on a document-sourced issue points at the file\'s `assignee:` header line, not `issue edit --assignee`', () => {
+    const payload = JSON.parse(ztIn(zRoot, 'check', '--json').out) as CheckPayload;
+    for (const id of ['ZDOC-1', 'ZDOC-2']) {
+      const f = payload.findings.find((x) => x.code === 'issue_missing_assignee' && x.issueId === id);
+      expect(f).toBeDefined();
+      expect(f!.fix).toContain('assignee:');
+      expect(f!.fix).toContain('backlog.md');
+      expect(f!.fix).not.toMatch(/issue edit \S+ --assignee <you>/);
+    }
+  });
+
+  test('dev/04: ZDOC-2\'s silently-discarded header block is reported (`loose_header_ignored`), naming the offending prose line', () => {
+    const payload = JSON.parse(ztIn(zRoot, 'check', '--json').out) as CheckPayload;
+    const diag = payload.findings.find((x) => x.code === 'loose_header_ignored' && x.issueId === 'ZDOC-2');
+    expect(diag).toBeDefined();
+    expect(diag!.message).toContain('Prose starts right away, no blank line before it.');
+    expect(diag!.message).toContain('backlog.md');
+    // ZDOC-1 never had a header block to begin with — it must NOT get this diagnostic (only a
+    // genuinely-discarded block does; a plainly-missing one is just `issue_missing_assignee`).
+    expect(payload.findings.some((x) => x.code === 'loose_header_ignored' && x.issueId === 'ZDOC-1')).toBe(false);
+  });
+});

@@ -8,6 +8,7 @@ import { resolveTrackerValidation } from './presetRegistry.ts';
 import { buildContext, loadValidationInput } from './core/loader.ts';
 import { check, checkRoot, type CheckResult, type Context, type CoreRoot, type Finding, type IssueRecord } from './core/engine.ts';
 import { conflictFindings } from './sync/conflicts.ts';
+import { documentHeaderFindings } from './documentDiagnostics.ts';
 import type { RuleCategory } from './checkRules.ts';
 
 export type TrackerCheckOptions = {
@@ -48,8 +49,12 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   const result = check(preset, records, context);
   // Cross-cutting sync conflicts gate the check (until resolved), scoped to the checked issues.
   const conflicts = conflictFindings(projectRoot, new Set((result.export?.issues ?? []).map((i) => i.id)));
-  if (!conflicts.length) return result;
-  const findings = [...result.findings, ...conflicts];
+  // Cross-cutting document-source header diagnostics (ZTB-23 dev/04): warnings, never gate —
+  // same "read directly off disk, merged in" shape as conflicts above.
+  const headerFindings = documentHeaderFindings(projectRoot, config);
+  const extra = [...conflicts, ...headerFindings];
+  if (!extra.length) return result;
+  const findings = [...result.findings, ...extra];
   return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings };
 }
 

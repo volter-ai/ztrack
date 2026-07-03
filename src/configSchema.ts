@@ -129,7 +129,10 @@ function levenshtein(a: string, b: string): number {
   return dp[a.length]![b.length]!;
 }
 
-function nearestKey(key: string, candidates: string[]): string | undefined {
+// Exported: ZTB-23 reuses this generic "did you mean" mechanism for write-time `--state`
+// validation against a preset's status enum (src/presetRegistry.ts) — same shape of problem (a
+// typo'd token against a small known set), no reason to re-derive the edit-distance logic twice.
+export function nearestKey(key: string, candidates: string[]): string | undefined {
   let best: string | undefined;
   let bestDist = Infinity;
   for (const candidate of candidates) {
