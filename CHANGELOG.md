@@ -4,6 +4,20 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+`ztrack` now installs lean by default — the GitHub sync packages are optional (#13).
+
+- **`@volter-ai-dev/twin` and `@volter-ai-dev/twin-github` moved from `dependencies` to optional
+  peer dependencies.** A plain `npm i -D ztrack` drops from ~25M/65 packages (with stray
+  `volter-twin`/`world-github` bins and a react/react-dom tree) to ~15M/60 packages with only the
+  `ztrack` bin. `ztrack sync github` now lazy-loads the peers and fails fast with an install hint
+  (`npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github`) when they're missing; every
+  other command is unaffected. When the peers ARE installed but the CLI runs under plain
+  Node/npx, a distinct message explains that `@volter-ai-dev/twin-github` ships TypeScript-only
+  source Node can't load from `node_modules`, and to run under bun instead — re-running
+  `npm install` wouldn't fix that one. The `ztrack/world-annotations` and
+  `ztrack/world-source-books` subpaths still require the `@volter-ai-dev/twin` peer, as their
+  docs already stated.
+
 Five honesty fixes to ztrack's own error/summary surfaces (check/sync/backend), so what ztrack
 tells you never contradicts what it actually did.
 
