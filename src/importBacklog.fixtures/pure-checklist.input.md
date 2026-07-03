@@ -1,0 +1,5 @@
+- [ ] Build login page
+  - [ ] Add form validation
+  - [x] Add tests
+- [ ] Build logout page
+  - [ ] Add a logout button
