@@ -39,10 +39,14 @@ function rewriteDeclarations(dir) {
 }
 rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 
-// twin (@volter-ai-dev/twin*) is a regular dependency and is bundled into the CLI on purpose, so
-// `ztrack sync github` works from a plain install with no extra step. (A prior `--external=@volter/twin`
-// flag was a no-op typo — wrong scope name — and is intentionally gone.)
-const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--outfile=dist/cli.js'], {
+// twin (@volter-ai-dev/twin*) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
+// ztrack` must not pull in its transitive tree (react/react-dom) or its stray
+// `volter-twin`/`world-github` bins. `sync.ts` only ever reaches it through a lazy `import()`
+// (twinRuntime.ts) — `--external` here keeps that import() a real, unresolved-until-runtime
+// module load in dist/cli.js instead of bun inlining the packages into the bundle, so an install
+// without the peers stays lean and `ztrack sync github` fails with an install hint instead of a
+// module-not-found buried inside a bundled blob.
+const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter-ai-dev/twin', '--external=@volter-ai-dev/twin-github', '--outfile=dist/cli.js'], {
   cwd: packageRoot,
   encoding: 'utf8',
 });
