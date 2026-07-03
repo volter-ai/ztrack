@@ -145,6 +145,27 @@ then reattach (`issue edit <child> --parent <id>`) if you need to force a backfi
 --parent <id>` is unaffected either way — it filters by the `parent` pointer directly and never reads
 `children`.
 
+### Importing a freeform backlog
+
+Real backlogs are rarely written in the strict grammar above — they're headings, prose, and
+checkboxes with no id tokens, which parses to zero issues today, silently. `ztrack import
+<path-or-glob>...` materializes that freeform markdown into the grammar **in place, idempotently**:
+
+```bash
+ztrack import notes/backlog.md --dry-run   # preview the planned issue tree + diff; writes nothing
+ztrack import notes/backlog.md             # materialize
+ztrack import notes/ --register            # a directory (recursive) or a quoted glob, each file
+                                            # its own document source; --register declares the
+                                            # result(s) in tracker-config.json's `sources`
+```
+
+Re-running it is always safe: an already-canonical file is a no-op, and re-importing after
+appending new freeform content touches only the new bytes. A pre-checked `- [x]` item imports
+UNCHECKED with a preserved-claim marker (`(imported: previously marked done — needs evidence)`) —
+closing it for real is a normal `ztrack ac patch` citing the actual commit. Full grammar mapping,
+the `[x]` policy, and the idempotence contract:
+[Sources → Importing a freeform backlog](SOURCES.md#importing-a-freeform-backlog).
+
 ## 3. Usage: drive an agent to green
 
 This is the **recommended development flow**. `ztrack loop start <issue>` arms a *ralph loop* whose

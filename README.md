@@ -306,6 +306,13 @@ every other byte in `PLAN.md` is untouched. State, assignee, and anything wider 
 still fail closed, naming the file to edit directly instead. Grammar, the write model, and
 diagnostics: [Sources](docs/SOURCES.md).
 
+Already have a messier backlog — headings, prose, checkboxes, no id tokens? `ztrack import` (accepts
+a file, a directory, or a quoted glob) materializes it into that same grammar **in place**,
+idempotently: `ztrack import notes/backlog.md --dry-run` previews the plan, plain `ztrack import`
+writes it, `--register` declares the result as a source. Pre-checked `[x]` items import unchecked
+with a preserved-claim marker (a checked-but-unproven claim is exactly what `check` rejects) — see
+[Sources → Importing a freeform backlog](docs/SOURCES.md#importing-a-freeform-backlog).
+
 ## Agent workflows
 
 ztrack is built to be an AI agent's **completion oracle** — three ways to wire it, smallest to most

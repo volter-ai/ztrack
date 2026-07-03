@@ -31,10 +31,11 @@ ${helpSection('bottom', 'Data', [
     [`${command} lint [--fail-on-warn]`, 'flag weak claims'],
     [`${command} sync github --repo o/n`, 'two-way sync issues with GitHub'],
     [`${command} visualizer [--preset p] [--port n]`, 'open the web visualizer'],
+    [`${command} import <path-or-glob>... [--dry-run]`, 'materialize a freeform backlog in place'],
   ])}
 
 ${ui.bold('Resources')}
-  init, migrate-local, issue, project, search, view, api, check, export
+  init, migrate-local, issue, project, search, view, api, check, export, import
   fmt, lint, tx, evidence, ac, mcp, sync, visualizer, loop, waiver, preset, completions
 
 ${ui.dim(`Shell completion:  source <(${command} completions bash)   # or zsh`)}

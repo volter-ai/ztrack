@@ -4,6 +4,26 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **New: `ztrack import <path-or-glob>...` materializes a freeform backlog into a native document
+  source, in place, idempotently.** Today, a plan/backlog file written as mixed markdown (headings,
+  prose, checkboxes, no id tokens) parses to ZERO issues, silently — there's no minting anywhere,
+  and write-back needs an id-bearing heading's span to splice into. `ztrack import` is a separate
+  front door that materializes such a file (or a directory/quoted-glob batch of them, each its own
+  document source) into the strict grammar: a heading without an id gets one minted; `- [ ]`/`* [ ]`
+  checkboxes and `TODO:` lines outside a recognized `Acceptance Criteria` section are promoted into
+  one with minted `dev/NN v1` ids; a headingless pure-checklist file promotes its top-level items to
+  issues and their nested checkboxes to ACs. Id numbering is collision-safe across every configured
+  source (and, for a multi-file batch, a single pass across the whole batch). A pre-checked `[x]`
+  item ALWAYS imports unchecked, with the original claim preserved by an
+  `(imported: previously marked done — needs evidence)` marker and a printed report — ztrack never
+  mints `checked: true` or fabricates evidence. The writer is insert-only and idempotent: import
+  twice is byte-identical to import once, importing after freeform edits touches only the new
+  content, and existing ids are never altered or renumbered. `--dry-run` previews the plan/diff and
+  writes nothing; `--prefix` overrides id inference; `--register` (opt-in) appends the resulting
+  `sources` entries to `tracker-config.json` — never mutates config unasked, and never duplicates an
+  already-declared source. CRLF input is rejected with a clear error, matching document-source
+  write-back's own LF-only constraint. See
+  [Sources → Importing a freeform backlog](docs/SOURCES.md#importing-a-freeform-backlog).
 - **`simple-sdlc`/`simple-gh-sdlc`: prose inside a recognized `## Acceptance Criteria` section is
   no longer silently invisible.** ZTB-1 made a checkbox item OUTSIDE the section loud
   (`ac_outside_section`); the section's own interior had no matching guard — a bare paragraph, a

@@ -24,6 +24,7 @@ import { optionValue } from './cliArgs.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
+import { handleImportCommand } from './cliImport.ts';
 import { handleCompletionsCommand } from './cliCompletions.ts';
 import { handleWaiverCommand } from './cliWaiver.ts';
 import { handleLoopCommand } from './cliLoop.ts';
@@ -149,6 +150,8 @@ async function main(): Promise<void> {
   if (await handleLoopCommand(args)) return;
 
   if (await handleWaiverCommand(args)) return;
+
+  if (await handleImportCommand(args)) return;
 
   if (args[0] === 'issue' && args[1] === 'scaffold') {
     const title = optionValue(args, '--title') || 'New case';
