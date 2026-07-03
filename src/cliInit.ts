@@ -1,10 +1,35 @@
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { initTrackerPresets, initTrackerProject, presetManifest } from './presetCatalog.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
 import { commandName } from './cliHelp.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 import * as githubSync from './sync/github/index.ts';
+
+// The installed preset (.volter/tracker/validation/preset.mts) imports `ztrack/preset-kit` — a
+// bare specifier resolved (via ESM `import()`, in presetRegistry.ts) by walking up `node_modules`
+// directories from the project root, same as presetRegistry.ts's `Cannot find package 'ztrack'`
+// translation at check time. A one-off `npx ztrack init` never adds `ztrack` as a project
+// dependency, so `check` fails later with no warning at init time that would have explained why.
+// Deliberately NOT `require.resolve`/`createRequire` here: that CJS resolver also falls back to
+// Node's legacy global folders (e.g. a homebrew/npm global `ztrack` install), which would silently
+// mask exactly the bare-npx case this warning exists to catch — the actual failure is an ESM
+// `import()` of a bare specifier, which never consults those global folders. Warn here, at the
+// point the project is created, instead of letting the user discover it cold on their first `check`.
+function ztrackResolvableFrom(root: string): boolean {
+  let dir = resolve(root);
+  for (;;) {
+    if (existsSync(join(dir, 'node_modules', 'ztrack'))) return true;
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+function unresolvableZtrackWarning(): string {
+  return `${statusMark('warn')} ${ui.yellow("'ztrack' isn't resolvable as a project dependency here")} ${ui.dim('— the installed preset imports \'ztrack/preset-kit\', so `ztrack check` will fail until you run `npm install -D ztrack` (a one-off `npx` install is not enough; see README Setup).')}`;
+}
 
 /** `ztrack init` — scaffolds the per-project tracker: writes the config, installs the chosen
  *  validation preset (default = the recommended baseline), and optionally links an external tracker
@@ -48,6 +73,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}), board });
   if (result.alreadyInitialized) {
     process.stdout.write(`${statusMark('pass')} ${ui.green('Already initialized')} ${ui.dim(result.configPath)}\n`);
+    if (!ztrackResolvableFrom(root)) process.stdout.write(`${unresolvableZtrackWarning()}\n`);
     return true;
   }
   // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
@@ -95,6 +121,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
     ui.dim('Edit the installed validation preset to encode your project rules.'),
     ui.dim('Declare more stores in .volter/tracker-config.json\'s `sources` array — a "document" source is one markdown file holding many issues.'),
+    ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
     '',
   ].join('\n'));
   return true;
