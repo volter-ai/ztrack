@@ -191,9 +191,12 @@ to see the shape), then re-serializes through the preset — e.g. \`{"checked":t
   if (resource === 'lint') {
     process.stdout.write(`Usage: ${command} lint [--issues a,b] [--json] [--fail-on-warn]
 
-Flags weak or unverifiable CLAIMS in issue bodies (a soft style lint). This is advisory;
-\`${command} check\` is the hard gate that fails on missing evidence. --fail-on-warn exits
-nonzero on any finding.
+A soft style lint over issue bodies: TODO/FIXME/TBD markers, unfilled template tokens, an
+unchecked AC still carrying a Commit: claim, and \`weak_claim\` — assertive verification
+phrasing ("works perfectly", "fully verified", ...) not accompanied by a cited evidence ref.
+weak_claim reads prose, not truth: it flags wording, never confirms or disputes the claim
+itself. Always ends with a summary line, pass or fail. This is advisory; \`${command} check\`
+is the hard gate that fails on missing evidence. --fail-on-warn exits nonzero on any finding.
 `);
     return true;
   }
