@@ -292,13 +292,55 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     expect(afterLines[changedIdx[0]!]).toBe('## DOC-1 — Renamed item');
   });
 
-  test('5. fail-closed: `issue edit DOC-1 --state done` is rejected, file byte-identical, message names the file and the status: header line', () => {
+  // ZTB-16 dev/03: `issue edit --state` on a document-source issue used to fail closed
+  // unconditionally ("splicing a status change is not implemented"). It now splices the item's
+  // `status:` header line — the exact same byte-diff invariant as the AC/title splices above.
+  test('5. `issue edit DOC-1 --state done` splices the `status:` header line — the ONLY changed line in the file is that one', () => {
     const before = readFileSync(wbDocPath(), 'utf8');
     const result = ztIn(wbRoot, 'issue', 'edit', 'DOC-1', '--state', 'done');
-    expect(result.code).not.toBe(0);
-    expect(result.out).toContain(wbDocPath());
-    expect(result.out).toContain('status:');
-    expect(readFileSync(wbDocPath(), 'utf8')).toBe(before);
+    expect(result.code).toBe(0);
+    const after = readFileSync(wbDocPath(), 'utf8');
+    const beforeLines = before.split('\n');
+    const afterLines = after.split('\n');
+    expect(beforeLines.length).toBe(afterLines.length);
+    const changedIdx = beforeLines.map((l, i) => (l === afterLines[i] ? -1 : i)).filter((i) => i !== -1);
+    expect(changedIdx).toEqual([beforeLines.findIndex((l) => l === 'status: in-progress')]);
+    expect(afterLines[changedIdx[0]!]).toBe('status: done');
+    // `issue view` reflects the new state, in-process.
+    const view = J(ztIn(wbRoot, 'issue', 'view', 'DOC-1', '--json')) as { state: { name: string } };
+    expect(view.state.name).toBe('done');
+    // `ztrack check` still PARSES the doc (findings are a separate, unrelated preset-conformance
+    // concern — DOC-1's AC-2 is still pending, orthogonal to this splice; the point is the doc
+    // isn't corrupted and check can still evaluate it end to end).
+    const checkResult = ztIn(wbRoot, 'check', '--json');
+    const parsed = JSON.parse(checkResult.out) as { summary: { issues: number } };
+    expect(parsed.summary.issues).toBeGreaterThan(0);
+  });
+
+  test('5b. fail-closed: a document item with NO `status:` header line refuses `--state`, names the file/issue, and writes nothing', () => {
+    const noHeaderRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-noheader-'));
+    try {
+      mkdirSync(join(noHeaderRoot, 'node_modules'), { recursive: true });
+      symlinkSync(REPO, join(noHeaderRoot, 'node_modules', 'ztrack'));
+      gitIn(noHeaderRoot, 'init', '-q'); gitIn(noHeaderRoot, 'config', 'user.email', 't@t.co'); gitIn(noHeaderRoot, 'config', 'user.name', 't');
+      expect(ztIn(noHeaderRoot, 'init', '--team', 'APP').code).toBe(0);
+      const noHeaderDoc = [
+        '## DOC-1 — No header block here',
+        '',
+        'Just body text, no `status:`/`assignee:` header lines at all.',
+        '',
+      ].join('\n');
+      writeFileSync(join(noHeaderRoot, 'doc.md'), noHeaderDoc);
+      setSources(noHeaderRoot, [{ path: '.volter/tracker/markdown' }, { path: 'doc.md', format: 'document' }]);
+      const before = readFileSync(join(noHeaderRoot, 'doc.md'), 'utf8');
+      const result = ztIn(noHeaderRoot, 'issue', 'edit', 'DOC-1', '--state', 'in-progress');
+      expect(result.code).not.toBe(0);
+      expect(result.out).toContain(join(noHeaderRoot, 'doc.md'));
+      expect(result.out).toContain('status:');
+      expect(readFileSync(join(noHeaderRoot, 'doc.md'), 'utf8')).toBe(before); // nothing written
+    } finally {
+      rmSync(noHeaderRoot, { recursive: true, force: true });
+    }
   });
 
   test('6. fail-closed: `issue comment DOC-1` is rejected, file byte-identical', () => {

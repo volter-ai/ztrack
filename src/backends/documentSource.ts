@@ -9,25 +9,29 @@
 // `Title:` header, whole-file, no span) is presented exactly as before — never reshaped, never
 // writable.
 //
-// WRITE (`write`): accepts a CanonicalIssue whose only changed fields are `body`/`title` (every
-// other field must be unchanged — status/assignee/labels/project/parent/children/comments have no
-// home in a document's grammar and fail closed, naming the file and the field). Re-reads the file
-// fresh, requires it to still hold the exact bytes last parsed (else "changed since read"),
-// re-shifts the new body back to the file's heading depth, splices the new section text into the
-// recorded span, and — before writing anything — re-parses the CANDIDATE file to prove every
-// OTHER issue is unaffected: a non-ancestor's section must be byte-identical (raw comparison), an
-// ANCESTOR of the target (a section whose recorded span contains the target's — necessarily true
-// for any item nested above a spliced leaf) must have its own post-excision `body`/`title`
-// unchanged instead (its raw legitimately differs, since raw embeds the now-changed nested bytes),
-// and the target itself must re-present to exactly the new body. Any guard failing means NOTHING
-// is written — this legalizes splices on leaf items at ANY nesting depth while an item with
-// id-bearing children (the `parsedBody !== raw` excision gate, above) and the umbrella still fail
-// closed. `delete` still always fails closed (removing a section is a file edit, not a tracker op).
+// WRITE (`write`): accepts a CanonicalIssue whose only changed fields are `body`/`title`/`status`
+// (ZTB-16 dev/03 added `status`; every other field must still be unchanged —
+// assignee/labels/project/parent/children/comments have no home in a document's grammar and fail
+// closed, naming the file and the field). Re-reads the file fresh, requires it to still hold the
+// exact bytes last parsed (else "changed since read"). A state change is spliced FIRST
+// (documentWriteBack.ts's `spliceStatusLine`, rewriting ONLY the item's `status:` header line's
+// value — fails closed if the item has none, never inventing one), then the (possibly
+// status-patched) raw is re-shifted/re-spliced for body/title the same way as before
+// (`spliceSectionText`) — the new status rides along inside the untouched header-block prefix.
+// Before writing anything, re-parses the CANDIDATE file to prove every OTHER issue is unaffected:
+// a non-ancestor's section must be byte-identical (raw comparison), an ANCESTOR of the target (a
+// section whose recorded span contains the target's — necessarily true for any item nested above
+// a spliced leaf) must have its own post-excision `body`/`title` unchanged instead (its raw
+// legitimately differs, since raw embeds the now-changed nested bytes), and the target itself must
+// re-present to exactly the new body AND state. Any guard failing means NOTHING is written — this
+// legalizes splices on leaf items at ANY nesting depth while an item with id-bearing children (the
+// `parsedBody !== raw` excision gate, above) and the umbrella still fail closed. `delete` still
+// always fails closed (removing a section is a file edit, not a tracker op).
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
 import { type CanonicalIssue, stateTypeOf } from './markdown.ts';
 import { parseMarkdownDocumentSource, type DocumentParsedIssue } from '../documentParser.ts';
-import { decomposeSection, shiftHeadings, spliceSectionText } from '../documentWriteBack.ts';
+import { decomposeSection, NoStatusHeaderError, shiftHeadings, spliceSectionText, spliceStatusLine } from '../documentWriteBack.ts';
 import type { ResolvedSource } from '../sources.ts';
 
 // ── fail-closed messages (every one names the source FILE) ─────────────────────────────────────
@@ -55,11 +59,23 @@ function reshapeFailedError(filePath: string, id: string, detail: string): Error
   );
 }
 
-function statusOrAssigneeError(filePath: string, id: string, field: 'status' | 'assignee'): Error {
+// `assignee` has no splice yet (unlike `status`, ZTB-16 dev/03) — still fails closed.
+function assigneeNotImplementedError(filePath: string, id: string): Error {
   return new Error(
-    `the source '${filePath}' is a "document" source; a document item's ${field} lives on its \`${field}:\` header ` +
-    `line inside the file — splicing a ${field} change is not implemented. Edit issue ${id}'s \`${field}:\` line in ` +
-    `'${filePath}' directly.`,
+    `the source '${filePath}' is a "document" source; a document item's assignee lives on its \`assignee:\` header ` +
+    'line inside the file — splicing an assignee change is not implemented. Edit issue ' +
+    `${id}'s \`assignee:\` line in '${filePath}' directly.`,
+  );
+}
+
+// ZTB-16 dev/03: a state change fails closed with THIS error (never inventing a `status:` line)
+// only when the item has no `status:` header line to splice into — status changes are otherwise
+// spliced, see `write()`'s use of `spliceStatusLine`.
+function noStatusHeaderError(filePath: string, id: string): Error {
+  return new Error(
+    `the source '${filePath}' is a "document" source; issue ${id} has no \`status:\` header line to splice a ` +
+    `status change into (write-back never invents one) — add a \`status:\` line under issue ${id}'s heading in ` +
+    `'${filePath}', or edit it directly.`,
   );
 }
 
@@ -249,9 +265,11 @@ export class DocumentSource implements IssueSource {
     if (stored.parsedBody !== stored.raw) throw excisedWriteError(this.location, c.identifier);
     if (stored.reshapeError !== undefined) throw reshapeFailedError(this.location, c.identifier, stored.reshapeError);
 
-    // (a) the writable delta is exactly `body`/`title` — everything else must be unchanged.
-    if (c.state !== stored.issue.state || c.stateType !== stored.issue.stateType) throw statusOrAssigneeError(this.location, c.identifier, 'status');
-    if (!sameStrings(c.assignees, stored.issue.assignees)) throw statusOrAssigneeError(this.location, c.identifier, 'assignee');
+    // (a) the writable delta is exactly `body`/`title`/`status` — everything else must be
+    // unchanged. A state change is spliced into the item's own `status:` header line (ZTB-16
+    // dev/03, below); assignee has no analogous splice yet and still fails closed.
+    const stateChanged = c.state !== stored.issue.state || c.stateType !== stored.issue.stateType;
+    if (!sameStrings(c.assignees, stored.issue.assignees)) throw assigneeNotImplementedError(this.location, c.identifier);
     if (!sameStrings(c.labels, stored.issue.labels)) throw fieldNotStoredError(this.location, c.identifier, 'labels');
     if (c.project !== stored.issue.project) throw fieldNotStoredError(this.location, c.identifier, 'project');
     if (c.parent !== stored.issue.parent) throw fieldNotStoredError(this.location, c.identifier, 'parent');
@@ -269,9 +287,23 @@ export class DocumentSource implements IssueSource {
 
     // (c) build the new section text (heading possibly renamed + shifted new body + byte-preserved
     // prefix/suffix), re-derived from the FRESH raw (identical to `stored.raw`, confirmed above).
+    // ZTB-16 dev/03: a state change is spliced into the FRESH raw FIRST — spliceStatusLine rewrites
+    // only the `status:` header line's value — and the RESULT is what spliceSectionText treats as
+    // its own `freshRaw`; spliceSectionText copies the header block (prefixRaw) through untouched
+    // except for the heading, so the new status rides along automatically. Fails closed (naming
+    // the file/issue) rather than inventing a `status:` line when the item has none.
+    let rawForSplice = freshParsed.raw!;
+    if (stateChanged) {
+      try {
+        rawForSplice = spliceStatusLine(rawForSplice, c.state);
+      } catch (e) {
+        if (e instanceof NoStatusHeaderError) throw noStatusHeaderError(this.location, c.identifier);
+        throw spliceFailedError(this.location, c.identifier, e instanceof Error ? e.message : String(e));
+      }
+    }
     let newSectionText: string;
     try {
-      newSectionText = spliceSectionText(freshParsed.raw!, stored.level, stored.issue.title, c.title, c.body);
+      newSectionText = spliceSectionText(rawForSplice, stored.level, stored.issue.title, c.title, c.body);
     } catch (e) {
       throw spliceFailedError(this.location, c.identifier, e instanceof Error ? e.message : String(e));
     }
@@ -324,8 +356,8 @@ export class DocumentSource implements IssueSource {
     const candidateTarget = candidateById.get(c.identifier);
     if (!candidateTarget) throw integrityFailedError(this.location, `issue ${c.identifier} would no longer exist in the candidate file`);
     const candidateLoaded = buildLoadedIssue(candidateTarget);
-    if (candidateLoaded.reshapeError !== undefined || candidateLoaded.issue.body !== c.body) {
-      throw integrityFailedError(this.location, `re-presenting issue ${c.identifier} after the splice did not reproduce the new body exactly (the heading shift did not invert cleanly)`);
+    if (candidateLoaded.reshapeError !== undefined || candidateLoaded.issue.body !== c.body || candidateLoaded.issue.state !== c.state) {
+      throw integrityFailedError(this.location, `re-presenting issue ${c.identifier} after the splice did not reproduce the new body/status exactly (the heading shift or status splice did not invert cleanly)`);
     }
 
     // (e) write, then refresh the in-memory view so subsequent same-process reads (ac patch's

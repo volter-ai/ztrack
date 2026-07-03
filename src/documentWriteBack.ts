@@ -93,6 +93,10 @@ export interface DecomposedSection {
    *  line is NOT part of this grammar (the heading owns the title) and aborts the block exactly
    *  like any other non-matching line. */
   header: { status?: string; assignee?: string } | null;
+  /** 0-based line index (within `raw.split('\n')`) of each header field's OWN line — lets a
+   *  caller (spliceStatusLine, below) rewrite exactly one field's value without re-deriving the
+   *  header-block scan. Empty when `header` is `null`; a key is present iff `header` has it. */
+  headerLineIndex: { status?: number; assignee?: number };
 }
 
 function toLines(raw: string): { lines: string[]; trailingNewline: boolean } {
@@ -126,20 +130,25 @@ export function decomposeSection(raw: string): DecomposedSection {
   // non-blank line before that aborts the WHOLE block (nothing — not even earlier matched lines —
   // is consumed as header).
   let header: { status?: string; assignee?: string } | null = null;
+  let headerLineIndex: { status?: number; assignee?: number } = {};
   let prefixEnd = skipStart;
   {
     let idx = skipStart;
     const meta: Record<string, string> = {};
+    const metaLines: Record<string, number> = {};
     let aborted = false;
     for (; idx < lines.length; idx++) {
       const line = lines[idx]!;
       if (line.trim() === '') { idx++; break; }
       const m = HEADER_LINE_RE.exec(line.trim());
       if (!m) { aborted = true; break; }
-      meta[m[1]!.toLowerCase()] = m[2]!.trim();
+      const key = m[1]!.toLowerCase();
+      meta[key] = m[2]!.trim();
+      metaLines[key] = idx;
     }
     if (!aborted && Object.keys(meta).length > 0) {
       header = meta;
+      headerLineIndex = metaLines;
       prefixEnd = idx;
     }
   }
@@ -155,7 +164,7 @@ export function decomposeSection(raw: string): DecomposedSection {
   const middle = slice(prefixEnd, suffixStart);
   const suffixBlanks = slice(suffixStart, lines.length);
 
-  return { headingLineRaw, prefixRaw, middle, suffixBlanks, header };
+  return { headingLineRaw, prefixRaw, middle, suffixBlanks, header, headerLineIndex };
 }
 
 // ── spliceSectionText ────────────────────────────────────────────────────────────────────────
@@ -191,4 +200,45 @@ export function spliceSectionText(
   const newPrefixRaw = newHeadingLine + prefixRaw.slice(headingLineRaw.length);
   const shiftedBody = shiftHeadings(newBody, level - 1);
   return newPrefixRaw + shiftedBody + suffixBlanks;
+}
+
+// ── spliceStatusLine ─────────────────────────────────────────────────────────────────────────
+
+/** Thrown by `spliceStatusLine` when the section has no `status:` header line to rewrite. No
+ *  position is invented for a missing header — `decomposeSection` records no insertion point for
+ *  one (see `DecomposedSection.headerLineIndex`, only ever populated for a field that's actually
+ *  present), so a document item with no `status:` line fails this splice closed; the caller
+ *  (documentSource.ts's `write()`) turns this into a fail-closed error naming the file/issue. */
+export class NoStatusHeaderError extends Error {}
+
+const STATUS_VALUE_RE = /^(\s*status\s*:\s*)(.*?)(\s*)$/i;
+
+/** ZTB-16 dev/03: the write-side analogue of `spliceSectionText`, scoped to ONE header field —
+ *  given a FRESHLY re-read section `raw` (same staleness contract as `spliceSectionText`), rewrite
+ *  ONLY the existing `status:` header line's VALUE, leaving every other byte untouched: the rest
+ *  of that same line (key casing, colon spacing, trailing whitespace), the `assignee:` line if
+ *  present, the heading, the body, everything. Composes with `spliceSectionText`: call this FIRST
+ *  on the section's raw text, then feed the result in as `spliceSectionText`'s `freshRaw` — the
+ *  updated status line rides along inside `prefixRaw`, which `spliceSectionText` otherwise copies
+ *  verbatim. */
+export function spliceStatusLine(raw: string, newStatus: string): string {
+  const decomposed = decomposeSection(raw);
+  const lineIndex = decomposed.headerLineIndex.status;
+  if (!decomposed.header || lineIndex === undefined) {
+    throw new NoStatusHeaderError(
+      `spliceStatusLine: no \`status:\` header line found to splice (decomposeSection found ` +
+      `${decomposed.header ? 'a header block, but with no status field in it' : 'no header block at all'}).`,
+    );
+  }
+  const { lines, trailingNewline } = toLines(raw);
+  const line = lines[lineIndex]!;
+  const m = STATUS_VALUE_RE.exec(line);
+  if (!m) {
+    // Defensive/unreachable in practice: decomposeSection classified this exact line as the
+    // status field via the SAME grammar (HEADER_LINE_RE on the trimmed line), so it always
+    // matches here too. Fail closed rather than silently no-op if that ever drifts.
+    throw new NoStatusHeaderError(`spliceStatusLine: status header line ${lineIndex + 1} ("${line}") did not re-match the expected "status: <value>" shape.`);
+  }
+  lines[lineIndex] = `${m[1]}${newStatus}${m[3]}`;
+  return lines.join('\n') + (trailingNewline ? '\n' : '');
 }

@@ -2,7 +2,7 @@
 // the identity documentSource.ts's write path is built on: decomposeSection(raw) reassembles
 // byte-for-byte, and shiftHeadings is a true inverse of itself for a matched +/-delta pair.
 import { describe, expect, test } from 'bun:test';
-import { decomposeSection, HeadingShiftError, shiftHeadings, spliceSectionText } from './documentWriteBack.ts';
+import { decomposeSection, HeadingShiftError, NoStatusHeaderError, shiftHeadings, spliceSectionText, spliceStatusLine } from './documentWriteBack.ts';
 
 describe('shiftHeadings', () => {
   test('shifts every ATX heading down (deeper) by delta', () => {
@@ -181,5 +181,61 @@ describe('spliceSectionText: the write-side inverse of decomposeSection + shiftH
 
   test('a stored title that is not a suffix of the heading line throws (pathological spacing)', () => {
     expect(() => spliceSectionText('## DOC-1 — Alpha item\n\nbody\n', 2, 'wrong title', 'New title', 'body\n')).toThrow();
+  });
+});
+
+// ZTB-16 dev/03: `issue edit --state` on a document-source issue used to fail closed
+// unconditionally ("splicing a status change is not implemented"). spliceStatusLine is the
+// analogous splice to spliceSectionText, scoped to the `status:` header line's VALUE only.
+describe('spliceStatusLine: rewrites ONLY the `status:` header line\'s value', () => {
+  const RAW = '## DOC-1 — Alpha item\n\nstatus: in-progress\nassignee: kim\n\n### Context\n\nSome note.\n\n### Acceptance Criteria\n\n- [ ] AC-1 v1 First.\n  - status: pending\n\n';
+
+  test('the status value changes; every other byte (including the assignee line) is untouched', () => {
+    const spliced = spliceStatusLine(RAW, 'done');
+    expect(spliced).toBe('## DOC-1 — Alpha item\n\nstatus: done\nassignee: kim\n\n### Context\n\nSome note.\n\n### Acceptance Criteria\n\n- [ ] AC-1 v1 First.\n  - status: pending\n\n');
+    // byte-diff: every line except the status line itself is identical
+    const before = RAW.split('\n');
+    const after = spliced.split('\n');
+    expect(after.length).toBe(before.length);
+    for (let i = 0; i < before.length; i++) {
+      if (i === 2) { expect(after[i]).toBe('status: done'); continue; } // the status line
+      expect(after[i]).toBe(before[i]);
+    }
+  });
+
+  test('preserves the original line\'s casing/leading spacing/trailing whitespace around the value', () => {
+    const raw = '## DOC-2 — Beta item\n\nStatus:   in-progress   \nassignee: sam\n\nBeta body.\n';
+    const spliced = spliceStatusLine(raw, 'done');
+    // "Status" casing, the 3 leading spaces, and the 3 trailing spaces are all preserved verbatim
+    // — only the value token itself ("in-progress" -> "done") changes.
+    expect(spliced).toBe('## DOC-2 — Beta item\n\nStatus:   done   \nassignee: sam\n\nBeta body.\n');
+  });
+
+  test('a section with no header block at all fails closed (no position is invented)', () => {
+    const raw = '## DOC-3 — Gamma item\n\nGamma body, no header block.\n';
+    expect(() => spliceStatusLine(raw, 'done')).toThrow(NoStatusHeaderError);
+    expect(() => spliceStatusLine(raw, 'done')).toThrow(/no `status:` header line/);
+  });
+
+  test('a header block with only `assignee:` (no `status:`) fails closed', () => {
+    const raw = '## DOC-4 — Delta item\n\nassignee: sam\n\nDelta body.\n';
+    expect(() => spliceStatusLine(raw, 'done')).toThrow(NoStatusHeaderError);
+  });
+
+  test('no trailing newline on the section is preserved (round-trips the trailing-newline shape)', () => {
+    const raw = '## DOC-5 — Epsilon item\nstatus: draft\nassignee: sam';
+    const spliced = spliceStatusLine(raw, 'ready');
+    expect(spliced).toBe('## DOC-5 — Epsilon item\nstatus: ready\nassignee: sam');
+  });
+
+  test('composes with spliceSectionText: pre-splicing the status, then splicing the body, changes BOTH and nothing else', () => {
+    const level = 2;
+    const d = decomposeSection(RAW);
+    const presentedBody = shiftHeadings(d.middle, 1 - level);
+    const withNewStatusHeader = spliceStatusLine(RAW, 'done');
+    const spliced = spliceSectionText(withNewStatusHeader, level, 'Alpha item', 'Alpha item', presentedBody);
+    expect(spliced).toContain('status: done\nassignee: kim');
+    expect(spliced).toContain('### Context\n\nSome note.');
+    expect(spliced).toContain('- [ ] AC-1 v1 First.\n  - status: pending');
   });
 });
