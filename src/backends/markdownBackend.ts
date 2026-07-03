@@ -327,7 +327,7 @@ export class MarkdownBackend implements TrackerBackend {
         if (!title) {
           return {
             stdout: '',
-            stderr: "issue create: no --title given and the body has no '# Heading' line to derive one from — the installed preset rejects a blank title. Pass --title, or start the body with `# Heading`.",
+            stderr: "issue create: no --title given and the body has no '# Heading' line to derive one from — the installed preset rejects a blank title. Pass --title, or start the body with `# Heading`.\n",
           };
         }
       }
