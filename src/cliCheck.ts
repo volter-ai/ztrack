@@ -174,6 +174,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
           const untilFinding: Finding = {
             code: 'loop_until_not_reached',
             severity: 'error',
+            waivable: false, // drive-to-stage can't be signed away; injection after applyWaivers already guarantees this — make the intent explicit
             issueId,
             message: `${issueId} is loop-armed until "${loop.until}" but is currently "${issue!.status}" — not there yet.`,
             fix: `Drive ${issueId} to "${loop.until}" for real (do the work, then \`ztrack issue edit ${issueId} --state ${loop.until}\` once its own gates for that stage pass), or \`ztrack loop stop\` to disarm.`,

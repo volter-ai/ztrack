@@ -158,7 +158,7 @@ GraphQL-shaped query against the local tracker store.
 
 A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack-gate
 Stop/SubagentStop hooks are wired (README → Agent workflows), every turn in this root — the main
-agent's and any subagent's it delegates to — is held until the target is done, capped at --max
+agent's and any subagent's it delegates to — is held until the loop's oracle passes, capped at --max
 iterations per actor (default 8). \`start\` with no id auto-scopes to the branch/worktree issue;
 arming a DIFFERENT target while one is already armed refuses (\`stop\` first, or arm in a separate
 worktree). \`start\` also warns (never refuses) if it can't detect the gate is wired, and if a bare
