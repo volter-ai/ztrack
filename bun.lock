@@ -5,8 +5,6 @@
     "": {
       "name": "ztrack",
       "dependencies": {
-        "@volter-ai-dev/twin": "^0.1.0",
-        "@volter-ai-dev/twin-github": "^0.1.0",
         "mdast-util-from-markdown": "2.0.3",
         "mdast-util-gfm": "3.1.0",
         "mdast-util-to-markdown": "2.1.2",
@@ -16,8 +14,18 @@
       "devDependencies": {
         "@types/bun": "^1.2.20",
         "@types/node": "^24.0.0",
+        "@volter-ai-dev/twin": "^0.1.0",
+        "@volter-ai-dev/twin-github": "^0.1.0",
         "typescript": "^5.9.0",
       },
+      "peerDependencies": {
+        "@volter-ai-dev/twin": "^0.1.0",
+        "@volter-ai-dev/twin-github": "^0.1.0",
+      },
+      "optionalPeers": [
+        "@volter-ai-dev/twin",
+        "@volter-ai-dev/twin-github",
+      ],
     },
   },
   "packages": {
