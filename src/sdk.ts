@@ -136,7 +136,14 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
     async snapshot(name = 'project-manager', options = {}) {
       const args = ['snapshot', name];
       if (options.format) args.push('--format', options.format);
-      return parseJsonOrText((await backend.command(args)).stdout);
+      const result = await backend.command(args);
+      // ztrack issue #19 (snapshot is a stub): the markdown backend's `snapshot` verb has no real
+      // implementation (backends/markdownBackend.ts) — it returns an empty stdout and a
+      // "not yet implemented" stderr message. `parseJsonOrText` only reads stdout, so this used to
+      // silently resolve to `null` — indistinguishable from "here is your empty snapshot". Surface
+      // the backend's own error instead of swallowing it; do NOT implement snapshot itself here.
+      if (!result.stdout.trim() && result.stderr.trim()) throw new Error(result.stderr.trim());
+      return parseJsonOrText(result.stdout);
     },
   };
 }
