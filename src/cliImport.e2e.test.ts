@@ -130,3 +130,81 @@ describe('ztrack import (ZTB-14 dev/33): the real CLI, a mktemp project, first-c
     expect(check.code).toBe(0);
   });
 });
+
+// ── headingless multi-list regression (defect: only the FIRST top-level list was processed) ─────
+// The old output relocated later lists' items as the FIRST issue's ACs on a second pass
+// (non-idempotent, mis-attributed) and left root-level prose INSIDE the AC section — which the
+// preset (post-ZTB-15) flags ac_prose_in_section and modelEdit's fail-closed guard then REFUSES
+// to `ac patch`. The importer must never emit output the write path refuses; this proves it
+// end-to-end with the real CLI.
+describe('ztrack import: headingless multi-list file with interleaved prose is writable output', () => {
+  let mlRoot = '';
+  let mlRootReal = '';
+  const p2Path = () => join(mlRootReal, 'p2.md');
+  const P2 = [
+    '- [ ] build auth',
+    '  - [ ] login page',
+    '  - [ ] logout',
+    '',
+    'Some notes in between.',
+    '',
+    '- [ ] payments',
+    '  - [ ] stripe integration',
+    '',
+  ].join('\n');
+
+  beforeAll(() => {
+    mlRoot = mkdtempSync(join(tmpdir(), 'ztrk-import-ml-'));
+    mlRootReal = realpathSync(mlRoot);
+    mkdirSync(join(mlRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(mlRoot, 'node_modules', 'ztrack'));
+    gitIn(mlRoot, 'init', '-q'); gitIn(mlRoot, 'config', 'user.email', 't@t.co'); gitIn(mlRoot, 'config', 'user.name', 't');
+    expect(ztIn(mlRoot, 'init', '--team', 'APP').code).toBe(0);
+    writeFileSync(p2Path(), P2);
+    gitIn(mlRoot, 'add', '-A'); gitIn(mlRoot, 'commit', '-q', '-m', 'seed');
+  }, 60_000);
+  afterAll(() => { if (mlRoot) rmSync(mlRoot, { recursive: true, force: true }); });
+
+  test('1. import processes BOTH lists; re-import is byte-idempotent from import1 onward', () => {
+    const first = ztIn(mlRoot, 'import', 'p2.md', '--register');
+    expect(first.code).toBe(0);
+    expect(first.out).toContain('materialized (2 issues, 3 ACs)');
+    const after1 = readFileSync(p2Path(), 'utf8');
+    expect(after1).toContain('## APP-1 build auth');
+    expect(after1).toContain('## APP-2 payments'); // the SECOND list became its own issue
+    // prose is issue body: above build auth's AC heading, never inside the AC section
+    const lines = after1.split('\n');
+    expect(lines.indexOf('Some notes in between.')).toBeLessThan(lines.indexOf('### Acceptance Criteria'));
+
+    const second = ztIn(mlRoot, 'import', 'p2.md');
+    expect(second.code).toBe(0);
+    expect(second.out).toContain('no-op (already canonical)');
+    expect(readFileSync(p2Path(), 'utf8')).toBe(after1);
+  });
+
+  test('2. `ztrack check` is green with ZERO ac_prose_in_section once issues are assigned', () => {
+    const withAssignees = readFileSync(p2Path(), 'utf8')
+      .replace(/^(#{1,6} APP-\d[^\n]*)$/gm, '$1\n\nassignee: me');
+    writeFileSync(p2Path(), withAssignees);
+    const check = ztIn(mlRoot, 'check');
+    expect(check.out).not.toContain('ac_prose_in_section');
+    expect(check.code).toBe(0);
+  });
+
+  test('3. a real `ac patch` on a minted AC SUCCEEDS (the ZTB-15 fail-closed guard does not fire) and check stays green', () => {
+    gitIn(mlRoot, 'add', '-A'); gitIn(mlRoot, 'commit', '-q', '-m', 'assign');
+    const headSha = gitIn(mlRoot, 'rev-parse', 'HEAD').stdout.trim();
+    const patchJson = JSON.stringify({
+      checked: true, status: 'passed',
+      evidence: [{ id: 'ev1', commit: headSha, acVersion: 1 }],
+      proof: { explanation: 'the assign commit covers the login page', evidenceRefs: ['ev1'] },
+    });
+    const patch = ztIn(mlRoot, 'ac', 'patch', 'APP-1', 'dev/01', '--json', patchJson);
+    expect(patch.code).toBe(0);
+    expect(J(patch)).toMatchObject({ issue: 'APP-1', acId: 'dev/01', changed: true });
+    expect(readFileSync(p2Path(), 'utf8')).toContain('- [x] dev/01 v1 login page');
+    const check = ztIn(mlRoot, 'check');
+    expect(check.out).not.toContain('ac_prose_in_section');
+    expect(check.code).toBe(0);
+  });
+});

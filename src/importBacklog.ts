@@ -268,6 +268,7 @@ function insertIdIntoHeadingLine(line: string, mintedId: string): string {
 }
 
 const PRE_CHECKED_MARKER = ' (imported: previously marked done — needs evidence)';
+const MULTILINE_ITEM_REASON = 'multi-line checkbox item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)';
 
 interface AcCandidate {
   line: number; // 0-based, original file
@@ -279,13 +280,102 @@ interface AcCandidate {
   inPlaceInAc: boolean;
 }
 
+// ── multi-line checkbox items are NEVER relocated (work-order rule: "when in doubt, leave content
+// in place and report rather than transform") ──────────────────────────────────────────────────
+//
+// The candidate scan below is line-based; relocating only a checkbox's FIRST line would orphan
+// its continuation lines / non-checkbox children in place, scrambling the document. So every
+// checkbox listItem is measured via its mdast position span, and any item whose full span is not
+// entirely composed of single-line checkbox items is FROZEN: none of its lines are relocated, and
+// the topmost frozen item is NAMED in the unmapped report.
+
+interface CheckboxItemSpan {
+  /** 0-based line of the item's `- [ ]` marker line. */
+  start: number;
+  /** 0-based last line of the item's ENTIRE span (nested lists included). */
+  end: number;
+  /** 0-based last line of the item's OWN text (before its first nested list). */
+  ownEnd: number;
+  checked: boolean;
+  /** 0 = an item of a root-level list; +1 per nesting level. */
+  depth: number;
+}
+
+function collectCheckboxItems(text: string): CheckboxItemSpan[] {
+  const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+  const items: CheckboxItemSpan[] = [];
+  const walk = (node: any, depth: number): void => {
+    if (node.type === 'listItem' && typeof node.checked === 'boolean' && node.position) {
+      const firstNested = (node.children ?? []).find((c: any) => c.type === 'list' && c.position);
+      items.push({
+        start: (node.position.start.line as number) - 1,
+        end: (node.position.end.line as number) - 1,
+        ownEnd: (firstNested ? (firstNested.position.start.line as number) - 1 : (node.position.end.line as number)) - 1,
+        checked: node.checked === true,
+        depth,
+      });
+    }
+    const nextDepth = node.type === 'listItem' ? depth + 1 : depth;
+    for (const c of node.children ?? []) walk(c, nextDepth);
+  };
+  walk(tree, 0);
+  return items;
+}
+
+interface RelocationSafety {
+  /** Every 0-based line belonging to a NOT-relocatable checkbox item's span — the scan skips them. */
+  frozen: Set<number>;
+  /** The topmost frozen items' start lines (not contained in another frozen item) — each gets ONE
+   *  unmapped report entry when the scan reaches it. */
+  frozenTopStarts: Set<number>;
+}
+
+/** An item is relocatable iff every line of its span BEYOND its own first line is accounted for:
+ *  blank, the first line of a single-own-line checkbox item (relocated as its own candidate), or
+ *  a `TODO:` line (mdast folds an unindented `TODO: …` directly under a checkbox into that item's
+ *  paragraph as a lazy continuation, but the scan relocates it as its own independent candidate —
+ *  nothing is orphaned). Anything else — a plain prose continuation line, a non-checkbox child —
+ *  makes the item (and, via this same flat line check, every ancestor) frozen. */
+function relocationSafety(items: readonly CheckboxItemSpan[], lines: readonly string[]): RelocationSafety {
+  const candidateStarts = new Set(items.filter((i) => i.ownEnd === i.start).map((i) => i.start));
+  const covered = (l: number): boolean => {
+    const line = lines[l] ?? '';
+    return line.trim() === '' || candidateStarts.has(l) || TODO_LINE_RE.test(line);
+  };
+  const unsafe = items.filter((item) => {
+    for (let l = item.start + 1; l <= item.end; l++) {
+      if (!covered(l)) return true;
+    }
+    return false;
+  });
+  const frozen = new Set<number>();
+  for (const item of unsafe) for (let l = item.start; l <= item.end; l++) frozen.add(l);
+  const frozenTopStarts = new Set<number>();
+  for (const item of unsafe) {
+    const contained = unsafe.some((o) => o !== item && o.start <= item.start && o.end >= item.end && (o.start < item.start || o.end > item.end));
+    if (!contained) frozenTopStarts.add(item.start);
+  }
+  return { frozen, frozenTopStarts };
+}
+
 /** Scan `lines[start, end)` for top-level checkbox / `TODO:` items (skipping any line the code
- *  guard marks as inside a fenced/indented code block). `inAc` tags every result's `inPlaceInAc`. */
-function scanAcCandidates(lines: readonly string[], start: number, end: number, codeLines: Set<number>, inAc: boolean): AcCandidate[] {
+ *  guard marks as inside a fenced/indented code block, and any line of a FROZEN multi-line item —
+ *  the topmost frozen item is reported into `unmapped` instead). `inAc` tags every result's
+ *  `inPlaceInAc`. */
+function scanAcCandidates(
+  lines: readonly string[], start: number, end: number, codeLines: Set<number>, inAc: boolean,
+  safety: RelocationSafety, unmapped: UnmappedNote[],
+): AcCandidate[] {
   const out: AcCandidate[] = [];
   for (let j = Math.max(0, start); j < Math.min(end, lines.length); j++) {
     if (codeLines.has(j + 1)) continue;
     const line = lines[j]!;
+    if (safety.frozenTopStarts.has(j)) {
+      const cb = CHECKBOX_LINE_RE.exec(line);
+      unmapped.push({ line: j + 1, excerpt: (cb ? cb[2]! : line.trim()).slice(0, 60), reason: MULTILINE_ITEM_REASON });
+      continue;
+    }
+    if (safety.frozen.has(j)) continue;
     const cb = CHECKBOX_LINE_RE.exec(line);
     if (cb) { out.push({ line: j, text: cb[2]!, wasChecked: /x/i.test(cb[1]!), inPlaceInAc: inAc }); continue; }
     const todo = TODO_LINE_RE.exec(line);
@@ -303,6 +393,8 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
   const doc = parseMarkdownDocument(text);
   const lines = text.split('\n');
   const codeLines = codeLineSet(text);
+  const checkboxItems = collectCheckboxItems(text);
+  const safety = relocationSafety(checkboxItems, lines);
 
   // First pass: note every id already present (this file's own existing ids) so the allocator
   // never mints a collision even before scanning other batch/config sources (importDriver.ts
@@ -344,7 +436,7 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
     // Own-content candidates (checkboxes/TODOs OUTSIDE any recognized AC section) -> relocate.
     const ownStart = ownContentStart(doc, index);
     const ownEnd = ownContentEnd(doc, index);
-    const outside = scanAcCandidates(lines, ownStart, ownEnd, codeLines, false);
+    const outside = scanAcCandidates(lines, ownStart, ownEnd, codeLines, false, safety, unmapped);
 
     // Existing AC section's own checkbox items: those with an id stay untouched; those without
     // get one minted IN PLACE.
@@ -418,57 +510,92 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
   // Root-level content: either the (headingless) pure-checklist case, or preamble sanity when the
   // file DOES have headings.
   if (doc.sections.length === 0) {
-    // Headingless file. Top-level checkbox items promote to issues (their own text becomes the
-    // minted heading, converting the bullet line itself); their nested checkboxes become that
-    // issue's ACs, minted in place (no relocation needed — they're already contiguous under their
-    // parent bullet). PINNED DECISION: this is the one shape where a line is REWRITTEN rather
-    // than purely inserted-into — otherwise the ex-checkbox text would linger as a loose
-    // `ac_outside_section` item right under its own new heading.
-    const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
-    const topList: any = (tree.children ?? []).find((n: any) => n.type === 'list');
-    const topItems: any[] = topList?.children ?? [];
+    // Headingless file. EVERY top-level checkbox item (across ALL root-level lists — prose between
+    // lists splits one visual checklist into several mdast list nodes, and each must be processed;
+    // handling only the first silently dropped and later mis-attributed the rest) promotes to its
+    // own issue: its text becomes the minted heading (the one shape where a line is REWRITTEN
+    // rather than purely inserted-into — otherwise the ex-checkbox text would linger as a loose
+    // `ac_outside_section` item right under its own new heading). Its nested checkboxes RELOCATE
+    // into a minted `### Acceptance Criteria` block inserted at the END of the issue's own span
+    // (immediately before the next top-level item / EOF) — the same insertion point the heading
+    // path uses (ownContentEnd) — so root-level prose between lists lands ABOVE the AC heading as
+    // issue body, never inside the AC section (which the preset would flag as ac_prose_in_section
+    // and the write path would then refuse). A multi-line item (per `relocationSafety`) is left
+    // fully in place and named in the report, never promoted or split.
+    const topItems = checkboxItems.filter((i) => i.depth === 0).sort((a, b) => a.start - b.start);
     if (topItems.length === 0 && text.trim() !== '') {
       unmapped.push({ line: 1, excerpt: lines[0]?.slice(0, 60) ?? '', reason: 'no heading, checkbox, or TODO: item found — nothing importable' });
     }
-    for (const item of topItems) {
-      if (typeof item.checked !== 'boolean') continue; // a plain (non-checkbox) top-level bullet: leave in place
-      const itemStartLine = (item.position.start.line as number) - 1; // 0-based
-      const nestedList = (item.children ?? []).find((c: any) => c.type === 'list');
-      const ownEndLine = nestedList ? (nestedList.position.start.line as number) - 1 : (item.position.end.line as number);
-      const headText = lines.slice(itemStartLine, ownEndLine).join('\n')
-        .replace(/^ {0,3}[-*+]\s+\[[ xX]\]\s+/, '').trimEnd();
+    const NESTED_CHECKBOX_RE = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/;
+    for (const [idx, item] of topItems.entries()) {
+      if (safety.frozenTopStarts.has(item.start)) {
+        const cb = CHECKBOX_LINE_RE.exec(lines[item.start]!);
+        unmapped.push({ line: item.start + 1, excerpt: (cb ? cb[2]! : lines[item.start]!.trim()).slice(0, 60), reason: MULTILINE_ITEM_REASON });
+        continue;
+      }
+      if (safety.frozen.has(item.start)) continue; // inside an outer frozen span (defensive; top items can't nest)
+      const spanEnd = topItems[idx + 1]?.start ?? lines.length;
+      const headText = lines[item.start]!.replace(/^ {0,3}[-*+]\s+\[[ xX]\]\s+/, '').trimEnd();
       const mintedId = allocator.next(prefix);
-      const acs: PlannedAc[] = [];
-      const mintedSubs: number[] = [];
-      if (nestedList) {
-        let n = 1;
-        for (const sub of nestedList.children ?? []) {
-          if (typeof sub.checked !== 'boolean') continue;
-          const subLine = (sub.position.start.line as number) - 1;
-          const cb = CHECKBOX_LINE_RE.exec(lines[subLine]!);
-          if (!cb) continue;
-          const already = AC_ID_TOKEN_RE.exec(cb[2]!);
-          if (already) continue; // already materialized — leave untouched
-          const acId = `dev/${String(n++).padStart(2, '0')}`;
-          const subChecked = /x/i.test(cb[1]!);
-          const marker = subChecked ? PRE_CHECKED_MARKER : '';
-          const acText = `${cb[2]}${marker}`;
-          acs.push({ status: 'minted', id: acId, text: acText, wasPreChecked: subChecked });
-          if (subChecked) preChecked.push({ issueId: mintedId, acId, text: cb[2]! });
-          edits.push({ at: subLine, kind: 'replace', text: `- [ ] ${acId} v1 ${acText}` });
-          mintedSubs.push(subLine);
-        }
-      }
-      if (mintedSubs.length) {
-        edits.push({ at: mintedSubs[0]!, kind: 'insertBefore', lines: ['', '### Acceptance Criteria', ''] });
-        const afterLast = mintedSubs[mintedSubs.length - 1]! + 1;
-        if (lines[afterLast] !== '' && lines[afterLast] !== undefined) edits.push({ at: afterLast, kind: 'insertBefore', lines: [''] });
-      }
       // An issue has no "checked" concept (unlike an AC) — a checked top-level item is promoted to
       // a plain issue heading with no claim/marker; only its NESTED checkboxes (real ACs) are
-      // subject to the pre-checked policy above.
-      issues.push({ status: 'minted', id: mintedId, title: headText, parentId: null, acs, existingAcCount: 0 });
-      edits.push({ at: itemStartLine, kind: 'replace', text: `## ${mintedId} ${headText}` });
+      // subject to the pre-checked policy below.
+      edits.push({ at: item.start, kind: 'replace', text: `## ${mintedId} ${headText}` });
+
+      // Nested checkboxes (the item is safe, so each nested non-blank line IS a single-line
+      // checkbox item): relocate ALL of them into the AC block. One already carrying an id is
+      // relocated VERBATIM (id/marker preserved — existing ids are never altered or renumbered);
+      // fresh ones number after the existing max, same as the heading path's AC-section rule.
+      const nested = checkboxItems
+        .filter((n) => n.depth >= 1 && n.start > item.start && n.end <= item.end)
+        .sort((a, b) => a.start - b.start);
+      let acExistingMaxNum = 0;
+      let acExistingWidth = 2;
+      let acPrefix = 'dev';
+      for (const sub of nested) {
+        const cb = NESTED_CHECKBOX_RE.exec(lines[sub.start]!);
+        const already = cb ? AC_ID_TOKEN_RE.exec(cb[2]!) : null;
+        if (!already) continue;
+        acPrefix = already[1]!;
+        const num = Number(already[2]);
+        if (Number.isFinite(num)) {
+          acExistingWidth = Math.max(acExistingWidth, already[2]!.length);
+          acExistingMaxNum = Math.max(acExistingMaxNum, num);
+        }
+      }
+      const acs: PlannedAc[] = [];
+      const relocatedLines: string[] = [];
+      let n = acExistingMaxNum + 1;
+      for (const sub of nested) {
+        const cb = NESTED_CHECKBOX_RE.exec(lines[sub.start]!);
+        if (!cb) continue; // defensive; safety guarantees a checkbox line
+        edits.push({ at: sub.start, kind: 'delete' });
+        const already = AC_ID_TOKEN_RE.exec(cb[2]!);
+        if (already) { relocatedLines.push(`- [${cb[1]}] ${cb[2]}`); continue; }
+        const acId = `${acPrefix}/${String(n++).padStart(acExistingWidth, '0')}`;
+        const subChecked = /x/i.test(cb[1]!);
+        const marker = subChecked ? PRE_CHECKED_MARKER : '';
+        const acText = `${cb[2]}${marker}`;
+        acs.push({ status: 'minted', id: acId, text: acText, wasPreChecked: subChecked });
+        if (subChecked) preChecked.push({ issueId: mintedId, acId, text: cb[2]! });
+        relocatedLines.push(`- [ ] ${acId} v1 ${acText}`);
+      }
+
+      if (relocatedLines.length) {
+        // Insert before the trailing-newline marker so the file's final newline stays final.
+        let insertAt = spanEnd;
+        if (insertAt === lines.length && lines.length > 0 && lines[lines.length - 1] === '') insertAt = lines.length - 1;
+        // One blank line between the preceding SURVIVING content and the AC heading: walk back
+        // over lines this item just deleted (relocated nested checkboxes) to find what survives.
+        const deleted = new Set(nested.map((s) => s.start));
+        let p = insertAt - 1;
+        while (p >= 0 && deleted.has(p)) p--;
+        const lead = p >= 0 && lines[p] !== '' ? [''] : [];
+        const trail = insertAt < lines.length && lines[insertAt] !== '' ? [''] : [];
+        edits.push({ at: insertAt, kind: 'insertBefore', lines: [...lead, '### Acceptance Criteria', '', ...relocatedLines, ...trail] });
+      }
+
+      issues.push({ status: 'minted', id: mintedId, title: headText, parentId: null, acs, existingAcCount: acExistingMaxNum });
     }
   } else if (!hasTitleHeaderBlock(doc.preamble) && doc.preamble.trim() !== '') {
     unmapped.push({ line: 1, excerpt: doc.preamble.trim().slice(0, 60), reason: 'preamble text before the first heading has no `Title:` header to attach it to an issue' });

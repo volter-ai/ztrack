@@ -111,6 +111,35 @@ describe('planAndMaterialize — fixture corpus (dev/31 read-only plan, dev/32 w
     expect(plan.unmapped).toHaveLength(1);
     expect(plan.unmapped[0]!.reason).toMatch(/Title:/);
   });
+
+  test('multi-list-interleaved-prose: EVERY root-level list is processed; prose between lists lands ABOVE the AC heading as issue body, never inside the AC section', () => {
+    // Regression: only the FIRST top-level list was processed — "payments" was silently untouched
+    // by import1, then mis-attributed by import2 as build auth's ACs (non-idempotent), leaving the
+    // interleaved prose inside build auth's AC section (which the preset flags ac_prose_in_section
+    // and the write path then refuses).
+    const { plan, materialized, expected } = run('multi-list-interleaved-prose');
+    expect(materialized).toBe(expected);
+    expect(plan.issues.map((i) => [i.id, i.title])).toEqual([['APP-1', 'build auth'], ['APP-2', 'payments']]);
+    expect(plan.issues[0]!.acs.map((a) => a.text)).toEqual(['login page', 'logout']);
+    expect(plan.issues[1]!.acs.map((a) => a.text)).toEqual(['stripe integration']);
+    // the prose is body: above the AC heading, below the issue heading
+    const lines = materialized.split('\n');
+    expect(lines.indexOf('Some notes in between.')).toBeGreaterThan(lines.indexOf('## APP-1 build auth'));
+    expect(lines.indexOf('Some notes in between.')).toBeLessThan(lines.indexOf('### Acceptance Criteria'));
+  });
+
+  test('multiline-checkbox: a checkbox item spanning more than one line is left FULLY in place and named in the report; its single-line sibling still promotes', () => {
+    const { plan, materialized, expected } = run('multiline-checkbox');
+    expect(materialized).toBe(expected);
+    // the multi-line item's lines survive verbatim, in order, still adjacent
+    expect(materialized).toContain('- [ ] implement fuzzy search\n  with typo tolerance and ranking');
+    expect(plan.unmapped).toEqual([{
+      line: 3,
+      excerpt: 'implement fuzzy search',
+      reason: 'multi-line checkbox item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)',
+    }]);
+    expect(plan.issues[0]!.acs.map((a) => a.text)).toEqual(['add search analytics']);
+  });
 });
 
 // ── dev/31: --dry-run writes nothing; collision-safe allocation across sources ────────────────
@@ -136,7 +165,7 @@ describe('planAndMaterialize — dry-run semantics (writes nothing) and cross-so
 // ── dev/32: the writer — insert-only, idempotent, existing ids untouched, [x] policy, CRLF error ─
 
 describe('planAndMaterialize — writer idempotence + insert-only contract (dev/32)', () => {
-  for (const name of ['mixed-prose-checkboxes', 'pure-checklist', 'mixed-bullet-todo-styles', 'prechecked', 'half-materialized', 'duplicate-titles', 'deep-nesting', 'already-canonical', 'unmapped-preamble']) {
+  for (const name of ['mixed-prose-checkboxes', 'pure-checklist', 'mixed-bullet-todo-styles', 'prechecked', 'half-materialized', 'duplicate-titles', 'deep-nesting', 'already-canonical', 'unmapped-preamble', 'multi-list-interleaved-prose', 'multiline-checkbox']) {
     test(`${name}: import ∘ import === import (byte-identical on a second pass)`, () => {
       const { materialized } = run(name);
       const allocator2 = new IdAllocator();
