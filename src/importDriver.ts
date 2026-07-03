@@ -139,15 +139,17 @@ export function collectConfiguredIds(projectRoot: string, config: { sources?: Tr
 
 // ── prefix inference (Design point 2) ───────────────────────────────────────────────────────────
 
-const EXISTING_ID_RE = /^([A-Za-z][A-Za-z0-9-]*)-[A-Za-z0-9]+\b/m;
 const HEADING_ID_RE = /^#{1,6}\s+([A-Za-z][A-Za-z0-9-]*)-[A-Za-z0-9]+\b/m;
 
-/** `--prefix` else inferred from an id already present in the file (its own headings) else the
- *  tracker config's `local.teamKey` else `null` (caller must report a clear error). */
+/** `--prefix` else inferred from an id already present in the file's HEADINGS (headings ONLY —
+ *  a prose line is not an id: an any-line fallback matched ordinary hyphenated words, so a
+ *  preamble like "Follow-up items are tracked below." inferred the bogus prefix "Follow" and
+ *  shadowed the configured teamKey) else the tracker config's `local.teamKey` else `null`
+ *  (caller must report a clear error asking for --prefix). */
 export function resolveIssuePrefix(text: string, explicit: string | undefined, teamKey: string | undefined): string | null {
   if (explicit) return explicit;
-  const fromFile = HEADING_ID_RE.exec(text) ?? EXISTING_ID_RE.exec(text);
-  if (fromFile) return fromFile[1]!;
+  const fromHeading = HEADING_ID_RE.exec(text);
+  if (fromHeading) return fromHeading[1]!;
   if (teamKey) return teamKey;
   return null;
 }

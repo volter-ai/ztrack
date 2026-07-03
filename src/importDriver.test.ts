@@ -115,6 +115,15 @@ describe('resolveIssuePrefix — --prefix, else infer from the file, else teamKe
   test('inferred from an id token already in the file when no --prefix is given', () => {
     expect(resolveIssuePrefix('## APP-1 x\n\nmore text APP-9\n', undefined, 'TEAM')).toBe('APP');
   });
+  test('inference reads HEADINGS ONLY — a hyphenated prose word never shadows the teamKey', () => {
+    // Regression: an any-line fallback matched ordinary hyphenated words ("Follow-up", "Sign-off",
+    // "Check-in"), so this exact preamble minted `Follow-1` instead of using the configured team.
+    const text = 'Follow-up items are tracked below.\n\n## Auth work\n\n- [ ] add login\n';
+    expect(resolveIssuePrefix(text, undefined, 'APP')).toBe('APP');
+    expect(resolveIssuePrefix('Sign-off pending.\n\n## Work\n', undefined, 'APP')).toBe('APP');
+    // ...and with no teamKey either, it's null (a clear error asking for --prefix), never "Follow".
+    expect(resolveIssuePrefix(text, undefined, undefined)).toBeNull();
+  });
   test('falls back to the configured teamKey when nothing else resolves', () => {
     expect(resolveIssuePrefix('## Freeform heading\n', undefined, 'TEAM')).toBe('TEAM');
   });
