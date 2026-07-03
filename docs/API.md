@@ -17,15 +17,25 @@ as `ztrack check`.
 import { checkTracker } from 'ztrack';
 
 const result = await checkTracker({ projectRoot: process.cwd() });
-// result.ok       → boolean (no error-severity findings)
-// result.findings → [{ code, severity, message, issueId?, acId?, origin?, ... }]
-// result.export   → the validated root ({ issues: [...] }) — this IS the snapshot
+// result.ok             → boolean (no error-severity findings)
+// result.findings       → [{ code, severity, message, issueId?, acId?, origin?, ... }]
+// result.export         → the validated root ({ issues: [...] }) — this IS the snapshot
+// result.examinedIssues → set ONLY when validation failed before `export` could be populated
 
 if (!result.ok) {
   for (const f of result.findings) console.log(`${f.severity} ${f.code}: ${f.message}`);
   process.exitCode = 1;
 }
 ```
+
+**`examinedIssues?: number`.** How many issue records were actually examined, set *only* when the
+root failed validation before `export` could be populated (a shape-invalid root, or a whole-input
+parse failure) — a best-effort count read straight off the raw, pre-validation candidate root
+(`{ issues: [...] }.length`), not the typed one. On a success path this is left `undefined`; a
+reader should prefer `result.export.issues.length` and fall back to `examinedIssues` only when
+`export` is absent. It exists so a summary line reports an honest count instead of falling back to
+`0` while findings simultaneously cite `root.issues.<n>` for an issue the `0` count implies never
+existed.
 
 Every `Finding` carries an optional `origin: { path: string; line?: number }` — where its issue
 record lives on disk (a directory-relative path for an `issue-per-file` source, or the containing

@@ -184,6 +184,13 @@ then reattach (`issue edit <child> --parent <id>`) if you need to force a backfi
 --parent <id>` is unaffected either way — it filters by the `parent` pointer directly and never reads
 `children`.
 
+**Project label.** `--project <name>` sets a free-form project/grouping label on `issue create` and
+`issue edit` (`--remove-project` clears it); the CLI and SDK both take it. Unlike `--parent`, it is
+**not** validated against a project registry and does **not** filter `issue list` — it's a plain
+string stored on the issue and surfaced on `issue view`/GraphQL as `project: { id, name }` (both set
+to the string you passed). This is unrelated to the visualizer's own `--project <dir>` flag (a
+filesystem path — see [Visualize](#5-visualize)).
+
 ### Importing a freeform backlog
 
 Real backlogs are rarely written in the strict grammar above — they're headings, prose, and
