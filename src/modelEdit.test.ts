@@ -90,4 +90,18 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
     expect(() => applyModelPatch(speckit, PENDING, { patch: {} })).toThrow(/read-only/);
     expect(() => canonicalizeBody(speckit, PENDING)).toThrow(/read-only/);
   });
+
+  // ZTB-21 dev/01: `ac patch --json` proof shape errors used to be drip-fed — passing an array
+  // errored "expected object" with no hint of the real shape; only a SECOND failed attempt
+  // (unwrapped fields flattened onto the AC) revealed it via "Unrecognized key". Both cases must
+  // now state the full `{explanation, evidenceRefs}` contract on the FIRST error.
+  test('proof patched as an array states the expected object shape on the first error', () => {
+    expect(() => applyModelPatch(def, PENDING, { acId: 'dev/01', patch: { proof: ['ev1 shows it', 'ev1'] } }))
+      .toThrow(/proof: .*expected object.*expected shape \{explanation: string, evidenceRefs: string\[\]\}/);
+  });
+
+  test('proof fields flattened onto the AC (missing the `proof` wrapper) get a nesting hint + shape', () => {
+    expect(() => applyModelPatch(def, PENDING, { acId: 'dev/01', patch: { explanation: 'ev1 shows it' } }))
+      .toThrow(/did you mean to nest these under "proof"\? expected shape \{explanation: string, evidenceRefs: string\[\]\}/);
+  });
 });
