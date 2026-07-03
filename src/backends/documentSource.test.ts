@@ -125,13 +125,57 @@ describe('DocumentSource.write guards (ZTB-4 dev/09)', () => {
     expect(readFileSync(path, 'utf8')).toBe(mutated); // nothing further was written
   });
 
-  test('a write that changes state throws, naming "status", and leaves the file unchanged', () => {
+  // ZTB-16 dev/03: a state change used to fail closed unconditionally ("splicing a status change
+  // is not implemented"). It now splices the item's `status:` header line — the analogue of the
+  // body/title splice above — leaving every other byte (including the assignee line, DOC-2, the
+  // umbrella) untouched.
+  test('a write that changes ONLY state splices the `status:` header line; every other byte is untouched', () => {
     const { path, resolved } = docFile(CANON);
     const src = new DocumentSource(resolved);
     const doc1 = src.load('DOC-1')!;
     const before = readFileSync(path, 'utf8');
-    expect(() => src.write(edited(doc1, { state: 'done', stateType: 'completed' }))).toThrow(/status/);
-    expect(readFileSync(path, 'utf8')).toBe(before);
+    src.write(edited(doc1, { state: 'done', stateType: 'completed' }));
+    const reloaded = src.load('DOC-1')!;
+    expect(reloaded.state).toBe('done');
+    expect(reloaded.stateType).toBe('completed');
+    const onDisk = readFileSync(path, 'utf8');
+    expect(onDisk).toContain('status: done\nassignee: kim'); // status changed, assignee line untouched
+    expect(onDisk).not.toContain('status: in-progress');
+    // Byte-diff: every line except the status line itself is identical to the pre-write file.
+    const beforeLines = before.split('\n');
+    const afterLines = onDisk.split('\n');
+    expect(afterLines.length).toBe(beforeLines.length);
+    const statusLineIndex = beforeLines.findIndex((l) => l === 'status: in-progress');
+    expect(statusLineIndex).toBeGreaterThanOrEqual(0);
+    for (let i = 0; i < beforeLines.length; i++) {
+      if (i === statusLineIndex) continue;
+      expect(afterLines[i]).toBe(beforeLines[i]);
+    }
+    // untouched: DOC-2 and its own lack of a header block
+    expect(onDisk).toContain('## DOC-2 — Beta item\n\nNo header block on this one.');
+  });
+
+  test('a state change on an item with NO `status:` header line (DOC-2) fails closed, naming the file/issue, and writes nothing', () => {
+    const { path, resolved } = docFile(CANON);
+    const src = new DocumentSource(resolved);
+    const doc2 = src.load('DOC-2')!;
+    const before = readFileSync(path, 'utf8');
+    expect(() => src.write(edited(doc2, { state: 'done', stateType: 'completed' }))).toThrow(/no `status:` header line/);
+    expect(readFileSync(path, 'utf8')).toBe(before); // nothing written
+  });
+
+  test('a combined state + body change splices BOTH; everything else (assignee, DOC-2) untouched', () => {
+    const { path, resolved } = docFile(CANON);
+    const src = new DocumentSource(resolved);
+    const doc1 = src.load('DOC-1')!;
+    const newBody = doc1.body.replace('- [ ] AC-1 v1 First criterion\n  - status: pending', '- [x] AC-1 v1 First criterion\n  - status: passed');
+    src.write(edited(doc1, { state: 'done', stateType: 'completed', body: newBody }));
+    const reloaded = src.load('DOC-1')!;
+    expect(reloaded.state).toBe('done');
+    expect(reloaded.body).toContain('- [x] AC-1 v1 First criterion');
+    const onDisk = readFileSync(path, 'utf8');
+    expect(onDisk).toContain('status: done\nassignee: kim');
+    expect(onDisk).toContain('## DOC-2 — Beta item\n\nNo header block on this one.');
   });
 
   test('a write that changes assignees throws, naming "assignee"', () => {

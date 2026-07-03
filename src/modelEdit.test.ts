@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import DefaultPreset from '../boilerplates/presets/simple-sdlc.ts';
 import SpeckitPreset from '../boilerplates/presets/speckit.ts';
@@ -103,5 +105,26 @@ describe('modelEdit: mutation is parse -> edit typed model -> serialize', () => 
   test('proof fields flattened onto the AC (missing the `proof` wrapper) get a nesting hint + shape', () => {
     expect(() => applyModelPatch(def, PENDING, { acId: 'dev/01', patch: { explanation: 'ev1 shows it' } }))
       .toThrow(/did you mean to nest these under "proof"\? expected shape \{explanation: string, evidenceRefs: string\[\]\}/);
+  });
+
+  // ZTB-16 dev/01: modelEdit.ts used a literal NUL byte as the label-list join separator for the
+  // `changed` comparison. A NUL byte in source makes git/tooling treat the whole file as binary
+  // (`git diff` stops rendering a text diff, `file` reports "data"). The separator itself never
+  // persists to disk (it only feeds a `!==` comparison discarded after producing a boolean), so
+  // the fix keeps the exact same runtime separator character via a `\x00` escape sequence instead
+  // of a literal byte — source becomes plain text, behavior is unchanged.
+  test('modelEdit.ts source has no literal NUL byte (git must keep treating it as text)', () => {
+    const raw = readFileSync(join(import.meta.dir, 'modelEdit.ts'));
+    expect(raw.includes(0)).toBe(false);
+  });
+
+  test('a labels-only patch is detected as changed, and a no-op labels patch is not', () => {
+    const withLabels: IssueRecord = { ...PENDING, labels: ['area:core', 'p1'] };
+    const relabeled = applyModelPatch(def, withLabels, { patch: { labels: ['area:core', 'p2'] } });
+    expect(relabeled.changed).toBe(true);
+    expect(relabeled.columns.labels).toEqual(['area:core', 'p2']);
+
+    const sameLabels = applyModelPatch(def, withLabels, { patch: { labels: ['area:core', 'p1'] } });
+    expect(sameLabels.changed).toBe(false);
   });
 });

@@ -140,6 +140,23 @@ describe('planAndMaterialize — fixture corpus (dev/31 read-only plan, dev/32 w
     }]);
     expect(plan.issues[0]!.acs.map((a) => a.text)).toEqual(['add search analytics']);
   });
+
+  // ZTB-16 dev/02 regression: a `TODO:` paragraph followed by an indented prose continuation line
+  // used to relocate only its FIRST line into the AC section, orphaning the continuation in place
+  // (the freeze guard above only ever looked at checkbox listItem spans). Mirrors the
+  // multiline-checkbox case exactly: the whole paragraph freezes together and is named once.
+  test('multiline-todo: a `TODO:` paragraph with a continuation line is left FULLY in place and named in the report; its single-line checkbox sibling still promotes', () => {
+    const { plan, materialized, expected } = run('multiline-todo');
+    expect(materialized).toBe(expected);
+    // both the TODO: line and its continuation survive verbatim, in order, still adjacent
+    expect(materialized).toContain('TODO: implement fuzzy search\n  with typo tolerance and ranking');
+    expect(plan.unmapped).toEqual([{
+      line: 3,
+      excerpt: 'TODO: implement fuzzy search',
+      reason: 'multi-line TODO: item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)',
+    }]);
+    expect(plan.issues[0]!.acs.map((a) => a.text)).toEqual(['add search analytics']);
+  });
 });
 
 // ── dev/31: --dry-run writes nothing; collision-safe allocation across sources ────────────────
