@@ -2,6 +2,29 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.42.0
+
+The #13 docs finally ship (ZTB-25): the docs now tell the truth about optional peers, and CI
+enforces that they keep telling it.
+
+- **Stale "regular dependency" claims corrected everywhere.** README, GUIDE, EVIDENCE,
+  ARCHITECTURE, and a `presetKit.ts` comment all still described the pre-0.38 world where
+  `@volter-ai-dev/twin`/`twin-github` shipped inside ztrack. They now describe reality: optional
+  peer dependencies you install explicitly, with `sync github` run under bun.
+- **One canonical GitHub-sync recipe** (GUIDE § "GitHub sync since 0.38"): install the peers,
+  run `bunx --bun ztrack sync github` (plain `bunx` honors the CLI's node shebang and hands off
+  to real node — reproducing the exact TS-loading error the recipe exists to avoid), plus a
+  working CI yaml on `oven-sh/setup-bun`. README/EVIDENCE/ARCHITECTURE link to it instead of
+  carrying their own variants.
+- **Semantic docsConsistency guards**: stale dependency phrasings are asserted dead across all
+  docs; `demos/README.md` must inventory every `demos/*.sh` on disk (five previously undocumented
+  scripts — including three actual CI gates — now have honest entries); every `package.json`
+  `files` entry must resolve (killed the phantom `PRESET-GUIDE.md`).
+- **Releaser + API docs corrected**: RELEASING.md's pre-release checklist now names the demos
+  that ARE the CI/Publish gates (it named two that aren't and omitted the five that are);
+  API.md documents `examinedIssues` in the check result shape; GUIDE documents
+  `issue edit --project`/`--remove-project` with the real `project: { id }` shape.
+
 ## 0.41.0
 
 The dispatch frontier (ZTB-30): `issue list` learns to answer "what can I work on right now?"
