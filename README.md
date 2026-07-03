@@ -214,6 +214,12 @@ ztrack loop stop              # disarm
 
 You set the target; the loop holds the standard.
 
+**Driving a whole backlog** (not just one issue) is the same loop, dispatched wave by wave:
+`ztrack issue list --actionable` names every not-done, unblocked issue — the dispatch frontier — and
+`--blocked` names what's stalling the rest. See [Guide → Orchestrating a whole
+backlog](docs/GUIDE.md#orchestrating-a-whole-backlog-one-long-lived-session-many-issues) for the full
+intake → groom → order → dispatch flow.
+
 ## When the checker is wrong
 
 `ztrack check` is deterministic, but deterministic isn't the same as always right for your repo — a

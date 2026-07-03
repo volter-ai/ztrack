@@ -248,6 +248,90 @@ The package also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on
 wiring) that auto-scopes to the branch/worktree issue every turn — use it for continuous gating
 without arming a loop.
 
+### Orchestrating a whole backlog: one long-lived session, many issues
+
+Everything above drives **one issue**. That's actually the *degenerate* case of a bigger pattern: one
+orchestrator session that takes a whole backlog — a big pile of tasks, with real dependencies between
+them — from "written down" to "done", dispatching a loop-armed subagent per unblocked issue instead of
+working one at a time. Four moves, in order, all built from pieces already covered above:
+
+**1. Intake — get the backlog into the tracker.** Three real entry points, pick whichever matches how
+the work already exists:
+
+```bash
+ztrack import notes/backlog.md              # (a) author one freeform file, materialize it in place
+ztrack import notes/ --register             # (b) point ztrack at a folder of issue-shaped .md files
+ztrack init --sync github --repo owner/name # (c) import from GitHub Issues (two-way sync)
+```
+
+(a)/(b) are [Importing a freeform backlog](#importing-a-freeform-backlog) — write the tasks the way
+you'd naturally write them (headings, prose, checkboxes), and `import` turns them into real issues,
+idempotently, without inventing evidence for anything that looked pre-checked. (c) is the
+[linked-sync setup](#how-linked-sync-works) — GitHub becomes the source of truth and `ztrack sync
+github --pull` (or the CI step) keeps the local view current.
+
+**2. Groom — get every issue ready.** An imported or freshly-written issue is usually a stub: a title
+and maybe a summary, no real acceptance criteria yet. Arm a *drafting* loop per issue and run an
+authoring agent on it:
+
+```bash
+ztrack loop start LOCAL-1 --until ready
+```
+
+This holds the turn until the issue has genuine `dev/NN` acceptance criteria and passes `ready`'s own
+gates (see [drive-to-stage](#3-usage-drive-an-agent-to-green) above) — **not** until any code exists;
+evidence is a `done`-gate concern, not a `ready`-gate one. Repeat for every issue in the backlog before
+moving on — an orchestrator that dispatches implementation work onto a stub issue is dispatching onto
+nothing testable.
+
+**3. Order — encode the real dependencies.** Once issues are ready, name what actually blocks what:
+issue-level `Blocked by: <id>` / `Blocks: <id>` lines (a paragraph in the body), or a per-AC
+`blocked-by: <ref>` / `blocks: <ref>` line nested under a specific acceptance criterion when the
+dependency is narrower than "the whole other issue" (see [Presets → Universal ids and
+blocking](PRESETS.md#universal-ids-and-blocking) for the exact grammar, and
+`boilerplates/presets/simple-sdlc.ts` for a worked example). `ztrack check` is what proves this is even
+a valid plan: it fails closed on a
+blocking **cycle** (`ac_block_cycle`), a reference to an issue/AC that doesn't exist
+(`relation_target_missing` / `ac_blocker_missing`), and a one-sided relation
+(`relation_not_reciprocal`, a warning) — so a backlog that passes `check` is a genuine DAG, not just a
+pile of hopeful cross-references.
+
+**4. Dispatch — work the frontier, wave by wave.** With the DAG in place, ask which issues are
+actionable **right now** instead of re-deriving the graph by hand:
+
+```bash
+ztrack issue list --actionable --json identifier,title,state    # the dispatch frontier: not done, not blocked
+ztrack issue list --blocked --json identifier,title,blockers     # the complement: named, nearest unmet blocker(s)
+```
+
+`--actionable` is every not-done issue with no unmet (transitive) dependency — map each row straight to
+a subagent dispatch: one loop-armed `ztrack loop start <id> --until done` per issue, each in its **own
+worktree** (so concurrent subagents don't collide on the same files or the same loop marker — a loop is
+armed per worktree). Merge each back into the trunk **sequentially**, running `ztrack check` after every
+merge (the same gate from [§2](#2-usage-verify-on-demand)) before starting the next wave. Once a wave
+lands, re-run `--actionable` — issues that were blocked on the just-finished wave are now on the
+frontier — and dispatch again. Repeat until `--actionable` returns nothing and the whole backlog is
+`done`.
+
+`--blocked` is the diagnostic when a wave stalls: it doesn't dump the whole transitive closure of
+unmet work behind a stuck issue, just the **nearest** hop(s) — the actual thing to go unblock next
+(and its current status), not everything eventually standing between here and done. A row can be
+blocked by another whole issue, or by one specific acceptance criterion of one (a narrower,
+AC-to-AC dependency) — either way it shows up the same: an id, or `id:acId`, plus that node's status.
+Both `--actionable` and `--blocked` refuse to be combined (they're two views of one computation, not
+composable with each other) and reject `--parent` (not modeled at this level); `--state`/`--label`/
+`--search`/`--limit`/`--json <fields>` all compose normally on top, same as plain `issue list`. Neither
+crashes on a tracker whose `check` is otherwise red, and with no relations authored anywhere,
+`--actionable` degrades to "every not-done issue" and `--blocked` to nothing — the honest answer when
+there's no DAG to walk yet.
+
+An issue's `state` is always in the row (both views): `--actionable` includes issues already
+`in-progress`/`in-review` — they're unblocked, just already claimed — so an orchestrator dispatching
+fresh subagents should filter those out (or treat re-dispatching one as "resume", not "start").
+
+The single-issue loop this section opened with is this same lifecycle with a backlog of one — intake
+and grooming already done by hand, one node, no ordering to prove, one dispatch, one wave.
+
 ### Expose ztrack as MCP tools
 
 An MCP-capable agent can drive ztrack directly (and self-gate without the loop by calling
