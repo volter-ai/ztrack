@@ -269,6 +269,7 @@ function insertIdIntoHeadingLine(line: string, mintedId: string): string {
 
 const PRE_CHECKED_MARKER = ' (imported: previously marked done — needs evidence)';
 const MULTILINE_ITEM_REASON = 'multi-line checkbox item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)';
+const MULTILINE_TODO_REASON = 'multi-line TODO: item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)';
 
 interface AcCandidate {
   line: number; // 0-based, original file
@@ -330,30 +331,75 @@ interface RelocationSafety {
   frozenTopStarts: Set<number>;
 }
 
+/** A bare `TODO: …` paragraph's mdast span (0-based lines). Collected the same way
+ *  `collectCheckboxItems` collects checkbox listItems — a `TODO:` line with an unindented,
+ *  non-blank continuation folds (CommonMark lazy continuation) into the SAME `paragraph` node, so
+ *  its position span already exposes the "does this item have more than one line" shape. */
+interface TodoParagraphSpan {
+  start: number;
+  end: number;
+}
+
+function collectTodoParagraphs(text: string, lines: readonly string[]): TodoParagraphSpan[] {
+  const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+  const items: TodoParagraphSpan[] = [];
+  const walk = (node: any): void => {
+    if (node.type === 'paragraph' && node.position) {
+      const start = (node.position.start.line as number) - 1;
+      const end = (node.position.end.line as number) - 1;
+      if (TODO_LINE_RE.test(lines[start] ?? '')) items.push({ start, end });
+    }
+    for (const c of node.children ?? []) walk(c);
+  };
+  walk(tree);
+  return items;
+}
+
 /** An item is relocatable iff every line of its span BEYOND its own first line is accounted for:
  *  blank, the first line of a single-own-line checkbox item (relocated as its own candidate), or
  *  a `TODO:` line (mdast folds an unindented `TODO: …` directly under a checkbox into that item's
  *  paragraph as a lazy continuation, but the scan relocates it as its own independent candidate —
  *  nothing is orphaned). Anything else — a plain prose continuation line, a non-checkbox child —
- *  makes the item (and, via this same flat line check, every ancestor) frozen. */
-function relocationSafety(items: readonly CheckboxItemSpan[], lines: readonly string[]): RelocationSafety {
+ *  makes the item (and, via this same flat line check, every ancestor) frozen.
+ *
+ *  ZTB-16 dev/02: the SAME rule applies to a bare `TODO:` paragraph's own continuation lines. Only
+ *  the paragraph's first line matched `TODO_LINE_RE` and relocated — an indented prose
+ *  continuation line right under it (no blank line, so mdast folds it into the same paragraph) is
+ *  neither a checkbox nor another `TODO:` line, so it was left behind, orphaned, when the first
+ *  line moved. Freezing the WHOLE paragraph (mirroring the checkbox-item rule: "when in doubt,
+ *  leave content in place and report") keeps the two in the same unit — either both relocate
+ *  (single-line TODO, unchanged behavior) or both stay put and get named in the report. */
+function relocationSafety(
+  items: readonly CheckboxItemSpan[],
+  todoParagraphs: readonly TodoParagraphSpan[],
+  lines: readonly string[],
+): RelocationSafety {
   const candidateStarts = new Set(items.filter((i) => i.ownEnd === i.start).map((i) => i.start));
   const covered = (l: number): boolean => {
     const line = lines[l] ?? '';
     return line.trim() === '' || candidateStarts.has(l) || TODO_LINE_RE.test(line);
   };
-  const unsafe = items.filter((item) => {
-    for (let l = item.start + 1; l <= item.end; l++) {
+  const spanUnsafe = (start: number, end: number): boolean => {
+    for (let l = start + 1; l <= end; l++) {
       if (!covered(l)) return true;
     }
     return false;
-  });
+  };
+  const unsafe = items.filter((item) => spanUnsafe(item.start, item.end));
+  const unsafeTodo = todoParagraphs.filter((p) => spanUnsafe(p.start, p.end));
   const frozen = new Set<number>();
   for (const item of unsafe) for (let l = item.start; l <= item.end; l++) frozen.add(l);
   const frozenTopStarts = new Set<number>();
   for (const item of unsafe) {
     const contained = unsafe.some((o) => o !== item && o.start <= item.start && o.end >= item.end && (o.start < item.start || o.end > item.end));
     if (!contained) frozenTopStarts.add(item.start);
+  }
+  for (const p of unsafeTodo) {
+    // A TODO paragraph fully inside an already-frozen checkbox span gets ONE report (the
+    // checkbox's), not a second one for the paragraph nested inside it.
+    const containedInFrozenCheckbox = unsafe.some((o) => o.start <= p.start && o.end >= p.end);
+    for (let l = p.start; l <= p.end; l++) frozen.add(l);
+    if (!containedInFrozenCheckbox) frozenTopStarts.add(p.start);
   }
   return { frozen, frozenTopStarts };
 }
@@ -372,7 +418,8 @@ function scanAcCandidates(
     const line = lines[j]!;
     if (safety.frozenTopStarts.has(j)) {
       const cb = CHECKBOX_LINE_RE.exec(line);
-      unmapped.push({ line: j + 1, excerpt: (cb ? cb[2]! : line.trim()).slice(0, 60), reason: MULTILINE_ITEM_REASON });
+      const reason = cb ? MULTILINE_ITEM_REASON : MULTILINE_TODO_REASON;
+      unmapped.push({ line: j + 1, excerpt: (cb ? cb[2]! : line.trim()).slice(0, 60), reason });
       continue;
     }
     if (safety.frozen.has(j)) continue;
@@ -394,7 +441,8 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
   const lines = text.split('\n');
   const codeLines = codeLineSet(text);
   const checkboxItems = collectCheckboxItems(text);
-  const safety = relocationSafety(checkboxItems, lines);
+  const todoParagraphs = collectTodoParagraphs(text, lines);
+  const safety = relocationSafety(checkboxItems, todoParagraphs, lines);
 
   // First pass: note every id already present (this file's own existing ids) so the allocator
   // never mints a collision even before scanning other batch/config sources (importDriver.ts
