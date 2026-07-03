@@ -150,6 +150,19 @@ function nodeLine(node: MdNode): number | undefined {
   return (node as { position?: { start?: { line?: number } } }).position?.start?.line;
 }
 
+// A non-checkbox content node (a bare paragraph, a blockquote, or a plain — non-checkbox — list
+// item) sitting INSIDE a recognized "## Acceptance Criteria" section is not modeled as an AC:
+// ZTB-1 made a checkbox item OUTSIDE the section loud (`ac_outside_section`); this is the
+// section's own interior blind spot — such content had no diagnostic and no model trace at all
+// (verified live 2026-07-02). `ac patch`/`issue edit`/`fmt` refuse to write an issue carrying this
+// diagnostic (see modelEdit.ts's `parseOneIssue`) rather than silently drop the content on
+// reserialize (ZTB-15's round-trip fix: fail closed, not grow the model to track interior-prose
+// position — see the module-level note there for why).
+function proseInSectionMessage(issueId: string, text: string, line?: number): string {
+  const excerpt = (text.trim().split('\n')[0] ?? '').slice(0, 60);
+  return `Issue ${issueId} has content inside a "## Acceptance Criteria" section that is not a checkbox AC item${line ? ` (line ${line})` : ''}: "${excerpt}" — \`ac patch\`/\`issue edit\`/\`fmt\` refuse to write this issue until it is moved out of the AC section or turned into a checkbox AC line ("- [ ] <id> v<version> <text>").`;
+}
+
 // Carve out unknown top-level `## X` sections (anything but Acceptance Criteria / the core
 // Waivers section) so the known structure parses normally and the rest round-trips verbatim —
 // AND record whether each carved section sat BEFORE or AFTER "## Acceptance Criteria" in the
@@ -255,6 +268,19 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
       for (const m of text.matchAll(/^Blocked by:\s*(.+)$/gim)) for (const id of splitList(m[1]!)) relations.push({ type: 'blocked-by', issueId: id });
       for (const m of text.matchAll(/^Relates:\s*(.+)$/gim)) for (const id of splitList(m[1]!)) relations.push({ type: 'relates', issueId: id });
       if (relations.length) issue.relations = relations;
+      if (inAc) {
+        diagnostics?.push({
+          code: 'ac_prose_in_section', issueId: record.id,
+          message: proseInSectionMessage(record.id, text, nodeLine(node)),
+        });
+      }
+      continue;
+    }
+    if (node.type === 'blockquote' && inAc) {
+      diagnostics?.push({
+        code: 'ac_prose_in_section', issueId: record.id,
+        message: proseInSectionMessage(record.id, nodeText(node), nodeLine(node)),
+      });
       continue;
     }
     if (node.type === 'list' && !inAc) {
@@ -274,6 +300,15 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
     if (node.type === 'list' && inAc) {
       for (const item of node.children ?? []) {
         if (item.type !== 'listItem') continue;
+        if (item.checked == null) {
+          // A plain (non-checkbox) list item inside a recognized AC section is prose, not an
+          // AC — loud it instead of silently mangling it into a bogus AC id/text (ZTB-15).
+          diagnostics?.push({
+            code: 'ac_prose_in_section', issueId: record.id,
+            message: proseInSectionMessage(record.id, firstParagraphText(item), nodeLine(item)),
+          });
+          continue;
+        }
         const { id, version, text, malformed } = parseAcLine(firstParagraphText(item));
         if (malformed) {
           diagnostics?.push({
