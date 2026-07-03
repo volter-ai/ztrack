@@ -82,6 +82,67 @@ own help text promising weak/unverifiable-claim detection.
   stale "flags weak or unverifiable claims" one-liner the three original mechanical rules never
   actually implemented.
 
+Four CLI friction fixes (ZTB-21), all hit live while dogfooding 0.37.0 during launch prep.
+
+- **`ac patch --json` proof errors now show the full expected shape immediately.** A malformed
+  `proof` used to take two failed attempts to learn the real shape (first "expected object", then
+  "Unrecognized key" only after guessing wrong again); the first error now states
+  `{explanation: string, evidenceRefs: string[]}` — introspected from the preset's own zod schema,
+  so the hint can never drift from what validation actually enforces. Flattened proof fields also
+  get a `did you mean to nest these under "proof"?` hint, and both preset scaffold comments now
+  show the real JSON shape instead of prose-only.
+- **`sync github --pull` no longer misreports a first-ever pull as empty.** GitHub's issue-list
+  API can lag a just-created issue; a first pull that observes zero issues now retries once
+  (bounded, 2s), and if the lag outlives the retry it says so honestly on stderr instead of
+  printing a clean 0/0. Safe because the connector never advances its cursor on a zero-observation
+  poll.
+- **The removed `ingest` verb now points at `import`.** `ztrack ingest <file>` used to die with a
+  generic backend error; it's now caught at dispatch time with `did you mean 'ztrack import …'?`
+  (plus a pointer to `evidence add` in case the old signed-evidence importer was meant).
+- **`sync github --push --json`'s `total` can no longer contradict `created`/`updated`.** `total`
+  used to count every local tracker issue regardless of whether the push touched it; it is now
+  `created + updated + skipped`, with `skipped` reported as its own explicit field.
+
+Document-source and import robustness (ZTB-16).
+
+- **`issue edit <ID> --state <state>` now works on document-source issues.** Previously any state
+  change failed closed with "splicing a status change is not implemented", forcing operators to
+  hand-edit `status:` lines. It now splices just the `status:` header line's value in place —
+  byte-identical everywhere else, composing with body edits in a single write — the same way
+  `ac patch` already splices AC blocks. An item with no `status:` header line still fails closed
+  with a clear message naming the file, never inventing a line. Assignee splicing remains
+  unimplemented and still fails closed.
+- **`ztrack import` no longer splits a multi-line `TODO:` item.** A `TODO:` line with indented
+  prose continuation used to relocate only its first line into the Acceptance Criteria section,
+  orphaning the continuation where it stood. The freeze guard that already protects multi-line
+  checkbox items now covers `TODO:` paragraphs too — the whole item is either relocated together
+  or left in place and named in the unmapped report, never split.
+- **`src/modelEdit.ts` is plain text again.** A literal NUL byte used as an internal label-list
+  comparison separator made git treat the whole file as binary (no rendered diffs, no 3-way
+  merges). Rewritten as a `\x00` escape sequence — byte-identical at runtime, and a test now pins
+  the source file as NUL-free.
+
+Trust-boundary and honest-surface fixes from upstream issues #12 and #19.
+
+- **`ztrack init` now tells you the installed preset executes as code.** A one-line notice at init
+  (both the fresh-scaffold and already-initialized paths) points at SECURITY.md's trust model, and
+  `check --help` carries the same clause — instead of leaving the trust boundary undiscoverable
+  until you go looking (#12).
+- **GraphQL queries now honor their selection set.** `executeTrackerGraphql` used to return every
+  fetched field regardless of what a query asked for; it now filters recursively (including
+  through connections and aliases) and returns an explicit error on fragments/directives instead
+  of guessing. Routing no longer requires parentheses on root fields.
+- **`client.snapshot()` no longer silently returns `null`.** The markdown backend's snapshot
+  report is a stub; the SDK now surfaces the backend's "not yet implemented" stderr as a thrown
+  error instead of an indistinguishable empty result.
+- **`evidence add --blob` now warns it's write-only.** Stored blobs aren't consulted by any
+  `ztrack check` rule today; the CLI says so on stderr and points at the path-based
+  `evidence add <file>` instead.
+- Removed the dead `acVersionForItemBody`/`acVersionFor` module (`src/acVersion.ts`, zero callers
+  anywhere in src/visualizer/boilerplates/demos).
+- Doc/comment corrections: `core/audit.ts`, `tx.ts`, and ARCHITECTURE.md no longer claim CLI
+  writes are audited — today the audit log is populated only by the visualizer server.
+
 ## 0.37.0
 
 Freeform backlogs become first-class: `ztrack import` rewrites mixed markdown (headings,
