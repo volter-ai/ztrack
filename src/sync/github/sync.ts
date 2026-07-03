@@ -24,7 +24,7 @@ import { loadBase, saveBase, type BaseFields } from './baseStore.ts';
 import { loadConflicts, saveConflicts, stripConflictSection, withConflictSection, type ConflictRecord } from '../conflicts.ts';
 
 export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
-export type PullResult = { created: string[]; updated: string[]; total: number };
+export type PullResult = { created: string[]; updated: string[]; total: number; note?: string };
 export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; total: number };
 export type ReconcileResult = { pulled: string[]; pushed: string[]; created: Array<{ ztrack: string; number: number }>; conflicts: Array<{ issue: string; number: number; fields: string[] }> };
 
@@ -100,12 +100,37 @@ const unboundForkRows = (rows: Array<Record<string, unknown>>, b: GithubBindings
     .filter((r) => r.id && !b.byZtrack[r.id])
     .map((r) => ({ ztrack: r.id, title: r.title, body: r.body, closed: r.ghState === 'closed' }));
 
+// ZTB-21 dev/02: GitHub's issue list is eventually consistent. `gh issue create` immediately
+// followed by the very FIRST pull against a repo (no bindings recorded yet) can observe zero
+// remote issues even though one was just created — and silently report "0 created, 0 updated",
+// which reads as success. `runConnectorPoll` only advances its cursor when it actually observed
+// something newer (see @volter-ai-dev/twin's connector.js: `if (!truncated && maxOccurredAt &&
+// maxOccurredAt !== cursorBefore)`), so a zero-observation bootstrap poll leaves the cursor
+// untouched — a same-cursor re-poll is therefore risk-free (no window where a re-poll could skip
+// an issue). Retry ONCE, after a short delay, but ONLY in that narrow "first pull found nothing"
+// case: a repo that legitimately has zero issues after N prior syncs must not pay this delay on
+// every call.
+const FIRST_PULL_RETRY_DELAY_MS = 2000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /** PULL: incremental fold, then write to the tracker only the issues that differ (or create new). */
-export async function pull(o: SyncOpts): Promise<PullResult> {
+export async function pull(o: SyncOpts, opts: { retryDelayMs?: number } = {}): Promise<PullResult> {
   const repoKey = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repoKey);
-  await runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+  const isFirstPull = Object.keys(b.byNumber).length === 0;
+  let poll = await runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+  let retried = false;
+  if (isFirstPull && poll.fetched === 0 && !poll.truncated) {
+    await sleep(opts.retryDelayMs ?? FIRST_PULL_RETRY_DELAY_MS);
+    poll = await runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+    retried = true;
+  }
   const resources = issueResources(o.projectRoot);
+  // Even the retry can still lose the race on a slower propagation — be honest about that
+  // residual case instead of a bare "0 created, 0 updated" that looks identical to "really empty".
+  const note = retried && poll.fetched === 0
+    ? 'first pull found zero remote issues (retried once after GitHub list lag) — if you just created one, GitHub list results can still lag a few more seconds; retry the pull.'
+    : undefined;
   const updated: string[] = [];
   for (const res of resources) {
     const boundId = b.byNumber[String(res.number)];
@@ -126,7 +151,7 @@ export async function pull(o: SyncOpts): Promise<PullResult> {
     base.resources[`${repoKey}#issue:${res.number}`] = { ...(res.title !== undefined ? { title: res.title } : {}), ...(res.body !== undefined ? { body: res.body } : {}), state: res.state ?? 'open' };
   }
   saveBase(o.projectRoot, base);
-  return { created: created.map((c) => c.ztrack), updated, total: resources.length };
+  return { created: created.map((c) => c.ztrack), updated, total: resources.length, ...(note ? { note } : {}) };
 }
 
 /** PUSH: morph the twin for each changed/new tracker issue, then idempotent egress to GitHub. */

@@ -386,6 +386,9 @@ GraphQL-shaped query against the local tracker store.
     if (onlyPull) {
       const r = await githubSync.pull(o); out.pull = r;
       process.stdout.write(`${statusMark('pass')} pull: ${r.created.length} created, ${r.updated.length} updated locally\n`);
+      // ZTB-21 dev/02: a first pull that found nothing (even after the built-in retry) looks
+      // identical to "really has zero issues" unless we say so — GitHub's list API can still lag.
+      if (r.note) process.stderr.write(`${statusMark('warn')} ${ui.yellow(r.note)}\n`);
     } else if (onlyPush) {
       const r = await githubSync.push(o); out.push = r;
       process.stdout.write(`${statusMark('pass')} push: ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
