@@ -48,12 +48,11 @@ const WEAK_CLAIM_LEXICON: Array<{ id: string; re: RegExp }> = [
 // loudly if the lexicon grows or shrinks without a matching test being added.
 export const WEAK_CLAIM_LEXICON_IDS: string[] = WEAK_CLAIM_LEXICON.map((entry) => entry.id);
 
-// "Cited evidence" reuses the vocabulary acVersion.ts already treats as proof tokens: an
-// evidence/proof/source bracket ref ([E1], [P1], [1], [source 1]), a commit hash (this
-// workspace's own tracker docs write `commit=<sha>`, ztrack's own AC rows write `commit:
-// <sha>` — both accepted), or an uploaded screenshot path. Deliberately permissive: a false
-// NEGATIVE here (treating real evidence as absent) is the failure mode to avoid, so recall on
-// evidence-detection is what buys precision on the claim lexicon above.
+// "Cited evidence" is: an evidence/proof/source bracket ref ([E1], [P1], [1], [source 1]), a
+// commit hash (this workspace's own tracker docs write `commit=<sha>`, ztrack's own AC rows
+// write `commit: <sha>` — both accepted), or an uploaded screenshot path. Deliberately
+// permissive: a false NEGATIVE here (treating real evidence as absent) is the failure mode to
+// avoid, so recall on evidence-detection is what buys precision on the claim lexicon above.
 const EVIDENCE_CITATION_RE = /\[(?:[EP]|source\s*)?\d+\]|\bcommit[:=\s]+[0-9a-f]{7,40}\b|uploads\/[^\s,)>\]]+\.(?:png|jpe?g|webp)/i;
 
 const FENCE_RE = /^\s*(```|~~~)/;

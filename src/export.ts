@@ -36,5 +36,3 @@ export async function exportTrackerRoot(options: TrackerExportOptions = {}): Pro
   const waivers = parseWaivers(records);
   return waivers.length ? { ...result.export, waivers } : result.export;
 }
-
-export { acVersionForItemBody } from './acVersion.ts';
