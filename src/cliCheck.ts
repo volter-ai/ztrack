@@ -9,6 +9,8 @@ import { git } from './core/gitWorld.ts';
 import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
 import { positionalArgs, resolveTarget } from './cliTarget.ts';
 import { readLoopMarker } from './loopState.ts';
+import { activeStatusEnum } from './presetRegistry.ts';
+import type { Finding } from './core/engine.ts';
 import { RULE_CATEGORIES, type RuleCategory } from './checkRules.ts';
 
 async function writeOutput(text: string, outPath: string): Promise<void> {
@@ -149,7 +151,37 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     const explicit = process.env.ZTRACK_ACTIVE_ISSUE?.trim() || loopIssue;
     const { issueId, reason } = resolveActiveIssue({ ...(explicit ? { explicit } : {}), ...(branch ? { branch } : {}), ...(worktree ? { worktree } : {}), issueIds });
     if (issueId || forceAuto) { // resolved, or forced (forced+unresolved => everything blocks)
-      const { blocking, informational } = partitionFindings(result.findings, issueId);
+      // ZTB-29 dev/01/02 — the --until half of the loop oracle (Option B: no hook change; the
+      // Stop hook keeps calling `check --auto-scope` unmodified, so an OLD hook script and a NEW
+      // CLI, or vice versa, both keep working — see cli.ts:282's "never hit the API mid-loop"
+      // neighbor comment for the same offline invariant this preserves). A marker with no `until`
+      // (today's markers, or `loop start` without --until) leaves `findings` untouched — byte-
+      // identical to pre-ZTB-29 behavior. When `until` IS set, a synthetic BLOCKING finding is
+      // added whenever the active issue's status ranks below the target in the active preset's
+      // status-enum declaration order (the same order write-time validation already reads via
+      // `activeStatusEnum`, ZTB-23 dev/01) — so "green at the current stage" no longer disarms a
+      // loop that was told to drive further. Flipping the issue to the target stage EARLY does not
+      // defeat this: the stage's own lifecycle gates (e.g. `review_requires_all_acs_passed`) still
+      // fire in `result.findings` and keep the check red on their own — this rule only adds the
+      // extra "not there yet" signal for the case where the CURRENT stage is otherwise green.
+      let findings = result.findings;
+      if (loop?.until && issueId) {
+        const enumValues = await activeStatusEnum(projectRoot);
+        const issue = (result.export?.issues ?? []).find((i) => i.id === issueId);
+        const curRank = enumValues && issue ? enumValues.indexOf(issue.status) : -1;
+        const untilRank = enumValues ? enumValues.indexOf(loop.until) : -1;
+        if (curRank >= 0 && untilRank >= 0 && curRank < untilRank) {
+          const untilFinding: Finding = {
+            code: 'loop_until_not_reached',
+            severity: 'error',
+            issueId,
+            message: `${issueId} is loop-armed until "${loop.until}" but is currently "${issue!.status}" — not there yet.`,
+            fix: `Drive ${issueId} to "${loop.until}" for real (do the work, then \`ztrack issue edit ${issueId} --state ${loop.until}\` once its own gates for that stage pass), or \`ztrack loop stop\` to disarm.`,
+          };
+          findings = [...findings, untilFinding];
+        }
+      }
+      const { blocking, informational } = partitionFindings(findings, issueId);
       const blockingErrors = blocking.some((f) => f.severity === 'error');
       const scopedFailed = blockingErrors || (failOnWarning && blocking.length > 0);
       const scopedPayload = {

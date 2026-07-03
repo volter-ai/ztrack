@@ -12,6 +12,13 @@ export type LoopMarker = {
   maxIterations: number;
   startedAt: string;
   label: string;                  // human label for `loop status` (the id / file / "this branch")
+  // ZTB-29 dev/01: the stage this loop is driving the target TO, e.g. "done" — a preset status-enum
+  // value, validated at arm time (cliLoop.ts) against the active preset's vocabulary. Absent (the
+  // byte-identical default, and every marker written before this field existed) means today's
+  // semantics: hold until the target's CURRENT stage is green, not until it reaches some later one.
+  // Only ever set when `target` resolves to a single issue (kind 'issues' with one id, or 'auto') —
+  // a file or the whole tracker has no single status to drive toward.
+  until?: string;
 };
 
 export const loopMarkerPath = (root: string): string => join(root, stateDirName(), '.ztrack-loop.json');

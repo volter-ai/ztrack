@@ -154,14 +154,26 @@ GraphQL-shaped query against the local tracker store.
     return true;
   }
   if (resource === 'loop') {
-    process.stdout.write(`Usage: ${command} loop <start|stop|status> [<issue-id>] [--max N]
+    process.stdout.write(`Usage: ${command} loop <start|stop|status> [<issue-id>|<file.md>] [--max N] [--until <stage>]
 
 A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack-gate
 Stop/SubagentStop hooks are wired (README → Agent workflows), every turn in this root — the main
-agent's and any subagent's it delegates to — is held until the target issue passes check
-(then it disarms), capped at --max iterations per actor (default 8). \`start\` with no id auto-scopes
-to the branch/worktree issue; arming a DIFFERENT target while one is already armed refuses (\`stop\`
-first, or arm in a separate worktree). \`stop\` disarms; \`status\` shows the armed target.
+agent's and any subagent's it delegates to — is held until the target is done, capped at --max
+iterations per actor (default 8). \`start\` with no id auto-scopes to the branch/worktree issue;
+arming a DIFFERENT target while one is already armed refuses (\`stop\` first, or arm in a separate
+worktree). \`start\` also warns (never refuses) if it can't detect the gate is wired, and if a bare
+(no --until) arm targets something already green — nothing would be held.
+
+Two modes, same \`start\`:
+  (bare)              validate-current-stage: hold until the target's CURRENT status passes check.
+  --until <stage>      drive-to-stage: hold until the issue's status reaches <stage> or later (per
+                       the active preset's status vocabulary, e.g. \`ready\`/\`done\`) AND check is
+                       green there. Single-issue targets only (an id, or bare/auto); an unknown
+                       stage, or a file/whole-tracker target, fails the arm loud, naming the real
+                       vocabulary. Flipping the status early doesn't cheat this — that stage's own
+                       lifecycle gates still have to pass for real.
+
+\`stop\` disarms; \`status\` shows the armed target (and the --until stage, if any).
 `);
     return true;
   }
