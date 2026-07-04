@@ -9,7 +9,9 @@ of truth that the TypeScript type, the known-key table, and every config read de
 Plus the periphery brought inside the gate (ZTB-27): the world subpaths now honor the
 optional-peer contract, and the #13 missing-peer behavior has a real CI gate. And the
 code-health follow-ups from the 0.38 review (ZTB-28): docs that tell the truth about purity,
-one implementation of the id-minting rule, and a dispatch-only cli.ts.
+one implementation of the id-minting rule, and a dispatch-only cli.ts. Rounded out by the
+review tails (ZTB-31): the missing-peer gate now covers the world-twin seam and pins what it
+installs, and the last inline cli.ts command moved out.
 
 - **`ztrack/world-annotations` and `ztrack/world-source-books` no longer crash without the
   peer.** Both public subpaths statically value-imported `@volter-ai-dev/twin`, so importing
@@ -71,6 +73,21 @@ one implementation of the id-minting rule, and a dispatch-only cli.ts.
   modules following the established pattern (`cli.ts` is dispatch-only for them, help output
   byte-identical); the board-scope doc-comment now states the real `'shared'` default; and
   the stability language is "pre-1.0" everywhere (docs/API.md previously said "pre-beta").
+
+- **The missing-peer gate now proves the world-twin seam through the packed artifact.** A
+  consumer-side node probe imports the installed `ztrack/world-annotations` subpath and calls
+  an adapter: without the peers it must fail closed with `MISSING_WORLD_TWIN_MESSAGE`'s
+  install hint (never a raw `MODULE_NOT_FOUND`); with the peers the same import must load
+  cleanly under plain node (no bun-hint case exists here — `@volter-ai-dev/twin` ships
+  compiled JS). The gate was mutation-tested: breaking the seam makes it fail.
+- **The gate installs the peers pinned to the declared range.** The with-peers consumer now
+  reads `peerDependencies` from `package.json` at runtime instead of installing `latest`, so
+  a future twin `0.2.x` publish can't silently change what the gate tests.
+- **More CLI polish, zero behavior change**: the `api query`/`api serve` command — the last
+  inline multi-branch handler — moved out of `cli.ts` into `cliApi.ts` (dispatch-only, help
+  and output byte-identical); `cliLint.ts` folds a redundant dynamic `import('./config.ts')`
+  into its static import; `docs/PRESETS.md`'s impure-boundary phrasing is scoped to the
+  validation pipeline, matching ARCHITECTURE.md.
 
 ## 0.42.0
 
