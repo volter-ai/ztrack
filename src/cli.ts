@@ -2,17 +2,11 @@
 import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exportTrackerRoot } from './export.ts';
 import { checkTracker } from './check.ts';
-import { lintIssueBody } from './lint.ts';
-import { applyTx, planTx } from './tx.ts';
-import type { TxEdit } from './tx.ts';
-import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
-import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import * as githubSync from './sync/github/index.ts';
-import type { IssueRecord } from './core/engine.ts';
 import { loadTrackerConfig, projectRootFrom, trackerConfigPath } from './config.ts';
 import { upgradeTrackerPreset } from './presetCatalog.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
@@ -30,6 +24,11 @@ import { handleWaiverCommand } from './cliWaiver.ts';
 import { handleLoopCommand } from './cliLoop.ts';
 import { handleInitCommand } from './cliInit.ts';
 import { handleIssueListFrontier } from './cliFrontier.ts';
+import { handleFmtCommand } from './cliFmt.ts';
+import { handleTxCommand } from './cliTx.ts';
+import { handleLintCommand } from './cliLint.ts';
+import { handleSyncCommand } from './cliSync.ts';
+import { handlePatchCommand } from './cliPatch.ts';
 import { heading, statusMark, ui } from './cliStyle.ts';
 
 // The installed preset is `.volter/tracker/validation/preset.mts`, loaded at runtime via Node's
@@ -177,45 +176,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (args[0] === 'fmt') {
-    const inputPath = optionValue(args, '--input');
-    const issueId = optionValue(args, '--issue');
-    const write = args.includes('--write');
-    const checkOnly = args.includes('--check');
-    const projRoot = projectRootFrom();
-    const preset = await resolveTrackerValidation(loadTrackerConfig(projRoot), projRoot);
-    const fmtClient = (issueId !== '') ? createTrackerClient() : null;
-    let record: IssueRecord;
-    if (inputPath) {
-      // a standalone file carries no columns; canonicalize the body content with a placeholder
-      record = { id: 'fmt', title: 'fmt', status: 'draft', body: readFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), 'utf8') };
-    } else if (issueId) {
-      const issue = await fmtClient!.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
-      record = viewToRecord(issue as Record<string, unknown>, issueId);
-    } else {
-      throw new Error("tracker fmt: provide --issue <id> or --input <file> (plus --write to apply, --check to verify)");
-    }
-    const result = canonicalizeBody(preset, record);
-    const canonical = result.body === record.body;
-    if (checkOnly) {
-      process.stdout.write(canonical ? 'canonical\n' : 'NOT canonical (run ztrack fmt --write)\n');
-      process.exitCode = canonical ? 0 : 1;
-      return;
-    }
-    if (write) {
-      if (canonical) { process.stdout.write('already canonical\n'); return; }
-      if (issueId) {
-        await fmtClient!.issue.edit(issueId, columnsToEdit(result.body, result.columns, record));
-        process.stdout.write(`formatted ${issueId}\n`);
-      } else {
-        writeFileSync(isAbsolute(inputPath!) ? inputPath! : resolve(process.cwd(), inputPath!), result.body);
-        process.stdout.write(`formatted ${inputPath}\n`);
-      }
-      return;
-    }
-    process.stdout.write(result.body);
-    return;
-  }
+  if (await handleFmtCommand(args)) return;
 
   if (args[0] === 'mcp' && args[1] === 'serve') {
     await serveMcp();
@@ -327,49 +288,9 @@ GraphQL-shaped query against the local tracker store.
   }
 
 
-  if (args[0] === 'tx') {
-    const action = args[1];
-    const filePath = optionValue(args, '--file');
-    if (!action || !['plan', 'apply'].includes(action) || !filePath) {
-      throw new Error('usage: tracker tx <plan|apply> --file tx.json   (tx.json: {"edits": [{"issue": "A-1", "op": "check", "acId": "dev/01", ...}]}; apply accepts {"base": {...}} from a prior plan)');
-    }
-    const spec = JSON.parse(readFileSync(isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath), 'utf8')) as { edits: TxEdit[]; base?: Record<string, string> };
-    if (action === 'plan') {
-      const plan = await planTx(spec.edits);
-      process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
-      return;
-    }
-    const result = await applyTx(spec.edits, { projectRoot: projectRootFrom(), ...(spec.base ? { base: spec.base } : {}) });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    process.exitCode = result.committed ? 0 : 1;
-    return;
-  }
+  if (await handleTxCommand(args)) return;
 
-  if (args[0] === 'lint') {
-    const projectRoot = projectRootFrom();
-    const issuesFilter = optionValue(args, '--issues');
-    const issueSet = issuesFilter ? new Set(issuesFilter.split(',').map((s) => s.trim()).filter(Boolean)) : null;
-    const { loadTrackerConfig } = await import('./config.ts');
-    const config = loadTrackerConfig(projectRoot);
-    const rows = await client.issue.list({ state: 'all', limit: 5000, json: 'identifier,body' });
-    const cases = (Array.isArray(rows) ? rows : []) as Array<{ identifier?: string; body?: string }>;
-    const linted = cases.filter((c) => !issueSet || issueSet.has(String(c.identifier ?? '')));
-    const findings = linted.flatMap((c) => lintIssueBody(String(c.body ?? ''), String(c.identifier ?? ''), config));
-    if (args.includes('--json')) {
-      process.stdout.write(`${JSON.stringify({ findings }, null, 2)}\n`);
-    } else {
-      for (const f of findings) process.stdout.write(`${f.severity.toUpperCase()} ${f.rule}: issue=${f.issue} ${f.message} | ${f.excerpt ?? ''}\n`);
-      // Audible success: silence used to be indistinguishable from a no-op (0 findings and a
-      // broken command both printed nothing). Now every plain-text run ends with one summary
-      // line, pass or fail, naming both the finding count and how many issues were scanned.
-      const summary = `${findings.length} findings across ${linted.length} issue${linted.length === 1 ? '' : 's'}`;
-      const mark = findings.length === 0 ? statusMark('pass') : statusMark('fail');
-      const colored = findings.length === 0 ? ui.green(summary) : ui.red(summary);
-      process.stdout.write(`${mark} ztrack lint: ${colored}\n`);
-    }
-    process.exitCode = findings.some((f) => f.severity === 'error') || (args.includes('--fail-on-warn') && findings.length > 0) ? 1 : 0;
-    return;
-  }
+  if (await handleLintCommand(args)) return;
 
   if (args[0] === 'annotations') {
     throw new Error('ztrack annotations requires a configured world store (a mirrored world to annotate). See docs/EVIDENCE.md#advanced-validating-against-a-mirrored-world.');
@@ -377,45 +298,7 @@ GraphQL-shaped query against the local tracker store.
 
   // Two-way GitHub issue sync through the twin. Auth is the gh CLI (or GITHUB_TOKEN) — never a
   // prompted PAT. A synced issue IS the GitHub issue (binding in .volter/sync/github.json).
-  if (args[0] === 'sync') {
-    if (args[1] !== 'github') {
-      throw new Error("usage: tracker sync github [--repo <owner/name>] [--pull | --push] [--policy merge|hub-wins|twin-wins]   (default: bidirectional reconcile; --repo + --policy default to the `init --sync` link)");
-    }
-    // --repo is optional once the project is linked (`init --sync github --repo o/n`).
-    const repo = optionValue(args, '--repo') || githubSync.linkedRepo(projectRootFrom()) || '';
-    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
-      throw new Error("ztrack sync github: no repo. Pass --repo <owner/name>, or link one with `ztrack init --sync github --repo <owner/name>`.");
-    }
-    const [owner, name] = repo.split('/');
-    const o = { projectRoot: projectRootFrom(), owner: owner!, repo: name!, execute: githubSync.resolveGithubExecute(), client, occurredAt: new Date().toISOString() };
-    const onlyPull = args.includes('--pull') && !args.includes('--push');
-    const onlyPush = args.includes('--push') && !args.includes('--pull');
-    const out: Record<string, unknown> = { repo };
-    if (onlyPull) {
-      const r = await githubSync.pull(o); out.pull = r;
-      process.stdout.write(`${statusMark('pass')} pull: ${r.created.length} created, ${r.updated.length} updated locally\n`);
-      // ZTB-21 dev/02: a first pull that found nothing (even after the built-in retry) looks
-      // identical to "really has zero issues" unless we say so — GitHub's list API can still lag.
-      if (r.note) process.stderr.write(`${statusMark('warn')} ${ui.yellow(r.note)}\n`);
-    } else if (onlyPush) {
-      const r = await githubSync.push(o); out.push = r;
-      process.stdout.write(`${statusMark('pass')} push: ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
-    } else {
-      // default: bidirectional three-way merge (concurrent non-overlapping edits merge; a
-      // same-field collision is surfaced, never silently clobbered). Policy: --policy overrides
-      // the linked config (default merge).
-      const policyFlag = optionValue(args, '--policy');
-      if (policyFlag && !['hub-wins', 'twin-wins', 'merge'].includes(policyFlag)) throw new Error(`tracker sync: --policy must be merge | hub-wins | twin-wins (got '${policyFlag}')`);
-      const policy = (policyFlag as 'hub-wins' | 'twin-wins' | 'merge') || githubSync.linkedPolicy(o.projectRoot);
-      const r = await githubSync.reconcileSync(o, policy); out.reconcile = r;
-      process.stdout.write(`${statusMark('pass')} sync: ${r.pulled.length} pulled, ${r.pushed.length} pushed, ${r.created.length} created\n`);
-      for (const c of r.conflicts) {
-        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`conflict on ${c.issue}`)} ${ui.dim(`(both sides changed: ${c.fields.join(', ')} — left untouched; edit one side and re-sync)`)}\n`);
-      }
-    }
-    if (args.includes('--json')) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
-    return;
-  }
+  if (await handleSyncCommand(args)) return;
 
   if (await handleEvidenceCommand(args)) return;
 
@@ -424,31 +307,7 @@ GraphQL-shaped query against the local tracker store.
   //   tracker issue patch <issue>     --json '{"status":"done"}'
   // The patch fields are the active preset's SCHEMA shape (run `issue view` to see it); the
   // preset owns the grammar and renders it. The claim is then verified by `ztrack check`.
-  if ((args[0] === 'ac' || args[0] === 'issue') && args[1] === 'patch') {
-    const isAc = args[0] === 'ac';
-    const issueId = args[2];
-    const acId = isAc ? args[3] : undefined;
-    const json = optionValue(args, '--json');
-    if (!issueId || (isAc && !acId) || !json) {
-      throw new Error(isAc
-        ? "usage: tracker ac patch <issue> <acId> --json '{...}'  (fields = the preset's AC schema shape; see `issue view`)"
-        : "usage: tracker issue patch <issue> --json '{...}'  (fields = the preset's issue schema shape; see `issue view`)");
-    }
-    let patch: Record<string, unknown>;
-    try { patch = JSON.parse(json) as Record<string, unknown>; }
-    catch { throw new Error('tracker patch: --json must be valid JSON'); }
-    if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) {
-      throw new Error('tracker patch: --json must be a JSON object (the preset schema fields to overlay)');
-    }
-    const issue = await client.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
-    const record = viewToRecord(issue as Record<string, unknown>, issueId);
-    const root = projectRootFrom();
-    const preset = await resolveTrackerValidation(loadTrackerConfig(root), root);
-    const result = applyModelPatch(preset, record, { ...(acId ? { acId } : {}), patch });
-    if (!args.includes('--dry-run') && result.changed) await client.issue.edit(issueId, columnsToEdit(result.body, result.columns, record));
-    process.stdout.write(`${JSON.stringify({ issue: issueId, ...(acId ? { acId } : {}), changed: result.changed, dryRun: args.includes('--dry-run') }, null, 2)}\n`);
-    return;
-  }
+  if (await handlePatchCommand(args)) return;
 
   let forwardArgs = args;
   if (args[0] === 'issue' && args[1] === 'edit') {
