@@ -394,6 +394,7 @@ const SPECKIT_RULES: Rule<SpeckitRoot>[] = [
     code: 'speckit_evidence_commit_not_found', select: (m) => m.evidence,
     when: ({ ev }, m) => { const c = m.context.git?.existingCommits; return !!c && !!ev.commit && !c.some((x) => shaMatches(x, ev.commit!)); },
     message: ({ ac, ev }) => `Task ${ev.task} (story ${ac.id}) cites commit ${ev.commit}, which does not exist.`,
+    subject: ({ ev }) => ev.commit ?? '',  // the missing sha — a `ref:` waiver pins to exactly this occurrence
   }),
   // cross-issue: feature ids unique across the framed root.
   rule<SpeckitRoot, { issueId: string }>({

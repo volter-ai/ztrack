@@ -102,12 +102,19 @@ export interface IssueColumns {
 // staleness signal (eslint's `--report-unused-disable-directives`), so it can't silently rot.
 // `reason` and `by` (the git-identity sign-off) are required. Structural invariants
 // (`waivable === false`) can never be waived no matter who signs off.
+//
+// `ref` is the `// eslint-disable-next-line` upgrade: pin the waiver to ONE finding occurrence
+// by its `subject` (or `evidenceId`). A ref-pinned waiver can suppress only that occurrence and
+// self-expires when the subject changes. An UNPINNED waiver that matches a subject-bearing
+// finding still downgrades it (back-compat) but is flagged `waiver_overbroad` (warning) — the
+// coarse `/* eslint-disable rule */` form, made visible so it can be tightened with `ref:`.
 export interface WaiverDirective {
   issueId: string;       // the issue the finding is on
   code: string;          // the finding code it accepts (e.g. 'evidence_commit_not_found')
   reason: string;        // why the failing state is acceptable (required; empty → error)
   approvedBy: string;    // the authority who signed off — the git identity (required; empty → error)
   acId?: string;         // optional: scope to one AC's finding; absent = any AC / issue-level
+  ref?: string;          // optional: pin to ONE occurrence by its Finding.subject (or evidenceId)
 }
 
 // ── audit (a derived primitive): a separate append-only log, written on every
@@ -135,6 +142,12 @@ export interface Finding {
   issueId?: string;
   acId?: string;
   evidenceId?: string;
+  // The specific offending token distinguishing THIS occurrence of `code` from another at the
+  // same location — e.g. the missing commit sha for `evidence_commit_not_found`. A `ref:` waiver
+  // pins to it, so the waiver suppresses ONLY this occurrence and self-expires the instant the
+  // token changes (re-cite to a good sha ⇒ finding gone ⇒ waiver_unused; a DIFFERENT bad sha ⇒
+  // new subject ⇒ still fires). Absent ⇒ no finer discriminator than acId. Rule-authored (opt-in).
+  subject?: string;
   // false ⇒ a waiver may NOT downgrade this finding. Structural-integrity violations (a
   // block cycle, a duplicate id, a checkbox/status contradiction) can never be coherent no
   // matter who signs off, so they stay errors even on a waived issue. Default (absent) =
@@ -238,7 +251,7 @@ const WorldAnnotationSchema = z.object({
 // Waivers are core-parsed from each issue's `## Waivers` section into the context (universal,
 // preset-agnostic) and applied as a post-filter — see WaiverDirective.
 const WaiverDirectiveSchema = z.object({
-  issueId: z.string(), code: z.string(), reason: z.string(), approvedBy: z.string(), acId: z.string().optional(),
+  issueId: z.string(), code: z.string(), reason: z.string(), approvedBy: z.string(), acId: z.string().optional(), ref: z.string().optional(),
 }).strict();
 export const CoreContextSchema = z.object({
   now: z.string().optional(),
@@ -327,6 +340,9 @@ export interface RuleRecord<R extends CoreRoot, Item extends Located = Located> 
   select: (m: DerivedModel<R>) => Item[];
   when?: (item: Item, m: DerivedModel<R>) => boolean;
   message: (item: Item, m: DerivedModel<R>) => string;
+  // Optional: the specific offending token for THIS occurrence (e.g. the missing sha), copied
+  // onto Finding.subject so a `ref:` waiver can pin to exactly this occurrence (see Finding.subject).
+  subject?: (item: Item, m: DerivedModel<R>) => string;
 }
 export type Rule<R extends CoreRoot> = RuleRecord<R, Located>;
 
@@ -518,6 +534,7 @@ function evalRecord<R extends CoreRoot>(r: RuleRecord<R, Located>, model: Derive
         ...(item.issueId ? { issueId: item.issueId } : {}),
         ...(item.acId ? { acId: item.acId } : {}),
         ...(item.evidenceId ? { evidenceId: item.evidenceId } : {}),
+        ...(r.subject ? { subject: r.subject(item, model) } : {}),
         ...(r.waivable === false ? { waivable: false } : {}),
         ...(origin ? { origin: toFindingOrigin(origin) } : {}),
       };
@@ -546,48 +563,75 @@ export function parseWaivers(records: IssueRecord[]): WaiverDirective[] {
     for (const line of section[1]!.split('\n')) {
       const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
       if (!code) continue;
-      const acId = /\bac:\s*(\S+)/i.exec(line)?.[1];
       // `by:` is the trailing field; split on its LAST occurrence so a reason that itself
       // contains "by:" is not truncated (and the signer is not mis-attributed).
       const rm = /\breason:\s*/i.exec(line);
       const reasonStart = rm ? rm.index + rm[0].length : -1;
+      // `ac:`/`ref:` are the leading pins — parse them only from the head BEFORE `reason:`, so a
+      // reason mentioning "ref:"/"ac:" in prose can't be misread as a pin.
+      const head = rm ? line.slice(0, rm.index) : line;
+      const acId = /\bac:\s*(\S+)/i.exec(head)?.[1];
+      const ref = /\bref:\s*(\S+)/i.exec(head)?.[1];
       const byIdx = line.toLowerCase().lastIndexOf(' by:');
       const reasonEnd = byIdx > reasonStart ? byIdx : line.length;
       const reason = reasonStart >= 0 ? line.slice(reasonStart, reasonEnd).trim() : '';
       const approvedBy = byIdx > reasonStart ? line.slice(byIdx + ' by:'.length).trim() : '';
-      out.push({ issueId, code, reason, approvedBy, ...(acId ? { acId } : {}) });
+      out.push({ issueId, code, reason, approvedBy, ...(acId ? { acId } : {}), ...(ref ? { ref } : {}) });
     }
   }
   return out;
 }
 
-// Post-process (eslint `disable`-style): each waiver downgrades the ONE matching `error`
-// finding to `acknowledged`. A waiver missing a reason or sign-off is itself an error and
+// Post-process (eslint `disable`-style): each waiver downgrades the matching `error`
+// finding(s) to `acknowledged`. A waiver missing a reason or sign-off is itself an error and
 // downgrades nothing; a waiver that matches NO finding is reported `waiver_unused` (warning)
-// — the self-cleaning staleness signal. Structural invariants (waivable === false) never
-// downgrade. Universal core machinery — waivers live in `context.waivers`, never on a preset.
+// — the self-cleaning staleness signal. A ref-pinned waiver (`ref:`) matches ONLY the finding
+// whose `subject`/`evidenceId` equals it — the `// eslint-disable-next-line` form. An UNPINNED
+// waiver that silences a subject-bearing finding still downgrades (back-compat) but is flagged
+// `waiver_overbroad` (warning) — the coarse block form, nudged toward a `ref:` pin. Structural
+// invariants (waivable === false) never downgrade. Universal core machinery.
 function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[] {
   if (!waivers.length) return findings;
   const extra: Finding[] = [];
-  const loc = (w: WaiverDirective) => `${w.issueId}${w.acId ? ` (${w.acId})` : ''} for '${w.code}'`;
+  const loc = (w: WaiverDirective) => `${w.issueId}${w.acId ? ` (${w.acId})` : ''}${w.ref ? ` [ref ${w.ref}]` : ''} for '${w.code}'`;
   const valid = waivers.filter((w) => {
     const ok = !!w.reason?.trim() && !!w.approvedBy?.trim();
     if (!w.reason?.trim()) extra.push({ code: 'waiver_missing_reason', severity: 'error', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} has no reason. A waiver must state why the failing state is acceptable.` });
     if (!w.approvedBy?.trim()) extra.push({ code: 'waiver_missing_signoff', severity: 'error', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} has no sign-off (\`by:\`). A waiver must name the authority who accepted it.` });
     return ok;
   });
-  // Downgrade each error finding a valid, non-structural waiver matches; track which fired.
+  // Prefer the most specific waiver for a finding: a ref-pinned waiver wins over a broad one,
+  // so the broad one shows as unused/overbroad (nudging its removal) rather than absorbing the hit.
+  const ordered = [...valid].sort((a, b) => (a.ref ? 0 : 1) - (b.ref ? 0 : 1));
+  const matches = (v: WaiverDirective, f: Finding): boolean =>
+    v.issueId === f.issueId && v.code === f.code
+    && (v.acId === undefined || v.acId === f.acId)
+    && (v.ref === undefined || v.ref === f.subject || v.ref === f.evidenceId);
+  // Downgrade each error finding a valid, non-structural waiver matches; track which fired,
+  // and which UNPINNED waivers thereby silenced a subject-bearing finding (→ overbroad).
   const fired = new Set<WaiverDirective>();
+  const overbroadSubjects = new Map<WaiverDirective, Set<string>>();
   const adjusted = findings.map((f): Finding => {
     if (f.severity !== 'error' || f.waivable === false || !f.issueId) return f;
-    const w = valid.find((v) => v.issueId === f.issueId && v.code === f.code && (v.acId === undefined || v.acId === f.acId));
+    const w = ordered.find((v) => matches(v, f));
     if (!w) return f;
     fired.add(w);
+    if (w.ref === undefined && f.subject !== undefined) {
+      const s = overbroadSubjects.get(w) ?? new Set<string>();
+      s.add(f.subject); overbroadSubjects.set(w, s);
+    }
     return { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${w.approvedBy.trim()})` };
   });
   // A valid waiver that suppressed nothing is stale — surface it (eslint's unused-directive).
+  // A valid UNPINNED waiver that silenced a subject-bearing finding is overbroad — it can also
+  // mask future/other occurrences of the same code; tell the signer the exact `ref:` to pin.
   for (const w of valid) {
-    if (!fired.has(w)) extra.push({ code: 'waiver_unused', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} matched no finding — remove it (or fix the code/ac). A waiver that suppresses nothing is stale.` });
+    if (!fired.has(w)) { extra.push({ code: 'waiver_unused', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} matched no finding — remove it (or fix the code/ac). A waiver that suppresses nothing is stale.` }); continue; }
+    const subs = overbroadSubjects.get(w);
+    if (subs && subs.size) {
+      const list = [...subs].sort();
+      extra.push({ code: 'waiver_overbroad', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} is unpinned but silenced ${list.length === 1 ? 'a finding with subject' : `${list.length} findings with subjects`} ${list.join(', ')}. Pin it with \`ref: <subject>\` (one waiver per occurrence) so it can only ever suppress that one finding — an unpinned waiver also masks future/other '${w.code}' findings here.` });
+    }
   }
   return [...adjusted, ...extra];
 }

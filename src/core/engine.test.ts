@@ -81,6 +81,68 @@ describe('check() runner', () => {
     expect(r3.findings.find((x) => x.code === 'needs_work')?.severity).toBe('error');
   });
 
+  // ── fingerprinted, self-expiring waivers (`// eslint-disable-next-line` parity) ──────────────
+  // A preset whose rule emits one finding per evidence entry, each carrying the commit sha as its
+  // `subject` — so a `ref:` waiver can pin to exactly one occurrence.
+  const ESchema = z.object({ issues: z.array(z.object({ id: z.string(), title: z.string(), summary: z.string(), status: z.string(), acceptanceCriteria: z.array(z.object({ id: z.string(), status: z.string(), evidence: z.array(z.object({ id: z.string(), commit: z.string() })) })) })) }).strict();
+  type ER = z.infer<typeof ESchema>;
+  const twoBadCommits = (): ER => ({ issues: [{ id: 'A-1', title: 't', summary: '', status: 'open', acceptanceCriteria: [{ id: 'AC-1', status: 'passed', evidence: [{ id: 'ev1', commit: 'badA' }, { id: 'ev2', commit: 'badB' }] }] }] });
+  const subjPreset: Preset<ER> = {
+    name: 'subj', schema: ESchema, parse: () => twoBadCommits(),
+    rules: [rule<ER, { issueId?: string; acId?: string; evidenceId?: string; ev: { id: string; commit: string } }>({
+      code: 'evidence_commit_not_found', select: (m) => m.evidence,
+      message: ({ ev }) => `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`,
+      subject: ({ ev }) => ev.commit,
+    })],
+  };
+  const wbody = (rows: string) => [{ id: 'A-1', title: 't', status: 'draft', body: `## Waivers\n\n${rows}\n` }];
+
+  test('subject: a rule can stamp the offending token onto each finding occurrence', () => {
+    const f = check(subjPreset, rec()).findings.filter((x) => x.code === 'evidence_commit_not_found');
+    expect(f.map((x) => x.subject).sort()).toEqual(['badA', 'badB']);
+    expect(f.every((x) => x.acId === 'AC-1' && x.evidenceId)).toBe(true);
+  });
+
+  test('a ref-pinned waiver suppresses ONLY its occurrence — a different bad sha still fails (no masking)', () => {
+    const r = check(subjPreset, wbody('- code: evidence_commit_not_found ref: badA reason: lost in incident by: Otto'));
+    const byS = (s: string) => r.findings.find((x) => x.code === 'evidence_commit_not_found' && x.subject === s);
+    expect(byS('badA')?.severity).toBe('acknowledged'); // the pinned one is accepted
+    expect(byS('badB')?.severity).toBe('error');        // the other still gates — NOT masked
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((x) => x.code === 'waiver_overbroad')).toBe(false); // a pinned waiver is never overbroad
+  });
+
+  test('ref also matches by evidenceId', () => {
+    const r = check(subjPreset, wbody('- code: evidence_commit_not_found ref: ev1 reason: r by: Otto'));
+    expect(r.findings.find((x) => x.evidenceId === 'ev1')?.severity).toBe('acknowledged');
+    expect(r.findings.find((x) => x.evidenceId === 'ev2')?.severity).toBe('error');
+  });
+
+  test('an unpinned waiver still downgrades (back-compat) but is flagged waiver_overbroad, naming the subjects', () => {
+    const r = check(subjPreset, wbody('- code: evidence_commit_not_found reason: broad by: Otto'));
+    expect(r.findings.filter((x) => x.code === 'evidence_commit_not_found').every((x) => x.severity === 'acknowledged')).toBe(true);
+    expect(r.ok).toBe(true); // back-compat: it does gate-pass
+    const ob = r.findings.find((x) => x.code === 'waiver_overbroad');
+    expect(ob?.severity).toBe('warning');
+    expect(ob?.message).toContain('badA');
+    expect(ob?.message).toContain('badB'); // it silenced BOTH — the masking the warning is about
+  });
+
+  test('a ref pinned to a subject that no finding carries is waiver_unused (self-expiring)', () => {
+    const r = check(subjPreset, wbody('- code: evidence_commit_not_found ref: badGONE reason: r by: Otto'));
+    expect(r.findings.some((x) => x.code === 'waiver_unused')).toBe(true);
+    expect(r.findings.filter((x) => x.code === 'evidence_commit_not_found').every((x) => x.severity === 'error')).toBe(true);
+  });
+
+  test('the most specific waiver wins: a ref pin absorbs the hit, leaving the broad one to fire/overbroad on the rest', () => {
+    const r = check(subjPreset, wbody('- code: evidence_commit_not_found ref: badA reason: pinned by: Otto\n- code: evidence_commit_not_found reason: broad by: Otto'));
+    const byS = (s: string) => r.findings.find((x) => x.code === 'evidence_commit_not_found' && x.subject === s);
+    expect(byS('badA')?.severity).toBe('acknowledged'); // pinned waiver took it
+    expect(byS('badB')?.severity).toBe('acknowledged'); // broad waiver took the other
+    expect(r.ok).toBe(true);
+    expect(r.findings.some((x) => x.code === 'waiver_overbroad')).toBe(true); // the broad one still nudged
+  });
+
   test('an unknown context key is rejected by the strict ValidationInputSchema', () => {
     const preset: Preset<R> = { name: 'p', schema: RootSchema, parse: () => ({ issues: [] }), rules: [] };
     // @ts-expect-error — bogus context field must not be accepted

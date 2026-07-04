@@ -127,6 +127,7 @@ const SPEC_RULES = [
     code: 'evidence_commit_not_found', select: (m) => m.evidence,
     when: ({ ev }, m) => { const c = m.context.git?.existingCommits; return !!c && !c.some((x) => shaMatches(x, ev.commit)); },
     message: ({ ev }) => `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`,
+    subject: ({ ev }) => ev.commit,  // the missing sha — a `ref:` waiver pins to exactly this occurrence
   }),
   rule<SpecRoot, { issueId: string; acId: string }>({
     code: 'duplicate_ac_id', select: (m) => m.duplicateAcIds,
