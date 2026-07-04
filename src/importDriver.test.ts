@@ -169,4 +169,26 @@ describe('--register: appends exactly the printed sources entries, never duplica
   test('without --register (i.e. applyRegister never called), the config file is untouched — verified at the CLI layer (cliImport.test.ts)', () => {
     expect(existsSync(join(MULTI_DIR, 'tracker-config.json'))).toBe(false); // no config was ever written into the fixture dir
   });
+
+  // ZTB-26 dev/03: applyRegister used to `JSON.parse(...) as TrackerConfig` with no validation,
+  // so a malformed config was blindly rewritten (sources appended on top of garbage). It now
+  // validates through the same schema loadTrackerConfig does, so a malformed config fails loudly
+  // and — critically — the file is left byte-untouched rather than partially rewritten.
+  test('applyRegister refuses to rewrite a malformed (schema-invalid) config, leaving it byte-untouched', () => {
+    const tmp = makeTmpCopy(MULTI_DIR);
+    const configPath = join(tmp, 'tracker-config.json');
+    const malformed = `${JSON.stringify({ backend: 'markdown', source: [{ path: 'x' }] }, null, 2)}\n`; // typo'd "source"
+    writeFileSync(configPath, malformed);
+    expect(() => applyRegister(configPath, [{ path: 'messy.md', format: 'document' }])).toThrow(/unknown key "source"/);
+    expect(readFileSync(configPath, 'utf8')).toBe(malformed); // untouched, not partially rewritten
+  });
+
+  test('applyRegister refuses to rewrite a config that is not valid JSON, leaving it byte-untouched', () => {
+    const tmp = makeTmpCopy(MULTI_DIR);
+    const configPath = join(tmp, 'tracker-config.json');
+    const notJson = '{ this is not json';
+    writeFileSync(configPath, notJson);
+    expect(() => applyRegister(configPath, [{ path: 'messy.md', format: 'document' }])).toThrow(/not valid JSON/);
+    expect(readFileSync(configPath, 'utf8')).toBe(notJson);
+  });
 });

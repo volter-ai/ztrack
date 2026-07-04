@@ -317,15 +317,20 @@ function describeIssue(issue: z.ZodIssue): string {
   return `${at}${issue.message}`;
 }
 
-/** Validate the parsed JSON against the full `TrackerConfig` shape. Throws a single Error naming
- *  every offending key (unrecognized or otherwise) — the caller (config.ts `loadTrackerConfig`)
- *  prefixes it with the config path; the top-level catch (cli.ts) reports it and exits nonzero.
- *  ZTB-26 dev/03 replaces this with `parseTrackerConfig(raw): RawTrackerConfig` (returns
- *  `result.data` instead of discarding it) so callers stop needing an unvalidated cast — unchanged
- *  here for dev/01. */
-export function assertValidTrackerConfigShape(raw: unknown): void {
+/** Validate the parsed JSON against the full `TrackerConfig` shape and return the typed, validated
+ *  result. Throws a single Error naming every offending key (unrecognized or otherwise) — each
+ *  caller (config.ts `loadTrackerConfig`, importDriver.ts `applyRegister`) prefixes it with the
+ *  config path; the top-level catch (cli.ts) reports it and exits nonzero.
+ *
+ *  ZTB-26 dev/03: this used to be `assertValidTrackerConfigShape(raw): void`, which discarded
+ *  `result.data` on success — forcing every caller back to its OWN unvalidated
+ *  `JSON.parse(...) as TrackerConfig` cast just to get a typed value. That cast was the untyped
+ *  config-read hatch this AC closes (importDriver.ts `applyRegister` blindly rewrote a config file
+ *  it never actually validated). Returning the parsed, typed data removes the need for the cast
+ *  entirely. */
+export function parseTrackerConfig(raw: unknown): RawTrackerConfig {
   const result = TrackerConfigSchema.safeParse(raw);
-  if (result.success) return;
+  if (result.success) return result.data;
   const messages = result.error.issues.map(describeIssue);
   throw new Error(messages.join('\n  - '));
 }
