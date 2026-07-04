@@ -2,6 +2,21 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.44.0
+
+Dead-code removal from the 0.43 review: the content-addressed evidence blob store is gone.
+
+- **`blobStore.ts` and `evidence add --blob` removed (write-only dead code).** The blob store
+  (`putBlob`/`hasBlob`/`getBlob`, keyed by sha256) was write-only in practice: `hasBlob`/`getBlob`
+  had **no production caller**, no shipped preset rule ever read a blob back, and `putBlob` was
+  reachable only through `evidence add --blob` — a flag whose own warning admitted the stored blob
+  did nothing for verification. Storing bytes nothing ever reads is not a feature, so both the
+  module and the flag are deleted. Attestation (`evidence keygen`/`export`/`verify`, via
+  `attest.ts`/`dsse.ts`) is unaffected — it signs the validated `root`, never per-file blobs.
+  **Migration:** `evidence add <file>` (the default) is the one honest form — it copies the file
+  in and cites the path the gate verifies at the cited commit. A stray `--blob` is now inert
+  (ignored), so existing `evidence add … --blob` invocations keep working and store by path.
+
 ## 0.43.0
 
 One authored copy of the config shape (ZTB-26): `TrackerConfigSchema` is now the single source

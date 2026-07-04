@@ -82,7 +82,6 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 | `documentParser.ts` | the `document`-format parser: turns one markdown file's heading tree into many issues (id-bearing headings, parent/children nesting, a `Title:`/`Status:`/`Assignee:` preamble → umbrella issue) |
 | `documentWriteBack.ts` | the splice primitives `DocumentSource.write` uses — `shiftHeadings` (renumber ATX headings inside a spliced section) and `decomposeSection`/`spliceSectionText` (byte-preserving section rewrite) |
 | `testkit/presetConformance.ts` | shared preset-conformance test harness (`assertSdlcGrammarConformance`, `assertRoundTripFidelity`, …) each boilerplate preset's test file wires in: pins that an unmodified parse→serialize round trip is byte-identical and that an edit touches only the bytes its element owns |
-| `blobStore.ts` | content-addressed evidence blob store (`putBlob`/`hasBlob`/`getBlob`, keyed by sha256). **Write-only today**: `putBlob` is exercised by `evidence add --blob` (deprecated, `cliEvidence.ts:36`), but `hasBlob`/`getBlob` have no production caller — no shipped preset rule reads a blob back, so storing one here doesn't make `ztrack check` see it |
 
 **Validate flow:**
 ```
@@ -170,7 +169,7 @@ parser, serialize, and rules.
 | `check.ts` | `checkTracker()` / `checkTrackerRoot()` → run the active preset's rulebook |
 | `cliCheck.ts` | the `check` / `export` CLI dispatch |
 | `checkRules.ts` | the category/depth **types** for the `--categories` selector |
-| `blobStore.ts`, `attest.ts`, `dsse.ts` | evidence blobs + in-toto/DSSE attestation over a validated root. `blobStore.ts` is write-only in practice today — `hasBlob`/`getBlob` have no production caller (see the `blobStore.ts` row in §2) |
+| `attest.ts`, `dsse.ts` | in-toto/DSSE attestation over a validated root (`evidence export`/`keygen`/`verify`) — signs the validated `root`, not per-file blobs |
 | `lint.ts` | issue-body lint (structure warnings) — write-side, see §6 |
 | `modelEdit.ts`, `tx.ts` | AC mutation + multi-edit transaction (apply → re-check → revert if worse) — write-side, see §6 |
 
