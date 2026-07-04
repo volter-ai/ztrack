@@ -2,6 +2,28 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.47.0
+
+`--source` scoping: address one declared source by name across `issue list` and `check`.
+
+- **`--source <name>` scopes `issue list` and `ztrack check`.** With 2+ declared `sources` you can
+  now say "show me just the backlog" or "check only the issue-per-file directory" instead of always
+  reading the whole union. Repeatable — multiple `--source` union; `check` also accepts a
+  comma-separated `--source a,b`. A selector matches a source by its `name` (below) or the basename
+  of its path (`--source tracker` reaches `.volter/tracker`). An unknown selector is a hard error
+  listing the available names — never a silent empty result.
+- **`name` on a source config entry.** A `sources[]` entry may carry an optional `name` — a stable,
+  user-typeable `--source` selector. Omit it and the source stays addressable by exactly its `path`
+  string (and that path's basename); add one (`"name": "backlog"`) to decouple the selector from the
+  on-disk path or make it read nicely. Fully back-compatible: an unnamed source and every absent
+  `--source` behave byte-identically to 0.46.0.
+- **`source` is a selectable `issue list --json` field.** `ztrack issue list --json identifier,source`
+  reports which declared source each row came from (by name), complementing the existing `path` field.
+- **The dispatch frontier stays whole-graph.** `--source` is rejected on `issue list
+  --actionable|--blocked` (like `--parent` already is): that view is computed over the whole
+  cross-source dependency graph, and scoping it to one source would misreport blockers that live in
+  another. Use plain `issue list --source` for a scoped listing.
+
 ## 0.46.0
 
 Waivers become `// eslint-disable-next-line`: pinned to one finding, self-expiring.

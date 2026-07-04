@@ -42,7 +42,7 @@ function parseCategories(flag: string): Partial<Record<RuleCategory, number>> | 
 
 const KNOWN_FLAGS: Record<string, Set<string>> = {
   export: new Set(['--out', '--issues']),
-  check: new Set(['--input', '--issues', '--case', '--categories', '--phase', '--fail-on-warning', '--verify-commits', '--no-verify-commits', '--errors-only', '--output', '--json', '--max-findings', '--auto-scope', '--preset']),
+  check: new Set(['--input', '--issues', '--case', '--categories', '--phase', '--fail-on-warning', '--verify-commits', '--no-verify-commits', '--errors-only', '--output', '--json', '--max-findings', '--auto-scope', '--preset', '--source']),
 };
 
 /** `ztrack check` (validate the live tracker or a committed validated root) and
@@ -54,7 +54,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -64,6 +64,12 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   const projectRoot = projectRootFrom();
   const issuesFilter = optionValue(flagArgs, '--issues') || optionValue(flagArgs, '--case');
   const issuesFromFlag = issuesFilter ? issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  // ZTB-33: `--source a,b` scopes the check to the named declared source(s) (comma-separated, like
+  // `--issues`). Threaded into commonOpts → checkTracker → loader → backend; an unknown name errors
+  // in the backend's `selectSources`. Meaningless with `--input` (a materialized root, no backend
+  // read) — silently ignored there, as scoping can only happen at the live read.
+  const sourcesFilter = optionValue(flagArgs, '--source');
+  const sourcesFromFlag = sourcesFilter ? sourcesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   if (action === 'export') {
     const root = await exportTrackerRoot({ projectRoot, ...(issuesFromFlag ? { issues: issuesFromFlag } : {}) });
@@ -93,11 +99,11 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   // `commonOpts` so every check mode below (--input, live tracker, loose file, loop-file gate)
   // honors it uniformly via the one shared resolution point in check.ts.
   const presetPath = optionValue(flagArgs, '--preset') || undefined;
-  const commonOpts = { projectRoot, ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), ...(verifyCommits !== undefined ? { verifyCommits } : {}), ...(presetPath ? { presetPath } : {}) };
+  const commonOpts = { projectRoot, ...(categories ? { categories } : {}), ...(phase ? { phase } : {}), ...(verifyCommits !== undefined ? { verifyCommits } : {}), ...(presetPath ? { presetPath } : {}), ...(sourcesFromFlag ? { sources: sourcesFromFlag } : {}) };
 
   // Resolve the unified TARGET. `--input` (a committed root artifact) is its own path and
   // ignores any positional; otherwise a positional/`--issues`/branch picks file|issues|auto|all.
-  const VALUE_FLAGS = new Set(['--input', '--issues', '--case', '--categories', '--phase', '--output', '--max-findings', '--preset']);
+  const VALUE_FLAGS = new Set(['--input', '--issues', '--case', '--categories', '--phase', '--output', '--max-findings', '--preset', '--source']);
   const positionals = inputPath ? [] : positionalArgs(flagArgs, VALUE_FLAGS);
   const target = inputPath ? null : resolveTarget({ positionals, ...(issuesFromFlag ? { issuesFlag: issuesFromFlag } : {}), forceAuto, cwd: process.cwd() });
 

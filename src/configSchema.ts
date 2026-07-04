@@ -28,6 +28,12 @@ const TrackerSourceConfigSchema = z.object({
   path: z.string(),
   format: z.enum(['issue-per-file', 'document']).optional(),
   readonly: z.boolean().optional(),
+  /** A stable, user-typeable selector for `--source` (ZTB-33). Optional: when omitted a source is
+   *  addressable by exactly the `path` string written here (and by that path's basename). Give a
+   *  `name` to decouple the selector from the on-disk path or to make it read nicely
+   *  (`--source backlog` rather than `--source docs/backlog.md`). Names should be unique across
+   *  declared sources; a shared name selects every source that carries it (an honest union). */
+  name: z.string().optional(),
 }).strict();
 
 const LocalSchema = z.object({

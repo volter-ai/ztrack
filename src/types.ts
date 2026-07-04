@@ -58,6 +58,9 @@ export interface TrackerClient {
       limit?: number;
       json?: string;
       jq?: string;
+      /** ZTB-33: scope the read to the named declared source(s) (`--source`). A single selector or
+       *  a list; each matches a source by its `name` or its path basename. */
+      source?: string | string[];
     }): Promise<unknown>;
     view(identifier: string, options?: { comments?: boolean; json?: string; jq?: string }): Promise<Record<string, unknown>>;
     create(input: TrackerIssueInput): Promise<Record<string, unknown>>;

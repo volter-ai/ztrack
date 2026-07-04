@@ -242,12 +242,14 @@ export class DocumentSource implements IssueSource {
   readonly readonlySource: boolean;
   readonly isDefault: boolean;
   readonly location: string; // the file itself — ResolvedSource.dir names a FILE for a document source
+  readonly name: string; // ZTB-33 `--source` selector (ResolvedSource.name)
   private byId: Map<string, LoadedIssue>;
 
   constructor(resolved: ResolvedSource) {
     this.location = resolved.dir;
     this.readonlySource = resolved.readonly;
     this.isDefault = resolved.isDefault; // always false in practice: a file path never equals markdownStoreDir()
+    this.name = resolved.name;
     const text = existsSync(this.location) ? readFileSync(this.location, 'utf8') : '';
     this.byId = loadedIssuesFrom(parseMarkdownDocumentSource(text, this.location));
   }

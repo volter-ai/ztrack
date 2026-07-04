@@ -20,6 +20,10 @@ export interface IssueSource {
   /** Human-readable "where this source lives", used in error messages (a directory for
    *  `issue-per-file`, the file itself for `document`). */
   readonly location: string;
+  /** The `--source` selector for this source (ZTB-33) — `ResolvedSource.name` (config `name`, else
+   *  the declared path, else `'default'`). A routing label only; selection also accepts the
+   *  basename of `location` (see markdownBackend's `selectSources`). */
+  readonly name: string;
   ids(): string[];
   load(id: string): CanonicalIssue | null;
   origin(id: string): SourceOrigin;

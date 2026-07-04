@@ -63,13 +63,16 @@ export function viewJson(c: CanonicalIssue, path: string, span?: { lineStart?: n
 // so IssueRecord.origin can be populated, without changing the shape of any other caller's row.
 // `lineStart`/`lineEnd` (ZTB-4) are the same kind of selectable field, null when the source has no
 // span (issue-per-file) or the caller didn't ask.
-function listRow(c: CanonicalIssue, fields: string[], path: string, span?: { lineStart?: number; lineEnd?: number }): Record<string, unknown> {
+function listRow(c: CanonicalIssue, fields: string[], path: string, span?: { lineStart?: number; lineEnd?: number }, sourceName?: string): Record<string, unknown> {
   const all: Record<string, unknown> = {
     id: c.identifier, identifier: c.identifier, number: c.identifier, title: c.title,
     body: c.body, description: c.body, state: c.state, stateType: c.stateType,
     createdAt: c.createdAt, updatedAt: c.updatedAt, project: c.project, parent: c.parent ?? '',
     labels: c.labels, url: c.url, priority: c.priority, assignee: c.assignees[0] ?? '', branchName: c.branchName, path,
     lineStart: span?.lineStart ?? null, lineEnd: span?.lineEnd ?? null,
+    // `source` (ZTB-33): the owning source's `--source` name, a selectable field like `path` — so a
+    // row from the union tells you WHICH declared source it came from, not just the file path.
+    source: sourceName ?? null,
   };
   const row: Record<string, unknown> = {};
   for (const f of fields) row[f] = all[f] ?? null;
@@ -100,6 +103,7 @@ class MarkdownSource implements IssueSource {
   readonly shared: boolean;
   readonly readonlySource: boolean;
   readonly isDefault: boolean;
+  readonly name: string; // ZTB-33 `--source` selector (ResolvedSource.name)
   // Alias for `dir`, satisfying `IssueSource`'s uniform "where this source lives" field used in
   // error messages — additive, `dir` itself is untouched everywhere else in this class.
   get location(): string { return this.dir; }
@@ -110,6 +114,7 @@ class MarkdownSource implements IssueSource {
     this.shared = this.indexDir !== this.dir;
     this.readonlySource = resolved.readonly;
     this.isDefault = resolved.isDefault;
+    this.name = resolved.name;
     mkdirSync(this.dir, { recursive: true });
     if (this.shared) mkdirSync(this.indexDir, { recursive: true });
   }
@@ -252,16 +257,30 @@ export class MarkdownBackend implements TrackerBackend {
   // finding rather than this layer silently picking a winner). Within ONE source, `ids()`
   // already unions/dedupes its own checkout/index/trunk locations via a Set, so that precedence
   // is untouched. `lineStart`/`lineEnd` (ZTB-4) are present only for a document-sourced issue.
-  private loadAllRaw(): Array<{ c: CanonicalIssue; path: string; lineStart?: number; lineEnd?: number }> {
-    const out: Array<{ c: CanonicalIssue; path: string; lineStart?: number; lineEnd?: number }> = [];
-    for (const source of this.sources) {
+  private loadAllRaw(selectors?: string[]): Array<{ c: CanonicalIssue; path: string; lineStart?: number; lineEnd?: number; source: string }> {
+    const out: Array<{ c: CanonicalIssue; path: string; lineStart?: number; lineEnd?: number; source: string }> = [];
+    const active = selectors && selectors.length ? this.selectSources(selectors) : this.sources;
+    for (const source of active) {
       for (const id of source.ids()) {
         const c = source.load(id);
         if (c === null) continue;
-        out.push({ c, ...source.origin(id) });
+        out.push({ c, ...source.origin(id), source: source.name });
       }
     }
     return out;
+  }
+  // ZTB-33: resolve `--source` selectors to the declared sources they name. A selector matches a
+  // source by its `name` (config `name`, else the declared path) OR the basename of its location
+  // (so `--source tracker` reaches `.volter/tracker`). Repeatable selectors union. An unknown
+  // selector is a hard error listing every available name — never a silent empty result, which
+  // would read as "that source has no issues" rather than "you named a source that doesn't exist".
+  private selectSources(selectors: string[]): IssueSource[] {
+    const matched = this.sources.filter((s) => selectors.some((sel) => sel === s.name || sel === basename(s.location)));
+    if (matched.length === 0) {
+      const available = [...new Set(this.sources.map((s) => s.name))].join(', ');
+      throw new Error(`no declared source matches --source ${selectors.join(' / ')}. Available source(s): ${available}.`);
+    }
+    return matched;
   }
   private loadAll(): CanonicalIssue[] { return this.loadAllRaw().map((r) => r.c); }
   // The full origin (path + optional line span) id's content actually resolved from (first source
@@ -303,7 +322,9 @@ export class MarkdownBackend implements TrackerBackend {
     const [verb, sub, ...rest] = args;
     if (verb === 'issue' && sub === 'list') {
       const fields = (flagVal(args, 'json') ?? 'identifier').split(',').map((s) => s.trim()).filter(Boolean);
-      let rows = this.loadAllRaw();
+      // `--source` (ZTB-33, repeatable): scope the union to the named source(s) before any other
+      // filter. An unknown selector throws (selectSources) rather than returning nothing.
+      let rows = this.loadAllRaw(flagAll(args, 'source'));
       // `--state` is either a status TYPE (`open` = not closed, `closed` = completed/canceled,
       // `all` = no filter — what the local backend and the recovery scripts use) or a literal
       // state name ("In Progress"). Matching `open` as a literal name returns nothing.
@@ -315,7 +336,7 @@ export class MarkdownBackend implements TrackerBackend {
       const parent = flagVal(args, 'parent'); if (parent) rows = rows.filter((r) => r.c.parent === parent);
       const search = flagVal(args, 'search'); if (search) rows = rows.filter((r) => `${r.c.title}\n${r.c.body}`.toLowerCase().includes(search.toLowerCase()));
       const limit = flagVal(args, 'limit'); const limitN = Number(limit); if (limit && Number.isFinite(limitN) && limitN >= 0) rows = rows.slice(0, limitN);
-      return ok(JSON.stringify(rows.map((r) => listRow(r.c, fields, r.path, r)), null, 2));
+      return ok(JSON.stringify(rows.map((r) => listRow(r.c, fields, r.path, r, r.source)), null, 2));
     }
     if (verb === 'issue' && sub === 'view') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };

@@ -123,7 +123,7 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
 // hardwired store to a declared list. These are UNIT-level (no CLI spawn); sourcesConfig.e2e.test.ts
 // covers the same behavior end to end through config + the real CLI.
 describe('markdown backend — declared `sources` (ZTB-3)', () => {
-  const src = (dir: string, readonly = false): ResolvedSource => ({ dir, format: 'issue-per-file', readonly, isDefault: false });
+  const src = (dir: string, readonly = false): ResolvedSource => ({ dir, format: 'issue-per-file', readonly, isDefault: false, name: dir });
 
   test('list unions ids across declared sources, each row carrying its OWN source path', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mdbe-src-'));

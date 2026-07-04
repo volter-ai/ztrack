@@ -120,7 +120,7 @@ describe('resolveSources (ZTB-3)', () => {
   test('absent `sources` resolves to exactly the implicit default — byte-identical to markdownStoreDir()', () => {
     const root = project({ backend: 'markdown', local: { teamKey: 'APP' } });
     const resolved = resolveSources(root, loadTrackerConfig(root));
-    expect(resolved).toEqual([{ dir: markdownStoreDir(root), format: 'issue-per-file', readonly: false, isDefault: true }]);
+    expect(resolved).toEqual([{ dir: markdownStoreDir(root), format: 'issue-per-file', readonly: false, isDefault: true, name: 'default' }]);
   });
 
   test('declared sources resolve project-root-relative paths to absolute dirs, and mark the default-path entry isDefault', () => {
@@ -130,8 +130,8 @@ describe('resolveSources (ZTB-3)', () => {
     });
     const resolved = resolveSources(root, loadTrackerConfig(root));
     expect(resolved).toEqual([
-      { dir: markdownStoreDir(root), format: 'issue-per-file', readonly: false, isDefault: true },
-      { dir: join(root, 'external'), format: 'issue-per-file', readonly: true, isDefault: false },
+      { dir: markdownStoreDir(root), format: 'issue-per-file', readonly: false, isDefault: true, name: '.volter/tracker/markdown' },
+      { dir: join(root, 'external'), format: 'issue-per-file', readonly: true, isDefault: false, name: 'external' },
     ]);
   });
 
@@ -140,12 +140,26 @@ describe('resolveSources (ZTB-3)', () => {
   test('a `.md` file source defaults to format "document" and resolves (ZTB-4) — `dir` names the FILE', () => {
     const root = project({ backend: 'markdown', sources: [{ path: 'BACKLOG.md' }] });
     const resolved = resolveSources(root, loadTrackerConfig(root));
-    expect(resolved).toEqual([{ dir: join(root, 'BACKLOG.md'), format: 'document', readonly: false, isDefault: false }]);
+    expect(resolved).toEqual([{ dir: join(root, 'BACKLOG.md'), format: 'document', readonly: false, isDefault: false, name: 'BACKLOG.md' }]);
   });
 
   test('an explicit format: "document" on a non-.md path resolves the same way (declared, not inferred)', () => {
     const root = project({ backend: 'markdown', sources: [{ path: 'somedir', format: 'document' }] });
     const resolved = resolveSources(root, loadTrackerConfig(root));
-    expect(resolved).toEqual([{ dir: join(root, 'somedir'), format: 'document', readonly: false, isDefault: false }]);
+    expect(resolved).toEqual([{ dir: join(root, 'somedir'), format: 'document', readonly: false, isDefault: false, name: 'somedir' }]);
+  });
+
+  // ZTB-33 dev/54: each declared source carries a stable `--source` selector name — the config
+  // `name` when given, else the declared `path` verbatim, else 'default' for the implicit source.
+  test('ResolvedSource.name is the config name when declared, else the path, else "default"', () => {
+    const root = project({
+      backend: 'markdown',
+      sources: [{ path: 'docs/backlog.md', name: 'backlog' }, { path: '.volter/tracker/markdown' }],
+    });
+    const resolved = resolveSources(root, loadTrackerConfig(root));
+    expect(resolved.map((s) => s.name)).toEqual(['backlog', '.volter/tracker/markdown']);
+    // and the implicit single source (no `sources`) is 'default'
+    const bare = project({ backend: 'markdown' });
+    expect(resolveSources(bare, loadTrackerConfig(bare)).map((s) => s.name)).toEqual(['default']);
   });
 });

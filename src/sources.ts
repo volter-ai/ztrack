@@ -25,6 +25,11 @@ export interface ResolvedSource {
   dir: string;
   format: SourceFormat;
   readonly: boolean;
+  /** The `--source` selector for this source (ZTB-33): the config's `name` when declared, else the
+   *  declared `path` string verbatim, else `'default'` for the one implicit source (no `sources`
+   *  config). Matching also accepts the source dir's basename — see markdownBackend's
+   *  `selectSources`. Purely a routing label; it never changes which issues a source holds. */
+  name: string;
   /** This source's resolved dir equals today's implicit `markdownStoreDir()` — it gets the
    *  worktree board-index/trunk union machinery (ZTB-3 makes that machinery user-addressable;
    *  it isn't new). At most one entry is ever the default; a `document` source (a FILE path) can
@@ -39,11 +44,13 @@ export interface ResolvedSource {
 export function resolveSources(projectRoot: string, config: { sources?: TrackerSourceConfig[] }): ResolvedSource[] {
   const defaultDir = markdownStoreDir(projectRoot);
   if (!config.sources || config.sources.length === 0) {
-    return [{ dir: defaultDir, format: 'issue-per-file', readonly: false, isDefault: true }];
+    return [{ dir: defaultDir, format: 'issue-per-file', readonly: false, isDefault: true, name: 'default' }];
   }
   return config.sources.map((entry) => {
     const format = entry.format ?? inferSourceFormat(entry.path);
     const dir = resolve(projectRoot, entry.path);
-    return { dir, format, readonly: !!entry.readonly, isDefault: dir === defaultDir };
+    // `name` (ZTB-33): the declared name, else the declared path string verbatim — so an unnamed
+    // source is always addressable by exactly what the user wrote in config.
+    return { dir, format, readonly: !!entry.readonly, isDefault: dir === defaultDir, name: entry.name ?? entry.path };
   });
 }

@@ -16,6 +16,9 @@ import type { TrackerIssueUpdate } from '../types.ts';
 export interface LoadOptions {
   projectRoot: string;
   issues?: string[];
+  // ZTB-33: `--source` scoping — validate only the named declared source(s). Absent = the whole
+  // union (byte-identical to pre-ZTB-33). Threaded to the backend via `client.issue.list`.
+  sources?: string[];
   limit?: number;
   now?: string;
   phase?: 'all' | 'gate';
@@ -114,6 +117,7 @@ export async function loadValidationInput<R extends CoreRoot>(
   const rows = await client.issue.list({
     state: 'all',
     limit: opts.limit ?? 5000,
+    ...(opts.sources && opts.sources.length ? { source: opts.sources } : {}),
     // `lineStart`/`lineEnd` (ZTB-4): a document-sourced issue's section span; null/absent for
     // issue-per-file rows (see backends/markdownBackend.ts's `listRow`).
     json: 'identifier,title,body,description,state,stateType,assignee,labels,children,path,lineStart,lineEnd',
