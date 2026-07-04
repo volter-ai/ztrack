@@ -168,6 +168,34 @@ describe('check() runner', () => {
     expect(r2.ok).toBe(false);
   });
 
+  // ZTB-32 re-review: a `ref:` also pins by evidenceId, so a subjectLESS rule that selects evidence is
+  // equally maskable — overbroad detection must cover it too (silenced key = subject ?? evidenceId).
+  const evOnly = (evidence: ER['issues'][number]['acceptanceCriteria']): Preset<ER> => ({
+    ...subjPreset, name: 'evonly',
+    rules: [rule<ER, { issueId?: string; acId?: string; evidenceId?: string; ev: { id: string; commit: string } }>({
+      code: 'evidence_commit_not_found', select: (m) => m.evidence,
+      message: ({ ev }) => `Evidence ${ev.id} missing.`, // NO subject fn — only evidenceId identifies it
+    })],
+    parse: (): ER => ({ issues: [{ id: 'A-1', title: 't', summary: '', status: 'open', acceptanceCriteria: evidence }] }),
+  });
+  test('overbroad detection also covers evidenceId-only findings (rule with no subject fn)', () => {
+    const twoSameEv = evOnly([
+      { id: 'AC-1', status: 'passed', evidence: [{ id: 'dupeEv', commit: 'badA' }] },
+      { id: 'AC-2', status: 'passed', evidence: [{ id: 'dupeEv', commit: 'badB' }] },
+    ]);
+    const r = check(twoSameEv, wbody('- code: evidence_commit_not_found ref: dupeEv reason: issue-level by: Otto'));
+    expect(r.findings.filter((x) => x.code === 'evidence_commit_not_found').every((x) => x.severity === 'acknowledged')).toBe(true);
+    const ob = r.findings.find((x) => x.code === 'waiver_overbroad');
+    expect(ob?.severity).toBe('warning'); // the masking now has a signal (was silent before the re-review fix)
+    expect(ob?.message).toContain('AC-1');
+    expect(ob?.message).toContain('AC-2');
+    // a ref pinned to a single evidenceId occurrence is still NOT overbroad
+    const one = check(evOnly([{ id: 'AC-1', status: 'passed', evidence: [{ id: 'solo', commit: 'badA' }] }]),
+      wbody('- code: evidence_commit_not_found ref: solo reason: r by: Otto'));
+    expect(one.findings.some((x) => x.code === 'waiver_overbroad')).toBe(false);
+    expect(one.ok).toBe(true);
+  });
+
   // ZTB-32 review finding 2: `by:` splits on its LAST occurrence, so a reason that itself contains
   // "by:" keeps the real signer (parseWaiverLine is the shared source of truth for engine + CLI).
   test('parseWaiverLine splits reason/signer on the last by:, not the first', () => {

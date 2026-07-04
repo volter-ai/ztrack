@@ -629,9 +629,14 @@ function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[
     const w = ordered.find((v) => matches(v, f));
     if (!w) return f;
     fired.add(w);
-    if (f.subject !== undefined) {
+    // A `ref:` pins by subject OR evidenceId (see `matches`), so EITHER identifies a silenceable
+    // occurrence — track whichever this finding carries (subject preferred). Keying on subject alone
+    // would leave the same masking hole open for a subjectless rule that selects evidence (e.g.
+    // evidence_file_not_found), whose findings are ref-pinnable by evidenceId but would go uncounted.
+    const occ = f.subject ?? f.evidenceId;
+    if (occ !== undefined) {
       const s = silenced.get(w) ?? new Set<string>();
-      s.add(`${f.subject}${f.acId ? ` (${f.acId})` : ''}`); silenced.set(w, s);
+      s.add(`${occ}${f.acId ? ` (${f.acId})` : ''}`); silenced.set(w, s);
     }
     return { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${w.approvedBy.trim()})` };
   });
@@ -649,8 +654,8 @@ function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[
     if (!unpinnedHit && !refMatchedMany) continue;                      // ref-pinned to exactly one occurrence — the good case
     const many = list.length > 1;
     const nudge = unpinnedHit
-      ? `Pin it with \`ref: <subject>\` (one waiver per occurrence) so it can only ever suppress that one finding — an unpinned waiver also masks future/other '${w.code}' findings here.`
-      : `The \`ref: ${w.ref}\` matches this subject on ${list.length} ACs — add \`ac: <acId>\` so it can suppress only one, or split it into one waiver per AC.`;
+      ? `Pin it with \`ref: <one of the above>\` (one waiver per occurrence) so it can only ever suppress that one finding — an unpinned waiver also masks future/other '${w.code}' findings here.`
+      : `The \`ref: ${w.ref}\` matches ${list.length} findings on different ACs — add \`ac: <acId>\` so it pins only one, or split it into one waiver per AC.`;
     extra.push({ code: 'waiver_overbroad', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} silenced ${many ? `${list.length} findings` : 'a finding'} (${list.join(', ')}). ${nudge}` });
   }
   return [...adjusted, ...extra];
