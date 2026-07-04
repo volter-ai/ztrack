@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { Glob } from 'bun';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import * as ts from 'typescript';
 import { KNOWN_KEYS, parseTrackerConfig } from './configSchema.ts';
 
 describe('CategoriesSchema — z.partialRecord(RULE_CATEGORIES) (ZTB-26 dev/01)', () => {
@@ -28,6 +29,17 @@ describe('CategoriesSchema — z.partialRecord(RULE_CATEGORIES) (ZTB-26 dev/01)'
       backend: 'markdown',
       organization: { check: { verify: [{ matchTypes: ['bug'], categories: { nope: 1 } }] } },
     })).toThrow(/categories/);
+  });
+
+  // Review round 1 caught the raw rejection surfacing as zod's bare "Invalid key in record" —
+  // fail-closed but cryptic, and inconsistent with every other key typo in the same config file.
+  // The candidates come from the invalid_key issue's own nested values (see describeIssue), so
+  // this costs no new hand-synced vocabulary table.
+  test('a typo\'d category key gets the same did-you-mean treatment as any other unknown key', () => {
+    expect(() => parseTrackerConfig({
+      backend: 'markdown',
+      organization: { check: { categories: { behavorial: 2 } } },
+    })).toThrow(/unknown key "behavorial" at "organization\.check\.categories" — did you mean "behavioral"\?/);
   });
 });
 
@@ -70,41 +82,85 @@ describe('no untyped casts on config reads (ZTB-26 dev/03)', () => {
   // concrete cast forms (not a blanket `as any` ban — out of scope) makes reintroducing that
   // pattern a test failure instead of a silent regression. `RawTrackerConfig` is banned too:
   // it's the schema-derived raw shape, and casting to it is the same hatch one type-name over.
+  //
+  // The scan parses each file with the TypeScript compiler and walks the AST, after review round 1
+  // proved a line-regex guard trivially evadable four ways: `as (TrackerConfig)`,
+  // `as import('./types.ts').TrackerConfig`, a cast split across two lines, and a comment-stripper
+  // that ate real code whenever a string literal on the same line contained `//`. Against the AST
+  // those are non-events — comments and strings never reach the scanner, a cast is a node (not a
+  // line), and the banned names are matched anywhere inside the asserted TYPE (so
+  // `Partial<TrackerConfig>`, parenthesized/import()-qualified forms, `as unknown as TrackerConfig`
+  // chains, and object types embedding them are all one code path). `satisfies` stays legal: it
+  // type-checks against the schema-derived type instead of overriding it.
   const REPO = resolve(import.meta.dir, '..');
-  const BANNED_CAST = /\bas\s+(Partial<)?(TrackerConfig|RawTrackerConfig)>?\b/;
+  const CONFIG_TYPE_NAMES = new Set(['TrackerConfig', 'RawTrackerConfig']);
 
-  // Blank out comment bodies (keeping line breaks, so reported line numbers stay accurate) before
-  // scanning: the ban is on actual cast EXPRESSIONS, not on this very file's own explanatory prose
-  // quoting the banned pattern in backticks. Not string-literal-aware, but no string literal in
-  // this repo contains `//` or `/*` immediately followed by the banned phrase.
-  function stripComments(text: string): string {
-    return text
-      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-      .replace(/\/\/.*$/gm, '');
+  function typeMentionsConfigType(root: ts.TypeNode): boolean {
+    let found = false;
+    const visit = (n: ts.Node): void => {
+      if (found) return;
+      if (ts.isTypeReferenceNode(n)) {
+        const name = ts.isQualifiedName(n.typeName) ? n.typeName.right.text : n.typeName.text;
+        if (CONFIG_TYPE_NAMES.has(name)) { found = true; return; }
+      }
+      if (ts.isImportTypeNode(n) && n.qualifier) {
+        const name = ts.isQualifiedName(n.qualifier) ? n.qualifier.right.text : n.qualifier.text;
+        if (CONFIG_TYPE_NAMES.has(name)) { found = true; return; }
+      }
+      ts.forEachChild(n, visit);
+    };
+    visit(root);
+    return found;
   }
 
-  function violationsIn(globPattern: string): string[] {
+  function castViolations(sourceText: string, fileLabel: string): string[] {
+    const sf = ts.createSourceFile(fileLabel, sourceText, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
     const violations: string[] = [];
-    for (const file of new Glob(globPattern).scanSync({ cwd: resolve(REPO, 'src'), onlyFiles: true })) {
+    const visit = (node: ts.Node): void => {
+      const cast = ts.isAsExpression(node) || ts.isTypeAssertionExpression(node) ? node : undefined;
+      if (cast && typeMentionsConfigType(cast.type)) {
+        const { line } = sf.getLineAndCharacterOfPosition(cast.getStart(sf));
+        violations.push(`${fileLabel}:${line + 1}: ${cast.getText(sf).replace(/\s+/g, ' ')}`);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+    return violations;
+  }
+
+  function repoViolations(): string[] {
+    const violations: string[] = [];
+    for (const file of new Glob('**/*.ts').scanSync({ cwd: resolve(REPO, 'src'), onlyFiles: true })) {
       if (file.endsWith('.test.ts')) continue;
-      const text = stripComments(readFileSync(resolve(REPO, 'src', file), 'utf8'));
-      text.split('\n').forEach((line, i) => {
-        if (BANNED_CAST.test(line)) violations.push(`src/${file}:${i + 1}: ${line.trim()}`);
-      });
+      violations.push(...castViolations(readFileSync(resolve(REPO, 'src', file), 'utf8'), `src/${file}`));
     }
     return violations;
   }
 
-  test('no src/**/*.ts (excluding *.test.ts) casts to TrackerConfig/Partial<TrackerConfig>/RawTrackerConfig', () => {
-    expect(violationsIn('**/*.ts')).toEqual([]);
+  test('no src/**/*.ts (excluding *.test.ts) casts to TrackerConfig/RawTrackerConfig in any syntactic form', () => {
+    expect(repoViolations()).toEqual([]);
   });
 
-  test('guard sanity: the banned regex actually matches the two forms this AC fixed (proves the guard is not vacuous)', () => {
-    expect(BANNED_CAST.test("const raw = JSON.parse(x) as TrackerConfig;")).toBe(true);
-    expect(BANNED_CAST.test("raw = JSON.parse(x) as Partial<TrackerConfig>;")).toBe(true);
-    expect(BANNED_CAST.test("const raw = x as RawTrackerConfig;")).toBe(true);
-    // Not banned: the schema/type declarations themselves, and unrelated identifiers.
-    expect(BANNED_CAST.test("export const TrackerConfigSchema = z.object({")).toBe(false);
-    expect(BANNED_CAST.test("export type TrackerConfig = Omit<RawTrackerConfig, 'backend'>")).toBe(false);
+  test('guard sanity: catches the two pre-fix hatches AND every review-round-1 evasion of the old regex guard', () => {
+    // The forms this AC originally fixed:
+    expect(castViolations('const raw = JSON.parse(x) as TrackerConfig;', 'fixture.ts')).toHaveLength(1);
+    expect(castViolations('raw = JSON.parse(x) as Partial<TrackerConfig>;', 'fixture.ts')).toHaveLength(1);
+    expect(castViolations('const raw = x as RawTrackerConfig;', 'fixture.ts')).toHaveLength(1);
+    // Review round 1's proven evasions — each must now be caught:
+    expect(castViolations('const sneaky = parsedJson as (TrackerConfig);', 'fixture.ts')).toHaveLength(1);
+    expect(castViolations("const c = x as import('./types.ts').TrackerConfig;", 'fixture.ts')).toHaveLength(1);
+    expect(castViolations('const c = x as\n  TrackerConfig;', 'fixture.ts')).toHaveLength(1);
+    expect(castViolations('const url = "https://example.com"; const raw = JSON.parse(x) as TrackerConfig;', 'fixture.ts')).toHaveLength(1);
+    // Forms the old regex never claimed to handle, free with the AST:
+    expect(castViolations('const c = <TrackerConfig>x;', 'fixture.ts')).toHaveLength(1);
+    expect(castViolations('const c = x as unknown as TrackerConfig;', 'fixture.ts')).toHaveLength(1);
+    expect(castViolations('const c = x as { cfg: TrackerConfig };', 'fixture.ts')).toHaveLength(1);
+    // NOT flagged: declarations, satisfies, comments, string literals, unrelated identifiers.
+    expect(castViolations('export const TrackerConfigSchema = z.object({});', 'fixture.ts')).toHaveLength(0);
+    expect(castViolations("export type TrackerConfig = Omit<RawTrackerConfig, 'backend'> & { backend: B };", 'fixture.ts')).toHaveLength(0);
+    expect(castViolations('// prose mentioning `as TrackerConfig` stays prose', 'fixture.ts')).toHaveLength(0);
+    expect(castViolations("const s = 'not a cast: as TrackerConfig';", 'fixture.ts')).toHaveLength(0);
+    expect(castViolations('const cfg = raw satisfies TrackerConfig;', 'fixture.ts')).toHaveLength(0);
+    expect(castViolations('const other = x as TrackerConfigSchemaShape;', 'fixture.ts')).toHaveLength(0);
   });
 });

@@ -313,6 +313,21 @@ function describeIssue(issue: z.ZodIssue): string {
       return `unknown key "${key}" at ${at}${suggestion ? ` — did you mean "${suggestion}"?` : ''}`;
     }).join('; ');
   }
+  // A bad key in an enum-keyed record (e.g. a typo'd category name under
+  // `organization.check.categories` — enforceable since the z.partialRecord switch above): zod
+  // reports `invalid_key` with the offending key as the path tail and the valid vocabulary inside
+  // the nested key-schema issue's `values`. That's everything needed to phrase it exactly like the
+  // unrecognized_keys case — did-you-mean included — without any parallel table of record
+  // vocabularies (which would be a new hand-synced mirror, the disease this file just cured).
+  if (issue.code === 'invalid_key') {
+    const key = String(issue.path[issue.path.length - 1]);
+    const parent = pathTemplate(issue.path.slice(0, -1));
+    const candidates = issue.issues.flatMap((nested) =>
+      nested.code === 'invalid_value' ? nested.values.map(String) : []);
+    const suggestion = nearestKey(key, candidates);
+    const at = parent ? `"${parent}"` : 'the top level';
+    return `unknown key "${key}" at ${at}${suggestion ? ` — did you mean "${suggestion}"?` : ''}`;
+  }
   const at = issue.path.length ? `"${pathTemplate(issue.path)}": ` : '';
   return `${at}${issue.message}`;
 }
