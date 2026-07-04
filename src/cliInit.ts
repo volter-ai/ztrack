@@ -3,6 +3,8 @@ import { dirname, join, resolve } from 'node:path';
 import { initTrackerPresets, initTrackerProject, presetManifest } from './presetCatalog.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
+import { cacheRoot } from './config.ts';
+import { seedAuditBaseline } from './core/audit.ts';
 import { commandName } from './cliHelp.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 import * as githubSync from './sync/github/index.ts';
@@ -86,6 +88,11 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     if (!ztrackResolvableFrom(root)) process.stdout.write(`${unresolvableZtrackWarning()}\n`);
     return true;
   }
+  // Seed an empty audit baseline for a fresh LOCAL tracker so the very first `issue create` is
+  // logged to `.audit.jsonl` (observeChanges seeds silently on a missing baseline — right for an
+  // established repo, but a brand-new one should record history from issue #1). Skipped for a
+  // LINKED init: its pull brings pre-existing issues that must seed silently, not log "created now".
+  if (!sync) seedAuditBaseline(cacheRoot(root));
   // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
   // a network/auth failure leaves init successful — `ztrack sync` retries later).
   let pulled = false;

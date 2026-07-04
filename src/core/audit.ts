@@ -1,26 +1,24 @@
 // The audit log — a SEPARATE append-only log (NOT git history, NOT the markdown
-// body). Timestamps (created / updated / state-since) are derived from it. One per repo.
+// body). Timestamps (created / updated / state-since) are derived from it. One per clone.
 //
-// ztrack issue #19 (audit unwired from CLI write paths): this file was designed for two sources —
-// (1) rich, actor-attributed entries from the mutation affordances themselves (`setBaselineIssue`
-// exists for exactly this: advance the baseline without double-logging after writing your own
-// entry) and (2) `observeChanges`, a diff-based fallback that catches edits made OUTSIDE those
-// affordances (e.g. an SDLC whose files are hand-edited or edited by its own tooling). Only (2) is
-// actually wired up today, and only from `visualizer/serverCore.ts`/`visualizer/server.ts`, which
-// calls `observeChanges` on every request after validating the live tracker. `setBaselineIssue` has
-// ZERO callers — no CLI mutation path (issue create/edit/patch, `ac patch`, `tx`, waivers) calls it
-// or `appendAudit`, so running only the CLI (no visualizer) never writes `.audit.jsonl` at all.
+// Mechanism: `observeChanges` diffs a preset-validated snapshot of the tracker against the
+// last-seen baseline and appends an entry per change (status / AC status / AC added / evidence
+// added). It is the SINGLE source of audit entries, driven from two callers, both after the same
+// full preset-validated export (`exportTrackerRoot`, which resolves and runs the repo's preset):
+//   (1) the CLI, after any mutating command (`src/cliAudit.ts` → `observeAfterMutation`), so
+//       CLI-only usage now populates `.audit.jsonl` — this is the wiring ztrack #19 deferred; and
+//   (2) `visualizer/server.ts`, on every request, which also catches edits made OUTSIDE ztrack's
+//       mutation affordances (an SDLC whose files are hand-edited or edited by its own tooling).
+// Diffing is why one central pass suffices instead of per-path instrumentation: whichever caller
+// observes first records the change and advances the shared baseline, so the other sees no diff
+// and never double-logs. The backend choke point (`MarkdownBackend.command`) can't drive this —
+// it only ever sees a preset-agnostic `CanonicalIssue` with no acceptance criteria — which is
+// exactly why the observe pass runs one layer up, over the validated export, not in the backend.
 //
-// Why it isn't wired into the CLI: every CLI/SDK/MCP/tx mutation funnels through ONE choke point
-// (`MarkdownBackend.command`, src/backends/markdownBackend.ts:280), but that layer only ever sees a
-// `CanonicalIssue` (title/body/state/labels) — backends are deliberately preset-agnostic and know
-// nothing about acceptance criteria. `observeChanges`'s `ObservableIssue` shape (id/status/AC
-// status/evidence count) only exists after a FULL preset-validated export (`exportTrackerRoot`,
-// resolving and running the repo's preset), which several mutation call sites
-// (`ac`/`issue patch` in cli.ts, the raw `issue edit/create` passthrough, `cliWaiver.ts`) don't
-// currently run. Wiring it in properly means adding a preset-validation pass to each of those
-// paths — a real feature, not a smallest-honest fix — so today's audit log is VISUALIZER-ONLY:
-// don't rely on `.audit.jsonl` (or the timestamps derived from it) to reflect CLI-only usage.
+// `repo` here is the tracker STATE DIR (`cacheRoot(projectRoot)` — `.volter` for a local tracker,
+// the per-clone cache for a linked one), so the log lives at `<stateDir>/tracker/.audit.jsonl`,
+// next to the markdown store. It's local, derived observability (per-clone, regenerable by
+// observation), so both it and its baseline are gitignored on first write — never committed.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -30,23 +28,49 @@ export function auditPath(repo: string): string {
   return join(repo, 'tracker', '.audit.jsonl');
 }
 
+// The audit log + its baseline are local, derived, per-clone — never committed. Drop a
+// `.gitignore` next to them (idempotently) on first write so a wired CLI doesn't spray
+// untracked files into every repo. Only these two patterns are added; a hand-authored
+// `.gitignore` in the same dir (e.g. one the store uses) is appended to, never clobbered.
+function ensureAuditIgnored(trackerDir: string): void {
+  const gitignore = join(trackerDir, '.gitignore');
+  const want = ['.audit.jsonl', '.audit-state.json'];
+  let current = '';
+  try { current = readFileSync(gitignore, 'utf8'); } catch { /* no .gitignore yet */ }
+  const have = new Set(current.split('\n').map((l) => l.trim()));
+  const missing = want.filter((w) => !have.has(w));
+  if (!missing.length) return;
+  const prefix = current && !current.endsWith('\n') ? '\n' : '';
+  appendFileSync(gitignore, `${prefix}${missing.join('\n')}\n`);
+}
+
 // ── change observation (preset-agnostic; uses only core fields) ──────────────
 interface BaselineAc { status: string; evidence: number }
 interface BaselineIssue { status: string; acs: Record<string, BaselineAc> }
 type Baseline = Record<string, BaselineIssue>;
-interface ObservableIssue { id: string; status: string; acceptanceCriteria: Array<{ id: string; status: string; evidence: unknown[] }> }
+export interface ObservableIssue { id: string; status: string; acceptanceCriteria: Array<{ id: string; status: string; evidence: unknown[] }> }
 
 function baselinePath(repo: string): string { return join(repo, 'tracker', '.audit-state.json'); }
 function loadBaseline(repo: string): Baseline { try { return JSON.parse(readFileSync(baselinePath(repo), 'utf8')) as Baseline; } catch { return {}; } }
-function saveBaseline(repo: string, b: Baseline): void { mkdirSync(dirname(baselinePath(repo)), { recursive: true }); writeFileSync(baselinePath(repo), JSON.stringify(b, null, 2)); }
+function saveBaseline(repo: string, b: Baseline): void {
+  const dir = dirname(baselinePath(repo));
+  mkdirSync(dir, { recursive: true });
+  ensureAuditIgnored(dir);
+  writeFileSync(baselinePath(repo), JSON.stringify(b, null, 2));
+}
 function snap(issue: ObservableIssue): BaselineIssue {
   return { status: issue.status, acs: Object.fromEntries(issue.acceptanceCriteria.map((a) => [a.id, { status: a.status, evidence: a.evidence.length }])) };
 }
 
-/** Advance the baseline for one issue without logging (mutation affordances call
- *  this after writing their own rich entry, so observeChanges won't double-log). */
-export function setBaselineIssue(repo: string, issue: ObservableIssue): void {
-  const b = loadBaseline(repo); b[issue.id] = snap(issue); saveBaseline(repo, b);
+/** Seed an EMPTY baseline (idempotent — no-op if one exists). Called by `ztrack init` for a
+ *  fresh LOCAL tracker so its very first `issue create` diffs against `{}` and is logged, rather
+ *  than being swallowed by observeChanges's silent first-run seed. A tracker that already holds
+ *  issues (a linked pull, or an established repo predating this wiring) must NOT be seeded this
+ *  way — leaving no baseline lets the first observe seed silently instead of fabricating a burst
+ *  of "created now" entries with the wrong timestamp. */
+export function seedAuditBaseline(repo: string): void {
+  if (existsSync(baselinePath(repo))) return;
+  saveBaseline(repo, {});
 }
 
 /** Diff the current issues against the last-seen baseline; append an audit entry
@@ -82,7 +106,9 @@ export function observeChanges(repo: string, issues: ObservableIssue[], actor = 
 
 export function appendAudit(repo: string, entry: AuditEntry): void {
   const p = auditPath(repo);
-  mkdirSync(dirname(p), { recursive: true });
+  const dir = dirname(p);
+  mkdirSync(dir, { recursive: true });
+  ensureAuditIgnored(dir);
   appendFileSync(p, JSON.stringify(entry) + '\n');
 }
 

@@ -29,6 +29,7 @@ import { handleTxCommand } from './cliTx.ts';
 import { handleLintCommand } from './cliLint.ts';
 import { handleSyncCommand } from './cliSync.ts';
 import { handlePatchCommand } from './cliPatch.ts';
+import { isMutatingCommand, observeAfterMutation } from './cliAudit.ts';
 import { heading, statusMark, ui } from './cliStyle.ts';
 
 // The installed preset is `.volter/tracker/validation/preset.mts`, loaded at runtime via Node's
@@ -343,7 +344,15 @@ async function main(): Promise<void> {
   if (result.stderr && !result.stdout) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(`${statusMark('fail')} ${ui.red(error instanceof Error ? error.message : String(error))}`);
-  process.exit(1);
-});
+// After a mutating command SUCCEEDS, observe the tracker and append audit entries (ztrack #19 —
+// CLI writes now populate `.audit.jsonl`). Best-effort and post-hoc: it runs off the final on-disk
+// state, never gates the command, and preserves whatever exit code the command set. A command that
+// threw skips this (its `.catch` handles it) — we don't audit a failed write.
+main()
+  .then(async () => {
+    if (isMutatingCommand(process.argv.slice(2))) await observeAfterMutation();
+  })
+  .catch((error) => {
+    console.error(`${statusMark('fail')} ${ui.red(error instanceof Error ? error.message : String(error))}`);
+    process.exit(1);
+  });

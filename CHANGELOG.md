@@ -2,6 +2,27 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.45.0
+
+The audit log is now wired into CLI writes (finishes ztrack #19's deferred item).
+
+- **CLI mutations now populate `.audit.jsonl`.** Previously the audit log — the append-only record
+  the visualizer's created/updated/state-since timestamps derive from — was written *only* while
+  the visualizer server was running; CLI-only usage produced nothing. Now, after any mutating
+  command (`issue create/edit/patch/close/…`, `ac patch`, `tx`, `waiver` grant/revoke, `import`,
+  `sync`), ztrack runs one `observeChanges` pass over the preset-validated export and appends an
+  entry per change. It's **best-effort**: auditing never changes a command's exit code or output,
+  and `ztrack check` remains the source of truth. Because it's diff-based, the CLI and the
+  visualizer share one log + baseline and neither double-logs.
+- **The log lives next to the store and is never committed.** It moved to
+  `.volter/tracker/.audit.jsonl` (from a legacy `<root>/tracker/` sibling), and both it and its
+  `.audit-state.json` baseline are gitignored on first write — it's per-clone, regenerable
+  observability, not history-of-record, so a wired CLI never sprays untracked files into a repo.
+  `ztrack init` seeds an empty baseline for a fresh local tracker so the very first `issue create`
+  is logged (a linked init, which pulls pre-existing issues, seeds silently instead).
+- **Removed the never-called `setBaselineIssue`.** With the single `observeChanges` path now wired,
+  the alternate rich-entry affordance had zero callers and is deleted.
+
 ## 0.44.0
 
 Dead-code removal from the 0.43 review: the content-addressed evidence blob store is gone.
