@@ -87,6 +87,14 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (phaseRaw && phaseRaw !== 'all' && phaseRaw !== 'gate') throw new Error(`ztrack check: --phase must be 'all' or 'gate' (got '${phaseRaw}')`);
   const phase: 'all' | 'gate' | undefined = phaseRaw === 'gate' || phaseRaw === 'all' ? phaseRaw : undefined;
   const inputPath = optionValue(flagArgs, '--input');
+  // ZTB-33: `--source` scopes the LIVE backend read; `--input` validates an already-materialized
+  // root (`ztrack export`) whose issues carry no source provenance (CoreIssue has no origin) — so a
+  // post-hoc `--source` cannot be honored, and silently ignoring it (worse: ignoring a typo'd
+  // source name with no error) would break the "unknown selector always fails loud" contract the
+  // live path holds. Refuse the combination rather than pretend to scope.
+  if (inputPath && sourcesFromFlag) {
+    throw new Error(`ztrack check: --source cannot be combined with --input — a materialized root (from 'ztrack export') has no source provenance to scope by; scope was fixed when the root was exported. Run a live 'ztrack check --source ${sourcesFromFlag.join(',')}' instead. Nothing was read.`);
+  }
   const forceAuto = flagArgs.includes('--auto-scope');
   const outputPath = optionValue(flagArgs, '--output');
   const wantsJson = flagArgs.includes('--json');

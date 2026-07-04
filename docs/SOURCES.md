@@ -70,6 +70,14 @@ rule cannot fire when you've asked for one source alone (there is nothing else t
 computed over the whole cross-source dependency graph, and scoping it to one source would misreport
 blockers that live in another; use plain `issue list --source` for a scoped listing.
 
+A scoped `check` validates only the issues in the named source(s), exactly like `check --issues`.
+One consequence of any such record-level scope: a `blocked-by`/`parent` reference that points at an
+issue in an *excluded* source is reported as `ac_blocker_missing` ("references X, which does not
+exist") — the referenced issue is simply out of scope, not truly gone. This still gates (it never
+silently passes), and the whole-tracker `ztrack check` (what CI and the release gate run) verifies
+those cross-source references honestly. Use a scoped `check` to inspect one source in isolation; use
+the unscoped `check` as the source of truth for cross-source integrity.
+
 ## The document format
 
 A document source is one markdown file where headings whose text starts with an **id token**

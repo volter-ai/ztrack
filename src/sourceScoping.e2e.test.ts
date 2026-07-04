@@ -133,4 +133,12 @@ describe('`--source` scoping (ZTB-33): list/check by source name, basename, and 
     expect(blk.code).not.toBe(0);
     expect(blk.out).toContain('--source is not supported on this view');
   });
+
+  test('9. `check --input` + `--source` is refused (a materialized root has no source provenance)', () => {
+    // The guard fires at arg-parse time, before the --input file is read — so a path need not exist.
+    const bad = ztIn(root, 'check', '--input', join(root, 'exported-root.json'), '--source', 'alpha');
+    expect(bad.code).not.toBe(0);
+    expect(bad.out).toContain('--source cannot be combined with --input');
+    expect(bad.out).toContain('Nothing was read');
+  });
 });
