@@ -32,9 +32,22 @@ export function isMutatingCommand(args: string[]): boolean {
       return sub !== 'list';
     case 'sync':        // pull mutates the local store
       return true;
+    case 'api':         // `api query` runs GraphQL — a `mutation{…}` writes; `api serve` is a
+      return sub === 'query'; // long-running server that self-observes per request (server.ts)
     default:
       return false;
   }
+}
+
+// The MCP server is long-running: a single `mcp serve` process handles many tool calls, so the
+// post-command observe in cli.ts (which fires once, at process exit) can't audit it. Instead the
+// server observes after each write tool (mcp.ts). Exclude-list, mirroring the CLI's stance: a new
+// tool is audited by default rather than silently skipped. `tracker_init` seeds its own baseline.
+const READONLY_MCP_TOOLS = new Set(['tracker_check', 'tracker_issue_list', 'tracker_issue_view']);
+
+/** Could this MCP tool call have changed tracker state? Read tools skip the observe pass. */
+export function isMutatingMcpTool(name: string): boolean {
+  return !READONLY_MCP_TOOLS.has(name);
 }
 
 /** Observe the tracker after a mutation and append audit entries. Best-effort: swallows every

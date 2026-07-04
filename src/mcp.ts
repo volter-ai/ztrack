@@ -4,8 +4,10 @@
 // issue read/write, scoped AC mutations, fmt, and the rulebook check.
 import { readFileSync } from 'node:fs';
 import { checkTracker } from './check.ts';
+import { isMutatingMcpTool, observeAfterMutation } from './cliAudit.ts';
 import { summarizeResult } from './cliStyle.ts';
-import { loadTrackerConfig, projectRootFrom } from './config.ts';
+import { cacheRoot, loadTrackerConfig, projectRootFrom } from './config.ts';
+import { seedAuditBaseline } from './core/audit.ts';
 import { initTrackerPresets, initTrackerProject } from './presetCatalog.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
@@ -85,6 +87,9 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
   if (name === 'tracker_init') {
     const preset = initTrackerPresets().includes(args.preset) ? args.preset : 'default';
     const result = initTrackerProject(process.cwd(), args.team ? String(args.team) : 'LOCAL', { preset });
+    // Seed an empty audit baseline for the fresh (always local — no --sync over MCP) tracker so the
+    // first tracker_issue_create is logged, matching `ztrack init` (see cliInit.ts). Best-effort.
+    if (!result.alreadyInitialized) { try { seedAuditBaseline(cacheRoot(projectRootFrom())); } catch { /* observability only */ } }
     return {
       configPath: result.configPath,
       alreadyInitialized: result.alreadyInitialized,
@@ -170,8 +175,12 @@ export async function serveMcp(): Promise<void> {
         } else if (request.method === 'tools/list') {
           write({ jsonrpc: '2.0', id: request.id, result: { tools: TOOLS } });
         } else if (request.method === 'tools/call') {
-          const result = await callTool(String(request.params?.name), request.params?.arguments ?? {});
+          const toolName = String(request.params?.name);
+          const result = await callTool(toolName, request.params?.arguments ?? {});
           write({ jsonrpc: '2.0', id: request.id, result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] } });
+          // ztrack #19: audit agent-driven writes. Best-effort, after the response so the client
+          // isn't blocked; observeAfterMutation swallows its own errors and never affects the call.
+          if (isMutatingMcpTool(toolName)) await observeAfterMutation();
         } else if (request.method === 'ping') {
           write({ jsonrpc: '2.0', id: request.id, result: {} });
         } else {

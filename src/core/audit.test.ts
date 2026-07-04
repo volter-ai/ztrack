@@ -18,6 +18,18 @@ describe('audit log', () => {
     expect(readAudit(repo, 'A-1').map((e) => e.issueId)).toEqual(['A-1']);
   });
 
+  test('readAudit dedupes byte-identical duplicate lines (the concurrent-observe race)', () => {
+    const repo = tmpRepo();
+    // Two observers racing the lock-free baseline can each append the SAME change. Simulate it by
+    // appending an identical entry twice; a distinct change (different `to`) must still survive.
+    const dup = { ts: '2026-01-01T00:00:00.000Z', issueId: 'A-1', op: 'observed.create', to: 'ready', actor: 'cli' } as const;
+    appendAudit(repo, dup);
+    appendAudit(repo, dup);
+    appendAudit(repo, { ts: '2026-01-01T00:00:01.000Z', issueId: 'A-1', op: 'status', from: 'ready', to: 'in-progress', actor: 'cli' });
+    expect(readAudit(repo).length).toBe(2);
+    expect(readAudit(repo, 'A-1').filter((e) => e.op === 'observed.create').length).toBe(1);
+  });
+
   test('timestamps derive from the log (created/updated/state-since)', () => {
     const entries = [
       { ts: '2026-01-01T00:00:00Z', issueId: 'A-1', op: 'create' },

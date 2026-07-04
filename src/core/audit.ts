@@ -10,8 +10,13 @@
 //   (2) `visualizer/server.ts`, on every request, which also catches edits made OUTSIDE ztrack's
 //       mutation affordances (an SDLC whose files are hand-edited or edited by its own tooling).
 // Diffing is why one central pass suffices instead of per-path instrumentation: whichever caller
-// observes first records the change and advances the shared baseline, so the other sees no diff
-// and never double-logs. The backend choke point (`MarkdownBackend.command`) can't drive this —
+// observes first records the change and advances the shared baseline, so the other sees no diff.
+// The baseline is a lock-free read-modify-write, so two observers running concurrently (two
+// terminals, or a CLI mutation racing the visualizer's per-request pass) can BOTH read the same
+// stale baseline and append the same change — a byte-identical duplicate line. `readAudit` drops
+// exact duplicates so consumers never see it, and timestamps (first/last entry) are unaffected;
+// hardening the write path with a lock isn't worth it for a local, regenerable observability log.
+// The backend choke point (`MarkdownBackend.command`) can't drive this —
 // it only ever sees a preset-agnostic `CanonicalIssue` with no acceptance criteria — which is
 // exactly why the observe pass runs one layer up, over the validated export, not in the backend.
 //
@@ -115,11 +120,18 @@ export function appendAudit(repo: string, entry: AuditEntry): void {
 export function readAudit(repo: string, issueId?: string): AuditEntry[] {
   const p = auditPath(repo);
   if (!existsSync(p)) return [];
-  // Append-only log: tolerate a corrupt/partial line (crash mid-append, manual edit)
-  // by skipping it rather than making the whole history unreadable.
-  const all = readFileSync(p, 'utf8').split('\n').filter(Boolean).flatMap((l) => {
-    try { return [JSON.parse(l) as AuditEntry]; } catch { return []; }
-  });
+  // Append-only log: tolerate a corrupt/partial line (crash mid-append, manual edit) by skipping
+  // it rather than making the whole history unreadable. Also drop byte-identical duplicate lines:
+  // two observers racing the lock-free baseline can each append the same change (same ts/issue/op/
+  // from/to/actor) — that collision is the only way two lines serialize identically, so deduping on
+  // the raw text is safe and makes the concurrency race invisible to every consumer.
+  const seen = new Set<string>();
+  const all: AuditEntry[] = [];
+  for (const l of readFileSync(p, 'utf8').split('\n')) {
+    if (!l || seen.has(l)) continue;
+    seen.add(l);
+    try { all.push(JSON.parse(l) as AuditEntry); } catch { /* skip a corrupt/partial line */ }
+  }
   return issueId ? all.filter((e) => e.issueId === issueId) : all;
 }
 

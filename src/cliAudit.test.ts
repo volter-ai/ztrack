@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { isMutatingCommand } from './cliAudit.ts';
+import { isMutatingCommand, isMutatingMcpTool } from './cliAudit.ts';
 import { appendAudit, seedAuditBaseline } from './core/audit.ts';
 
 function tmpRepo(): string {
@@ -29,6 +29,24 @@ describe('isMutatingCommand — argv classification (drives the post-command obs
     expect(isMutatingCommand(['waiver', 'list'])).toBe(false);
     for (const verb of ['check', 'export', 'lint', 'visualizer', 'preset', 'completions']) {
       expect(isMutatingCommand([verb])).toBe(false);
+    }
+  });
+
+  test('`api query` mutates (a GraphQL mutation writes); `api serve` self-observes, not via this hook', () => {
+    // A one-shot `api query` can run a `mutation{ issueCreate … }`; the after-command hook must fire.
+    expect(isMutatingCommand(['api', 'query', '--query', 'mutation{issueCreate(input:{title:"x"}){success}}'])).toBe(true);
+    // `api serve` is a long-running server that observes per request internally — the post-command
+    // hook (which fires once, at process exit) must NOT claim it.
+    expect(isMutatingCommand(['api', 'serve'])).toBe(false);
+    expect(isMutatingCommand(['api'])).toBe(false); // bare `api` (help) mutates nothing
+  });
+
+  test('isMutatingMcpTool: write tools observe, read tools skip (exclude-list, so new tools audit by default)', () => {
+    for (const t of ['tracker_issue_create', 'tracker_patch', 'tracker_fmt', 'tracker_init']) {
+      expect(isMutatingMcpTool(t)).toBe(true);
+    }
+    for (const t of ['tracker_check', 'tracker_issue_list', 'tracker_issue_view']) {
+      expect(isMutatingMcpTool(t)).toBe(false);
     }
   });
 });

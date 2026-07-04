@@ -85,6 +85,44 @@ describe('audit log is wired into CLI writes (ztrack #19)', () => {
     }
   }, 45_000);
 
+  test('a GraphQL `api query` mutation is audited (one-shot, via the after-command hook)', () => {
+    const { root } = freshRepo('ztrk-audit-api-');
+    try {
+      expect(ztrackIn(root, ['init', '--team', 'ZT']).code).toBe(0);
+      // A `mutation{ issueCreate … }` writes an issue — the after-command observe must log it, even
+      // though `api` looks like a read verb (regression guard for the reviewer's HIGH finding).
+      const q = 'mutation{issueCreate(input:{title:"Via API", state:"ready"}){success issue{identifier}}}';
+      const r = ztrackIn(root, ['api', 'query', '--query', q]);
+      expect(r.code).toBe(0);
+      const created = readAuditEntries(root).filter((e) => e.op === 'observed.create');
+      expect(created.length).toBe(1);
+      expect(created[0]).toMatchObject({ actor: 'cli' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 45_000);
+
+  test('an MCP write tool (`mcp serve` → tracker_issue_create) is audited per call, not at shutdown', () => {
+    const { root } = freshRepo('ztrk-audit-mcp-');
+    try {
+      expect(ztrackIn(root, ['init', '--team', 'ZT']).code).toBe(0);
+      expect(readAuditEntries(root).filter((e) => e.op === 'observed.create').length).toBe(0);
+      // Drive the stdio JSON-RPC server the way an agent would: initialize, then one write tool.
+      // Closing stdin ends the server loop; the per-tool observe runs before that (it's awaited).
+      const rpc = [
+        JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }),
+        JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'tracker_issue_create', arguments: { title: 'Via MCP', state: 'ready' } } }),
+      ].join('\n') + '\n';
+      const r = spawnSync('bun', ['run', CLI, 'mcp', 'serve'], { cwd: root, input: rpc, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      expect(r.status ?? 1).toBe(0);
+      const created = readAuditEntries(root).filter((e) => e.op === 'observed.create');
+      expect(created.length).toBe(1);
+      expect(created[0]).toMatchObject({ actor: 'cli' });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 45_000);
+
   test('a read-only command writes no audit entries', () => {
     const { root, sha } = freshRepo('ztrk-audit-readonly-');
     try {
