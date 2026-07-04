@@ -35,6 +35,19 @@ function body(waivers = false): string {
   return lines.join('\n');
 }
 
+// Both ACs cite the SAME nonexistent commit (FAKE_A). `waivers` appends a hand-authored issue-level
+// `ref: FAKE_A` row (no `ac:`) — the exact review-finding-1 repro: one ref value that recurs on two ACs.
+function bodySameSha(waivers = false): string {
+  const lines = [
+    '# Wire the widget', '', 'Summary: one verifiable outcome.', '',
+    '## Acceptance Criteria', '',
+    '- [x] dev/01 v1 first thing', '  - status: passed', `  - evidence ev1: commit=${FAKE_A} acv=1`, '  - proof: "ev1 shows it" -> ev1',
+    '- [x] dev/02 v1 second thing', '  - status: passed', `  - evidence ev1: commit=${FAKE_A} acv=1`, '  - proof: "ev1 shows it" -> ev1', '',
+  ];
+  if (waivers) lines.push('## Waivers', '', `- code: evidence_commit_not_found ref: ${FAKE_A} reason: one issue-level pin by: Otto`, '');
+  return lines.join('\n');
+}
+
 function freshRepo(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
@@ -48,10 +61,10 @@ function freshRepo(prefix: string): string {
   return root;
 }
 
-function createIssue(root: string, withWaivers = false): string {
+function createIssue(root: string, withWaivers = false, bodyFn = body): string {
   expect(ztrackIn(root, ['init', '--team', 'ZT']).code).toBe(0);
   const bodyFile = join(root, 'body.md');
-  writeFileSync(bodyFile, body(withWaivers));
+  writeFileSync(bodyFile, bodyFn(withWaivers));
   const created = ztrackIn(root, ['issue', 'create', '--title', 'Wire the widget', '--state', 'ready', '--body-file', bodyFile]);
   expect(created.code).toBe(0);
   return (JSON.parse(created.out) as { identifier: string }).identifier;
@@ -101,6 +114,25 @@ describe('fingerprinted waivers e2e (ZTB-32)', () => {
       expect(after.out).not.toContain('waiver_overbroad');
       // idempotent: a second migrate changes nothing
       expect(ztrackIn(root, ['waiver', 'migrate', id]).out.toLowerCase()).toContain('nothing to migrate');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+
+  test('an issue-level ref that recurs across two ACs is flagged waiver_overbroad, not silently masked (review finding 1)', () => {
+    const root = freshRepo('ztrk-wv-dupe-');
+    try {
+      const id = createIssue(root, /* withWaivers */ true, bodySameSha);
+      // one `ref: FAKE_A` (no ac:) hits BOTH ACs — check still passes (back-compat downgrade) but must warn
+      const chk = ztrackIn(root, ['check']);
+      expect(chk.code).toBe(0);
+      expect(chk.out).toContain('waiver_overbroad');
+      // the warning must name both ACs so the signer knows to scope it
+      expect(chk.out).toContain('dev/01');
+      expect(chk.out).toContain('dev/02');
+      // sign refuses the same ambiguity, listing the AC each occurrence is on
+      const amb = ztrackIn(root, ['waiver', 'sign', id, '--code', 'evidence_commit_not_found', '--reason', 'x']);
+      expect(amb.code).not.toBe(0);
+      expect(amb.err + amb.out).toContain('dev/01');
+      expect(amb.err + amb.out).toContain('dev/02');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
 });

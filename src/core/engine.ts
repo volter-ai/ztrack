@@ -552,8 +552,30 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value ?? null);
 }
 
+// Parse ONE `## Waivers` row into its fields, or null if the line carries no `code:`. Grammar:
+// `- code: <finding-code> [ac: <acId>] [ref: <subject>] reason: <text> by: <signer>`. The SINGLE
+// source of truth for waiver-row syntax — engine `parseWaivers` and the `waiver` CLI both call it,
+// so `status`/`migrate` split reason/signer identically to `check` (no first-`by:` truncation).
+export function parseWaiverLine(line: string): { code: string; acId?: string; ref?: string; reason: string; approvedBy: string } | null {
+  const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
+  if (!code) return null;
+  // `by:` is the trailing field; split on its LAST occurrence so a reason that itself
+  // contains "by:" is not truncated (and the signer is not mis-attributed).
+  const rm = /\breason:\s*/i.exec(line);
+  const reasonStart = rm ? rm.index + rm[0].length : -1;
+  // `ac:`/`ref:` are the leading pins — parse them only from the head BEFORE `reason:`, so a
+  // reason mentioning "ref:"/"ac:" in prose can't be misread as a pin.
+  const head = rm ? line.slice(0, rm.index) : line;
+  const acId = /\bac:\s*(\S+)/i.exec(head)?.[1];
+  const ref = /\bref:\s*(\S+)/i.exec(head)?.[1];
+  const byIdx = line.toLowerCase().lastIndexOf(' by:');
+  const reasonEnd = byIdx > reasonStart ? byIdx : line.length;
+  const reason = reasonStart >= 0 ? line.slice(reasonStart, reasonEnd).trim() : '';
+  const approvedBy = byIdx > reasonStart ? line.slice(byIdx + ' by:'.length).trim() : '';
+  return { code, reason, approvedBy, ...(acId ? { acId } : {}), ...(ref ? { ref } : {}) };
+}
+
 // Parse waivers UNIVERSALLY (core, never per-preset) from each issue's `## Waivers` section.
-// Each row is a located directive: `- code: <finding-code> [ac: <acId>] reason: <text> by: <signer>`.
 // The issue id comes from the body's `# <id>: <title>` head (robust for single-issue and bundle).
 export function parseWaivers(records: IssueRecord[]): WaiverDirective[] {
   const out: WaiverDirective[] = [];
@@ -561,22 +583,8 @@ export function parseWaivers(records: IssueRecord[]): WaiverDirective[] {
     const section = /(?:^|\n)##\s+waivers\b[^\n]*\n([\s\S]*?)(?=\n#{1,6}\s|$)/i.exec(body);
     if (!section) continue;
     for (const line of section[1]!.split('\n')) {
-      const code = /\bcode:\s*([A-Za-z0-9_]+)/i.exec(line)?.[1];
-      if (!code) continue;
-      // `by:` is the trailing field; split on its LAST occurrence so a reason that itself
-      // contains "by:" is not truncated (and the signer is not mis-attributed).
-      const rm = /\breason:\s*/i.exec(line);
-      const reasonStart = rm ? rm.index + rm[0].length : -1;
-      // `ac:`/`ref:` are the leading pins — parse them only from the head BEFORE `reason:`, so a
-      // reason mentioning "ref:"/"ac:" in prose can't be misread as a pin.
-      const head = rm ? line.slice(0, rm.index) : line;
-      const acId = /\bac:\s*(\S+)/i.exec(head)?.[1];
-      const ref = /\bref:\s*(\S+)/i.exec(head)?.[1];
-      const byIdx = line.toLowerCase().lastIndexOf(' by:');
-      const reasonEnd = byIdx > reasonStart ? byIdx : line.length;
-      const reason = reasonStart >= 0 ? line.slice(reasonStart, reasonEnd).trim() : '';
-      const approvedBy = byIdx > reasonStart ? line.slice(byIdx + ' by:'.length).trim() : '';
-      out.push({ issueId, code, reason, approvedBy, ...(acId ? { acId } : {}), ...(ref ? { ref } : {}) });
+      const parsed = parseWaiverLine(line);
+      if (parsed) out.push({ issueId, ...parsed });
     }
   }
   return out;
@@ -586,10 +594,13 @@ export function parseWaivers(records: IssueRecord[]): WaiverDirective[] {
 // finding(s) to `acknowledged`. A waiver missing a reason or sign-off is itself an error and
 // downgrades nothing; a waiver that matches NO finding is reported `waiver_unused` (warning)
 // — the self-cleaning staleness signal. A ref-pinned waiver (`ref:`) matches ONLY the finding
-// whose `subject`/`evidenceId` equals it — the `// eslint-disable-next-line` form. An UNPINNED
-// waiver that silences a subject-bearing finding still downgrades (back-compat) but is flagged
-// `waiver_overbroad` (warning) — the coarse block form, nudged toward a `ref:` pin. Structural
-// invariants (waivable === false) never downgrade. Universal core machinery.
+// whose `subject`/`evidenceId` equals it — the `// eslint-disable-next-line` form. `waiver_overbroad`
+// (warning) fires when a single directive silences MORE than the one occurrence it should: either an
+// UNPINNED waiver hit a subject-bearing finding (the coarse block form — nudged toward a `ref:` pin,
+// and it would also mask FUTURE occurrences), OR a `ref:` value matched >1 finding because the same
+// subject recurs across ACs (nudged toward `ac:` scoping). The downgrade still happens (back-compat);
+// only the warning distinguishes them. Structural invariants (waivable === false) never downgrade.
+// Universal core machinery.
 function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[] {
   if (!waivers.length) return findings;
   const extra: Finding[] = [];
@@ -607,31 +618,40 @@ function applyWaivers(findings: Finding[], waivers: WaiverDirective[]): Finding[
     v.issueId === f.issueId && v.code === f.code
     && (v.acId === undefined || v.acId === f.acId)
     && (v.ref === undefined || v.ref === f.subject || v.ref === f.evidenceId);
-  // Downgrade each error finding a valid, non-structural waiver matches; track which fired,
-  // and which UNPINNED waivers thereby silenced a subject-bearing finding (→ overbroad).
+  // Downgrade each error finding a valid, non-structural waiver matches; track which fired, and —
+  // for every fired waiver — the distinct subject-bearing occurrences it silenced (as `subject (ac)`
+  // display strings, deduped by the Set). This drives overbroad detection for BOTH the unpinned and
+  // the ref-matched-many cases; a subjectless finding contributes nothing (never overbroad).
   const fired = new Set<WaiverDirective>();
-  const overbroadSubjects = new Map<WaiverDirective, Set<string>>();
+  const silenced = new Map<WaiverDirective, Set<string>>();
   const adjusted = findings.map((f): Finding => {
     if (f.severity !== 'error' || f.waivable === false || !f.issueId) return f;
     const w = ordered.find((v) => matches(v, f));
     if (!w) return f;
     fired.add(w);
-    if (w.ref === undefined && f.subject !== undefined) {
-      const s = overbroadSubjects.get(w) ?? new Set<string>();
-      s.add(f.subject); overbroadSubjects.set(w, s);
+    if (f.subject !== undefined) {
+      const s = silenced.get(w) ?? new Set<string>();
+      s.add(`${f.subject}${f.acId ? ` (${f.acId})` : ''}`); silenced.set(w, s);
     }
     return { ...f, severity: 'acknowledged', message: `${f.message} (acknowledged by ${w.approvedBy.trim()})` };
   });
   // A valid waiver that suppressed nothing is stale — surface it (eslint's unused-directive).
-  // A valid UNPINNED waiver that silenced a subject-bearing finding is overbroad — it can also
-  // mask future/other occurrences of the same code; tell the signer the exact `ref:` to pin.
+  // Overbroad = one directive silenced more than the single occurrence it should: an UNPINNED
+  // waiver that hit a subject-bearing finding (→ pin with `ref:`; it would also mask future ones),
+  // or a `ref:` that matched >1 occurrence because the subject recurs across ACs (→ scope with `ac:`).
   for (const w of valid) {
     if (!fired.has(w)) { extra.push({ code: 'waiver_unused', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} matched no finding — remove it (or fix the code/ac). A waiver that suppresses nothing is stale.` }); continue; }
-    const subs = overbroadSubjects.get(w);
-    if (subs && subs.size) {
-      const list = [...subs].sort();
-      extra.push({ code: 'waiver_overbroad', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} is unpinned but silenced ${list.length === 1 ? 'a finding with subject' : `${list.length} findings with subjects`} ${list.join(', ')}. Pin it with \`ref: <subject>\` (one waiver per occurrence) so it can only ever suppress that one finding — an unpinned waiver also masks future/other '${w.code}' findings here.` });
-    }
+    const subs = silenced.get(w);
+    if (!subs || !subs.size) continue;                                  // fired only on subjectless findings — fine
+    const list = [...subs].sort();
+    const unpinnedHit = w.ref === undefined;                            // coarse block form — pin it
+    const refMatchedMany = w.ref !== undefined && list.length > 1;      // ref not specific to one occurrence — scope it
+    if (!unpinnedHit && !refMatchedMany) continue;                      // ref-pinned to exactly one occurrence — the good case
+    const many = list.length > 1;
+    const nudge = unpinnedHit
+      ? `Pin it with \`ref: <subject>\` (one waiver per occurrence) so it can only ever suppress that one finding — an unpinned waiver also masks future/other '${w.code}' findings here.`
+      : `The \`ref: ${w.ref}\` matches this subject on ${list.length} ACs — add \`ac: <acId>\` so it can suppress only one, or split it into one waiver per AC.`;
+    extra.push({ code: 'waiver_overbroad', severity: 'warning', issueId: w.issueId, ...(w.acId ? { acId: w.acId } : {}), message: `Waiver on ${loc(w)} silenced ${many ? `${list.length} findings` : 'a finding'} (${list.join(', ')}). ${nudge}` });
   }
   return [...adjusted, ...extra];
 }

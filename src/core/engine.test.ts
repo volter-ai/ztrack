@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-import { check, checkRoot, rule, type IssueRecord, type Preset } from './engine.ts';
+import { check, checkRoot, parseWaiverLine, rule, type IssueRecord, type Preset } from './engine.ts';
 
 const RootSchema = z.object({ issues: z.array(z.object({ id: z.string(), title: z.string(), summary: z.string(), status: z.string(), acceptanceCriteria: z.array(z.object({ id: z.string(), status: z.string(), evidence: z.array(z.object({ id: z.string() })) })) })) }).strict();
 type R = z.infer<typeof RootSchema>;
@@ -141,6 +141,44 @@ describe('check() runner', () => {
     expect(byS('badB')?.severity).toBe('acknowledged'); // broad waiver took the other
     expect(r.ok).toBe(true);
     expect(r.findings.some((x) => x.code === 'waiver_overbroad')).toBe(true); // the broad one still nudged
+  });
+
+  // ZTB-32 review finding 1: a `ref:` value is not a per-occurrence license — the same subject can
+  // recur across ACs. One issue-level (no `ac:`) `ref:` must NOT silently silence both; it downgrades
+  // (back-compat) but is flagged overbroad, and scoping it with `ac:` pins exactly one.
+  const dupePreset: Preset<ER> = {
+    ...subjPreset, name: 'dupe',
+    parse: (): ER => ({ issues: [{ id: 'A-1', title: 't', summary: '', status: 'open', acceptanceCriteria: [
+      { id: 'AC-1', status: 'passed', evidence: [{ id: 'ev1', commit: 'dupe' }] },
+      { id: 'AC-2', status: 'passed', evidence: [{ id: 'ev2', commit: 'dupe' }] },
+    ] }] }),
+  };
+  test('a ref matching the same subject on two ACs is flagged waiver_overbroad, not silently masked; ac-scoping pins one', () => {
+    const r = check(dupePreset, wbody('- code: evidence_commit_not_found ref: dupe reason: issue-level by: Otto'));
+    expect(r.findings.filter((x) => x.code === 'evidence_commit_not_found').every((x) => x.severity === 'acknowledged')).toBe(true);
+    const ob = r.findings.find((x) => x.code === 'waiver_overbroad');
+    expect(ob?.severity).toBe('warning');
+    expect(ob?.message).toContain('AC-1'); // names BOTH ACs the one ref hit
+    expect(ob?.message).toContain('AC-2');
+    // scoped: `ac: AC-1 ref: dupe` pins exactly AC-1; AC-2 still gates; no overbroad
+    const r2 = check(dupePreset, wbody('- code: evidence_commit_not_found ac: AC-1 ref: dupe reason: scoped by: Otto'));
+    expect(r2.findings.find((x) => x.acId === 'AC-1' && x.code === 'evidence_commit_not_found')?.severity).toBe('acknowledged');
+    expect(r2.findings.find((x) => x.acId === 'AC-2' && x.code === 'evidence_commit_not_found')?.severity).toBe('error');
+    expect(r2.findings.some((x) => x.code === 'waiver_overbroad')).toBe(false);
+    expect(r2.ok).toBe(false);
+  });
+
+  // ZTB-32 review finding 2: `by:` splits on its LAST occurrence, so a reason that itself contains
+  // "by:" keeps the real signer (parseWaiverLine is the shared source of truth for engine + CLI).
+  test('parseWaiverLine splits reason/signer on the last by:, not the first', () => {
+    const p = parseWaiverLine('- code: evidence_commit_not_found reason: covered by: the vendor outage report by: Real Signer');
+    expect(p?.reason).toBe('covered by: the vendor outage report');
+    expect(p?.approvedBy).toBe('Real Signer');
+    // pins parse only from the head before reason: — prose can't fake a ref/ac
+    const q = parseWaiverLine('- code: x ac: AC-1 ref: sha1 reason: mentions ref: nope and ac: nope by: Sig');
+    expect(q?.acId).toBe('AC-1'); expect(q?.ref).toBe('sha1');
+    expect(q?.reason).toBe('mentions ref: nope and ac: nope'); expect(q?.approvedBy).toBe('Sig');
+    expect(parseWaiverLine('- no code here')).toBeNull();
   });
 
   test('an unknown context key is rejected by the strict ValidationInputSchema', () => {
