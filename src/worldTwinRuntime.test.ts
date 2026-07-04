@@ -5,7 +5,7 @@
 // injectable seam (mirrors src/sync/github/twinRuntime.test.ts): swapping it to a rejecting stub
 // simulates "peer absent" without actually uninstalling it from this repo's devDependencies
 // (which the repo's own tests/demos still need).
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   __resetTwinWorldRuntimeCacheForTest, __setImportTwinModuleForTest, importTwinModule,
   loadTwinWorldRuntime, MISSING_WORLD_TWIN_MESSAGE,
@@ -14,6 +14,13 @@ import { addAnnotation, createAnnotation, listAnnotations, validateServiceAnnota
 import { loadWorldSourceBooks } from './worldSourceBooks.ts';
 
 const realImport = importTwinModule;
+// The cache must be cleared BEFORE each test too, not just after: `bun test` runs every file
+// in one process, and a world* file that ran earlier leaves the memoized runtime populated
+// after its last test (their beforeEach resets guard only their own entries). An afterEach
+// alone lets this file's FIRST test see that stale cache, where loadTwinWorldRuntime()
+// short-circuits past the rejecting stub — observed on Linux CI only, where test-file
+// ordering differs from macOS (run 28693392845).
+beforeEach(() => { __resetTwinWorldRuntimeCacheForTest(); });
 afterEach(() => {
   __setImportTwinModuleForTest(realImport);
   __resetTwinWorldRuntimeCacheForTest();
