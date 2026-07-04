@@ -6,7 +6,7 @@ gates fail. This doc maps the pieces of the single validation pipeline and how d
 
 > **TL;DR**
 > - **One typed pipeline.** Validation is a single pass: a loader reads issue markdown and, through the active preset's `loadContext`, gathers that preset's observed facts into a typed `Context`; the preset parses markdown to an mdast-backed `root`; `ValidationInputSchema.parse({ context, root })` types the whole input; pure rules run; the validated `root` **is** the export. There is no separate snapshot model assembled after validation.
-> - **One impure boundary.** `src/core/loader.ts` is the only place that does I/O (tracker backend, git, time). Everything downstream — schema, rules, export — is pure and operates over the typed `Context` and `root`.
+> - **One impure boundary — of the validation pipeline.** Within `check`/`checkRoot` (§2), `src/core/loader.ts` is the only place that does I/O (tracker backend, git, time); everything downstream — schema, rules, export — is pure and operates over the typed `Context` and `root`. This is a pipeline-scoped guarantee, not a whole-codebase one: real I/O also lives outside the pipeline, in `core/gitWorld.ts` (git via `execFileSync`, called BY a preset's `loadContext`, not by rules), and in the world adapters `worldAnnotations.ts`/`worldSourceBooks.ts` (read/write `.volter/world/**` via `node:fs`, §5) — all upstream of the pure schema/rules stage they feed.
 > - **Presets are standalone — there is NO universal model.** Each preset (`simple-sdlc`/`simple-gh-sdlc`/`spec`/`speckit`) brings its OWN strict schema, its OWN markdown parser, and its OWN rules. They share **no schema, no parser, and no rule set** with each other. The only shared layer is the engine *mechanism* (`core/engine.ts`: the minimal `CoreRoot` contract + the `Rule`-record evaluation / derived model) plus generic dev utilities (mdast, zod) and types. `ztrack init` installs the chosen preset's real, editable source. There is **no generic/universal preset factory, no shared parser or schema, no flag-toggled mega-preset, and no shared "rule library" presets compose from** — those are the legacy this architecture exists to forbid (see the invariant in §3).
 
 ---
@@ -64,12 +64,12 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 
 | file | role |
 |---|---|
-| `core/loader.ts` | the **only impure boundary**: reads issue markdown from the backend, frames issues into one bundle, then calls the active preset's `loadContext` to gather its observed facts and overlays the universal run selectors (`now`/`phase`/`categories`) into the typed `Context` |
+| `core/loader.ts` | the **only impure boundary of the validation pipeline itself** (schema/rules/export stay pure downstream of it): reads issue markdown from the backend, frames issues into one bundle, then calls the active preset's `loadContext` to gather its observed facts and overlays the universal run selectors (`now`/`phase`/`categories`) into the typed `Context`. Real I/O also happens upstream of this stage in `core/gitWorld.ts` and the world adapters (see their rows below and §5) — `loader.ts` is the boundary FOR the pipeline, not the only I/O in the codebase |
 | `core/bundle.ts` | `buildIssueBundle` — frames every issue into ONE markdown bundle (`===ISSUE <id>===` envelope) the preset parses |
 | `core/engine.ts` | the contract: `Preset { name, schema, parse, serialize?, rules, loadContext?, contextSchema?, derive?, isIssueDone?, primitives?, scaffold? }`, `check(preset, records, ctx)` and `checkRoot(preset, root, ctx)`, the strict `ValidationInputSchema`/`makeValidationInputSchema`, `Rule.run = (input: ValidationInput) => Finding[]` (pure — no I/O, git, time, raw markdown; optional `category`/`depth`), returning `{ ok, findings, export: root }` |
 | `modelEdit.ts` | the one mutation: parse → overlay a typed fragment → re-validate → the preset's `serialize` (`ac patch`/`issue patch`/`tracker_patch`). No universal write-grammar. |
 | `core/audit.ts` | append-only audit log (`.audit.jsonl`); timestamps derived; `observeChanges` catches external edits — wired up ONLY from the visualizer server today; no CLI mutation path (`issue create/edit`, `ac patch`, `tx`, waivers) writes to it (see the file's top comment) |
-| `core/gitWorld.ts` | preset-agnostic git facts (commits, PR/branch heads) a preset's `loadContext` calls — it knows nothing about any preset's schema |
+| `core/gitWorld.ts` | preset-agnostic git facts (commits, PR/branch heads) a preset's `loadContext` calls — it knows nothing about any preset's schema. Does real I/O (`execFileSync('git', ...)`, `gitWorld.ts:10`) — one of the impure surfaces outside `core/loader.ts` noted above |
 | `core/ref.ts` | universal node addressing: the derived colon-delimited id (`issue`/`issue:ac`/`issue:ac:evidence`/`issue:ac:proof`) used by cross-tree references like blocking |
 | `core/blocking.ts` | the unified blocking graph — a derived projection over the root that folds AC `blocked-by`/`blocks` and issue `relations` (every direction and level) into one dependency DAG; powers cycle detection, the out-of-order completion gate, and the transitive blocked/actionable view (`blockStatuses`) |
 | `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` | the standalone reference presets — each its OWN strict schema + mdast parser + serialize + pure rules per SDLC; installed verbatim as `preset.mts` |
@@ -82,6 +82,7 @@ The `root` is **multi-issue** — `Root { issues: Issue[] }` — so cross-issue 
 | `documentParser.ts` | the `document`-format parser: turns one markdown file's heading tree into many issues (id-bearing headings, parent/children nesting, a `Title:`/`Status:`/`Assignee:` preamble → umbrella issue) |
 | `documentWriteBack.ts` | the splice primitives `DocumentSource.write` uses — `shiftHeadings` (renumber ATX headings inside a spliced section) and `decomposeSection`/`spliceSectionText` (byte-preserving section rewrite) |
 | `testkit/presetConformance.ts` | shared preset-conformance test harness (`assertSdlcGrammarConformance`, `assertRoundTripFidelity`, …) each boilerplate preset's test file wires in: pins that an unmodified parse→serialize round trip is byte-identical and that an edit touches only the bytes its element owns |
+| `blobStore.ts` | content-addressed evidence blob store (`putBlob`/`hasBlob`/`getBlob`, keyed by sha256). **Write-only today**: `putBlob` is exercised by `evidence add --blob` (deprecated, `cliEvidence.ts:36`), but `hasBlob`/`getBlob` have no production caller — no shipped preset rule reads a blob back, so storing one here doesn't make `ztrack check` see it |
 
 **Validate flow:**
 ```
@@ -163,13 +164,13 @@ parser, serialize, and rules.
 |---|---|
 | `presetKit.ts` | the public `ztrack/preset-kit` mechanism a standalone preset imports (engine `check`/`rule`, mdast helpers, `gitWorld`, root-schema constructor, types) — no shared model |
 | `presetRegistry.ts` | `resolveTrackerValidation(config)` loads the repo-local `validation.entrypoint` file (the installed `preset.mts`) and returns its `Preset`; missing or legacy-only configs fail with init guidance |
-| `core/loader.ts` | the impure boundary that builds the typed `Context` from backend + world + git + time |
+| `core/loader.ts` | the pipeline's impure boundary: builds the typed `Context` from backend + world + git + time — the schema/rules stage downstream of it stays pure. (The I/O itself is done by the modules it calls into, e.g. `core/gitWorld.ts`, `worldAnnotations.ts`, `worldSourceBooks.ts` — real impure surfaces of their own, upstream of the pure pipeline; see §2's TL;DR and §5.) |
 | `core/bundle.ts` | `buildIssueBundle` — frames issues into the `===ISSUE <id>===` markdown bundle |
 | `export.ts` | `exportTrackerRoot()` → runs the pipeline and emits the validated `root` |
 | `check.ts` | `checkTracker()` / `checkTrackerRoot()` → run the active preset's rulebook |
 | `cliCheck.ts` | the `check` / `export` CLI dispatch |
 | `checkRules.ts` | the category/depth **types** for the `--categories` selector |
-| `blobStore.ts`, `attest.ts`, `dsse.ts` | evidence blobs + in-toto/DSSE attestation over a validated root |
+| `blobStore.ts`, `attest.ts`, `dsse.ts` | evidence blobs + in-toto/DSSE attestation over a validated root. `blobStore.ts` is write-only in practice today — `hasBlob`/`getBlob` have no production caller (see the `blobStore.ts` row in §2) |
 | `lint.ts` | issue-body lint (structure warnings) — write-side, see §6 |
 | `modelEdit.ts`, `tx.ts` | AC mutation + multi-edit transaction (apply → re-check → revert if worse) — write-side, see §6 |
 
@@ -207,6 +208,24 @@ parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 | `sdk.ts` `createTrackerClient` | issue CRUD over the markdown backend; writes via the backend; `tx.ts` re-checks |
 | `server.ts` / `graphql.ts` | GraphQL over the backend (CRUD) |
 | `visualizer/` (`ztrack visualizer`) | standalone Bun web app over `check().export`; runs every `tracker/*.md` through its preset and renders issues, ACs, findings, and timestamps (read-only) |
+| `ztrack import <path-or-glob>...` | materializes a freeform/mixed-markdown backlog into the strict document-source grammar in place, idempotently — see the import subsystem table below |
+| `ztrack loop start\|stop\|status` | arms/disarms a loop-scoped Stop-hook gate that holds the agent's turn until a target passes `check --auto-scope` — see the loop / Stop-hook gate table below |
+
+**Import subsystem** (`ztrack import`):
+
+| file | role |
+|---|---|
+| `importDriver.ts` (285 LOC) | pure orchestration: expands files/directories/quoted globs into concrete `.md` files (default excludes: `node_modules`, `.volter`, any configured issue-per-file source dir), runs ONE batch-wide, single-pass id allocation across all inputs plus every already-configured tracker source, reports a per-file outcome. `--register` (opt-in) is the only thing that ever appends `sources` entries to `tracker-config.json` |
+| `importBacklog.ts` (660 LOC) | the strict document-source materializer: plans + writes a freeform/mixed-markdown file into the document-source grammar (headings, parent/children nesting, checkbox ACs) idempotently; owns `IdAllocator`, the id-minting rule shared with `backends/markdownBackend.ts`'s mint path (one shared helper — see §2's id-minting note) |
+| `cliImport.ts` (175 LOC) | CLI wiring only — flag parsing (`--dry-run`, `--prefix`, `--register`) + terminal rendering; all planning/materializing logic lives in `importBacklog.ts`/`importDriver.ts` |
+
+**Loop / Stop-hook gate** (`ztrack loop`, `ztrack check --auto-scope`):
+
+| file | role |
+|---|---|
+| `cliTarget.ts` | the unified check/loop TARGET grammar (`resolveTarget`): the same four shapes (`<issue-id>` / `<file.md>` / auto-resolve from branch-worktree / the whole tracker) drive both `ztrack check` and `ztrack loop start`; backs `check --auto-scope`'s fail-closed-when-unresolved mode |
+| `loopState.ts` | the loop marker (`.ztrack-loop.json`) — the IPC between `ztrack loop start <target>` and the Stop-hook gate (`ztrack check --auto-scope`, run later in a separate process): records the resolved target, the iteration cap, and (optionally) the status the loop is driving toward |
+| `cliLoop.ts` | `ztrack loop start\|stop\|status` — arms/disarms the loop-scoped gate (a ralph loop); while armed, the Stop hook holds the turn until the target passes `check --auto-scope` or the iteration cap trips |
 
 ### Module format (ESM-first)
 

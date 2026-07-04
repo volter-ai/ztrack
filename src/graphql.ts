@@ -1,3 +1,4 @@
+import { identifierFromCreateOutput } from './createOutputId.ts';
 import type { TrackerBackend } from './types.ts';
 
 function findCall(query: string, name: string): string | null {
@@ -243,18 +244,6 @@ function inputBlock(query: string, name: string): string {
     i += 1;
   }
   return call.slice(start);
-}
-
-// `issue create` stdout differs by backend (local: "<id>\t<title>"; markdown: JSON).
-function identifierFromCreateOutput(stdout: string): string {
-  const trimmed = stdout.trim();
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (parsed && typeof parsed === 'object' && typeof (parsed as { identifier?: unknown }).identifier === 'string') {
-      return (parsed as { identifier: string }).identifier;
-    }
-  } catch { /* not JSON — fall through */ }
-  return trimmed.split(/\s+/)[0] ?? '';
 }
 
 function parseJson(stdout: string): unknown {

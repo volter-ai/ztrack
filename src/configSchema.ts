@@ -174,12 +174,14 @@ export const TrackerConfigSchema = z.object({
    */
   sources: z.array(TrackerSourceConfigSchema).optional(),
   /**
-   * Board scope for a LOCAL (unlinked) tracker. `branch` (default): the committed per-worktree
-   * `.volter` store IS the board — branch-scoped, issues merge with the code, but a coordinator
-   * can't see other branches' state. `shared`: the committed store stays per-worktree (board still
-   * in git), AND a central symlink index in `<git-common-dir>/ztrack/board` aggregates every
-   * worktree's live issues, so a coordinator — and global id allocation — sees ONE board across all
-   * worktrees without an external tracker. Ignored when `sync` is set (linked already has one store).
+   * Board scope for a LOCAL (unlinked) tracker. `shared` (default): the committed store stays
+   * per-worktree (board still in git), AND a central symlink index in
+   * `<git-common-dir>/ztrack/board` aggregates every worktree's live issues, so a coordinator —
+   * and global id allocation — sees ONE board across all worktrees without an external tracker.
+   * `branch`: the committed per-worktree `.volter` store IS the board — branch-scoped, issues
+   * merge with the code, but a coordinator can't see other branches' state. Ignored when `sync`
+   * is set (linked already has one store). Every application point (`config.ts`'s `boardScope`,
+   * `cliInit.ts`, `presetCatalog.ts`) defaults to 'shared', not 'branch'.
    */
   board: z.enum(['branch', 'shared']).optional(),
   /**

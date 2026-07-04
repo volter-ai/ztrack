@@ -3,7 +3,8 @@
 ztrack is a CLI first, but its core is a library you can import — to run a check from code, read the
 validated model, or drive issue CRUD from a script or dashboard.
 
-> Stability: ztrack is **pre-beta**. The package **root** (`import … from 'ztrack'`) is the
+> Stability: ztrack is **pre-1.0** (see README.md's Stability & dependencies for the full story).
+> The package **root** (`import … from 'ztrack'`) is the
 > supported surface — it is a hand-curated subset, not a blanket re-export. Other `ztrack/*`
 > subpaths are deeper building blocks (documented below) and may change; `ztrack/preset-kit` is the
 > one stable deep subpath (see [Preset reference](PRESETS.md)).
