@@ -141,4 +141,32 @@ describe('`--source` scoping (ZTB-33): list/check by source name, basename, and 
     expect(bad.out).toContain('--source cannot be combined with --input');
     expect(bad.out).toContain('Nothing was read');
   });
+
+  test('10. a loose `<file.md>` check + `--source` is refused (a file is not a declared source)', () => {
+    // Both a KNOWN and an UNKNOWN selector must be caught — a loose file bypasses the multi-source
+    // backend, so an unknown name would otherwise go silently unvalidated.
+    writeFileSync(join(root, 'loose.md'), pendingBody('Loose'));
+    for (const sel of ['alpha', 'bogus']) {
+      const bad = ztIn(root, 'check', join(root, 'loose.md'), '--source', sel);
+      expect(bad.code).not.toBe(0);
+      expect(bad.out).toContain('--source cannot be combined with a loose <file.md> check');
+    }
+  });
+
+  test('11. `check --auto-scope --source` is refused when an armed loop targets a FILE (the Stop-hook gate path)', () => {
+    // The sibling of test 10 on the gate path: `--auto-scope` with a file-target loop marker routes
+    // through the SAME checkFile as a loose <file.md>, so `--source` (even a bogus name) must be
+    // refused there too rather than silently ignored. Arm a file loop, prove the refusal, disarm.
+    writeFileSync(join(root, 'gated.md'), pendingBody('Gated'));
+    expect(ztIn(root, 'loop', 'start', join(root, 'gated.md')).code).toBe(0);
+    try {
+      for (const sel of ['alpha', 'bogus']) {
+        const bad = ztIn(root, 'check', '--auto-scope', '--source', sel);
+        expect(bad.code).not.toBe(0);
+        expect(bad.out).toContain('--source cannot be combined with a loose <file.md> check');
+      }
+    } finally {
+      ztIn(root, 'loop', 'stop');
+    }
+  });
 });

@@ -115,8 +115,14 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   const positionals = inputPath ? [] : positionalArgs(flagArgs, VALUE_FLAGS);
   const target = inputPath ? null : resolveTarget({ positionals, ...(issuesFromFlag ? { issuesFlag: issuesFromFlag } : {}), forceAuto, cwd: process.cwd() });
 
+  // ZTB-33: a loose `<file.md>` check (like `--input`) never touches the declared multi-source
+  // backend — `checkFile` validates one standalone markdown file — so `--source` cannot scope it and
+  // an unknown selector would go uncaught. Refuse rather than silently ignore, same as `--input`.
+  const looseFileError = () => new Error(`ztrack check: --source cannot be combined with a loose <file.md> check — a single markdown file is not one of the tracker's declared sources, so there is nothing to scope. Drop --source to check the file, or run a live 'ztrack check --source ${sourcesFromFlag!.join(',')}'. Nothing was read.`);
+
   // FILE target: validate a loose markdown file as one issue (plain report; not scoped).
   if (target?.kind === 'file') {
+    if (sourcesFromFlag) throw looseFileError();
     const result = await checkFile(target.path, { ...commonOpts, failOnWarning });
     return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
   }
@@ -125,6 +131,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   // branch. A FILE loop gates on that file directly (the file IS the whole gate).
   const loop = forceAuto ? readLoopMarker(projectRoot) : null;
   if (loop?.target.kind === 'file') {
+    if (sourcesFromFlag) throw looseFileError();
     const result = await checkFile(loop.target.path, { ...commonOpts, failOnWarning });
     return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
   }
