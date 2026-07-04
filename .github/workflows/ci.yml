@@ -35,6 +35,8 @@ jobs:
         run: bash demos/fresh-project-dry-run.sh
       - name: Check rule behaviors (real CLI e2e)
         run: bash demos/check-e2e.sh
+      - name: Missing-peer gate (real, non-mocked CLI e2e for the optional twin peers)
+        run: bash demos/missing-peer-gate.sh
       - name: Loop gate (Stop hook + waiver, no live agent)
         run: bash demos/loop-gate-ci.sh
       - name: Import backlog (freeform -> native document source e2e)

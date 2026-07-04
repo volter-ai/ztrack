@@ -51,6 +51,12 @@ jobs:
         # The shipped check path: the generic preset's rules fire (and stay quiet) correctly
         # through the installed CLI — the behaviors presetKit.test.ts used to assert in-process.
         run: bash demos/check-e2e.sh
+      - name: Missing-peer gate (real, non-mocked CLI e2e for the optional twin peers)
+        # Gate the release on #13's optional-peer contract through the REAL installed CLI:
+        # sync github fails closed with the install hint when the twin peers are absent, and
+        # with the bun-hint when they're installed but run under plain node — never a raw
+        # module-resolution crash either way.
+        run: bash demos/missing-peer-gate.sh
       - name: Loop gate (Stop hook + waiver, no live agent)
         # Also on the release gate: the installed package's Stop hook + `ztrack waiver`
         # CLI round-trip, driven deterministically (no model calls).

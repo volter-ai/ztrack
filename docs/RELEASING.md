@@ -23,6 +23,7 @@ until all three surfaces point at the intended code.
    npm pack --dry-run
    bash demos/fresh-project-dry-run.sh
    bash demos/check-e2e.sh
+   bash demos/missing-peer-gate.sh
    bash demos/loop-gate-ci.sh
    bash demos/import-backlog-demo.sh
    bash demos/pm-matrix.sh
