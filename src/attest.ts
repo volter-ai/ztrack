@@ -73,7 +73,10 @@ export function exportInTotoStatements(
         };
         const subject = [{ name: issue.id, digest: commitDigest(sha) }];
         if (type === 'screenshot') {
-          statements.push({ _type: STATEMENT_TYPE, subject, predicateType: 'https://volter.ai/attestation/screenshot-evidence/v1', predicate: { ...base, media: { ...(str(e, 'path') ? { path: str(e, 'path') } : {}), ...(str(e, 'url') ? { url: str(e, 'url') } : {}), ...(str(e, 'blob') ? { blob: str(e, 'blob') } : {}) } } });
+          // media = where the screenshot lives: a committed path (commit mode) or a
+          // digest-pinned URL (attach mode). The legacy content-addressed `blob` ref was
+          // removed with blobStore — no CLI path can populate it, so it's not read here.
+          statements.push({ _type: STATEMENT_TYPE, subject, predicateType: 'https://volter.ai/attestation/screenshot-evidence/v1', predicate: { ...base, media: { ...(str(e, 'path') ? { path: str(e, 'path') } : {}), ...(str(e, 'url') ? { url: str(e, 'url') } : {}) } } });
         } else if (type === 'video') {
           statements.push({ _type: STATEMENT_TYPE, subject, predicateType: 'https://volter.ai/attestation/human-qa/v1', predicate: { ...base, result: str(e, 'result') || str(e, 'status'), ...(str(e, 'url') ? { session: { url: str(e, 'url') } } : {}), ...(str(e, 'summary') ? { summary: str(e, 'summary') } : {}) } });
         } else if (type === 'pr') {

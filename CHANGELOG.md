@@ -16,6 +16,10 @@ Dead-code removal from the 0.43 review: the content-addressed evidence blob stor
   **Migration:** `evidence add <file>` (the default) is the one honest form — it copies the file
   in and cites the path the gate verifies at the cited commit. A stray `--blob` is now inert
   (ignored), so existing `evidence add … --blob` invocations keep working and store by path.
+- **Screenshot attestation drops its dead `blob` media branch.** `attest.ts` no longer reads a
+  `blob` field into the in-toto screenshot predicate's `media` — the field could only ever have
+  held a blob ref, which nothing produces now. Real screenshot evidence (committed `path` or a
+  digest-pinned `url`) attests byte-identically.
 
 ## 0.43.0
 
