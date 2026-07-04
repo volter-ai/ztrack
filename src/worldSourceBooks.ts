@@ -1,11 +1,18 @@
 // Optional tracker-side world adapter (requires the @volter-ai-dev/twin peer): maps world
 // events/annotations to "source books" that a world-backed preset's loader can fold
 // into `Context.world` for its rules. Standalone source-level code — not wired into
-// the default loader and not a default npm export; ztrack reads only twin's public
-// event API. See docs/WORLD-INTEGRATION.md.
+// the default loader; a PUBLIC subpath export (`ztrack/world-source-books`, documented in
+// docs/EVIDENCE.md's "Advanced: validating against a mirrored world" section) that a
+// world-backed preset's loadContext imports directly; ztrack reads only twin's public
+// event API.
+//
+// `@volter-ai-dev/twin` is loaded LAZILY (dynamic import, only when `loadWorldSourceBooks`
+// actually runs) via `./worldTwinRuntime.ts` — a consumer without the optional twin peer
+// installed must get a friendly error, not a raw ESM resolution crash. See
+// worldTwinRuntime.ts for the full rationale.
 import { existsSync, readdirSync } from 'node:fs';
-import { listEvents, loadWorldConfig, worldStateRoot } from '@volter-ai-dev/twin';
 import type { WorldServiceConfig, WorldServiceEvent } from '@volter-ai-dev/twin';
+import { loadTwinWorldRuntime } from './worldTwinRuntime.ts';
 import { listAnnotations } from './worldAnnotations.ts';
 import type { WorldAnnotation } from './worldAnnotations.ts';
 
@@ -61,8 +68,7 @@ function numberString(value: unknown): string {
   return stringValue(value);
 }
 
-function serviceNames(root?: string): string[] {
-  const worldRoot = worldStateRoot(root);
+function serviceNames(worldRoot: string): string[] {
   if (!existsSync(worldRoot)) return [];
   return readdirSync(worldRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -224,15 +230,16 @@ function annotationRowsForEvent(
   }];
 }
 
-export function loadWorldSourceBooks(root?: string): WorldSourceBooks {
+export async function loadWorldSourceBooks(root?: string): Promise<WorldSourceBooks> {
   const messages = new Map<string, WorldSourceBookMessage>();
   const annotations: WorldSourceBookAnnotation[] = [];
-  const worldConfig = loadWorldConfig(root);
-  for (const service of serviceNames(root)) {
+  const twin = await loadTwinWorldRuntime();
+  const worldConfig = twin.loadWorldConfig(root);
+  for (const service of serviceNames(twin.worldStateRoot(root))) {
     const serviceConfig = worldConfig.services[service] as SourceServiceConfig | undefined;
-    const events = listEvents(service, root);
+    const events = twin.listEvents(service, root);
     const eventsById = new Map(events.map((event) => [event.id, event]));
-    const serviceAnnotations = listAnnotations(service, root);
+    const serviceAnnotations = await listAnnotations(service, root);
     const sourceBookRelevantEventIds = new Set(serviceAnnotations.flatMap((annotation) => {
       if (service === 'chat') return [annotation.eventId];
       const projectsToSourceBook = annotation.classification === 'source';

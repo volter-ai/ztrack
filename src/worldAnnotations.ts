@@ -7,14 +7,19 @@
 // the tracker's decision, so this lives here, not in `@volter-ai-dev/twin`. It reads the
 // world only through `@volter-ai-dev/twin`'s generic event surface and stores annotations
 // alongside the events they describe (`.volter/world/<service>/annotations.jsonl`).
+//
+// `@volter-ai-dev/twin` is loaded LAZILY (dynamic import, only when a function here actually
+// runs) via `./worldTwinRuntime.ts` — this module is a PUBLIC subpath export
+// (`ztrack/world-annotations`), so a consumer without the optional twin peer installed must get
+// a friendly error, not a raw ESM resolution crash. See worldTwinRuntime.ts for the full
+// rationale (mirrors src/sync/github/twinRuntime.ts's seam for `ztrack sync github`).
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
-import {
-  DELTA_TYPE_SUFFIX, discoverWorldServices, isEgressEventType, listEvents,
-  loadWorldConfig, summarizeWorldFindings, worldStateRoot,
-} from '@volter-ai-dev/twin';
-import type { WorldConfig, WorldServiceConfig, WorldServiceEvent, WorldValidationFinding, WorldValidationReport } from '@volter-ai-dev/twin';
+import type { WorldConfig, WorldServiceConfig, WorldServiceEvent, WorldValidationFinding } from '@volter-ai-dev/twin';
+import { loadTwinWorldRuntime } from './worldTwinRuntime.ts';
+
+export { MISSING_WORLD_TWIN_MESSAGE } from './worldTwinRuntime.ts';
 
 // The annotation/source config the tracker layers on the world's generic per-service
 // config (carried via its index signature). These fields are verification concerns,
@@ -38,8 +43,9 @@ export const WorldAnnotationSchema = z.object({
 });
 export type WorldAnnotation = z.infer<typeof WorldAnnotationSchema>;
 
-function annotationsPath(service: string, root?: string): string {
-  return join(worldStateRoot(root), service, 'annotations.jsonl');
+async function annotationsPath(service: string, root?: string): Promise<string> {
+  const twin = await loadTwinWorldRuntime();
+  return join(twin.worldStateRoot(root), service, 'annotations.jsonl');
 }
 function readJsonl<T>(path: string): T[] {
   if (!existsSync(path)) return [];
@@ -55,18 +61,19 @@ export function createAnnotation(input: Omit<WorldAnnotation, 'createdAt'> & { c
   return WorldAnnotationSchema.parse({ createdAt: new Date().toISOString(), ...input });
 }
 
-export function listAnnotations(service: string, root?: string): WorldAnnotation[] {
-  return readJsonl<unknown>(annotationsPath(service, root)).map((row) => WorldAnnotationSchema.parse(row));
+export async function listAnnotations(service: string, root?: string): Promise<WorldAnnotation[]> {
+  return readJsonl<unknown>(await annotationsPath(service, root)).map((row) => WorldAnnotationSchema.parse(row));
 }
 
 /** Append an annotation. Idempotent on id; refuses to annotate a missing event. */
-export function addAnnotation(annotation: WorldAnnotation, root?: string): WorldAnnotation {
+export async function addAnnotation(annotation: WorldAnnotation, root?: string): Promise<WorldAnnotation> {
   const parsed = WorldAnnotationSchema.parse(annotation);
-  if (!listEvents(parsed.service, root).some((e) => e.id === parsed.eventId)) {
+  const twin = await loadTwinWorldRuntime();
+  if (!twin.listEvents(parsed.service, root).some((e) => e.id === parsed.eventId)) {
     throw new Error(`Cannot annotate missing ${parsed.service} event: ${parsed.eventId}`);
   }
-  if (listAnnotations(parsed.service, root).some((a) => a.id === parsed.id)) return parsed;
-  appendFileSync(annotationsPath(parsed.service, root), `${JSON.stringify(parsed)}\n`);
+  if ((await listAnnotations(parsed.service, root)).some((a) => a.id === parsed.id)) return parsed;
+  appendFileSync(await annotationsPath(parsed.service, root), `${JSON.stringify(parsed)}\n`);
   return parsed;
 }
 
@@ -75,9 +82,10 @@ export function addAnnotation(annotation: WorldAnnotation, root?: string): World
  * mechanical sync record: egress ledger events, connector-origin deltas, or any
  * event of a service whose world config sets annotationPolicy: 'exempt'.
  */
-export function isAnnotationExemptEvent(event: WorldServiceEvent, config?: WorldConfig): boolean {
-  if (isEgressEventType(event.type)) return true;
-  if (event.type.endsWith(DELTA_TYPE_SUFFIX) && event.origin === 'connector') return true;
+export async function isAnnotationExemptEvent(event: WorldServiceEvent, config?: WorldConfig): Promise<boolean> {
+  const twin = await loadTwinWorldRuntime();
+  if (twin.isEgressEventType(event.type)) return true;
+  if (event.type.endsWith(twin.DELTA_TYPE_SUFFIX) && event.origin === 'connector') return true;
   if ((config?.services[event.service] as AnnotationServiceConfig | undefined)?.annotationPolicy === 'exempt') return true;
   return false;
 }
@@ -102,8 +110,8 @@ function browseUrl(event: WorldServiceEvent, serviceConfig?: AnnotationServiceCo
 function eventText(event: WorldServiceEvent, serviceConfig?: AnnotationServiceConfig): string {
   return [event.id, event.external?.id, event.external?.url, browseUrl(event, serviceConfig), collectText(event.data), collectText(event.raw)].filter(Boolean).join('\n');
 }
-function rawAnnotationRows(root: string, service: string): JsonObject[] {
-  const file = annotationsPath(service, root);
+async function rawAnnotationRows(root: string, service: string): Promise<JsonObject[]> {
+  const file = await annotationsPath(service, root);
   if (!existsSync(file)) return [];
   return readFileSync(file, 'utf8').split('\n').flatMap((line, index) => {
     if (!line.trim()) return [];
@@ -116,10 +124,11 @@ function rawAnnotationRows(root: string, service: string): JsonObject[] {
 }
 
 /** Validate every annotation in a service: schema, quote resolution, links, unannotated events. */
-export function validateServiceAnnotations(root: string, service: string): WorldValidationFinding[] {
+export async function validateServiceAnnotations(root: string, service: string): Promise<WorldValidationFinding[]> {
   const findings: WorldValidationFinding[] = [];
-  const events = listEvents(service, root);
-  for (const [index, row] of rawAnnotationRows(root, service).entries()) {
+  const twin = await loadTwinWorldRuntime();
+  const events = twin.listEvents(service, root);
+  for (const [index, row] of (await rawAnnotationRows(root, service)).entries()) {
     if ('__parseError' in row) {
       findings.push({ level: 'error', code: 'annotation_malformed_json', message: 'Annotation JSONL row is malformed.', service, annotation: stringValue(row.id) || `${service}:row:${index + 1}`, details: { row: index + 1, error: stringValue(row.__parseError) } });
       continue;
@@ -134,14 +143,14 @@ export function validateServiceAnnotations(root: string, service: string): World
   }
   if (findings.some((f) => f.level === 'error')) return findings;
 
-  const annotations = listAnnotations(service, root);
+  const annotations = await listAnnotations(service, root);
   const eventsById = new Map(events.map((e) => [e.id, e]));
   const annotatedEventIds = new Set(annotations.map((a) => a.eventId));
   const annotationIds = new Set<string>();
-  const worldConfig = loadWorldConfig(root);
+  const worldConfig = twin.loadWorldConfig(root);
   const serviceConfig = worldConfig.services[service] as AnnotationServiceConfig | undefined;
   for (const event of events) {
-    if (annotatedEventIds.has(event.id) || isAnnotationExemptEvent(event, worldConfig)) continue;
+    if (annotatedEventIds.has(event.id) || (await isAnnotationExemptEvent(event, worldConfig))) continue;
     findings.push({ level: 'warning', code: 'event_unannotated', message: 'World event has no annotation. An ingress agent must inspect the raw event and write a source or noise annotation.', service, event: event.id, details: { eventType: event.type, occurredAt: event.occurredAt, externalUrl: stringValue(event.external?.url), subject: event.subject } });
   }
   for (const annotation of annotations) {
@@ -155,15 +164,7 @@ export function validateServiceAnnotations(root: string, service: string): World
     if (event.service !== annotation.service) findings.push({ level: 'error', code: 'annotation_service_mismatch', message: 'Annotation service does not match the referenced event service.', service, annotation: annotation.id, event: event.id, details: { annotationService: annotation.service, eventService: event.service } });
     if (annotation.quote && !eventText(event, serviceConfig).includes(annotation.quote)) findings.push({ level: 'error', code: 'annotation_quote_missing_from_event', message: 'Annotation quote is not present in the referenced event payload.', service, annotation: annotation.id, event: event.id, details: { quote: annotation.quote } });
     if (annotation.payloadPath && !existsSync(resolve(root, annotation.payloadPath))) findings.push({ level: 'error', code: 'annotation_payload_missing', message: 'Annotation payloadPath does not exist.', service, annotation: annotation.id, details: { payloadPath: annotation.payloadPath } });
-    if (annotation.resourcePath && !existsSync(resolve(worldStateRoot(root), service, annotation.resourcePath))) findings.push({ level: 'error', code: 'annotation_resource_missing', message: 'Annotation resourcePath does not exist.', service, annotation: annotation.id, details: { resourcePath: annotation.resourcePath } });
+    if (annotation.resourcePath && !existsSync(resolve(twin.worldStateRoot(root), service, annotation.resourcePath))) findings.push({ level: 'error', code: 'annotation_resource_missing', message: 'Annotation resourcePath does not exist.', service, annotation: annotation.id, details: { resourcePath: annotation.resourcePath } });
   }
   return findings;
-}
-
-/** Validate annotations across all (or selected) world services. */
-export function validateWorldAnnotations(options: { root?: string; services?: string[] } = {}): WorldValidationReport {
-  const root = options.root ?? process.cwd();
-  const services = options.services ?? discoverWorldServices(root);
-  const findings = services.flatMap((service) => validateServiceAnnotations(root, service));
-  return summarizeWorldFindings(findings);
 }
