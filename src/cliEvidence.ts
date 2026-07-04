@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { exportInTotoStatements } from './attest.ts';
-import { putBlob } from './blobStore.ts';
 import { optionValue } from './cliArgs.ts';
 import { exportTrackerRoot } from './export.ts';
 import { generateSigningKey, signStatement, verifyEnvelope, type DsseEnvelope } from './dsse.ts';
@@ -17,26 +16,15 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
     // Ingest an evidence file: copy it (friendly-named) into the evidence dir, stamp its sha256,
     // and print the path to cite (`image=<path>`) + digest. The verification anchors to the
     // commit, so COMMIT the file (commit mode, the default) — then `git cat-file -e <sha>:<path>`
-    // resolves and the gate accepts it. `--blob` keeps the old content-addressed store form.
+    // resolves and the gate accepts it. (The legacy `--blob` content-addressed store was removed
+    // once it proved write-only — no `ztrack check` rule ever read a blob back; a stray `--blob`
+    // now simply falls through to this path, which is the form the gate actually verifies.)
     const filePath = optionValue(args, '--file') || args.slice(2).find((a) => !a.startsWith('--'));
     if (!filePath) throw new Error('usage: ztrack evidence add <file> [--name <name>]   (copies it into the evidence dir; cite the printed `image=<path>` in an `ac patch`, then commit it)');
     const root = projectRootFrom();
     const abs = isAbsolute(filePath) ? filePath : resolve(root, filePath);
     const bytes = readFileSync(abs);
     const sha256 = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-    if (args.includes('--blob')) {
-      const ext = abs.toLowerCase().split('.').pop() ?? '';
-      const mediaType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : undefined;
-      process.stdout.write(`${JSON.stringify({ blob: putBlob(root, new Uint8Array(bytes), mediaType) }, null, 2)}\n`);
-      // ztrack issue #19 (blobStore is write-only): no `ztrack check` rule in any shipped preset
-      // reads a blob back (`hasBlob`/`getBlob` in blobStore.ts have no production caller — only
-      // blobStore.test.ts exercises them). Storing a blob here is real (content-addressed, deduped,
-      // committed), but nothing verifies it exists or cites it as evidence today — cite the
-      // `image=` PATH form instead (the default, non-`--blob` route above) if you need the gate
-      // to see it.
-      process.stderr.write(`${statusMark('warn')} ${ui.yellow('--blob is deprecated')}: ${ui.dim('the blob is stored, but no `ztrack check` rule consults blobStore today — this is write-only. Use `ztrack evidence add <file>` (no --blob) instead, which cites a path the gate does verify.')}\n`);
-      return true;
-    }
     const name = optionValue(args, '--name') || basename(abs);
     // attach mode (linked tracker, or --attach): upload to the GitHub release host → cite a URL
     // pinned by the digest (the gate accepts it; `evidence verify` fetches + compares). Otherwise
