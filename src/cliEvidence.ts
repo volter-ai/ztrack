@@ -9,6 +9,7 @@ import { generateSigningKey, signStatement, verifyEnvelope, type DsseEnvelope } 
 import { evidenceDir, evidenceStore, projectRootFrom } from './config.ts';
 import { linkedRepo } from './sync/github/linked.ts';
 import { uploadEvidenceToGithub, verifyUrlDigest } from './sync/github/attach.ts';
+import { statusMark, ui } from './cliStyle.ts';
 
 export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
   if (args[0] !== 'evidence') return false;
@@ -33,7 +34,7 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
       // committed), but nothing verifies it exists or cites it as evidence today — cite the
       // `image=` PATH form instead (the default, non-`--blob` route above) if you need the gate
       // to see it.
-      process.stderr.write('⚠ --blob is deprecated: the blob is stored, but no `ztrack check` rule consults blobStore today — this is write-only. Use `ztrack evidence add <file>` (no --blob) instead, which cites a path the gate does verify.\n');
+      process.stderr.write(`${statusMark('warn')} ${ui.yellow('--blob is deprecated')}: ${ui.dim('the blob is stored, but no `ztrack check` rule consults blobStore today — this is write-only. Use `ztrack evidence add <file>` (no --blob) instead, which cites a path the gate does verify.')}\n`);
       return true;
     }
     const name = optionValue(args, '--name') || basename(abs);
@@ -46,7 +47,7 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
       if (!repo) throw new Error('evidence add --attach: no linked GitHub repo. Link one with `ztrack init --sync github --repo <owner/name>`, or use commit storage.');
       const { url } = uploadEvidenceToGithub(repo, abs, name);
       process.stdout.write(`${JSON.stringify({ image: url, sha256 }, null, 2)}\n`);
-      process.stderr.write(`✓ uploaded to ${repo}\n  cite: image=${url} sha256=${sha256}\n`);
+      process.stderr.write(`${statusMark('pass')} ${ui.green(`uploaded to ${repo}`)}\n  ${ui.dim(`cite: image=${url} sha256=${sha256}`)}\n`);
       return true;
     }
     const dir = evidenceDir(root);
@@ -55,7 +56,7 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
     copyFileSync(abs, dest);
     const path = relative(root, dest);
     process.stdout.write(`${JSON.stringify({ path, sha256 }, null, 2)}\n`);
-    process.stderr.write(`✓ stored ${path}\n  cite: image=${path}  (commit it, then it verifies at the cited commit)\n`);
+    process.stderr.write(`${statusMark('pass')} ${ui.green(`stored ${path}`)}\n  ${ui.dim(`cite: image=${path}  (commit it, then it verifies at the cited commit)`)}\n`);
     return true;
   }
   if (args[1] === 'keygen') {
@@ -91,7 +92,7 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
       const results = await Promise.all(pins.map(async (p) => ({ ...p, ...(await verifyUrlDigest(p.url, p.sha256)) })));
       const failed = results.filter((r) => !r.ok);
       process.stdout.write(`${JSON.stringify({ checked: results.length, verified: results.length - failed.length, failed: failed.length, results: failed.length ? failed : undefined }, null, 2)}\n`);
-      if (!pins.length) process.stderr.write('no URL-pinned evidence to verify (committed evidence is verified by `ztrack check` at its commit).\n');
+      if (!pins.length) process.stderr.write(`${statusMark('info')} ${ui.dim('no URL-pinned evidence to verify (committed evidence is verified by `ztrack check` at its commit).')}\n`);
       process.exitCode = failed.length > 0 ? 1 : 0;
       return true;
     }
