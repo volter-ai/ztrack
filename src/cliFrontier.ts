@@ -63,6 +63,14 @@ export async function handleIssueListFrontier(args: string[]): Promise<boolean> 
   if (args.includes('--parent')) {
     throw new Error(`${command} issue list --actionable/--blocked: --parent is not supported on this view (the frontier is computed over the validated model, which has no parent pointer) — use plain '${command} issue list --parent <id>' instead. Nothing was read.`);
   }
+  // ZTB-33: the frontier is computed over the SOURCE-ERASED validated graph (root.issues is one flat
+  // array; blockers resolve across sources by universal id). Scoping it to one source would silently
+  // turn a real cross-source blocker into a phantom-missing one and mislabel a blocked issue as
+  // actionable — so refuse rather than compute a wrong frontier. Plain `issue list --source` (which
+  // has no cross-issue graph to distort) is the scoped view.
+  if (args.includes('--source')) {
+    throw new Error(`${command} issue list --actionable/--blocked: --source is not supported on this view — the dispatch frontier is computed over the whole cross-source dependency graph, and scoping it to one source would misreport blockers that live in another. Use plain '${command} issue list --source <name>' for a scoped listing. Nothing was read.`);
+  }
 
   const projectRoot = projectRootFrom();
   const config = loadTrackerConfig(projectRoot);

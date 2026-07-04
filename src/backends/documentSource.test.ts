@@ -14,7 +14,7 @@ function docFile(text: string): { path: string; resolved: ResolvedSource } {
   const dir = mkdtempSync(join(tmpdir(), 'docsrc-'));
   const path = join(dir, 'doc.md');
   writeFileSync(path, text);
-  return { path, resolved: { dir: path, format: 'document', readonly: false, isDefault: false } };
+  return { path, resolved: { dir: path, format: 'document', readonly: false, isDefault: false, name: path } };
 }
 
 const CANON = [

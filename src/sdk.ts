@@ -81,6 +81,7 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
         if (options.parent) args.push('--parent', options.parent);
         if (options.limit) args.push('--limit', String(options.limit));
         for (const label of Array.isArray(options.label) ? options.label : options.label ? [options.label] : []) args.push('--label', label);
+        for (const source of Array.isArray(options.source) ? options.source : options.source ? [options.source] : []) args.push('--source', source);
         if (options.json) args.push('--json', options.json);
         if (options.jq) args.push('--jq', options.jq);
         return parseJsonOrText((await backend.command(args)).stdout);

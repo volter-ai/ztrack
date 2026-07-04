@@ -19,7 +19,7 @@ unless you say so.
   "sources": [
     { "path": ".volter/tracker/markdown" },
     { "path": "vendor/imported-issues", "readonly": true },
-    { "path": "docs/BACKLOG.md", "format": "document" }
+    { "path": "docs/BACKLOG.md", "format": "document", "name": "backlog" }
   ]
 }
 ```
@@ -33,6 +33,10 @@ Each entry:
   `"document"`, anything else defaults to `"issue-per-file"`.
 - **`readonly`** — optional, default `false`. `true` marks a source ztrack may read but never
   write; a write routed at it is rejected with an error naming the source file to edit instead.
+- **`name`** — optional. A stable, user-typeable selector for `--source` (see below). When omitted
+  a source is addressable by exactly its `path` string (and by that path's basename). Give a `name`
+  to decouple the selector from the on-disk path or to make it read nicely (`--source backlog`).
+  Names should be unique across sources; a shared name selects every source that carries it.
 
 The whole config is schema-validated. An unrecognized key at any level — top-level or nested,
 including inside a `sources[]` entry — is a config error naming the key and, when it looks like a
@@ -42,6 +46,37 @@ typo, the nearest valid sibling (e.g. `source:` → `unknown key "source" ... di
 **Id conflicts.** ztrack never silently picks a winner when the same issue id is defined in two
 different declared sources — `ztrack check` reports it as an `issue_id_conflict` error naming both
 source paths. Rename one of them or remove the duplicate.
+
+## Scoping to one source (`--source`)
+
+By default every command reads the whole union. Once you have 2+ sources you can scope `issue list`
+and `ztrack check` to one (or several) of them by name:
+
+```sh
+ztrack issue list --source backlog                 # only the source named "backlog"
+ztrack issue list --source backlog --source vendor  # the union of two sources (repeatable)
+ztrack issue list --json identifier,source          # `source` is a selectable field: which source each row came from
+ztrack check --source backlog                       # validate only the "backlog" source
+ztrack check --source backlog,vendor                # comma-separated list
+```
+
+A selector matches a source by its `name` (config `name`, else the declared `path`) **or** the
+basename of its path — so a source at `.volter/tracker` is reachable as `--source tracker`. An
+unknown selector is a hard error listing the available source names, never a silent empty result.
+
+Scoping `check` to a single source narrows what is validated: the cross-source `issue_id_conflict`
+rule cannot fire when you've asked for one source alone (there is nothing else to conflict with).
+`--source` is **not** available on the `issue list --actionable|--blocked` frontier — that view is
+computed over the whole cross-source dependency graph, and scoping it to one source would misreport
+blockers that live in another; use plain `issue list --source` for a scoped listing.
+
+A scoped `check` validates only the issues in the named source(s), exactly like `check --issues`.
+One consequence of any such record-level scope: a `blocked-by`/`parent` reference that points at an
+issue in an *excluded* source is reported as `ac_blocker_missing` ("references X, which does not
+exist") — the referenced issue is simply out of scope, not truly gone. This still gates (it never
+silently passes), and the whole-tracker `ztrack check` (what CI and the release gate run) verifies
+those cross-source references honestly. Use a scoped `check` to inspect one source in isolation; use
+the unscoped `check` as the source of truth for cross-source integrity.
 
 ## The document format
 

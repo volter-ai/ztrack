@@ -15,6 +15,10 @@ export type TrackerCheckOptions = {
   projectRoot?: string;
   config?: ReturnType<typeof loadTrackerConfig>;
   issues?: string[];
+  /** ZTB-33: `ztrack check --source <sel>` — scope validation to the named declared source(s).
+   *  Absent = the whole union. Threaded to the loader/backend; when scoped to one source,
+   *  `crossSourceConflicts` cannot fire (there is nothing else to conflict with). */
+  sources?: string[];
   failOnWarning?: boolean;
   categories?: Partial<Record<RuleCategory, number>>;
   verifyCommits?: boolean;
@@ -33,6 +37,7 @@ function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
   return {
     projectRoot,
     ...(options.issues ? { issues: options.issues } : {}),
+    ...(options.sources && options.sources.length ? { sources: options.sources } : {}),
     ...(options.categories ? { categories: options.categories } : {}),
     ...(options.now ? { now: options.now } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
