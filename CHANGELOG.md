@@ -16,8 +16,9 @@ The audit log is now wired into CLI writes (finishes ztrack #19's deferred item)
   about) and the **GraphQL HTTP server** (`api serve` — per request), which each observe internally
   because a long-running server never reaches the CLI's after-command hook. It's **best-effort**:
   auditing never changes a command's exit code or output, and `ztrack check` remains the source of
-  truth. Because it's diff-based, all callers share one log + baseline; the lock-free baseline means
-  two concurrent observers can append a byte-identical duplicate, which `readAudit` dedupes away.
+  truth. Because it's diff-based, all callers share one log + baseline, serialized by a short
+  advisory lock (`.audit.lock`, skip-on-contention) so two concurrent observers record each change
+  once — the skipper leaves it pending for the next observe rather than writing a duplicate.
 - **The log lives next to the store and is never committed.** It moved to
   `.volter/tracker/.audit.jsonl` (from a legacy `<root>/tracker/` sibling), and both it and its
   `.audit-state.json` baseline are gitignored on first write — it's per-clone, regenerable

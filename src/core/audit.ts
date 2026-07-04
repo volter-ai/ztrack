@@ -11,21 +11,25 @@
 //       mutation affordances (an SDLC whose files are hand-edited or edited by its own tooling).
 // Diffing is why one central pass suffices instead of per-path instrumentation: whichever caller
 // observes first records the change and advances the shared baseline, so the other sees no diff.
-// The baseline is a lock-free read-modify-write, so two observers running concurrently (two
-// terminals, or a CLI mutation racing the visualizer's per-request pass) can BOTH read the same
-// stale baseline and append the same change — a byte-identical duplicate line. `readAudit` drops
-// exact duplicates so consumers never see it, and timestamps (first/last entry) are unaffected;
-// hardening the write path with a lock isn't worth it for a local, regenerable observability log.
-// The backend choke point (`MarkdownBackend.command`) can't drive this —
-// it only ever sees a preset-agnostic `CanonicalIssue` with no acceptance criteria — which is
-// exactly why the observe pass runs one layer up, over the validated export, not in the backend.
+// The baseline is a read-modify-write shared across processes (two terminals, or a CLI mutation
+// racing the visualizer's per-request pass), so `observeChanges` takes a short advisory lock
+// (`<stateDir>/tracker/.audit.lock`) around load→diff→append→save. On contention it SKIPS rather
+// than blocks — best-effort: the skipper writes nothing and does NOT advance the baseline, so the
+// pending change is still diffed and recorded by the next observer. That gives no duplicate and no
+// permanent loss (each racing process re-exports fresh, and every mutation triggers another
+// observe); a crashed holder's lock is stolen after a staleness timeout. (A lock-free append + read
+// dedupe can't work here: the two racing processes stamp `new Date()` independently, so the
+// duplicate lines differ by milliseconds — not byte-identical — and a ts-blind dedupe would wrongly
+// collapse a legitimately repeated transition.) The backend choke point (`MarkdownBackend.command`)
+// can't drive this — it only ever sees a preset-agnostic `CanonicalIssue` with no acceptance
+// criteria — which is exactly why the observe pass runs one layer up, over the validated export.
 //
 // `repo` here is the tracker STATE DIR (`cacheRoot(projectRoot)` — `.volter` for a local tracker,
 // the per-clone cache for a linked one), so the log lives at `<stateDir>/tracker/.audit.jsonl`,
 // next to the markdown store. It's local, derived observability (per-clone, regenerable by
 // observation), so both it and its baseline are gitignored on first write — never committed.
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { AuditEntry } from './engine.ts';
 
@@ -39,7 +43,7 @@ export function auditPath(repo: string): string {
 // `.gitignore` in the same dir (e.g. one the store uses) is appended to, never clobbered.
 function ensureAuditIgnored(trackerDir: string): void {
   const gitignore = join(trackerDir, '.gitignore');
-  const want = ['.audit.jsonl', '.audit-state.json'];
+  const want = ['.audit.jsonl', '.audit-state.json', '.audit.lock'];
   let current = '';
   try { current = readFileSync(gitignore, 'utf8'); } catch { /* no .gitignore yet */ }
   const have = new Set(current.split('\n').map((l) => l.trim()));
@@ -78,35 +82,70 @@ export function seedAuditBaseline(repo: string): void {
   saveBaseline(repo, {});
 }
 
+// A short advisory lock serializing the load→diff→append→save critical section across processes.
+// Skip-on-contention (never block a user's command); steal a lock left by a crashed holder.
+const AUDIT_LOCK_STALE_MS = 10_000;
+function lockPath(repo: string): string { return join(repo, 'tracker', '.audit.lock'); }
+/** Try to take the audit lock. Returns an fd to release, or null if another observer holds it
+ *  (in which case the caller must skip this pass — the change stays pending for the next observer). */
+function acquireAuditLock(repo: string): number | null {
+  mkdirSync(join(repo, 'tracker'), { recursive: true });
+  const lock = lockPath(repo);
+  try {
+    return openSync(lock, 'wx'); // exclusive create — fails if held
+  } catch {
+    // Held by a live observer, or stale from a crashed one. Steal only if clearly stale; otherwise
+    // treat as contended and skip (best-effort — no blocking, no duplicate).
+    try {
+      if (Date.now() - statSync(lock).mtimeMs > AUDIT_LOCK_STALE_MS) {
+        unlinkSync(lock);
+        return openSync(lock, 'wx');
+      }
+    } catch { /* lock vanished, or a competing steal won the race — treat as contended */ }
+    return null;
+  }
+}
+function releaseAuditLock(repo: string, fd: number): void {
+  try { closeSync(fd); } catch { /* already closed */ }
+  try { unlinkSync(lockPath(repo)); } catch { /* already removed */ }
+}
+
 /** Diff the current issues against the last-seen baseline; append an audit entry
  *  for every change (status / AC status / AC added / evidence added). On the very
- *  first run it seeds the baseline silently (no burst of "created" entries). */
+ *  first run it seeds the baseline silently (no burst of "created" entries).
+ *  Returns [] and records nothing if a concurrent observer holds the lock. */
 export function observeChanges(repo: string, issues: ObservableIssue[], actor = 'observed'): AuditEntry[] {
-  const seeding = !existsSync(baselinePath(repo));
-  const b = loadBaseline(repo);
-  const now = new Date().toISOString();
-  const out: AuditEntry[] = [];
-  for (const issue of issues) {
-    const cur = snap(issue); const prev = b[issue.id];
-    if (!seeding) {
-      if (!prev) out.push({ ts: now, issueId: issue.id, op: 'observed.create', to: cur.status, actor });
-      else {
-        if (prev.status !== cur.status) out.push({ ts: now, issueId: issue.id, op: 'status', field: 'status', from: prev.status, to: cur.status, actor });
-        for (const [acId, ac] of Object.entries(cur.acs)) {
-          const pac = prev.acs[acId];
-          if (!pac) out.push({ ts: now, issueId: issue.id, op: 'ac.add', field: acId, to: ac.status, actor });
-          else {
-            if (pac.status !== ac.status) out.push({ ts: now, issueId: issue.id, op: 'ac.status', field: acId, from: pac.status, to: ac.status, actor });
-            if (ac.evidence > pac.evidence) out.push({ ts: now, issueId: issue.id, op: 'evidence.add', field: acId, to: `${ac.evidence} evidence`, actor });
+  const fd = acquireAuditLock(repo);
+  if (fd === null) return []; // a concurrent observer is mid-pass; skip — the change stays pending
+  try {
+    const seeding = !existsSync(baselinePath(repo));
+    const b = loadBaseline(repo);
+    const now = new Date().toISOString();
+    const out: AuditEntry[] = [];
+    for (const issue of issues) {
+      const cur = snap(issue); const prev = b[issue.id];
+      if (!seeding) {
+        if (!prev) out.push({ ts: now, issueId: issue.id, op: 'observed.create', to: cur.status, actor });
+        else {
+          if (prev.status !== cur.status) out.push({ ts: now, issueId: issue.id, op: 'status', field: 'status', from: prev.status, to: cur.status, actor });
+          for (const [acId, ac] of Object.entries(cur.acs)) {
+            const pac = prev.acs[acId];
+            if (!pac) out.push({ ts: now, issueId: issue.id, op: 'ac.add', field: acId, to: ac.status, actor });
+            else {
+              if (pac.status !== ac.status) out.push({ ts: now, issueId: issue.id, op: 'ac.status', field: acId, from: pac.status, to: ac.status, actor });
+              if (ac.evidence > pac.evidence) out.push({ ts: now, issueId: issue.id, op: 'evidence.add', field: acId, to: `${ac.evidence} evidence`, actor });
+            }
           }
         }
       }
+      b[issue.id] = cur;
     }
-    b[issue.id] = cur;
+    for (const e of out) appendAudit(repo, e);
+    saveBaseline(repo, b);
+    return out;
+  } finally {
+    releaseAuditLock(repo, fd);
   }
-  for (const e of out) appendAudit(repo, e);
-  saveBaseline(repo, b);
-  return out;
 }
 
 export function appendAudit(repo: string, entry: AuditEntry): void {
@@ -120,18 +159,11 @@ export function appendAudit(repo: string, entry: AuditEntry): void {
 export function readAudit(repo: string, issueId?: string): AuditEntry[] {
   const p = auditPath(repo);
   if (!existsSync(p)) return [];
-  // Append-only log: tolerate a corrupt/partial line (crash mid-append, manual edit) by skipping
-  // it rather than making the whole history unreadable. Also drop byte-identical duplicate lines:
-  // two observers racing the lock-free baseline can each append the same change (same ts/issue/op/
-  // from/to/actor) — that collision is the only way two lines serialize identically, so deduping on
-  // the raw text is safe and makes the concurrency race invisible to every consumer.
-  const seen = new Set<string>();
-  const all: AuditEntry[] = [];
-  for (const l of readFileSync(p, 'utf8').split('\n')) {
-    if (!l || seen.has(l)) continue;
-    seen.add(l);
-    try { all.push(JSON.parse(l) as AuditEntry); } catch { /* skip a corrupt/partial line */ }
-  }
+  // Append-only log: tolerate a corrupt/partial line (crash mid-append, manual edit)
+  // by skipping it rather than making the whole history unreadable.
+  const all = readFileSync(p, 'utf8').split('\n').filter(Boolean).flatMap((l) => {
+    try { return [JSON.parse(l) as AuditEntry]; } catch { return []; }
+  });
   return issueId ? all.filter((e) => e.issueId === issueId) : all;
 }
 
