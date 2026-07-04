@@ -12,6 +12,7 @@ bash demos/full-dev-cycle.sh
 bash demos/real-project-cycle.sh
 bash demos/import-backlog-demo.sh
 bash demos/check-e2e.sh
+bash demos/missing-peer-gate.sh
 bash demos/loop-gate-ci.sh
 bash demos/pm-matrix.sh
 bash demos/loop-e2e.sh
@@ -46,6 +47,13 @@ shipped path, through the standalone `default` preset the packed+installed CLI
 writes as `preset.mts`. It's the primary proof that the check rules fire (and
 stay quiet) correctly through the real CLI. Deterministic, no live agent; a CI
 gate.
+
+`missing-peer-gate.sh` is the real (non-mocked) CLI E2E for #13's optional-peer
+contract: packs the repo and installs it in two fresh consumer projects — peers
+absent (`sync github` fails closed with the install hint, everything else keeps
+working), and peers installed but run under plain node/npx (the bun-hint path,
+since `@volter-ai-dev/twin-github` ships TypeScript source only). Deterministic,
+no gh auth, no live GitHub network call; a CI/publish gate.
 
 `loop-gate-ci.sh` is deterministic CI coverage for the ztrack loop — everything
 in `loop-e2e.sh` that does NOT need a live agent. It drives the real Stop hook

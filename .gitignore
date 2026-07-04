@@ -17,5 +17,9 @@ node_modules/
 visualizer/core.js
 dist/
 
+# `ztrack visualizer` auto-runs `bun install` in visualizer/ on first use, which
+# regenerates this lockfile — not committed, same as the other visualizer build output above.
+visualizer/bun.lock
+
 # claude code agent worktrees (ephemeral)
 .claude/worktrees/
