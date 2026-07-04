@@ -11,7 +11,8 @@ import { parseMarkdownDocumentSource } from './documentParser.ts';
 import { markdownStoreDir } from './config.ts';
 import { existingIdsInFile, IdAllocator, planAndMaterialize, type ImportPlan } from './importBacklog.ts';
 import { resolveSources, type ResolvedSource } from './sources.ts';
-import type { TrackerConfig, TrackerSourceConfig } from './types.ts';
+import type { TrackerSourceConfig } from './types.ts';
+import { parseTrackerConfig } from './configSchema.ts';
 
 // ── input expansion (files / directories / quoted globs) ───────────────────────────────────────
 
@@ -257,10 +258,28 @@ export function planRegister(projectRoot: string, config: { sources?: TrackerSou
 }
 
 /** Apply `--register`: append `toAdd` to `config.sources` in the on-disk config file and rewrite
- *  it. The ONLY config mutation this whole feature ever performs, and only additive. */
+ *  it. The ONLY config mutation this whole feature ever performs, and only additive.
+ *
+ *  ZTB-26 dev/03: this used to blindly `JSON.parse(...) as TrackerConfig` the file and rewrite it —
+ *  an unvalidated cast that would silently rewrite ON TOP OF a malformed config. It now validates
+ *  through the same schema `loadTrackerConfig` does before mutating: a malformed config fails
+ *  loudly here instead of being blindly preserved-and-rewritten. In the normal CLI flow this file
+ *  was already validated moments earlier by the caller's own `loadTrackerConfig` (cliImport.ts) —
+ *  this is defense in depth against calling `applyRegister` directly with a stale/hand-edited path. */
 export function applyRegister(configPath: string, toAdd: readonly TrackerSourceConfig[]): void {
   if (toAdd.length === 0) return;
-  const raw = JSON.parse(readFileSync(configPath, 'utf8')) as TrackerConfig;
-  raw.sources = [...(raw.sources ?? []), ...toAdd];
-  writeFileSync(configPath, `${JSON.stringify(raw, null, 2)}\n`);
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(readFileSync(configPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`--register: config at ${configPath} is not valid JSON: ${(error as Error).message}`);
+  }
+  let raw: ReturnType<typeof parseTrackerConfig>;
+  try {
+    raw = parseTrackerConfig(parsedJson);
+  } catch (error) {
+    throw new Error(`--register: config at ${configPath} is invalid, refusing to rewrite it:\n  - ${(error as Error).message}`);
+  }
+  const updated = { ...raw, sources: [...(raw.sources ?? []), ...toAdd] };
+  writeFileSync(configPath, `${JSON.stringify(updated, null, 2)}\n`);
 }

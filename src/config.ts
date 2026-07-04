@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import type { TrackerConfig } from './types.ts';
-import { assertValidTrackerConfigShape } from './configSchema.ts';
+import { parseTrackerConfig, type RawTrackerConfig } from './configSchema.ts';
 
 /**
  * Name of the per-project state directory holding tracker config and data
@@ -174,17 +174,19 @@ export function loadTrackerConfig(projectRoot = projectRootFrom()): TrackerConfi
   if (!existsSync(configPath)) {
     throw new Error(`No tracker config found at ${configPath}. Run 'ztrack init' to create one.`);
   }
-  let raw: Partial<TrackerConfig>;
+  let parsedJson: unknown;
   try {
-    raw = JSON.parse(readFileSync(configPath, 'utf8')) as Partial<TrackerConfig>;
+    parsedJson = JSON.parse(readFileSync(configPath, 'utf8'));
   } catch (error) {
     throw new Error(`Tracker config at ${configPath} is not valid JSON: ${(error as Error).message}`);
   }
   // Fail closed on shape: an unrecognized key anywhere in the config (top-level or nested —
   // e.g. `source:` typo'd for `sources:`) used to be silently spread through and ignored. Now
-  // it's a config error naming the key and its nearest valid sibling. (ZTB-3)
+  // it's a config error naming the key and its nearest valid sibling. (ZTB-3) `parseTrackerConfig`
+  // returns the validated, typed shape — no unvalidated `as TrackerConfig` cast needed (ZTB-26).
+  let raw: RawTrackerConfig;
   try {
-    assertValidTrackerConfigShape(raw);
+    raw = parseTrackerConfig(parsedJson);
   } catch (error) {
     throw new Error(`Tracker config at ${configPath} is invalid:\n  - ${(error as Error).message}`);
   }
