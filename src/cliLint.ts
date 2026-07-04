@@ -2,7 +2,7 @@
 // (ZTB-28 dev/04), following the established verb-module pattern (cliImport.ts/cliWaiver.ts/
 // cliLoop.ts): flag parsing + terminal rendering only, dispatched from cli.ts's main().
 import { optionValue } from './cliArgs.ts';
-import { projectRootFrom } from './config.ts';
+import { loadTrackerConfig, projectRootFrom } from './config.ts';
 import { lintIssueBody } from './lint.ts';
 import { createTrackerClient } from './sdk.ts';
 import { statusMark, ui } from './cliStyle.ts';
@@ -14,7 +14,6 @@ export async function handleLintCommand(args: string[]): Promise<boolean> {
   const projectRoot = projectRootFrom();
   const issuesFilter = optionValue(args, '--issues');
   const issueSet = issuesFilter ? new Set(issuesFilter.split(',').map((s) => s.trim()).filter(Boolean)) : null;
-  const { loadTrackerConfig } = await import('./config.ts');
   const config = loadTrackerConfig(projectRoot);
   const rows = await client.issue.list({ state: 'all', limit: 5000, json: 'identifier,body' });
   const cases = (Array.isArray(rows) ? rows : []) as Array<{ identifier?: string; body?: string }>;

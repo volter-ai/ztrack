@@ -140,8 +140,9 @@ live in the repository at `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec
 https://github.com/volter-ai/ztrack).
 
 A preset defines validation as ONE typed pipeline: the loader (the only impure
-boundary) reads the backend and calls the preset's own `loadContext` to gather
-its observed facts → the preset's mdast `parse` produces a candidate `root` →
+boundary of the validation pipeline) reads the backend and calls the preset's
+own `loadContext` to gather its observed facts → the preset's mdast `parse`
+produces a candidate `root` →
 `ValidationInputSchema.parse({ context, root })` validates it (one top-level
 strict schema, every nested object `.strict()`) → pure rules run over the
 validated input → the validated `root` IS the export. The engine

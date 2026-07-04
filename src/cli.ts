@@ -12,9 +12,9 @@ import { upgradeTrackerPreset } from './presetCatalog.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
-import { serveTrackerApi } from './server.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
+import { handleApiCommand } from './cliApi.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
 import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
@@ -259,34 +259,7 @@ async function main(): Promise<void> {
   } else if (await handleCheckCommand(args)) return;
 
   const client = createTrackerClient();
-  if (args[0] === 'api') {
-    const action = args[1];
-    if (!action || action === '--help' || action === '-h' || action === 'help') {
-      process.stdout.write(`Usage: ${command} api <query|serve> [args...]
-
-GraphQL-shaped query against the local tracker store.
-
-  ${command} api query --query '{ issues(first: 10) { nodes { identifier title } } }'
-  ${command} api serve --host 127.0.0.1 --port 8765
-`);
-      return;
-    }
-    if (action === 'query') {
-      const query = optionValue(args, '--query');
-      if (!query) throw new Error('tracker api query: --query required');
-      process.stdout.write(`${JSON.stringify(await client.graphql(query), null, 2)}\n`);
-      return;
-    }
-    if (action === 'serve') {
-      await serveTrackerApi({
-        host: optionValue(args, '--host', '127.0.0.1'),
-        port: Number(optionValue(args, '--port', '8765')),
-      });
-      return;
-    }
-    throw new Error(`tracker api: unknown action '${action ?? ''}'`);
-  }
-
+  if (await handleApiCommand(args)) return;
 
   if (await handleTxCommand(args)) return;
 
