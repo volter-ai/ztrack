@@ -28,6 +28,7 @@ const {
   timestampsFor,
   buildSpeckitBundle,
   loadTrackerConfig,
+  cacheRoot,
   resolveTrackerValidation,
   loadValidationInput,
 } = core;
@@ -141,10 +142,13 @@ async function board() {
   let mtime: string | null = null;
   try { mtime = existsSync(TRACKER_DIR) ? statSync(TRACKER_DIR).mtime.toISOString() : null; } catch { mtime = null; }
   // observe any change to the tracker data (incl. edits made outside our mutation
-  // affordances, e.g. an SDLC edited by its own tooling) and append audit entries
-  observeChanges(PROJECT_DIR, issues as Array<{ id: string; status: string; acceptanceCriteria: Array<{ id: string; status: string; evidence: unknown[] }> }>);
+  // affordances, e.g. an SDLC edited by its own tooling) and append audit entries.
+  // The log lives in the tracker state dir (`.volter/tracker/.audit.jsonl`) — the SAME
+  // path the CLI's post-mutation observe writes, so the two share one log + baseline.
+  const auditRepo = cacheRoot(PROJECT_DIR);
+  observeChanges(auditRepo, issues as Array<{ id: string; status: string; acceptanceCriteria: Array<{ id: string; status: string; evidence: unknown[] }> }>);
   // audit (the separate log) + derived timestamps, per issue
-  const auditAll = readAudit(PROJECT_DIR);
+  const auditAll = readAudit(auditRepo);
   const audit: Record<string, unknown> = {};
   const timestamps: Record<string, unknown> = {};
   for (const i of issues as Array<{ id: string }>) {

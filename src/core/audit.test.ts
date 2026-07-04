@@ -1,8 +1,11 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync } from 'node:fs';
+import { closeSync, mkdirSync, mkdtempSync, openSync, unlinkSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendAudit, observeChanges, readAudit, timestampsFor } from './audit.ts';
+import { appendAudit, observeChanges, readAudit, seedAuditBaseline, timestampsFor } from './audit.ts';
+
+const ISSUE = { id: 'A-1', status: 'ready', acceptanceCriteria: [] as Array<{ id: string; status: string; evidence: unknown[] }> };
+const lockFile = (repo: string) => join(repo, 'tracker', '.audit.lock');
 
 function tmpRepo(): string {
   const d = mkdtempSync(join(tmpdir(), 'audit-'));
@@ -16,6 +19,33 @@ describe('audit log', () => {
     appendAudit(repo, { ts: '2026-01-02T00:00:00Z', issueId: 'A-2', op: 'create' });
     expect(readAudit(repo).length).toBe(2);
     expect(readAudit(repo, 'A-1').map((e) => e.issueId)).toEqual(['A-1']);
+  });
+
+  test('observeChanges skips under lock contention — no duplicate, change stays pending', () => {
+    const repo = tmpRepo();
+    seedAuditBaseline(repo); // baseline {} present, so A-1 would be logged (not silently seeded)
+    mkdirSync(join(repo, 'tracker'), { recursive: true });
+    const held = openSync(lockFile(repo), 'wx'); // simulate a concurrent observer holding the lock
+    try {
+      expect(observeChanges(repo, [ISSUE], 'cli')).toEqual([]); // contended → skipped
+      expect(readAudit(repo).length).toBe(0);                   // wrote nothing
+    } finally {
+      closeSync(held);
+      unlinkSync(lockFile(repo)); // the "other observer" finishes and releases
+    }
+    // lock free again: the still-pending create is recorded exactly once by the next pass
+    expect(observeChanges(repo, [ISSUE], 'cli').map((e) => e.op)).toEqual(['observed.create']);
+    expect(readAudit(repo, 'A-1').filter((e) => e.op === 'observed.create').length).toBe(1);
+  });
+
+  test('observeChanges steals a stale lock left by a crashed observer', () => {
+    const repo = tmpRepo();
+    seedAuditBaseline(repo);
+    mkdirSync(join(repo, 'tracker'), { recursive: true });
+    closeSync(openSync(lockFile(repo), 'wx'));
+    const stale = new Date(Date.now() - 60_000); // 60s old → past the staleness timeout
+    utimesSync(lockFile(repo), stale, stale);
+    expect(observeChanges(repo, [ISSUE], 'cli').map((e) => e.op)).toEqual(['observed.create']);
   });
 
   test('timestamps derive from the log (created/updated/state-since)', () => {

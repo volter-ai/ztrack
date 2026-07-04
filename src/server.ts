@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { observeAfterMutation } from './cliAudit.ts';
 import { createTrackerClient } from './sdk.ts';
 
 export interface TrackerServerOptions {
@@ -28,6 +29,9 @@ export async function serveTrackerApi(options: TrackerServerOptions = {}): Promi
         'content-length': Buffer.byteLength(body),
       });
       response.end(body);
+      // ztrack #19: this long-running server can't rely on the CLI's post-command observe, so it
+      // observes per request itself (like the visualizer). A read query is a harmless no-op diff.
+      await observeAfterMutation(options.projectRoot);
     } catch (error) {
       const body = JSON.stringify({ errors: [{ message: error instanceof Error ? error.message : String(error) }] }, null, 2);
       response.writeHead(500, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
