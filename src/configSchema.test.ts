@@ -92,6 +92,12 @@ describe('no untyped casts on config reads (ZTB-26 dev/03)', () => {
   // `Partial<TrackerConfig>`, parenthesized/import()-qualified forms, `as unknown as TrackerConfig`
   // chains, and object types embedding them are all one code path). `satisfies` stays legal: it
   // type-checks against the schema-derived type instead of overriding it.
+  //
+  // Known residual, by design: matching is name-based, so deliberately laundering the cast through
+  // an alias (`type TC = TrackerConfig; x as TC`, a renamed import, `ReturnType<typeof ...>`)
+  // evades the scan. The guard targets accidental reintroduction of the pattern, not an author
+  // determined to circumvent it — no static name scan can win that game (`as any` is likewise out
+  // of scope, per the AC).
   const REPO = resolve(import.meta.dir, '..');
   const CONFIG_TYPE_NAMES = new Set(['TrackerConfig', 'RawTrackerConfig']);
 
