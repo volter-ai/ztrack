@@ -20,6 +20,7 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
 import { parseMarkdownDocument, type MarkdownDocument } from './markdownDocument.ts';
+import { IdAllocator } from './idAllocator.ts';
 
 // ── shared grammar tokens (intentionally duplicated from documentParser.ts — see module note) ──
 
@@ -112,23 +113,11 @@ function ownContentEnd(doc: MarkdownDocument, index: number | null): number {
 
 // ── id allocation ────────────────────────────────────────────────────────────────────────────
 
-/** Batch-wide, single-pass issue-id allocator. Mirrors `MarkdownBackend`'s own minting rule
- *  (src/backends/markdownBackend.ts): the max numeric SUFFIX seen so far across every configured
- *  source (any prefix) plus one — NOT scoped per-prefix — so a fresh mint never collides with any
- *  id anywhere in the tracker, matching `issue create`'s existing behavior exactly. */
-export class IdAllocator {
-  private maxSuffix = 0;
-  /** Record an existing id (from any source, or already present in a file being imported) so a
-   *  later `next()` never collides with it. */
-  note(id: string): void {
-    const n = Number(id.split('-').pop());
-    if (Number.isFinite(n) && n > this.maxSuffix) this.maxSuffix = n;
-  }
-  next(prefix: string): string {
-    this.maxSuffix += 1;
-    return `${prefix}-${this.maxSuffix}`;
-  }
-}
+// The batch-wide, single-pass issue-id allocator now lives in its own module (idAllocator.ts) —
+// it's the ONE shared implementation `backends/markdownBackend.ts`'s `issue create` handler also
+// calls, so the two mints can't drift apart. Re-exported here (this module's existing public
+// name) so every current `import { IdAllocator } from './importBacklog.ts'` site is unaffected.
+export { IdAllocator };
 
 // ── plan/materialize result shapes ──────────────────────────────────────────────────────────
 

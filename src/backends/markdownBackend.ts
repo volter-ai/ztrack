@@ -11,6 +11,7 @@ import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
 import { type CanonicalIssue, parseIssue, serializeIssue, stateTypeOf } from './markdown.ts';
 import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../config.ts';
 import { git } from '../core/gitWorld.ts';
+import { IdAllocator } from '../idAllocator.ts';
 import { resolveSources, type ResolvedSource } from '../sources.ts';
 import { DocumentSource } from './documentSource.ts';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
@@ -365,7 +366,12 @@ export class MarkdownBackend implements TrackerBackend {
         if (err) return { stdout: '', stderr: err };
       }
       const target = this.mintTargetSource();
-      const id = `${this.teamKey}-${this.loadAll().reduce((m, c) => Math.max(m, Number(c.identifier.split('-').pop()) || 0), 0) + 1}`;
+      // Shared minting rule (idAllocator.ts): max numeric suffix across every loaded issue (any
+      // prefix, not scoped per-prefix), plus one. importBacklog.ts's batch importer mints via the
+      // same class — see idAllocator.ts's top comment.
+      const allocator = new IdAllocator();
+      for (const c of this.loadAll()) allocator.note(c.identifier);
+      const id = allocator.next(this.teamKey);
       const now = new Date().toISOString();
       // Defaults conform to the installed preset (simple-sdlc's status enum starts at 'draft'
       // and requires a non-empty assignee), so a bare `issue create --title x` mints a record

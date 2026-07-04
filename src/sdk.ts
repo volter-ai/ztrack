@@ -1,8 +1,14 @@
 import { loadEnvFiles, loadTrackerConfig, projectRootFrom } from './config.ts';
 import { createMarkdownBackend } from './backends/markdownBackend.ts';
+import { identifierFromCreateOutput } from './createOutputId.ts';
 import { executeTrackerGraphql } from './graphql.ts';
 import { resolveSources } from './sources.ts';
 import type { TrackerClient, TrackerIssueInput, TrackerIssueUpdate } from './types.ts';
+
+// Re-exported for the public `ztrack/sdk` API (unchanged) — the implementation is the ONE shared
+// copy in createOutputId.ts (also used by graphql.ts; see that file's top comment for why it's a
+// standalone module rather than living here).
+export { identifierFromCreateOutput };
 
 function parseJsonOrText(stdout: string): unknown {
   const text = stdout.trim();
@@ -12,19 +18,6 @@ function parseJsonOrText(stdout: string): unknown {
   } catch {
     return text;
   }
-}
-
-// `issue create` stdout differs by backend: the local backend prints "<id>\t<title>",
-// the markdown backend prints the created issue as JSON. Accept either.
-export function identifierFromCreateOutput(stdout: string): string {
-  const trimmed = stdout.trim();
-  try {
-    const parsed = JSON.parse(trimmed) as unknown;
-    if (parsed && typeof parsed === 'object' && typeof (parsed as { identifier?: unknown }).identifier === 'string') {
-      return (parsed as { identifier: string }).identifier;
-    }
-  } catch { /* not JSON — fall through to the tab/space-delimited form */ }
-  return trimmed.split(/\s+/)[0] ?? '';
 }
 
 function issueCreateArgs(input: TrackerIssueInput): string[] {
