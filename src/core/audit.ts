@@ -84,6 +84,10 @@ export function seedAuditBaseline(repo: string): void {
 
 // A short advisory lock serializing the load→diff→append→save critical section across processes.
 // Skip-on-contention (never block a user's command); steal a lock left by a crashed holder.
+// Staleness assumes an observe pass completes well under this bound (it's a few fs ops over an
+// already-exported snapshot). If a *live* pass ever exceeded it — a pathologically large tracker on
+// very slow disk — a peer could steal the lock and log one duplicate line; a single dup in a local,
+// regenerable log is an acceptable price for a lock that never blocks the user.
 const AUDIT_LOCK_STALE_MS = 10_000;
 function lockPath(repo: string): string { return join(repo, 'tracker', '.audit.lock'); }
 /** Try to take the audit lock. Returns an fd to release, or null if another observer holds it
