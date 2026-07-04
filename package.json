@@ -1,6 +1,6 @@
 {
   "name": "ztrack",
-  "version": "0.42.0",
+  "version": "0.43.0",
   "description": "A typechecker for your issue tracker — every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
   "type": "module",
   "engines": {

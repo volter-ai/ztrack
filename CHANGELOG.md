@@ -2,6 +2,31 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.43.0
+
+One authored copy of the config shape (ZTB-26): `TrackerConfigSchema` is now the single source
+of truth that the TypeScript type, the known-key table, and every config read derive from.
+
+- **`TrackerConfig` is derived from the schema**, not hand-maintained beside it.
+  `RawTrackerConfig = z.infer<typeof TrackerConfigSchema>` is what parsing yields;
+  `TrackerConfig` narrows `backend` to the loaded backend name. The two hand-written mirrors
+  in `types.ts` are gone, so a schema edit can no longer silently disagree with the type.
+- **`KNOWN_KEYS` is generated** by walking the schema (optionals unwrapped, nested objects
+  recursed, arrays as `[]` paths, records stopped at — their keys are data, not vocabulary).
+  A test pins today's 11 entries byte-for-byte so vocabulary changes stay deliberate.
+- **Both untyped-cast hatches are closed**: `JSON.parse(...) as TrackerConfig`
+  (importDriver.ts) and `as Partial<TrackerConfig>` (config.ts) now go through
+  `parseTrackerConfig`, so nothing claims the type without passing the schema.
+- **Unknown category names fail closed** (`z.partialRecord` over `RULE_CATEGORIES`) — a typo'd
+  weight was previously accepted and silently ignored; now it's a config error with the same
+  did-you-mean help as any other unknown key, candidates sourced from the zod issue itself.
+- **An AST-based guard test bans reintroducing the casts.** Review round 1 proved a regex
+  guard evadable four ways (parenthesized types, `import()` qualifiers, multi-line casts,
+  strings containing `//`); the shipped guard parses every non-test source file with the
+  TypeScript compiler and flags any cast whose asserted type mentions
+  `TrackerConfig`/`RawTrackerConfig` in any syntactic position. Name-aliasing evades by
+  design — the target is accidental reintroduction, not deliberate laundering.
+
 ## 0.42.0
 
 The #13 docs finally ship (ZTB-25): the docs now tell the truth about optional peers, and CI
