@@ -216,7 +216,7 @@ parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 | file | role |
 |---|---|
 | `importDriver.ts` (285 LOC) | pure orchestration: expands files/directories/quoted globs into concrete `.md` files (default excludes: `node_modules`, `.volter`, any configured issue-per-file source dir), runs ONE batch-wide, single-pass id allocation across all inputs plus every already-configured tracker source, reports a per-file outcome. `--register` (opt-in) is the only thing that ever appends `sources` entries to `tracker-config.json` |
-| `importBacklog.ts` (660 LOC) | the strict document-source materializer: plans + writes a freeform/mixed-markdown file into the document-source grammar (headings, parent/children nesting, checkbox ACs) idempotently; owns `IdAllocator`, the id-minting rule shared with `backends/markdownBackend.ts`'s mint path (one shared helper — see §2's id-minting note) |
+| `importBacklog.ts` (649 LOC) | the strict document-source materializer: plans + writes a freeform/mixed-markdown file into the document-source grammar (headings, parent/children nesting, checkbox ACs) idempotently; owns `IdAllocator`, the id-minting rule shared with `backends/markdownBackend.ts`'s mint path (one shared helper — see §2's id-minting note) |
 | `cliImport.ts` (175 LOC) | CLI wiring only — flag parsing (`--dry-run`, `--prefix`, `--register`) + terminal rendering; all planning/materializing logic lives in `importBacklog.ts`/`importDriver.ts` |
 
 **Loop / Stop-hook gate** (`ztrack loop`, `ztrack check --auto-scope`):

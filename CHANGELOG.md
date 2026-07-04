@@ -7,7 +7,9 @@ All notable ztrack release changes are recorded here.
 One authored copy of the config shape (ZTB-26): `TrackerConfigSchema` is now the single source
 of truth that the TypeScript type, the known-key table, and every config read derive from.
 Plus the periphery brought inside the gate (ZTB-27): the world subpaths now honor the
-optional-peer contract, and the #13 missing-peer behavior has a real CI gate.
+optional-peer contract, and the #13 missing-peer behavior has a real CI gate. And the
+code-health follow-ups from the 0.38 review (ZTB-28): docs that tell the truth about purity,
+one implementation of the id-minting rule, and a dispatch-only cli.ts.
 
 - **`ztrack/world-annotations` and `ztrack/world-source-books` no longer crash without the
   peer.** Both public subpaths statically value-imported `@volter-ai-dev/twin`, so importing
@@ -49,6 +51,26 @@ optional-peer contract, and the #13 missing-peer behavior has a real CI gate.
   TypeScript compiler and flags any cast whose asserted type mentions
   `TrackerConfig`/`RawTrackerConfig` in any syntactic position. Name-aliasing evades by
   design — the target is accidental reintroduction, not deliberate laundering.
+
+- **One id-minting rule, one implementation.** The issue-id rule (max numeric suffix across
+  every configured source, any prefix, +1) lived twice — inline in `markdownBackend`'s
+  issue-create path and again in the importer's `IdAllocator`, kept in sync only by a comment.
+  Both now call one shared `IdAllocator` (`src/idAllocator.ts`), and a pin test asserts both
+  paths mint the identical next id for the same mixed-prefix tracker state. Behavior is
+  unchanged (verified old-vs-new against identical tracker states through both the create and
+  import paths). Likewise `identifierFromCreateOutput` now has a single cycle-free home
+  (`src/createOutputId.ts`); `ztrack/sdk` re-exports it unchanged — no public API change.
+- **ARCHITECTURE.md tells the truth again.** The "one impure boundary" claim is scoped to the
+  validation pipeline with the real I/O surfaces named (`core/gitWorld.ts`,
+  `worldAnnotations.ts`, `worldSourceBooks.ts`), the import subsystem and the loop/Stop-hook
+  gate mechanism now have module-table rows, and blobStore's write-only reality
+  (`hasBlob`/`getBlob` have no production caller) is stated in the doc.
+- **CLI polish, zero behavior change**: `cliEvidence`'s human-facing stderr lines render
+  through `cliStyle` like the rest of the CLI (stdout JSON byte-identical); the inline
+  `fmt`/`tx`/`lint`/`sync`/`ac|issue patch` handlers moved out of `cli.ts` into their own
+  modules following the established pattern (`cli.ts` is dispatch-only for them, help output
+  byte-identical); the board-scope doc-comment now states the real `'shared'` default; and
+  the stability language is "pre-1.0" everywhere (docs/API.md previously said "pre-beta").
 
 ## 0.42.0
 
