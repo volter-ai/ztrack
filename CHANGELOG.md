@@ -2,6 +2,35 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.46.0
+
+Waivers become `// eslint-disable-next-line`: pinned to one finding, self-expiring.
+
+- **`ref:` — pin a waiver to a single occurrence.** A `## Waivers` row may now carry
+  `ref: <subject>` (`- code: X ac: Y ref: <sha> reason: … by: …`). It matches only the finding
+  whose specific offending token (`Finding.subject`, e.g. the missing commit sha for
+  `evidence_commit_not_found`) — or its `evidenceId` — equals `ref`, so it targets one occurrence and
+  self-expires the instant the token changes: re-cite the evidence to a real commit and the waiver
+  reports `waiver_unused`; cite a *different* bad sha and the new finding still fires. Previously a
+  waiver matched by `(issue, code, ac)` alone — the coarse `/* eslint-disable rule */` form that also
+  silenced *future/other* findings of the same code.
+- **`waiver_overbroad` (warning) — one directive, more than one occurrence.** Fires whenever a single
+  waiver silences more than the one finding it should: an *unpinned* waiver that hit a subject-bearing
+  finding (it would also mask future/other occurrences → pin it with `ref:`), **or** a `ref:` whose
+  subject recurs across ACs so the one pin matched several findings (→ scope it with `ac:`). The
+  finding still downgrades (full back-compat); the warning names the exact subjects/ACs to pin. A
+  `ref:` that lands on exactly one occurrence is never flagged. Alongside the existing `waiver_unused`,
+  this keeps every waiver honest — a `ref:` is not a blanket licence for a value that appears twice.
+- **`ztrack waiver sign` auto-captures the ref.** When the accepted `(issue, code, ac)` resolves to
+  exactly one subject-bearing finding, `sign` pins it automatically; when several, it refuses and
+  lists them so you pin one per occurrence. `waiver status` shows each row's pin and state.
+- **`ztrack waiver migrate <issue> | --all`.** Rewrites legacy unpinned waivers into fingerprinted
+  per-occurrence rows (one per suppressed finding, reason + signer preserved), idempotently — the
+  migration path for pre-existing broad waivers.
+- Rule authors opt in by adding `subject: (item) => …` to a rule; the four bundled presets set it on
+  their `evidence_commit_not_found` rule. Structural invariants (`waivable === false`) remain
+  unwaivable; sign-off + reason are still required.
+
 ## 0.45.0
 
 The audit log is now wired into CLI writes (finishes ztrack #19's deferred item).

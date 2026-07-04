@@ -533,6 +533,7 @@ const DEFAULT_RULES = [
     code: 'evidence_commit_not_found', select: (m) => m.evidence,
     when: ({ ev }, m) => { const c = m.context.git?.existingCommits; return !!c && !c.some((x) => shaMatches(x, ev.commit)); },
     message: ({ ev }) => `Evidence ${ev.id} cites commit ${ev.commit}, which does not exist.`,
+    subject: ({ ev }) => ev.commit,  // the missing sha — a `ref:` waiver pins to exactly this occurrence
   }),
   rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; ev: Evidence }>({
     // A cited image PATH must actually be in the tree at the commit it claims — not just a string.

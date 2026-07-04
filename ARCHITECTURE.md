@@ -169,6 +169,7 @@ parser, serialize, and rules.
 | `check.ts` | `checkTracker()` / `checkTrackerRoot()` → run the active preset's rulebook |
 | `cliCheck.ts` | the `check` / `export` CLI dispatch |
 | `cliAudit.ts` | after a mutating CLI command, runs one `observeChanges` pass over the validated export → audit log (best-effort; `isMutatingCommand` classifies one-shot commands from argv, `isMutatingMcpTool` classifies MCP tool calls) |
+| `cliWaiver.ts` | `waiver sign\|clear\|status\|migrate` — the eslint-`disable` escape. A `## Waivers` row (`code`, optional `ac:`, optional `ref:`, `reason`, `by:`) downgrades a matching `error` finding to `acknowledged`. `ref:` pins to ONE occurrence by its `Finding.subject`/`evidenceId` — the `// eslint-disable-next-line` form — so it can suppress only that occurrence and self-expires when the subject changes; an unpinned waiver that could pin is `waiver_overbroad`, one that matches nothing is `waiver_unused` (parse + apply live in `core/engine.ts`; `sign` auto-captures the ref, `migrate` rewrites legacy unpinned rows into per-occurrence pinned ones) |
 | `checkRules.ts` | the category/depth **types** for the `--categories` selector |
 | `attest.ts`, `dsse.ts` | in-toto/DSSE attestation over a validated root (`evidence export`/`keygen`/`verify`) — signs the validated `root`, not per-file blobs |
 | `lint.ts` | issue-body lint (structure warnings) — write-side, see §6 |
