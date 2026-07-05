@@ -2,6 +2,36 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.48.0
+
+Honest `check` output: one verdict per invocation, and scoped checks name the real cause.
+
+- **`--fail-on-warning` no longer contradicts itself.** The exit code used to count EVERY
+  finding — including `acknowledged` (waived) ones — while the pass/fail banner, the trailing
+  exit-hint line, and `--json`'s `ok`/`summary.status` all ignored the flag, so an ack-only check
+  printed "✓ passed / ✓ exit 0 / ok: true" and then exited 1. Now acknowledged findings never
+  trip the flag (a signed waiver is the sanctioned escape; only real `warning`-severity findings
+  count), and one computed verdict drives all four surfaces on both the plain and scoped/auto
+  paths. Behavior changes to note: ack-only + `--fail-on-warning` now exits **0** (was 1); real
+  warnings + `--fail-on-warning` now honestly reports **fail** on the banner and in JSON (was
+  "passed"/`ok: true` with exit 1). Without the flag every surface is byte-identical to 0.47.1.
+- **A scoped check on a schema-invalid issue surfaces the schema finding, never "not found".**
+  `check <id>` on an issue that exists but fails preset shape validation used to error
+  "issue(s) not found in the tracker" — actively misdirecting the agent that just wrote the bad
+  value — because the id-presence check read the validated export, which is unset whenever shape
+  validation fails. `checkTracker` now also returns `loadedIssueIds` (the ids the loader actually
+  found, pre-validation), so the scoped check falls through and renders the real
+  `wellformed_shape` finding with the exact path and enum (exit 1). Truly-missing ids still get
+  the not-found error, and shape findings remain unwaivable.
+- **`--auto-scope` active-issue resolution survives an unrelated shape-invalid issue.** The same
+  export-unset fragility made the Stop-hook oracle misreport a perfectly valid active issue as
+  "not in the tracker" whenever ANY other issue in a shared tracker was schema-invalid. It now
+  resolves the active issue from `loadedIssueIds` and attributes the failure to the real
+  `wellformed_shape` cause (still failing closed).
+- **Docs.** ARCHITECTURE, the Guide, `check --help`, and API.md state the ack-exclusion rule and
+  the all-surfaces-agree guarantee; API.md documents `loadedIssueIds` and that
+  `TrackerCheckOptions.failOnWarning` is a CLI-only concern.
+
 ## 0.47.1
 
 Doc truth pass — no behavior changes. Every agent-facing document now teaches the current
