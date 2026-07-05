@@ -208,3 +208,84 @@ describe('ztrack import: headingless multi-list file with interleaved prose is w
     expect(check.code).toBe(0);
   });
 });
+
+// ── ZTB-37: waiver survival across `import` on a document source ───────────────────────────────
+// Regression: the importer only recognized `Acceptance Criteria` as reserved document-source
+// structure, so a bare `### Waivers` heading was treated as freeform and minted an id into it
+// (`### Waivers` -> `### ZT-2 Waivers`), creating a junk issue AND excising the waiver rows out of
+// the parent issue's body. Downstream, documentSource.ts's heading-shift (which is what makes
+// `## Waivers`/`### Waivers` readable as waivers at all) then has no waivers heading left on the
+// parent, so the acknowledged finding resurfaces as an error. This proves the money shot
+// end-to-end with the real CLI + a real document source (freshRepo pattern per cliWaiver.e2e.test.ts;
+// source registration per documentSource.e2e.test.ts's `setSources`): `check` passes with the
+// waiver acknowledged BEFORE import, `import` is a no-op, and `check` still passes AFTER.
+describe('ztrack import: end-to-end waiver survival on a document source (ZTB-37)', () => {
+  const FAKE_SHA = 'aaaaaaa1111111111111111111111111111111a1';
+  const BOARD = [
+    'Title: Demo board', 'Assignee: me', '',
+    '## ZT-1 — First feature', '',
+    'assignee: me', '',
+    'Summary: a materialized issue with a waiver.', '',
+    '### Acceptance Criteria', '',
+    '- [x] dev/01 v1 does the thing',
+    '  - status: passed',
+    `  - evidence ev1: commit=${FAKE_SHA} acv=1`,
+    '  - proof: "ev1 shows it" -> ev1', '',
+    '### Waivers', '',
+    `- code: evidence_commit_not_found ref: ${FAKE_SHA} reason: destroyed in the incident by: Tess (t@t.co)`, '',
+  ].join('\n');
+
+  let wvRoot = '';
+  let wvRootReal = '';
+  const boardPath = () => join(wvRootReal, 'board.md');
+  const setSources = (r: string) => {
+    const cfg = JSON.parse(readFileSync(configPath(r), 'utf8')) as Record<string, unknown>;
+    cfg.sources = [{ path: '.volter/tracker/markdown' }, { path: 'board.md', format: 'document' }];
+    writeFileSync(configPath(r), `${JSON.stringify(cfg, null, 2)}\n`);
+  };
+
+  beforeAll(() => {
+    wvRoot = mkdtempSync(join(tmpdir(), 'ztrk-import-waivers-e2e-'));
+    wvRootReal = realpathSync(wvRoot);
+    mkdirSync(join(wvRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(wvRoot, 'node_modules', 'ztrack'));
+    gitIn(wvRoot, 'init', '-q'); gitIn(wvRoot, 'config', 'user.email', 't@t.co'); gitIn(wvRoot, 'config', 'user.name', 't');
+    expect(ztIn(wvRoot, 'init', '--team', 'ZT').code).toBe(0);
+    writeFileSync(boardPath(), BOARD);
+    setSources(wvRoot);
+    gitIn(wvRoot, 'add', '-A'); gitIn(wvRoot, 'commit', '-q', '-m', 'seed');
+  }, 60_000);
+  afterAll(() => { if (wvRoot) rmSync(wvRoot, { recursive: true, force: true }); });
+
+  test('1. `check` passes BEFORE import, with the evidence_commit_not_found finding acknowledged (not resurfaced)', () => {
+    const check = ztIn(wvRoot, 'check');
+    expect(check.code).toBe(0);
+    expect(check.out).toContain('acknowledged 1');
+    expect(check.out).toContain('evidence_commit_not_found');
+  });
+
+  test('2. import (dry-run and write mode) is a no-op — no id minted into the Waivers heading, file byte-identical', () => {
+    const before = readFileSync(boardPath(), 'utf8');
+    const dry = ztIn(wvRoot, 'import', 'board.md', '--dry-run');
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain('no-op (already canonical)');
+    expect(dry.out).not.toContain('Waivers (new)');
+    expect(readFileSync(boardPath(), 'utf8')).toBe(before);
+
+    const write = ztIn(wvRoot, 'import', 'board.md');
+    expect(write.code).toBe(0);
+    expect(write.out).toContain('no-op (already canonical)');
+    expect(readFileSync(boardPath(), 'utf8')).toBe(before); // byte-identical — nothing written
+  });
+
+  test('3. `check` still passes AFTER import, with the SAME waiver still acknowledging the finding', () => {
+    const check = ztIn(wvRoot, 'check');
+    expect(check.code).toBe(0);
+    expect(check.out).toContain('acknowledged 1');
+    expect(check.out).toContain('evidence_commit_not_found');
+    // no junk "Waivers" issue ever surfaced
+    const list = ztIn(wvRoot, 'issue', 'list', '--json', 'identifier,title');
+    const rows = J(list) as Array<{ identifier: string; title: string }>;
+    expect(rows.some((r) => r.title === 'Waivers')).toBe(false);
+  });
+});

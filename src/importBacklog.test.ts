@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
-import { assertNoCrlf, IdAllocator, planAndMaterialize, type ImportPlan } from './importBacklog.ts';
+import { assertNoCrlf, existingIdsInFile, IdAllocator, planAndMaterialize, type ImportPlan } from './importBacklog.ts';
 
 const FIXTURES = join(import.meta.dirname, 'importBacklog.fixtures');
 
@@ -157,6 +157,62 @@ describe('planAndMaterialize — fixture corpus (dev/31 read-only plan, dev/32 w
     }]);
     expect(plan.issues[0]!.acs.map((a) => a.text)).toEqual(['add search analytics']);
   });
+
+  // ZTB-37: a bare `Waivers` heading is ALSO reserved document-source structure (like
+  // `Acceptance Criteria`) — never an issue, never id-bearing, its rows never scanned/edited.
+  test('waivers-idempotent: an already-materialized issue with an AC section AND a Waivers section is a no-op — no id minted into the Waivers heading', () => {
+    const { plan, materialized, expected, input } = { ...run('waivers-idempotent', 'ZT'), input: load('waivers-idempotent').input };
+    expect(materialized).toBe(expected);
+    expect(materialized).toBe(input);
+    expect(plan.isNoop).toBe(true);
+    expect(plan.issues).toEqual([{
+      status: 'existing', id: 'ZT-1', title: 'First feature', parentId: null, acs: [], existingAcCount: 1,
+    }]);
+    // no junk "Waivers" issue, and the waiver row bytes are untouched
+    expect(materialized).not.toContain('ZT-2');
+    expect(materialized).toContain('- code: evidence_commit_not_found ref: aaaaaaa1111111111111111111111111111111a1 reason: destroyed in the incident by: Tess (t@t.co)');
+  });
+
+  test('freeform-with-waivers: a freeform issue (no id, loose checkbox) with a Waivers section mints ONE issue, relocates the checkbox into an AC block BEFORE the Waivers heading, and leaves the Waivers heading/rows untouched', () => {
+    const { plan, materialized, expected } = run('freeform-with-waivers');
+    expect(materialized).toBe(expected);
+    expect(plan.issues).toHaveLength(1); // no separate "Waivers" issue
+    expect(plan.issues[0]).toMatchObject({ status: 'minted', id: 'APP-1', title: 'First feature' });
+    expect(plan.issues[0]!.acs.map((a) => a.text)).toEqual(['do the thing']);
+    // Waivers heading gained no id, and the waiver row survives byte-for-byte.
+    expect(materialized).toContain('### Waivers\n');
+    expect(materialized).toContain('- code: evidence_commit_not_found ref: aaaaaaa1111111111111111111111111111111a1 reason: destroyed in the incident by: Tess (t@t.co)');
+    // insertion-point sanity: the minted AC block lands BEFORE the Waivers heading, not after it.
+    const lines = materialized.split('\n');
+    expect(lines.indexOf('### Acceptance Criteria')).toBeLessThan(lines.indexOf('### Waivers'));
+  });
+
+  test('case/level robustness: `#### waivers` and `## WAIVERS` are reserved regardless of case/level; an id-bearing `### ZT-9 Waivers` is NOT reserved and still parses as an existing issue', () => {
+    const text = [
+      '## APP-1 Something',
+      '',
+      'body content',
+      '',
+      '#### waivers',
+      '',
+      '- code: whatever ref: aaa reason: x by: y (y@y.co)',
+      '',
+      '## WAIVERS',
+      '',
+      '- code: something else',
+      '',
+      '### ZT-9 Waivers',
+      '',
+      'some prose',
+      '',
+    ].join('\n');
+    expect(existingIdsInFile(text)).toEqual(['APP-1', 'ZT-9']);
+    const allocator = new IdAllocator();
+    const { plan, materialized } = planAndMaterialize(text, 'x.md', { prefix: 'APP', allocator });
+    expect(plan.issues.map((i) => [i.id, i.title])).toEqual([['APP-1', 'Something'], ['ZT-9', 'Waivers']]);
+    expect(plan.isNoop).toBe(true); // nothing to mint — both reserved headings and the id-bearing one are already canonical
+    expect(materialized).toBe(text);
+  });
 });
 
 // ── dev/31: --dry-run writes nothing; collision-safe allocation across sources ────────────────
@@ -182,7 +238,7 @@ describe('planAndMaterialize — dry-run semantics (writes nothing) and cross-so
 // ── dev/32: the writer — insert-only, idempotent, existing ids untouched, [x] policy, CRLF error ─
 
 describe('planAndMaterialize — writer idempotence + insert-only contract (dev/32)', () => {
-  for (const name of ['mixed-prose-checkboxes', 'pure-checklist', 'mixed-bullet-todo-styles', 'prechecked', 'half-materialized', 'duplicate-titles', 'deep-nesting', 'already-canonical', 'unmapped-preamble', 'multi-list-interleaved-prose', 'multiline-checkbox']) {
+  for (const name of ['mixed-prose-checkboxes', 'pure-checklist', 'mixed-bullet-todo-styles', 'prechecked', 'half-materialized', 'duplicate-titles', 'deep-nesting', 'already-canonical', 'unmapped-preamble', 'multi-list-interleaved-prose', 'multiline-checkbox', 'waivers-idempotent', 'freeform-with-waivers']) {
     test(`${name}: import ∘ import === import (byte-identical on a second pass)`, () => {
       const { materialized } = run(name);
       const allocator2 = new IdAllocator();

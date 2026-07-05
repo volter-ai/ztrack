@@ -231,9 +231,10 @@ ztrack import notes/ --register            # a directory (recursive) or a quoted
 Re-running it is always safe: an already-canonical file is a no-op, and re-importing after
 appending new freeform content touches only the new bytes. A pre-checked `- [x]` item imports
 UNCHECKED with a preserved-claim marker (`(imported: previously marked done — needs evidence)`) —
-closing it for real is a normal `ztrack ac patch` citing the actual commit. Full grammar mapping,
-the `[x]` policy, and the idempotence contract:
-[Sources → Importing a freeform backlog](SOURCES.md#importing-a-freeform-backlog).
+closing it for real is a normal `ztrack ac patch` citing the actual commit. `Acceptance Criteria`
+and `Waivers` sections are both recognized document-source structure: import never turns either
+into an issue, and waiver rows are left untouched. Full grammar mapping, the `[x]` policy, and the
+idempotence contract: [Sources → Importing a freeform backlog](SOURCES.md#importing-a-freeform-backlog).
 
 ## 3. Usage: drive an agent to green
 

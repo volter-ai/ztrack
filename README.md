@@ -342,7 +342,9 @@ Already have a messier backlog — headings, prose, checkboxes, no id tokens? `z
 a file, a directory, or a quoted glob) materializes it into that same grammar **in place**,
 idempotently: `ztrack import notes/backlog.md --dry-run` previews the plan, plain `ztrack import`
 writes it, `--register` declares the result as a source. Pre-checked `[x]` items import unchecked
-with a preserved-claim marker (a checked-but-unproven claim is exactly what `check` rejects) — see
+with a preserved-claim marker (a checked-but-unproven claim is exactly what `check` rejects); an
+`Acceptance Criteria` or `Waivers` section is recognized document-source structure and is never
+turned into an issue, so waiver rows survive untouched — see
 [Sources → Importing a freeform backlog](docs/SOURCES.md#importing-a-freeform-backlog).
 
 ## Agent workflows
