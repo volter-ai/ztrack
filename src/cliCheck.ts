@@ -54,7 +54,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -152,8 +152,14 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     : await checkTracker({ ...commonOpts, ...(issues ? { issues } : {}), failOnWarning });
 
   // ISSUE target not in the tracker: error rather than silently passing on an empty filter.
+  // ZTB-35 dev/67: prefer `loadedIssueIds` (set by checkTracker — the ids the LOADER actually
+  // found, whether or not validation then passed) over `export?.issues`, which is unset whenever
+  // validation fails before the root parses (e.g. a shape-invalid issue) — that used to make an
+  // issue that genuinely exists but fails schema validation look "not found" and discard the real
+  // `wellformed_shape` finding. `--input`/`checkTrackerRoot` carries no `loadedIssueIds`, so it
+  // falls back to the `export` derivation exactly as before.
   if (target?.kind === 'issues') {
-    const present = new Set((result.export?.issues ?? []).map((i) => i.id));
+    const present = new Set(result.loadedIssueIds ?? (result.export?.issues ?? []).map((i) => i.id));
     const missing = target.ids.filter((id) => !present.has(id));
     if (missing.length) throw new Error(`ztrack check: issue(s) not found in the tracker: ${missing.join(', ')}. Run \`ztrack issue list\` to see ids, or pass a path ending in .md to check a file.`);
   }
@@ -205,18 +211,23 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
       }
       const { blocking, informational } = partitionFindings(findings, issueId);
       const blockingErrors = blocking.some((f) => f.severity === 'error');
-      const scopedFailed = blockingErrors || (failOnWarning && blocking.length > 0);
+      // ZTB-35 dev/66: same fix as emitPlain, scoped to the blocking set — acknowledged findings
+      // never trip --fail-on-warning, only real warnings do, and the one `scopedFailed` verdict
+      // drives the exit code, the JSON `ok`, and (via renderScopedReport) the pass/fail banner +
+      // exit hint so they can't disagree.
+      const scopedFailed = blockingErrors || (failOnWarning && blocking.some((f) => f.severity === 'warning'));
+      const scopedSummary = summarizeResult({ ...result, findings: blocking });
       const scopedPayload = {
-        ok: !blockingErrors,
+        ok: !scopedFailed,
         activeIssue: issueId,
         scope: { branch: branch ?? null, worktree: worktree ?? null, reason },
-        summary: summarizeResult({ ...result, findings: blocking }),
+        summary: { ...scopedSummary, status: (scopedFailed ? 'fail' : scopedSummary.warnings > 0 ? 'warn' : 'pass') as typeof scopedSummary.status },
         findings: blocking,
         informational,
       };
       if (outputPath) writeFileSync(isAbsolute(outputPath) ? outputPath : resolve(projectRoot, outputPath), `${JSON.stringify(scopedPayload, null, 2)}\n`);
       if (wantsJson) process.stdout.write(`${JSON.stringify(scopedPayload, null, 2)}\n`);
-      else process.stdout.write(renderScopedReport(result, { activeIssue: issueId, reason, blocking, informational, errorsOnly, maxFindings, projectRoot }));
+      else process.stdout.write(renderScopedReport(result, { activeIssue: issueId, reason, blocking, informational, errorsOnly, maxFindings, projectRoot, failed: scopedFailed }));
       process.exitCode = scopedFailed ? 1 : 0;
       return true;
     }
@@ -230,13 +241,24 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
 // targets so they render and exit identically.
 function emitPlain(result: TrackerCheckResult, o: { failOnWarning: boolean; outputPath: string; projectRoot: string; wantsJson: boolean; errorsOnly: boolean; maxFindings: number }): boolean {
   const { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings } = o;
-  const failed = !result.ok || (failOnWarning && result.findings.length > 0);
-  const payload = { ok: result.ok, summary: summarizeResult(result), findings: result.findings };
+  // ZTB-35 dev/66: acknowledged (waived) findings NEVER count toward --fail-on-warning — a waiver
+  // is the sanctioned escape, and the summary already reports them separately from warnings. Only
+  // real `severity === 'warning'` findings do. `failed` is the ONE verdict every surface below
+  // (exit code, human banner + exit-hint via renderCheckReport, and the JSON payload) derives
+  // from, so they can never disagree with each other again. Without --fail-on-warning this is
+  // byte-for-byte the old `!result.ok`.
+  const failed = !result.ok || (failOnWarning && result.findings.some((f) => f.severity === 'warning'));
+  const summary = summarizeResult(result);
+  const payload = {
+    ok: !failed,
+    summary: { ...summary, status: (failed ? 'fail' : summary.warnings > 0 ? 'warn' : 'pass') as typeof summary.status },
+    findings: result.findings,
+  };
   if (outputPath) writeFileSync(isAbsolute(outputPath) ? outputPath : resolve(projectRoot, outputPath), `${JSON.stringify(payload, null, 2)}\n`);
   if (wantsJson) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
-    process.stdout.write(renderCheckReport(result, { errorsOnly, maxFindings, projectRoot }));
+    process.stdout.write(renderCheckReport(result, { errorsOnly, maxFindings, projectRoot, failed }));
   }
   process.exitCode = failed ? 1 : 0;
   return true;

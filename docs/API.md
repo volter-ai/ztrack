@@ -22,6 +22,11 @@ const result = await checkTracker({ projectRoot: process.cwd() });
 // result.findings       → [{ code, severity, message, issueId?, acId?, origin?, ... }]
 // result.export         → the validated root ({ issues: [...] }) — this IS the snapshot
 // result.examinedIssues → set ONLY when validation failed before `export` could be populated
+// result.loadedIssueIds → the ids the loader found and handed to validation, whether or not
+//                         validation then passed — set only by checkTracker (the live-backend
+//                         path); lets a caller tell "not in the backend" from "loaded but
+//                         schema-invalid" without guessing from `export` (which is unset on a
+//                         shape failure)
 
 if (!result.ok) {
   for (const f of result.findings) console.log(`${f.severity} ${f.code}: ${f.message}`);
@@ -50,7 +55,10 @@ for an editor integration, or open the exact location in a PR comment — withou
   source(s) by config `name`/path/path-basename (mirrors `ztrack check --source`; an unknown
   selector throws listing the available names); `phase: 'gate'` runs only the continuous-gate rules
   (skip transition/promotion checks); `verifyCommits: false` is the escape hatch for shallow/CI
-  checkouts.
+  checkouts. `failOnWarning` is accepted here but has no effect on `result.ok` — the
+  warnings-also-gate decision (and the acknowledged-findings-never-count rule) is a CLI-only
+  concern, applied by `ztrack check --fail-on-warning` on top of whatever `checkTracker` returns;
+  a programmatic caller that wants the same behavior re-derives it from `result.findings`.
 
 To validate an already-exported root (no disk read), use `checkTrackerRoot(root, options)`.
 

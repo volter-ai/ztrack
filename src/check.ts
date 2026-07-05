@@ -31,7 +31,14 @@ export type TrackerCheckOptions = {
   presetPath?: string;
 };
 
-export type TrackerCheckResult = CheckResult<CoreRoot>;
+// ZTB-35 dev/67: `loadedIssueIds` — the ids the LOADER actually found and handed to validation,
+// set regardless of whether validation then passed. A shape-invalid issue (e.g. an AC status
+// outside the preset enum) IS loaded — `check()` emits its `wellformed_shape` finding — but
+// leaves `result.export` unset (the root never parsed), so a caller that derives "did this id
+// exist" from `export.issues` alone sees an empty set and wrongly reports it as missing. This
+// field lets callers distinguish "not in the backend at all" from "loaded but dropped by
+// validation" without guessing from `export`.
+export type TrackerCheckResult = CheckResult<CoreRoot> & { loadedIssueIds?: string[] };
 
 function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
   return {
@@ -52,15 +59,16 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const { records, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
   const result = check(preset, records, context);
+  const loadedIssueIds = records.map((r) => r.id);
   // Cross-cutting sync conflicts gate the check (until resolved), scoped to the checked issues.
   const conflicts = conflictFindings(projectRoot, new Set((result.export?.issues ?? []).map((i) => i.id)));
   // Cross-cutting document-source header diagnostics (ZTB-23 dev/04): warnings, never gate —
   // same "read directly off disk, merged in" shape as conflicts above.
   const headerFindings = documentHeaderFindings(projectRoot, config);
   const extra = [...conflicts, ...headerFindings];
-  if (!extra.length) return result;
+  if (!extra.length) return { ...result, loadedIssueIds };
   const findings = [...result.findings, ...extra];
-  return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings };
+  return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings, loadedIssueIds };
 }
 
 const HEADER_LINE = /^(title|status|assignee):\s*(.+)$/i;
