@@ -82,7 +82,9 @@ A loose `./body.md` is checked for **structure + evidence**; lifecycle/PR gates 
 apply only to **stored** issues, so a loose file is treated as a draft.
 
 Two flags compose on top of the target: `--fail-on-warning` makes warning-severity findings gate too
-(exit 1) for a stricter lane, and — once you've declared 2+ `sources:` — `--source <name>`
+(exit 1) for a stricter lane — acknowledged (waived) findings never count toward it, only real
+warnings do, and the exit code, the pass/fail banner, and `--json` all agree on the same verdict —
+and — once you've declared 2+ `sources:` — `--source <name>`
 (repeatable) scopes the check to just the named source(s), matching by config `name`, path, or path
 basename ([Sources → scoping](SOURCES.md#scoping-to-one-source---source)). `--source` is refused
 loudly where there is nothing to scope: `check --input`, a loose `<file.md>` check, and the

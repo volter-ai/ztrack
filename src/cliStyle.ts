@@ -151,8 +151,13 @@ function originSuffix(finding: Finding, projectRoot?: string): string {
   return ` ${ui.dim(`— ${loc}`)}`;
 }
 
-export function renderCheckReport(result: CheckResult<CoreRoot>, options: { errorsOnly?: boolean; maxFindings?: number; projectRoot?: string } = {}): string {
+export function renderCheckReport(result: CheckResult<CoreRoot>, options: { errorsOnly?: boolean; maxFindings?: number; projectRoot?: string; failed?: boolean } = {}): string {
   const summary = summarizeResult(result);
+  // ZTB-35 dev/66: the banner and the trailing exit-hint must agree with whatever the CALLER
+  // decided the process exit code is (which, under `--fail-on-warning`, is no longer simply
+  // `!result.ok` — see cliCheck.ts). `failed` defaults to `!result.ok` so a caller that never
+  // passes it (no --fail-on-warning in play) renders byte-for-byte what it always did.
+  const failed = options.failed ?? !result.ok;
   const findings = result.findings
     .filter((finding) => !options.errorsOnly || finding.severity === 'error')
     .slice()
@@ -163,7 +168,7 @@ export function renderCheckReport(result: CheckResult<CoreRoot>, options: { erro
   const maxFindings = options.maxFindings ?? 120;
   const shown = findings.slice(0, maxFindings);
   const lines: string[] = [
-    statusText(result.ok),
+    statusText(!failed),
     metricBox(summary),
   ];
 
@@ -198,7 +203,7 @@ export function renderCheckReport(result: CheckResult<CoreRoot>, options: { erro
     }
   }
 
-  const exitHint = result.ok
+  const exitHint = !failed
     ? `${statusMark('pass')} ${ui.dim('exit 0')}`
     : `${statusMark('fail')} ${ui.dim('exit 1: produce evidence or lower the configured rigor')}`;
   lines.push('', exitHint);
@@ -213,7 +218,7 @@ export function renderScopedReport(
   opts: {
     activeIssue: string | null; reason: string;
     blocking: Finding[]; informational: Finding[];
-    errorsOnly?: boolean; maxFindings?: number; projectRoot?: string;
+    errorsOnly?: boolean; maxFindings?: number; projectRoot?: string; failed?: boolean;
   },
 ): string {
   const banner = opts.activeIssue
@@ -229,6 +234,7 @@ export function renderScopedReport(
     ...(opts.errorsOnly ? { errorsOnly: true } : {}),
     ...(opts.maxFindings !== undefined ? { maxFindings: opts.maxFindings } : {}),
     ...(opts.projectRoot ? { projectRoot: opts.projectRoot } : {}),
+    ...(opts.failed !== undefined ? { failed: opts.failed } : {}),
   });
 
   let info = '';
