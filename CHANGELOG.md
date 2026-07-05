@@ -2,6 +2,24 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.48.2
+
+`check --issues` now actually works with `--input` — it used to be silently ignored.
+
+- **`check --issues a,b --input root.json` scopes and errors loud.** The combination was
+  silently inert: no scoping (the whole root was validated regardless of `--issues`) and no
+  missing-id detection — a typo'd or stale id in a CI invocation validating a committed root
+  passed with `ok: true`/exit 0, while the same ids on a live-tracker check error loud. Now the
+  combination works like the live path: validation is scoped to the requested ids *within* the
+  root (issue ids, unlike source provenance, are present in a materialized root — `--source` +
+  `--input` stays refused), and a requested id absent from the root errors loud naming the
+  `--input` file. The `--case` alias behaves identically. Unscoped `--input` output is
+  byte-identical to 0.48.1. Programmatic callers: `checkTrackerRoot` honors `options.issues`
+  and now sets `result.loadedIssueIds` from the root's `issues` array, same contract as
+  `checkTracker` — waiver directives in the root apply regardless of scope, and a root too
+  shape-broken to carry ids skips both scoping and the not-found report so the shape finding
+  wins.
+
 ## 0.48.1
 
 `ztrack import` no longer corrupts document sources that carry waivers.
