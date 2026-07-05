@@ -91,8 +91,12 @@ durable they are, none of which silently lies about "done":
   actor's turn may end. It's keyed to the live actor id (so a fresh session, or any other
   subagent, is still held) and gitignored (so it can't be committed) — it cannot outlive the
   actor that made it.
-- **Durable waiver** — `ztrack waiver sign <issue> --reason "…"`. Records that the failing
-  state is knowingly accepted; the issue's errors become `acknowledged` and `check` passes.
+- **Durable waiver** — `ztrack waiver sign <issue> --code <finding-code> --reason "…"`. Records
+  that the named finding is knowingly accepted; the matching errors become `acknowledged` and
+  `check` passes. `sign` pins the waiver to the single offending occurrence when it can (a `ref:`
+  field, auto-captured; if the finding has several occurrences it refuses and tells you to pass
+  `--ref <subject>` for the one you mean) — so one waiver silences one occurrence,
+  `// eslint-disable-next-line` style, and self-expires when that occurrence changes.
   Sign-off is your **git identity** (captured automatically — the same identity that authors
   commits), not a free-text name. Unlike the others this lives in the tracker and survives
   sessions — but it's **anchored to a fingerprint of the acceptance criteria**, so it
@@ -101,12 +105,12 @@ durable they are, none of which silently lies about "done":
   `ztrack waiver clear <issue>` removes it.
 
   This is the **last resort**. Before reaching for it, prefer the more honest fix: finish the
-  work, correct an over-specified AC, fix a false-positive rule, or — when a criterion is
-  genuinely out of scope — **descope the AC** (`- [ ] AC-03 status: descoped reason: …`),
-  which is a recorded, in-the-open scope decision rather than an acknowledged failure.
-  (Descope counts toward "done" only on presets that gate done-ness — `default` and other
-  SDLC-gated presets; the lighter `spec` preset doesn't gate done-ness, so there the
-  waiver is the durable escape.)
+  work, fix a false-positive rule, or — when a criterion is over-specified or genuinely out of
+  scope — **amend the acceptance criterion itself** through the sanctioned edit path: reword it
+  to what is actually in scope, or remove it from the issue body. That is a recorded, in-the-open
+  scope decision, and the AC-version re-anchor stales any evidence cited against the old wording —
+  the designed freshness behavior, not a loophole. (No shipped preset has a "descoped" AC status;
+  narrowing scope is an ordinary AC edit, gated like any other write.)
 
 ### A fourth honest escape, specific to document sources
 

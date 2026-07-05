@@ -3,6 +3,14 @@
 Two jobs an agent does with ztrack: **drive** work under it (the daily development loop), and
 **adopt** it into a repo (one-time setup). Both are below — start with whichever you were asked to do.
 
+Route by situation before anything else. Adopting where the team already tracks work in **GitHub
+Issues** → init linked (`ztrack init --sync github --repo o/n`; the issues pull in). Adopting onto
+**a pile of tasks and no tracker** → init local, then `ztrack import` the written-down backlog
+(both are step 1 of [Running a whole backlog](#running-a-whole-backlog-not-just-one-issue)).
+Driving **one issue** → the loop right below. Driving a **whole backlog** as an
+orchestrator/PM agent dispatching subagents → [Running a whole
+backlog](#running-a-whole-backlog-not-just-one-issue).
+
 ## Driving work under ztrack (the main loop)
 
 The recommended flow: a user arms a loop with `ztrack loop start <issue>` and runs you on that issue.
@@ -29,9 +37,11 @@ Two things a loop can be armed to do — check which one you were given:
 - **Never** mark an AC passed without evidence you can cite. **Never** invent a commit SHA, PR number,
   screenshot, video, or source to make the gate go green.
 - If a claim genuinely cannot be satisfied, take an **honest escape** — never fake it to end the turn:
-  leave the AC pending and report the blocker; descope the AC; or, for a finding an authority
-  knowingly accepts, `ztrack waiver sign` it. (Per-actor self-exempt and `ztrack loop stop` also
-  exist; none of them fabricate "done.")
+  leave the AC pending and report the blocker; amend the over-specified AC itself (reword or remove
+  it through the sanctioned edit path — a recorded scope decision, and the AC-version re-anchor
+  stales evidence cited against the old wording); or, for a finding an authority knowingly accepts,
+  `ztrack waiver sign <issue> --code <finding-code>` it. (Per-actor self-exempt and `ztrack loop
+  stop` also exist; none of them fabricate "done.")
 - Mirror this even without a loop: with MCP, call `tracker_check` before finishing; with no hooks at
   all, run `ztrack check` as your last step and treat a non-zero exit as incomplete work.
 - Treat `ztrack lint` as guidance and `ztrack check` as the gate.
@@ -81,6 +91,10 @@ own `status:`/`assignee:` header lines and an Acceptance Criteria subsection. Yo
 because a `ztrack check` finding cites a path like `PLAN.md:42` instead of an issue-per-file path, or
 the config says `format:"document"`. The document itself is the source of truth, authored directly by
 humans and agents.
+
+With 2+ declared sources, `issue list --source <name>` and `check --source <name>` scope a listing
+or a validation run to one source ([Sources → scoping](SOURCES.md#scoping-to-one-source---source));
+the `--actionable/--blocked` frontier stays whole-graph and refuses `--source`.
 
 For a document source, `ac patch` and title/body edits (`issue edit --title`/`--body`) still work
 on **leaf items at any nesting depth** — they splice the change back into the issue's recorded line
@@ -134,7 +148,9 @@ project-specific rules are added by editing the standalone `.volter/tracker/vali
 
 1. Create a real git commit or use the current repository HEAD.
 2. Mark one AC passed (`[x]` + `status: passed`) and cite a fake commit in its evidence sub-line:
-   `evidence ev1: commit=deadbee acv=1`, plus a `proof:` line.
+   `evidence ev1: commit=deadbee acv=1`, plus a `proof:` line. Write it onto the STORED issue —
+   author the body in a local `body.md`, then `npx ztrack issue edit <id> --body-file body.md`
+   (the issue is stored independently, so editing your local file alone changes nothing).
 3. Run `npx ztrack check --json`.
 4. Confirm the finding code is `evidence_commit_not_found`.
 5. Replace `deadbee` with a real commit SHA.

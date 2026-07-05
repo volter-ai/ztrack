@@ -5,11 +5,17 @@ keeps the core local-first and deterministic.
 
 ## Near Term
 
-- More copy-pasteable examples for GitHub Issues, Linear, and Jira workflows.
-- Public CI examples for committed validated-root gates.
-- Clearer docs for MCP and stop-hook agent integration.
-- More install presets for teams that already use Spec Kit, OpenSpec,
-  Backlog.md, or similar file-based planning systems.
+- ~~Clearer docs for MCP and stop-hook agent integration.~~ **Shipped:** the
+  [Guide](docs/GUIDE.md#3-usage-drive-an-agent-to-green) documents the loop / Stop-hook wiring and
+  the MCP tool surface; the [agent playbook](docs/AGENT-PLAYBOOK.md) carries the one-shot adoption
+  prompt.
+- ~~Public CI examples for committed validated-root gates.~~ **Shipped:** the `volter-ai/ztrack@v0`
+  Action recipe in the [Guide](docs/GUIDE.md#gate-it-in-ci), plus the linked-mode CI variant.
+- ~~Presets for Spec Kit style repos.~~ **Shipped:** the `speckit` install preset (with `spec` as
+  the lighter cousin).
+- More copy-pasteable examples for Linear and Jira workflows (GitHub Issues is covered by built-in
+  linked sync).
+- More install presets for teams on OpenSpec, Backlog.md, or similar file-based planning systems.
 
 ## Later
 

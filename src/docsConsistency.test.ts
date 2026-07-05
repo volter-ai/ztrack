@@ -132,6 +132,52 @@ describe('docs consistency', () => {
     expect(missing).toEqual([]);
   });
 
+  // ZTB-34: a full agent-docs audit + a cold-start agent run found three drift classes the
+  // existence checks above can't see — docs teaching a REMOVED mechanism (`status: descoped` was
+  // never a valid AC status in any shipped preset), teaching docs lagging a shipped philosophy
+  // (0.46's ref-pinned waivers reached only ARCHITECTURE.md + --help for a full release), and a
+  // new flag reaching only its own reference page (0.47's --source absent from GUIDE/API.md).
+  // Same idea as the twin-dependency phrase pin above: semantic pins on load-bearing claims.
+  test('no doc instructs the phantom `status: descoped` escape', () => {
+    const hits: string[] = [];
+    for (const doc of DOCS.concat('plugins/ztrack-gate/README.md', '.claude/skills/ztrack/SKILL.md', 'TESTING.md')) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      if (text.includes('status: descoped')) hits.push(doc);
+    }
+    expect(hits).toEqual([]);
+  });
+
+  test('waiver teaching docs carry the 0.46 ref-pinning philosophy, not just the broad row', () => {
+    // README/GUIDE point readers at PRESETS §Waivers as the "full grammar" — so PRESETS must
+    // document all three 0.46 pieces, and every doc that teaches signing must at least name the
+    // pin (`--ref`) so an agent isn't surprised by `waiver_overbroad` on an unpinned row. The
+    // gate README's example must carry the required `--code` (its pre-fix example omitted it).
+    const mustMention: Array<[string, string[]]> = [
+      ['docs/PRESETS.md', ['ref:', 'waiver_overbroad', 'waiver migrate']],
+      ['docs/GUIDE.md', ['--ref', 'waiver_overbroad']],
+      ['README.md', ['--ref']],
+      ['.claude/skills/ztrack/SKILL.md', ['--ref']],
+      ['plugins/ztrack-gate/README.md', ['--code']],
+    ];
+    const missing: string[] = [];
+    for (const [doc, needles] of mustMention) {
+      const text = readFileSync(join(REPO, doc!), 'utf8');
+      for (const n of needles!) if (!text.includes(n)) missing.push(`${doc} missing "${n}"`);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  test('the GUIDE frontier paragraph and API.md TrackerCheckOptions know about --source (0.47)', () => {
+    const missing: string[] = [];
+    // GUIDE enumerates what composes with --actionable/--blocked and what's rejected; since
+    // ZTB-33 the rejection list includes --source, so the enumeration must name it nearby.
+    const guide = readFileSync(join(REPO, 'docs/GUIDE.md'), 'utf8');
+    if (!/--actionable[\s\S]{0,1200}--source/.test(guide)) missing.push('docs/GUIDE.md frontier section never mentions --source');
+    const api = readFileSync(join(REPO, 'docs/API.md'), 'utf8');
+    if (!/TrackerCheckOptions[^\n]*\bsources\?/.test(api)) missing.push('docs/API.md TrackerCheckOptions listing omits sources?');
+    expect(missing).toEqual([]);
+  });
+
   // ZTB-25: package.json's "files" allowlist had a phantom `PRESET-GUIDE.md` (renamed to
   // docs/PRESETS.md long ago, see git history) that npm would have silently dropped from the
   // published tarball — no existing guard reads package.json at all. Handles npm's `!exclude`

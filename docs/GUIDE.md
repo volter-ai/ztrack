@@ -17,6 +17,19 @@ once, then **use** it two ways — **[`check`](#2-usage-verify-on-demand)** to v
 **[`loop`](#3-usage-drive-an-agent-to-green)** to hold an agent's turn until the work is green. Each
 is expanded below.
 
+**Route yourself first** — two questions, and every combination is a supported path:
+
+1. *Where does the work live today?* Already in **GitHub Issues** → init linked
+   (`npx ztrack init --sync github --repo owner/name`; [how linked sync works](#how-linked-sync-works)).
+   Just **a pile of tasks and no tracker** → init local (`npx ztrack init`), write the tasks down as
+   freeform markdown, then `ztrack import notes/tasks.md --register` materializes them into issues
+   ([importing a freeform backlog](#importing-a-freeform-backlog)).
+2. *How will you drive it?* **One issue at a time** → arm a loop, `ztrack loop start <id> --until
+   done` ([drive an agent to green](#3-usage-drive-an-agent-to-green)). **A whole backlog**, with a
+   PM/orchestrator agent dispatching one subagent per unblocked issue → intake → groom → order →
+   dispatch over `issue list --actionable`
+   ([orchestrating a whole backlog](#orchestrating-a-whole-backlog-one-long-lived-session-many-issues)).
+
 ## 1. Setup
 
 ```bash
@@ -38,7 +51,8 @@ make your issues *be* GitHub Issues, synced both ways, init with a link:
 **Sources.** The default is one implicit store, `.volter/tracker/markdown/` (one file per issue).
 Declare `sources:` in `.volter/tracker-config.json` to add more, including a `document` source —
 one markdown file (your existing plan or backlog) decomposed into many issues by its id-bearing
-headings. See [Sources](SOURCES.md).
+headings. Each source can carry a `name`, and `issue list --source <name>` / `check --source <name>`
+scope to just that source. See [Sources](SOURCES.md).
 
 **Prove the gate.** Before wiring any workflow rules, prove the core gate catches a bad claim:
 
@@ -66,6 +80,13 @@ ztrack check                 # (in a worktree named for an issue) → that issue
 
 A loose `./body.md` is checked for **structure + evidence**; lifecycle/PR gates (ready/in-review/done)
 apply only to **stored** issues, so a loose file is treated as a draft.
+
+Two flags compose on top of the target: `--fail-on-warning` makes warning-severity findings gate too
+(exit 1) for a stricter lane, and — once you've declared 2+ `sources:` — `--source <name>`
+(repeatable) scopes the check to just the named source(s), matching by config `name`, path, or path
+basename ([Sources → scoping](SOURCES.md#scoping-to-one-source---source)). `--source` is refused
+loudly where there is nothing to scope: `check --input`, a loose `<file.md>` check, and the
+`--actionable/--blocked` frontier.
 
 ### Gate it in CI
 
@@ -267,7 +288,9 @@ use and gets no such warning.
 
 **Honest escapes (none fakes "done"):** disarm, a per-actor self-exempt (a session or a subagent)
 that can't outlive it, and a durable [`ztrack waiver sign`](PRESETS.md#waivers) for a finding an
-authority knowingly accepts — or descope the AC. It's cooperative, not a sandbox.
+authority knowingly accepts — or amend the over-specified AC itself (reword or remove it through
+the sanctioned edit path; a recorded scope decision, and the AC-version re-anchor stales any
+evidence cited against the old wording). It's cooperative, not a sandbox.
 
 **Install the gate** (Claude Code). The plugin is **armed-only**, so interactive work is untouched and
 it's safe to leave enabled globally:
@@ -367,7 +390,9 @@ unmet work behind a stuck issue, just the **nearest** hop(s) — the actual thin
 blocked by another whole issue, or by one specific acceptance criterion of one (a narrower,
 AC-to-AC dependency) — either way it shows up the same: an id, or `id:acId`, plus that node's status.
 Both `--actionable` and `--blocked` refuse to be combined (they're two views of one computation, not
-composable with each other) and reject `--parent` (not modeled at this level); `--state`/`--label`/
+composable with each other) and reject `--parent` and `--source` (the frontier is a whole-graph view
+over the source-erased validated model — scoping it to one source would misreport a real cross-source
+blocker as missing; use plain `issue list --source` for a scoped listing); `--state`/`--label`/
 `--search`/`--limit`/`--json <fields>` all compose normally on top, same as plain `issue list`. Neither
 crashes on a tracker whose `check` is otherwise red, and with no relations authored anywhere,
 `--actionable` degrades to "every not-done issue" and `--blocked` to nothing — the honest answer when
@@ -411,25 +436,33 @@ AC that predates evidence discipline, a rule that's genuinely wrong for this pro
 override is a **waiver**, not editing check's output or turning a rule off globally:
 
 ```bash
-ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
+ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] [--ref <subject>] --reason "..."
 ztrack waiver status <issue>
 ztrack waiver clear <issue> [--code <finding-code>]
+ztrack waiver migrate <issue>|--all        # rewrite legacy broad rows into per-occurrence pins
 ```
 
-A waiver is stored in the issue body's `## Waivers` section, one row per waiver:
+A waiver is stored in the issue body's `## Waivers` section, one row per waiver, pinned to the
+single occurrence it accepts (`sign` writes the `ac:`/`ref:` pins for you):
 
 ```
-- code: evidence_commit_unrelated reason: pre-dates paths anchors by: Jane Doe (jane@co.com)
+- code: evidence_commit_not_found ac: dev/01 ref: cafebabe… reason: repo predates the import by: Jane Doe (jane@co.com)
 ```
 
 `sign` downgrades the matching finding's severity from `error` to `acknowledged` — `check` keeps
-reporting it (as `ack`) but exits `0`. Sign-off (the `by:` field) is captured automatically from your
-git identity (`git config user.name` / `user.email`), so a waiver always records who accepted the
-risk. An unreasoned or unsigned waiver is itself an error (`waiver_missing_reason`,
-`waiver_missing_signoff`); a waiver that stops matching any finding — the underlying issue got fixed,
-or the rule changed — is flagged `waiver_unused` (a warning, not blocking), so waivers don't silently
-accumulate as dead suppression. This is also the mechanism that keeps [`ztrack loop`](#3-usage-drive-an-agent-to-green)
-from grinding forever on a finding it can't honestly satisfy.
+reporting it (as `ack`) but exits `0`. The `ref:` pin is the `// eslint-disable-next-line` of the
+system: it scopes the waiver to ONE occurrence (the offending value — e.g. the bad commit SHA), so
+the waiver self-expires the moment that occurrence changes rather than silencing the rule forever.
+`sign` auto-captures it when the finding is unambiguous and refuses (naming the candidates) when it
+isn't — pass `--ref <subject>` to pick one. An unpinned waiver that could pin is flagged
+`waiver_overbroad` (a warning); `waiver migrate` converts legacy broad rows. Sign-off (the `by:`
+field) is captured automatically from your git identity (`git config user.name` / `user.email`), so
+a waiver always records who accepted the risk. An unreasoned or unsigned waiver is itself an error
+(`waiver_missing_reason`, `waiver_missing_signoff`); a waiver that stops matching any finding — the
+underlying issue got fixed, or the rule changed — is flagged `waiver_unused` (a warning, not
+blocking), so waivers don't silently accumulate as dead suppression. This is also the mechanism that
+keeps [`ztrack loop`](#3-usage-drive-an-agent-to-green) from grinding forever on a finding it can't
+honestly satisfy.
 
 Prefer fixing the issue; waive only a finding you knowingly accept. Full grammar (including AC-scoped
 waivers via `--ac`) is in [Presets → Waivers](PRESETS.md#waivers).

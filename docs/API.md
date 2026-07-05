@@ -45,9 +45,12 @@ to route a finding straight to the file (and line) that produced it — e.g. gro
 for an editor integration, or open the exact location in a PR comment — without re-deriving it from
 `issueId`.
 
-`TrackerCheckOptions`: `{ projectRoot?, config?, issues?, failOnWarning?, categories?, verifyCommits?, now?, phase? }`.
-- `issues: ['A-1']` scopes the check; `phase: 'gate'` runs only the continuous-gate rules (skip
-  transition/promotion checks); `verifyCommits: false` is the escape hatch for shallow/CI checkouts.
+`TrackerCheckOptions`: `{ projectRoot?, config?, issues?, sources?, failOnWarning?, categories?, verifyCommits?, now?, phase? }`.
+- `issues: ['A-1']` scopes the check to named issues; `sources: ['backlog']` scopes it to declared
+  source(s) by config `name`/path/path-basename (mirrors `ztrack check --source`; an unknown
+  selector throws listing the available names); `phase: 'gate'` runs only the continuous-gate rules
+  (skip transition/promotion checks); `verifyCommits: false` is the escape hatch for shallow/CI
+  checkouts.
 
 To validate an already-exported root (no disk read), use `checkTrackerRoot(root, options)`.
 
