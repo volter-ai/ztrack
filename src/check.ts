@@ -170,6 +170,21 @@ export async function checkFile(filePath: string, options: TrackerCheckOptions =
   return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings };
 }
 
+// ZTB-36: pull the root's issue ids up front, tolerantly — the `--input` analog of what the
+// live loader hands back as `loadedIssueIds` (ZTB-35 dev/67 comment above `TrackerCheckResult`),
+// except read straight off the root instead of a backend scan. Undefined whenever the root is
+// too shape-broken to have a usable `issues` array — callers must treat that as "couldn't tell",
+// not "found nothing", so a shape error can win over any not-found report (see checkTrackerRoot).
+function extractRootIssueIds(root: unknown): string[] | undefined {
+  if (!root || typeof root !== 'object') return undefined;
+  const issues = (root as { issues?: unknown }).issues;
+  if (!Array.isArray(issues)) return undefined;
+  return issues
+    .filter((entry): entry is { id: string } =>
+      !!entry && typeof entry === 'object' && typeof (entry as { id?: unknown }).id === 'string' && (entry as { id: string }).id.length > 0)
+    .map((entry) => String(entry.id));
+}
+
 /** Validate an already-exported, validated root (committed CI artifact / `--input`).
  *  The root is the export shape `{ issues: [...] }` — never a legacy snapshot. */
 export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
@@ -187,7 +202,26 @@ export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptio
     ...(options.now ? { now: options.now } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
   };
+  // ZTB-36: `--issues`/`--case` with `--input` now scopes validation to those ids WITHIN the
+  // root, mirroring the live path's loader-side filtering (src/core/loader.ts's `wanted` set in
+  // `loadValidationInput`) — unlike `--source`, issue ids ARE present in an exported root, so
+  // scoping is meaningful (see cliCheck.ts's --source-refusal comment for the contrast). A
+  // shallow copy of `root` with only `issues` replaced preserves every other field untouched —
+  // notably the `## Waivers` directives `exportTrackerRoot` writes alongside `issues`, which
+  // `checkRoot` below lifts into the context regardless of which issues survive the filter — and
+  // the caller's root object is never mutated. When the root is too broken to extract ids
+  // (`presentIds` undefined), skip filtering entirely so `checkRoot`'s own shape findings fire
+  // instead of a spurious not-found report — a shape error must win, and nothing may crash.
+  const presentIds = extractRootIssueIds(root);
+  const wanted = options.issues ? new Set(options.issues.map(String)) : null;
+  const scopedRoot = wanted && presentIds
+    ? { ...(root as Record<string, unknown>), issues: (root as { issues: unknown[] }).issues.filter((entry) => wanted.has(String((entry as { id?: unknown } | null)?.id))) }
+    : root;
   // A committed root may carry the `## Waivers` directives alongside `issues` (see
   // exportTrackerRoot); checkRoot lifts them into the context and validates only `issues`.
-  return checkRoot(preset, root, context);
+  const result = checkRoot(preset, scopedRoot, context);
+  // `loadedIssueIds` is set whenever ids were extractable, REGARDLESS of whether validation then
+  // passed — same contract as `checkTracker`'s field of the same name (ZTB-35 dev/67) — so
+  // `cliCheck.ts` can tell "not in the root at all" from "shape too broken to tell".
+  return presentIds ? { ...result, loadedIssueIds: presentIds } : result;
 }
