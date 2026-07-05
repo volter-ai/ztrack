@@ -83,7 +83,7 @@ All follow-ups now closed:
 - [x] **"`default`/`speckit` reject a `descoped` AC" — resolved, then superseded by removal.**
   At the time (the 0.5.x generic-preset era) the installed preset accepted a `descoped` AC
   status, so this was verified a non-issue. The status was later removed outright — today no
-  shipped preset has `descoped` in its AC vocabulary (`pending|passed|failed`); narrowing scope
+  shipped preset has `descoped` in its AC vocabulary (`pending|passed|failed`, or speckit's `pending|done`); narrowing scope
   is an ordinary AC edit through the sanctioned write path (see
   `plugins/ztrack-gate/README.md` § Escapes). ✅
 - [x] **In-loop agent reaching `loop stop` / `waiver sign` — settled as a Non-Goal** (see
