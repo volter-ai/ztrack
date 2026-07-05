@@ -188,7 +188,11 @@ cli.ts → cliCheck (check)
 `ztrack check` validates the live tracker; flags: `--input root.json` (validate a
 committed validated root instead of the live store), `--verify-commits`,
 `--categories name=N,...`, `--fail-on-warning`, `--errors-only`, `--json`, `--output`,
-`--max-findings`. `ztrack export [--out f.json]` writes the validated root. The committed
+`--max-findings`. `--fail-on-warning` gates on real `warning`-severity findings only —
+acknowledged (waived) findings never trip it — and the exit code, the pass/fail banner, the
+trailing exit-hint line, and `--json`'s `ok`/`summary.status` all derive from that same one
+verdict, so they can never disagree (ZTB-35). `ztrack export [--out f.json]` writes the validated
+root. The committed
 CI artifact is exactly that validated root JSON (`{ issues: [...] }`), re-validated by
 `ztrack check --input root.json`.
 
