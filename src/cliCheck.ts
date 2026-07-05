@@ -156,8 +156,9 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   // found, whether or not validation then passed) over `export?.issues`, which is unset whenever
   // validation fails before the root parses (e.g. a shape-invalid issue) — that used to make an
   // issue that genuinely exists but fails schema validation look "not found" and discard the real
-  // `wellformed_shape` finding. `--input`/`checkTrackerRoot` carries no `loadedIssueIds`, so it
-  // falls back to the `export` derivation exactly as before.
+  // `wellformed_shape` finding. checkTracker is the only producer that reaches this block with
+  // target ids (`--input` forces `target` to null upstream, so this never runs on that path);
+  // the `export` fallback is purely defensive for any TrackerCheckResult lacking loadedIssueIds.
   if (target?.kind === 'issues') {
     const present = new Set(result.loadedIssueIds ?? (result.export?.issues ?? []).map((i) => i.id));
     const missing = target.ids.filter((id) => !present.has(id));
@@ -172,7 +173,11 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     const branch = git(projectRoot, ['rev-parse', '--abbrev-ref', 'HEAD']) || undefined;
     const top = git(projectRoot, ['rev-parse', '--show-toplevel']);
     const worktree = top ? basename(top) : undefined;
-    const issueIds = (result.export?.issues ?? []).map((i) => i.id);
+    // ZTB-35 dev/67 (same rationale as the by-id block above): `export` is unset whenever ANY
+    // issue in the tracker is shape-invalid, so deriving the known ids from it alone would make a
+    // perfectly valid ACTIVE issue look "not in the tracker" and bury the real wellformed_shape
+    // cause — on the production Stop-hook oracle, no less. Prefer the loader's own id list.
+    const issueIds = result.loadedIssueIds ?? (result.export?.issues ?? []).map((i) => i.id);
     // Active issue precedence: explicit env override > armed loop target > branch/worktree.
     const loopIssue = loop?.target.kind === 'issues' ? loop.target.ids[0] : undefined;
     const explicit = process.env.ZTRACK_ACTIVE_ISSUE?.trim() || loopIssue;
@@ -194,6 +199,11 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
       let findings = result.findings;
       if (loop?.until && issueId) {
         const enumValues = await activeStatusEnum(projectRoot);
+        // Reading `export` here is safe despite its unset-on-shape-failure fragility (ZTB-35
+        // dev/67): when export is unset, a wellformed_shape finding with no issueId exists and
+        // partitionFindings makes no-issueId findings BLOCKING, so the gate stays red anyway —
+        // the synthetic loop_until finding would only be a redundant extra signal in that state,
+        // and it fires again once the shape error is fixed.
         const issue = (result.export?.issues ?? []).find((i) => i.id === issueId);
         const curRank = enumValues && issue ? enumValues.indexOf(issue.status) : -1;
         const untilRank = enumValues ? enumValues.indexOf(loop.until) : -1;

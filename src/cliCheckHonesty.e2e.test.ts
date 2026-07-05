@@ -24,8 +24,11 @@ const CLI = join(import.meta.dir, 'cli.ts');
 const FAKE_ACK = 'aaaaaaa1111111111111111111111111111111a1';
 const FAKE_WARN = 'bbbbbbb2222222222222222222222222222222b2';
 
-function ztrackIn(cwd: string, args: string[]): { code: number; out: string; err: string } {
-  const r = spawnSync('bun', ['run', CLI, ...args], { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+function ztrackIn(cwd: string, args: string[], env?: Record<string, string>): { code: number; out: string; err: string } {
+  const r = spawnSync('bun', ['run', CLI, ...args], {
+    cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
+    ...(env ? { env: { ...process.env, ...env } } : {}),
+  });
   return { code: r.status ?? 1, out: r.stdout ?? '', err: r.stderr ?? '' };
 }
 const gitIn = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' });
@@ -156,6 +159,30 @@ describe('scoped check <id> on a schema-invalid issue surfaces wellformed_shape,
       expect(mixed.err + mixed.out).toContain('not found in the tracker');
       expect(mixed.err + mixed.out).toContain('TOTALLY-MISSING');
       expect(mixed.err + mixed.out).not.toContain(id); // the real (schema-invalid but present) id was not reported missing
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+
+  // Review round 2: the --auto-scope path derived its known-id list from `result.export` too —
+  // the same export-unset-on-shape-failure class. With a VALID active issue A and an UNRELATED
+  // schema-invalid issue B anywhere in the tracker, the scoped report used to claim
+  // "pinned issue 'A' is not in the tracker" (burying B's wellformed_shape). Now A resolves
+  // honestly; the gate still fails CLOSED (B's shape finding carries no issueId, so
+  // partitionFindings makes it blocking) but attributes the failure to the real cause.
+  test('--auto-scope with a valid pinned issue resolves it even when another issue is schema-invalid', () => {
+    const root = freshRepo('ztrk-honesty-scope-');
+    try {
+      const validId = createIssue(root, 'Clean draft', '# Clean draft\n\nSummary: ok\n', 'draft');
+      createIssue(root, 'Bad shape', schemaInvalidBody);
+      const r = ztrackIn(root, ['check', '--auto-scope', '--json'], { ZTRACK_ACTIVE_ISSUE: validId });
+      expect(r.code).toBe(1); // fails closed: the workspace-level wellformed_shape blocks
+      const payload = JSON.parse(r.out) as {
+        ok: boolean; activeIssue: string | null;
+        scope: { reason: string }; findings: Array<{ code: string }>;
+      };
+      expect(payload.activeIssue).toBe(validId);           // resolved, not misreported as missing
+      expect(payload.scope.reason).not.toContain('not in the tracker');
+      expect(payload.ok).toBe(false);
+      expect(payload.findings.some((f) => f.code === 'wellformed_shape')).toBe(true);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
 });
