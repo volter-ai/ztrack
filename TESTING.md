@@ -16,8 +16,8 @@ actual `ztrack` binary. No mocks; the only thing that isn't real is the live age
   (missing-AC, done-with-unpassed, missing source marker), and canceled-case exemption.
 - **`demos/loop-gate-ci.sh`** — the loop Stop hook's full decision table (armed/held/released,
   per-session exemption non-leak, iteration cap), the `ztrack waiver` round-trip, and the
-  review-fix regressions (H1 blocker/reason, H2 non-waivable invariants, M3 all-descoped,
-  the `.gitignore` migration).
+  review-fix regressions (H1 blocker/reason, H2 non-waivable invariants, the `.gitignore`
+  migration).
 - **`demos/fresh-project-dry-run.sh`** — install into fresh repos; `init → check` across every
   shipped preset; MCP, SDK, and the autonomy profile.
 - **`demos/loop-e2e.sh`** — the **live-agent** loop (real headless Claude driving the hook).

@@ -2,6 +2,29 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.47.1
+
+Doc truth pass — no behavior changes. Every agent-facing document now teaches the current
+system with no legacy: the 0.46 per-occurrence waiver philosophy (`ref:` pins, `--ref`,
+`waiver_overbroad`, `waiver migrate`) is in every teaching doc; the phantom `status: descoped`
+escape (removed in 0.11.0) is gone from all guidance — the honest narrow-scope path is amending
+the AC through the sanctioned write path; `--source` scoping (0.47.0) is discoverable from the
+Guide, skill, and help text.
+
+- **Situation routing.** README, Guide, agent playbook, the ztrack skill, bare `ztrack` help, and
+  `init --help` now open by routing the reader's actual situation: issues already on GitHub →
+  `init --sync github`; a pile of tasks and no tracker → `init` + `import --register`; then drive
+  ONE issue (`loop start <id> --until done`) or burn the WHOLE backlog (PM dispatching one
+  loop-armed subagent per `issue list --actionable` row).
+- **Cold-start fixes** from a fresh-eyes agent run: the playbook's "Prove the gate" step names the
+  actual write command (`issue edit --body-file`); `check --fail-on-warning` is documented; waiver
+  row examples match real `sign` output; SOURCES.md states where `issue create` mints (first
+  writable declared source) and how to place an issue elsewhere.
+- **Guard tests.** `docsConsistency.test.ts` now pins the waiver-philosophy phrases per doc, bans
+  `status: descoped` across all teaching docs (including ROADMAP.md/TESTING.md), and pins the
+  frontier's `--parent`/`--source` rejection clause plus the `TrackerCheckOptions.sources?` API
+  line — each proven failing on the pre-fix tree.
+
 ## 0.47.0
 
 `--source` scoping: address one declared source by name across `issue list` and `check`.

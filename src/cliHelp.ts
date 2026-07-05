@@ -14,10 +14,13 @@ export function printHelp(): void {
 ${ui.bold('Usage')}
   ${ui.cyan(`${command} <resource> <action> [args...]`)}
 
-${helpSection('top', 'Start here', [
-    [`${command} init [--team KEY] [--preset <name>] [--sync github --repo o/n]`, 'install a preset + config (optionally link a tracker)'],
-    [`${command} issue create`, 'add a verifiable issue'],
-    [`${command} check [<issue-id> | <file.md>]`, 'verify completion (whole tracker, an issue, or a file)'],
+${helpSection('top', 'Start here — pick your situation', [
+    [`${command} init --sync github --repo o/n`, 'already have GitHub Issues? link them — they pull in, GitHub stays the truth'],
+    [`${command} init [--team KEY]`, 'have tasks but no tracker? start a local one (issues live as markdown in the repo)…'],
+    [`${command} import notes/tasks.md --register`, '…then materialize your freeform task list into issues (or `issue create` each)'],
+    [`${command} loop start <id> --until done`, 'drive ONE issue: the Stop-hook gate holds your agent until it is genuinely done'],
+    [`${command} issue list --actionable`, 'burn the WHOLE backlog: one loop-armed agent per unblocked row, wave by wave (docs/GUIDE.md)'],
+    [`${command} check [<issue-id> | <file.md>]`, 'verify completion any time (whole tracker, an issue, or a file)'],
   ])}
 
 ${helpSection('middle', 'Workflow', [
@@ -127,10 +130,18 @@ Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
                              GitHub becomes the source of truth (the local store is gitignored).
   --policy …                 conflict-resolution default for a linked tracker (default merge).
 
+Two intakes, by what you already have: issues on GITHUB → \`--sync github --repo o/n\` (linked; they
+pull in). A pile of TASKS and no tracker → plain \`${command} init\` (local), then \`${command} import
+<your-tasks.md> --register\` to materialize the list into issues (or \`issue create\` one by one).
+Either way you then drive the work: ONE issue at a time (\`${command} loop start <id> --until done\`)
+or a whole backlog wave by wave (\`${command} issue list --actionable\` → one loop-armed agent per
+row) — the full intake→groom→order→dispatch flow is docs/GUIDE.md's "Orchestrating a whole backlog".
+
 Beyond the default store, .volter/tracker-config.json accepts a \`sources\` array to declare more:
-each entry is {path, format: "issue-per-file"|"document", readonly?} — a "document" source is
-one markdown file holding many issues (id-bearing headings become issues; nesting becomes parents).
-Grammar, write-back, and diagnostics: docs/SOURCES.md.
+each entry is {path, format: "issue-per-file"|"document", readonly?, name?} — a "document" source is
+one markdown file holding many issues (id-bearing headings become issues; nesting becomes parents);
+\`--source <name>\` scopes \`issue list\`/\`check\` to declared source(s). Grammar, write-back, and
+diagnostics: docs/SOURCES.md.
 `);
     return true;
   }

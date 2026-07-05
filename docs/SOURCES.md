@@ -47,6 +47,12 @@ typo, the nearest valid sibling (e.g. `source:` → `unknown key "source" ... di
 different declared sources — `ztrack check` reports it as an `issue_id_conflict` error naming both
 source paths. Rename one of them or remove the duplicate.
 
+**Where a new issue lands.** `ztrack issue create` mints into the **first writable declared
+source** (the first `sources:` entry that isn't `readonly: true`; with no `sources:` key, the
+implicit default store). There is no `issue create --source` targeting flag today — to house a new
+issue in a different source, move its file there (an `issue-per-file` source), or author the item
+directly in the document source's grammar and re-run `ztrack check`.
+
 ## Scoping to one source (`--source`)
 
 By default every command reads the whole union. Once you have 2+ sources you can scope `issue list`

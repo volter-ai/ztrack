@@ -19,7 +19,7 @@ their workflow becomes more specific.
 | Preset | Use When | What It Enforces |
 |---|---|---|
 | `simple-sdlc` | a dev lifecycle (draft→ready→in-progress→in-review→done), **local or no remote** | every issue assigned; passed ACs carry commit+proof evidence (image optional, verified if cited); evidence fresh against the AC version; lifecycle gates (ready needs a dev AC, in-review needs all ACs passed); opt-in blocking graph is acyclic. **PR-free** — done = all ACs passed-with-evidence (the review's verdict), so it runs with no remote |
-| `simple-gh-sdlc` | a GitHub PR-based dev lifecycle (review happens on a PR) | everything `simple-sdlc` enforces, **plus** a PR at in-review and a merged PR for done. *(Stage 2 will also require world annotations + sources.)* |
+| `simple-gh-sdlc` | a GitHub PR-based dev lifecycle (review happens on a PR) | everything `simple-sdlc` enforces, **plus** a PR at in-review and a merged PR for done. *(Stage 2 will also require world annotations + world sources — the mirrored-world adapters in [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world), not declared `sources:`.)* |
 | `spec` | issue bodies are lightweight specs | passed ACs cite commit-backed evidence; cited commits exist; ids unique |
 | `speckit` | repos following GitHub Spec Kit conventions | a multi-file feature bundle with required User Scenarios/Stories, Functional Requirements, and Tasks; task commits exist; foundational tasks gate story completion; Constitution Check gate passes (read-only) |
 
@@ -334,13 +334,30 @@ Waivers are universal and eslint-style — core-parsed, not per-preset. A `##
 Waivers` section per issue downgrades a matching finding to `acknowledged`:
 
 ```bash
-ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
+ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] [--ref <subject>] --reason "..."
 ztrack waiver status <issue>
 ztrack waiver clear <issue> [--code <finding-code>]
+ztrack waiver migrate <issue>|--all      # rewrite legacy broad rows into per-occurrence pins
 ```
 
-A waiver that matches nothing emits `waiver_unused`; an unreasoned or unsigned
-waiver is itself an error. Sign-off is your git identity, captured automatically.
+The full row grammar (one row per waiver; `sign` writes it for you):
+
+```
+- code: <finding-code> [ac: <acId>] [ref: <subject>] reason: <text> by: <signer>
+```
+
+`ac:` scopes the row to one acceptance criterion. `ref:` pins it to ONE occurrence — the
+finding's `subject` (the offending value, e.g. the bad commit SHA; opt-in per rule) or its
+evidence id — the `// eslint-disable-next-line` form: the waiver silences exactly that
+occurrence and self-expires when the value changes. `sign` auto-captures `ref:` when the
+finding is unambiguous and refuses, listing the candidates, when several occurrences match
+(pass `--ref` to pick one). Hygiene, all core-enforced: a waiver that matches nothing emits
+`waiver_unused` (warning); one directive that silences more than the single occurrence it
+should — an unpinned row hitting a pinnable finding, or a `ref:` value that recurs across ACs —
+emits `waiver_overbroad` (warning; pin with `ref:`, scope with `ac:`); an unreasoned or
+unsigned row is an error (`waiver_missing_reason`, `waiver_missing_signoff`). `waiver migrate`
+converts legacy unpinned rows into per-occurrence pinned ones, idempotently. Sign-off is your
+git identity, captured automatically.
 
 ## Round-Trip Fidelity
 

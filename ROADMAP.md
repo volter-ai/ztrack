@@ -5,11 +5,17 @@ keeps the core local-first and deterministic.
 
 ## Near Term
 
-- More copy-pasteable examples for GitHub Issues, Linear, and Jira workflows.
-- Public CI examples for committed validated-root gates.
-- Clearer docs for MCP and stop-hook agent integration.
-- More install presets for teams that already use Spec Kit, OpenSpec,
-  Backlog.md, or similar file-based planning systems.
+- ~~Clearer docs for MCP and stop-hook agent integration.~~ **Shipped:** the
+  [Guide](docs/GUIDE.md#3-usage-drive-an-agent-to-green) documents the loop / Stop-hook wiring and
+  the MCP tool surface; the [agent playbook](docs/AGENT-PLAYBOOK.md) carries the one-shot adoption
+  prompt.
+- ~~Public CI examples for committed validated-root gates.~~ **Shipped:** the `volter-ai/ztrack@v0`
+  Action recipe in the [Guide](docs/GUIDE.md#gate-it-in-ci), plus the linked-mode CI variant.
+- ~~Presets for Spec Kit style repos.~~ **Shipped:** the `speckit` install preset (with `spec` as
+  the lighter cousin).
+- More copy-pasteable examples for Linear and Jira workflows (GitHub Issues is covered by built-in
+  linked sync).
+- More install presets for teams on OpenSpec, Backlog.md, or similar file-based planning systems.
 
 ## Later
 
@@ -74,11 +80,12 @@ All follow-ups now closed:
   step (`tsc --noEmit -p visualizer/tsconfig.json`). It passed at 0 errors. ✅
 - [x] **`src/core/cli.ts` deleted** — an unwired dev entry (no bin, no importer, no test).
   Its standalone-preset exports stay used by the preset unit tests. ✅
-- [x] **"`default`/`speckit` reject `status: descoped`" — verified a non-issue.** A configured
-  ztrack project validates with the installed generic preset (`resolveTrackerValidation`),
-  which supports `descoped`; the standalone-preset fallback (`server.ts:89`) only fires for
-  no-config markdown viewing, where a `descoped` AC doesn't arise. A preset/data mismatch
-  there correctly errors. No change. ✅
+- [x] **"`default`/`speckit` reject a `descoped` AC" — resolved, then superseded by removal.**
+  At the time (the 0.5.x generic-preset era) the installed preset accepted a `descoped` AC
+  status, so this was verified a non-issue. The status was later removed outright — today no
+  shipped preset has `descoped` in its AC vocabulary (`pending|passed|failed`, or speckit's `pending|done`); narrowing scope
+  is an ordinary AC edit through the sanctioned write path (see
+  `plugins/ztrack-gate/README.md` § Escapes). ✅
 - [x] **In-loop agent reaching `loop stop` / `waiver sign` — settled as a Non-Goal** (see
   below): we do not build containment; that's the harness's permission layer. The cooperative
   boundary (R5) is the intended design, not a gap. ✅

@@ -102,6 +102,15 @@ Not using Claude Code plugins? Wire the Stop and SubagentStop hooks yourself —
 
 # Usage
 
+**First decide where your work lives, then how you'll drive it** — two choices each, four doors:
+
+| You have… | Do |
+|---|---|
+| **GitHub Issues already** | `npx ztrack init --sync github --repo owner/name` — your issues pull in and GitHub stays the source of truth ([linked sync](docs/GUIDE.md#how-linked-sync-works)) |
+| **a pile of tasks, no tracker** | `npx ztrack init`, write the tasks down as you naturally would, then `npx ztrack import notes/tasks.md --register` materializes them into issues (or `issue create` one by one) ([importing](docs/GUIDE.md#importing-a-freeform-backlog)) |
+| **one issue to finish** | `ztrack loop start <id> --until done` — the Stop-hook gate holds your agent's turn until the work is genuinely done ([drive to green](#drive-to-green--ztrack-loop)) |
+| **a whole backlog to burn down** | groom → order → dispatch one loop-armed subagent per `issue list --actionable` row, wave by wave ([orchestrating a backlog](docs/GUIDE.md#orchestrating-a-whole-backlog-one-long-lived-session-many-issues)) |
+
 Two patterns, **the same targets**. Pick by the job:
 
 | | **`ztrack check`** | **`ztrack loop start`** |
@@ -228,23 +237,28 @@ override is a **waiver**, signed by a human (or an agent acting under one), not 
 output or disabling a rule globally:
 
 ```bash
-ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] --reason "..."
+ztrack waiver sign <issue> --code <finding-code> [--ac <acId>] [--ref <subject>] --reason "..."
 ztrack waiver status <issue>
 ztrack waiver clear <issue> [--code <finding-code>]
 ```
 
-A waiver lives in the issue body's `## Waivers` section, one line per waiver:
+A waiver lives in the issue body's `## Waivers` section, one line per waiver — pinned to the single
+offending occurrence, `// eslint-disable-next-line` style:
 
 ```
-- code: evidence_commit_unrelated reason: pre-dates paths anchors by: Jane Doe (jane@co.com)
+- code: evidence_commit_not_found ac: dev/01 ref: cafebabe… reason: repo predates the import by: Jane Doe (jane@co.com)
 ```
 
 `sign` downgrades the matching finding from `error` to `acknowledged` — `check` still reports it, but
-exits `0`. Sign-off is captured automatically from your git identity (`git config user.name` /
-`user.email`); you can't waive anonymously. Hygiene is enforced both directions: an unreasoned or
-unsigned waiver is itself an error (`waiver_missing_reason`, `waiver_missing_signoff`), and a waiver
-that stops matching anything — you fixed the underlying issue, or the code changed — is flagged
-`waiver_unused` (a warning, not blocking) so a stale waiver doesn't silently keep suppressing forever.
+exits `0`. The `ref:` pin (auto-captured by `sign` when the finding is unambiguous; pass `--ref
+<subject>` yourself when it isn't) scopes the waiver to ONE occurrence — the offending value, e.g. a
+commit SHA — so it self-expires the moment that occurrence changes instead of silencing the rule
+forever. Sign-off is captured automatically from your git identity (`git config user.name` /
+`user.email`); you can't waive anonymously. Hygiene is enforced in every direction: an unreasoned or
+unsigned waiver is itself an error (`waiver_missing_reason`, `waiver_missing_signoff`); an unpinned
+waiver that could pin is flagged `waiver_overbroad` (`ztrack waiver migrate` rewrites legacy broad
+rows into per-occurrence pins); and a waiver that stops matching anything is flagged `waiver_unused`
+(a warning, not blocking) so a stale waiver doesn't silently keep suppressing forever.
 
 Prefer fixing the issue; waive only a finding you knowingly accept. Full grammar in
 [Presets → Waivers](docs/PRESETS.md#waivers).
@@ -320,8 +334,9 @@ npx ztrack check                                # reads PLAN.md like any other s
 `ac patch`/`issue edit` splice a verified change straight back into the doc at the heading's
 recorded span — patching `dev/01` above changes only its checkbox and status/evidence/proof lines;
 every other byte in `PLAN.md` is untouched. State, assignee, and anything wider than title/body
-still fail closed, naming the file to edit directly instead. Grammar, the write model, and
-diagnostics: [Sources](docs/SOURCES.md).
+still fail closed, naming the file to edit directly instead. With 2+ declared sources,
+`--source <name>` scopes `issue list` and `check` to just the one you name. Grammar, the write
+model, scoping, and diagnostics: [Sources](docs/SOURCES.md).
 
 Already have a messier backlog — headings, prose, checkboxes, no id tokens? `ztrack import` (accepts
 a file, a directory, or a quoted glob) materializes it into that same grammar **in place**,
