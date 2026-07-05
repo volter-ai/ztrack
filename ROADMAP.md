@@ -80,11 +80,12 @@ All follow-ups now closed:
   step (`tsc --noEmit -p visualizer/tsconfig.json`). It passed at 0 errors. ✅
 - [x] **`src/core/cli.ts` deleted** — an unwired dev entry (no bin, no importer, no test).
   Its standalone-preset exports stay used by the preset unit tests. ✅
-- [x] **"`default`/`speckit` reject `status: descoped`" — verified a non-issue.** A configured
-  ztrack project validates with the installed generic preset (`resolveTrackerValidation`),
-  which supports `descoped`; the standalone-preset fallback (`server.ts:89`) only fires for
-  no-config markdown viewing, where a `descoped` AC doesn't arise. A preset/data mismatch
-  there correctly errors. No change. ✅
+- [x] **"`default`/`speckit` reject a `descoped` AC" — resolved, then superseded by removal.**
+  At the time (the 0.5.x generic-preset era) the installed preset accepted a `descoped` AC
+  status, so this was verified a non-issue. The status was later removed outright — today no
+  shipped preset has `descoped` in its AC vocabulary (`pending|passed|failed`); narrowing scope
+  is an ordinary AC edit through the sanctioned write path (see
+  `plugins/ztrack-gate/README.md` § Escapes). ✅
 - [x] **In-loop agent reaching `loop stop` / `waiver sign` — settled as a Non-Goal** (see
   below): we do not build containment; that's the harness's permission layer. The cooperative
   boundary (R5) is the intended design, not a gap. ✅

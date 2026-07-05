@@ -443,7 +443,8 @@ ztrack waiver migrate <issue>|--all        # rewrite legacy broad rows into per-
 ```
 
 A waiver is stored in the issue body's `## Waivers` section, one row per waiver, pinned to the
-single occurrence it accepts (`sign` writes the `ac:`/`ref:` pins for you):
+single occurrence it accepts (`sign` writes the row for you — `ref:` is auto-captured; `ac:`
+appears when you pass `--ac`):
 
 ```
 - code: evidence_commit_not_found ac: dev/01 ref: cafebabe… reason: repo predates the import by: Jane Doe (jane@co.com)

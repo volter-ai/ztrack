@@ -140,7 +140,7 @@ describe('docs consistency', () => {
   // Same idea as the twin-dependency phrase pin above: semantic pins on load-bearing claims.
   test('no doc instructs the phantom `status: descoped` escape', () => {
     const hits: string[] = [];
-    for (const doc of DOCS.concat('plugins/ztrack-gate/README.md', '.claude/skills/ztrack/SKILL.md', 'TESTING.md')) {
+    for (const doc of DOCS.concat('plugins/ztrack-gate/README.md', '.claude/skills/ztrack/SKILL.md', 'TESTING.md', 'ROADMAP.md')) {
       const text = readFileSync(join(REPO, doc), 'utf8');
       if (text.includes('status: descoped')) hits.push(doc);
     }
@@ -170,9 +170,11 @@ describe('docs consistency', () => {
   test('the GUIDE frontier paragraph and API.md TrackerCheckOptions know about --source (0.47)', () => {
     const missing: string[] = [];
     // GUIDE enumerates what composes with --actionable/--blocked and what's rejected; since
-    // ZTB-33 the rejection list includes --source, so the enumeration must name it nearby.
+    // ZTB-33 the rejection list includes --source. Pin the literal rejection clause (round-2
+    // review: a windowed regex matched an unrelated earlier --actionable mention with ~200
+    // chars of slack — brittle both ways; the exact clause is what the doc must keep saying).
     const guide = readFileSync(join(REPO, 'docs/GUIDE.md'), 'utf8');
-    if (!/--actionable[\s\S]{0,1200}--source/.test(guide)) missing.push('docs/GUIDE.md frontier section never mentions --source');
+    if (!guide.includes('reject `--parent` and `--source`')) missing.push('docs/GUIDE.md frontier paragraph lost the `--parent`/`--source` rejection clause');
     const api = readFileSync(join(REPO, 'docs/API.md'), 'utf8');
     if (!/TrackerCheckOptions[^\n]*\bsources\?/.test(api)) missing.push('docs/API.md TrackerCheckOptions listing omits sources?');
     expect(missing).toEqual([]);
