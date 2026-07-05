@@ -52,6 +52,21 @@ function normalizeHeadingTitle(title: string): string {
 function isAcHeadingTitle(title: string): boolean {
   return normalizeHeadingTitle(title) === 'acceptance criteria';
 }
+// A bare `Waivers` heading (any level, case-insensitive, whitespace-normalized) is ALSO reserved
+// document-source structure (documentSource.ts/engine.ts's `parseWaivers` reads it) — never an
+// issue, never id-bearing. Note an id-bearing heading like `## ZT-9 Waivers` normalizes to
+// `'zt-9 waivers'` !== `'waivers'`, so it is NOT reserved and still parses as an existing issue id
+// (that's the already-corrupted-file case this work order deliberately does not repair).
+function isWaiversHeadingTitle(title: string): boolean {
+  return normalizeHeadingTitle(title) === 'waivers';
+}
+// Combined "is this reserved structure — never an issue, never minted into" predicate. Used at
+// every "is this reserved structure" site EXCEPT the AC-specific ones (acChildIndex, the in-place
+// AC minting scan, the relocated-AC insertion target) — a Waivers section gets no analogous
+// scanning; its rows are plain bullets, not checkboxes, and must survive untouched.
+function isReservedHeadingTitle(title: string): boolean {
+  return isAcHeadingTitle(title) || isWaiversHeadingTitle(title);
+}
 
 // Mirrors documentParser.ts's `parseHeaderBlock` exactly (same abort-on-first-non-match
 // semantics): does the file's preamble open with a valid `Title:`/`Status:`/`Assignee:` block?
@@ -172,7 +187,7 @@ export function existingIdsInFile(text: string): string[] {
   const doc = parseMarkdownDocument(text);
   const ids: string[] = [];
   for (const section of doc.sections) {
-    if (isAcHeadingTitle(section.title)) continue;
+    if (isReservedHeadingTitle(section.title)) continue;
     const m = ID_HEADING_RE.exec(section.title);
     if (m) ids.push(m[1]!);
   }
@@ -438,7 +453,7 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
   // seeds the SAME allocator with those before calling in). Also classify every section.
   const idOf = new Map<number, string>(); // section index -> existing id (only for id-bearing ones)
   for (const [index, section] of doc.sections.entries()) {
-    if (isAcHeadingTitle(section.title)) continue;
+    if (isReservedHeadingTitle(section.title)) continue;
     const m = ID_HEADING_RE.exec(section.title);
     if (m) { idOf.set(index, m[1]!); allocator.note(m[1]!); }
   }
@@ -451,14 +466,14 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
   function nearestSubjectAncestorId(index: number): string | null {
     let p = doc.sections[index]!.parentIndex;
     while (p !== null) {
-      if (!isAcHeadingTitle(doc.sections[p]!.title)) return idOf.get(p) ?? null;
+      if (!isReservedHeadingTitle(doc.sections[p]!.title)) return idOf.get(p) ?? null;
       p = doc.sections[p]!.parentIndex;
     }
     return null;
   }
 
   for (const [index, section] of doc.sections.entries()) {
-    if (isAcHeadingTitle(section.title)) continue; // handled as part of its parent, below
+    if (isReservedHeadingTitle(section.title)) continue; // reserved structure — AC handled as part of its parent, below; Waivers is never planned as an issue at all
 
     const existingId = idOf.get(index);
     const id = existingId ?? allocator.next(prefix);

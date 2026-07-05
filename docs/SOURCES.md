@@ -280,6 +280,7 @@ files imported together.
 | A heading with no id token | A **new issue** — an id token is inserted into the heading; nesting (heading depth) becomes the parent/child link, exactly the grammar above. |
 | `- [ ]` / `* [ ]` checkbox items under an issue, outside a recognized `Acceptance Criteria` section | Promoted into a canonical `## Acceptance Criteria` subsection, each gaining a minted `dev/NN v1` id. |
 | `TODO:`-prefixed lines | Same as a checkbox item — a planned AC, text preserved verbatim after the minted id. |
+| A bare `Waivers` heading (any level) | Recognized document-source structure, same as `Acceptance Criteria` — never turned into an issue, and its waiver rows are left untouched. |
 | Prose paragraphs | Left exactly where they are — an issue's body. |
 | A headingless file (pure checklist, no headings at all) | Each **top-level** checkbox item promotes to its own issue (its text becomes the minted heading); that item's **nested** checkboxes become its Acceptance Criteria. |
 | Content the importer can't map (e.g. preamble prose with no `Title:` header to attach it to) | **Left in place, untouched, and named in the run's report** — never guessed, never dropped. |

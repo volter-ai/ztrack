@@ -2,6 +2,26 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.48.1
+
+`ztrack import` no longer corrupts document sources that carry waivers.
+
+- **A bare `Waivers` heading is recognized document-source structure, same as
+  `Acceptance Criteria`.** Import used to treat `### Waivers` as a freeform heading and mint an
+  issue id into it (`### Waivers` → `### ZT-2 Waivers`), creating a junk child issue titled
+  "Waivers" and excising the waiver rows from the parent issue's body — so the parent's waiver
+  died and the finding it acknowledged resurfaced as an error on the next `check`. Every
+  document-source user who had ever waived was corrupted on their next import over that file.
+  Now a bare `Waivers` heading (any level, any case) is reserved: never planned as an issue,
+  never id-minted, and its waiver rows are never scanned or edited — importing a materialized
+  file with waivers is a byte-identical no-op. An id-bearing heading like `## ZT-9 Waivers`
+  still parses as an issue (already-corrupted files are not silently rewritten). A minted
+  `Acceptance Criteria` block for loose checkboxes lands before an existing `Waivers` section,
+  inside the issue's own content span.
+- **Docs.** SOURCES.md's grammar-mapping table, the README, and the Guide state that
+  `Acceptance Criteria` and `Waivers` sections are recognized structure that import never turns
+  into issues.
+
 ## 0.48.0
 
 Honest `check` output: one verdict per invocation, and scoped checks name the real cause.
