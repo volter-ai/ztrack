@@ -54,7 +54,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud)\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -138,8 +138,10 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
 
   const issues = target?.kind === 'issues' ? target.ids : undefined;
   let inputRoot: unknown;
+  let inputAbs: string | undefined;
   if (inputPath) {
     const abs = isAbsolute(inputPath) ? inputPath : resolve(projectRoot, inputPath);
+    inputAbs = abs;
     let raw: string;
     try {
       if (statSync(abs).size > 128 * 1024 * 1024) throw new Error(`ztrack check: --input file ${abs} is too large (>128 MiB)`);
@@ -147,9 +149,30 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     } catch (e) { throw e instanceof Error && e.message.startsWith('ztrack check:') ? e : new Error(`ztrack check: cannot read --input file ${abs}`); }
     try { inputRoot = JSON.parse(raw); } catch (e) { throw new Error(`ztrack check: --input ${abs} is not valid JSON (${(e as Error).message}). It should be a validated root written by 'ztrack export'.`); }
   }
+  // ZTB-36: `target` is forced null above on the --input path (see the "Resolve the unified
+  // TARGET" comment), so `issues` (derived from target) is always undefined here for --input —
+  // `issuesFromFlag` is the parsed --issues/--case value itself (both spellings share one parse
+  // site at the top of this function); threading it into checkTrackerRoot is what makes scoping
+  // actually reach the root instead of being silently dropped.
   const result: TrackerCheckResult = inputPath
-    ? await checkTrackerRoot(inputRoot, { ...commonOpts, ...(issues ? { issues } : {}) })
+    ? await checkTrackerRoot(inputRoot, { ...commonOpts, ...(issuesFromFlag ? { issues: issuesFromFlag } : {}) })
     : await checkTracker({ ...commonOpts, ...(issues ? { issues } : {}), failOnWarning });
+
+  // ZTB-36: --input's own missing-id check. `checkTrackerRoot` sets `result.loadedIssueIds` from
+  // the ids it could extract straight off the root, regardless of whether validation then passed
+  // (same contract as checkTracker's field of the same name below) — unset only when the root is
+  // too shape-broken to have a usable `issues` array, in which case `checkRoot`'s own shape
+  // findings already fail the check loud, so this is skipped entirely rather than risk a
+  // misleading not-found report papering over the real shape error. The message names the
+  // --input file, not "the tracker" (there is no tracker store here) and does not point at
+  // `ztrack issue list`, which describes the live backend, not a materialized root.
+  if (inputPath && issuesFromFlag && result.loadedIssueIds) {
+    const present = new Set(result.loadedIssueIds);
+    const missing = issuesFromFlag.filter((id) => !present.has(id));
+    if (missing.length) {
+      throw new Error(`ztrack check: issue(s) not found in the --input root ${inputAbs}: ${missing.join(', ')}. The root is what 'ztrack export' wrote — re-export it, or fix the id. No verdict was produced.`);
+    }
+  }
 
   // ISSUE target not in the tracker: error rather than silently passing on an empty filter.
   // ZTB-35 dev/67: prefer `loadedIssueIds` (set by checkTracker — the ids the LOADER actually
@@ -157,8 +180,10 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   // validation fails before the root parses (e.g. a shape-invalid issue) — that used to make an
   // issue that genuinely exists but fails schema validation look "not found" and discard the real
   // `wellformed_shape` finding. checkTracker is the only producer that reaches this block with
-  // target ids (`--input` forces `target` to null upstream, so this never runs on that path);
-  // the `export` fallback is purely defensive for any TrackerCheckResult lacking loadedIssueIds.
+  // target ids — `--input` forces `target` to null upstream, so this never runs on that path; it
+  // has its own missing-id check above instead (checkTrackerRoot's `loadedIssueIds`, read off the
+  // root rather than a backend scan). The `export` fallback here is purely defensive for any
+  // TrackerCheckResult lacking loadedIssueIds.
   if (target?.kind === 'issues') {
     const present = new Set(result.loadedIssueIds ?? (result.export?.issues ?? []).map((i) => i.id));
     const missing = target.ids.filter((id) => !present.has(id));

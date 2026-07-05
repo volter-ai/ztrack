@@ -22,11 +22,12 @@ const result = await checkTracker({ projectRoot: process.cwd() });
 // result.findings       → [{ code, severity, message, issueId?, acId?, origin?, ... }]
 // result.export         → the validated root ({ issues: [...] }) — this IS the snapshot
 // result.examinedIssues → set ONLY when validation failed before `export` could be populated
-// result.loadedIssueIds → the ids the loader found and handed to validation, whether or not
-//                         validation then passed — set only by checkTracker (the live-backend
-//                         path); lets a caller tell "not in the backend" from "loaded but
-//                         schema-invalid" without guessing from `export` (which is unset on a
-//                         shape failure)
+// result.loadedIssueIds → the ids found and handed to validation, whether or not validation then
+//                         passed — set by checkTracker (ids the loader found in the live backend)
+//                         AND by checkTrackerRoot (ids read straight off an --input/exported
+//                         root's `issues` array; ZTB-36); lets a caller tell "not present" from
+//                         "loaded but schema-invalid" without guessing from `export` (which is
+//                         unset on a shape failure)
 
 if (!result.ok) {
   for (const f of result.findings) console.log(`${f.severity} ${f.code}: ${f.message}`);
@@ -60,7 +61,11 @@ for an editor integration, or open the exact location in a PR comment — withou
   concern, applied by `ztrack check --fail-on-warning` on top of whatever `checkTracker` returns;
   a programmatic caller that wants the same behavior re-derives it from `result.findings`.
 
-To validate an already-exported root (no disk read), use `checkTrackerRoot(root, options)`.
+To validate an already-exported root (no disk read), use `checkTrackerRoot(root, options)`. Since
+ZTB-36 it honors `options.issues` too — scoping validation to those ids *within* the root (a
+requested id absent from the root is reported via `loadedIssueIds`, not silently dropped) — and
+sets `result.loadedIssueIds` from the ids it can read off `root.issues`, same contract as
+`checkTracker` above.
 
 > **Driving an agent to completion from code.** There is no programmatic loop primitive — the ralph
 > loop (`ztrack loop` + the Stop hook) is a CLI/harness construct (see the [Guide](GUIDE.md#3-usage-drive-an-agent-to-green)).
