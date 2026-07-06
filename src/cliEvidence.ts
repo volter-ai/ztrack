@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { exportInTotoStatements } from './attest.ts';
 import { optionValue } from './cliArgs.ts';
+import { positionalArgs } from './cliRegistry.ts';
 import { exportTrackerRoot } from './export.ts';
 import { generateSigningKey, signStatement, verifyEnvelope, type DsseEnvelope } from './dsse.ts';
 import { evidenceDir, evidenceStore, projectRootFrom } from './config.ts';
@@ -19,7 +20,7 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
     // resolves and the gate accepts it. (The legacy `--blob` content-addressed store was removed
     // once it proved write-only — no `ztrack check` rule ever read a blob back; a stray `--blob`
     // now simply falls through to this path, which is the form the gate actually verifies.)
-    const filePath = optionValue(args, '--file') || args.slice(2).find((a) => !a.startsWith('--'));
+    const filePath = optionValue(args, '--file') || positionalArgs(args)[0];
     if (!filePath) throw new Error('usage: ztrack evidence add <file> [--name <name>]   (copies it into the evidence dir; cite the printed `image=<path>` in an `ac patch`, then commit it)');
     const root = projectRootFrom();
     const abs = isAbsolute(filePath) ? filePath : resolve(root, filePath);

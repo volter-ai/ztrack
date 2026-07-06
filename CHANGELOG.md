@@ -2,6 +2,19 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.49.1
+
+- **`evidence add` can no longer ingest a flag's value as the file.** The positional-file
+  fallback took the first non-flag token, so `evidence add --name custom.png real.png`
+  ingested **custom.png** (the name you chose!) instead of real.png — silently storing the
+  wrong bytes when a file by that name existed — and `evidence add --name custom.png` with
+  no file at all "succeeded" the same way. The fallback now uses `positionalArgs`, a new
+  export of the 0.49.0 flag registry that shares its exact token walk with the dispatch
+  validator (same `=` handling, same value consumption), so the two can never disagree
+  about which token is a value. The no-file form now fails loud with the usage text. All
+  working argument orders (`<file> --name <n>`, `--file`, `--name=<n>`) are pinned
+  byte-identical. 12 new tests (912 → 924).
+
 ## 0.49.0
 
 The flag surface becomes a grammar: a typo'd flag on ANY command now errors loud with a

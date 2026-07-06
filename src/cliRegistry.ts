@@ -193,6 +193,50 @@ export function allRegisteredFlagTokens(): Set<string> {
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 
+type WalkedToken =
+  | { kind: 'positional'; token: string }
+  | { kind: 'flag'; token: string; known: FlagSpec | undefined };
+
+/** The one walk both `rejectUnknownFlags` and `positionalArgs` consume, so the two can never
+ *  disagree about which token is a value. Per token (after `spec.path` has been sliced off):
+ *  HELP_TOKENS are dropped; a `--token` is classified 'flag' (known or not) and, if it's a KNOWN
+ *  value-taking flag with NO `=` form, unconditionally consumes (skips) the very next token as its
+ *  value — even one that itself looks like a flag, exactly like markdownBackend's flagVal (and
+ *  optionValue) already do at runtime, so this walk must agree with real parsers or it would
+ *  misread an invocation that works today; everything else is classified 'positional'. */
+function walkArgs(spec: CommandSpec, remaining: string[]): WalkedToken[] {
+  const byToken = new Map<string, FlagSpec>();
+  for (const f of spec.flags) { byToken.set(f.name, f); for (const a of f.aliases ?? []) byToken.set(a, f); }
+
+  const out: WalkedToken[] = [];
+  for (let i = 0; i < remaining.length; i++) {
+    const token = remaining[i]!;
+    if (HELP_TOKENS.has(token)) continue;
+    if (!token.startsWith('--')) { out.push({ kind: 'positional', token }); continue; }
+    const eq = token.indexOf('=');
+    const base = eq >= 0 ? token.slice(0, eq) : token;
+    const known = byToken.get(base);
+    out.push({ kind: 'flag', token, known });
+    if (known && known.takesValue && eq < 0) i += 1;
+  }
+  return out;
+}
+
+/** The POSITIONAL tokens of a registered command invocation — every token that is neither a flag
+ *  nor a recognized value-taking flag's consumed value. Walks exactly like `rejectUnknownFlags`
+ *  (same `=` handling, same unconditional consume-next for a recognized value flag in space form),
+ *  via the shared `walkArgs`, so the two can never disagree about which token is a value. Returns
+ *  `[]` for an unregistered command path. `args` is the full command vector (e.g.
+ *  `['evidence','add',...]`) — this resolves the command's own spec and slices its path off. */
+export function positionalArgs(args: string[]): string[] {
+  const spec = commandSpecFor(args);
+  if (!spec) return [];
+  const remaining = args.slice(spec.path.length);
+  return walkArgs(spec, remaining)
+    .filter((t): t is { kind: 'positional'; token: string } => t.kind === 'positional')
+    .map((t) => t.token);
+}
+
 /** Dispatch-time unknown-flag validation. Called from cli.ts's main() AFTER the help/version/
  *  completions interceptions (those must stay config-free and never reach here) and BEFORE
  *  `handleInitCommand`, so it covers every real command. Never rejects an invocation that works
@@ -204,27 +248,9 @@ export function rejectUnknownFlags(args: string[]): void {
   const spec = commandSpecFor(args);
   if (!spec) return; // unregistered command — not this validator's job (ghost/stub/unknown verb)
   const remaining = args.slice(spec.path.length);
-  const byToken = new Map<string, FlagSpec>();
-  for (const f of spec.flags) { byToken.set(f.name, f); for (const a of f.aliases ?? []) byToken.set(a, f); }
-
-  const unknown: string[] = [];
-  for (let i = 0; i < remaining.length; i++) {
-    const token = remaining[i]!;
-    if (HELP_TOKENS.has(token)) continue;
-    if (!token.startsWith('--')) continue; // positional — not this validator's concern
-    const eq = token.indexOf('=');
-    const base = eq >= 0 ? token.slice(0, eq) : token;
-    const known = byToken.get(base);
-    if (!known) { unknown.push(token); continue; }
-    // Load-bearing: a recognized value-taking flag with NO `=` form consumes the very next token as
-    // its value, unconditionally — even one that itself looks like a flag. This is exactly what
-    // markdownBackend's flagVal (and optionValue) already do at runtime (verified:
-    // `issue create --title --state` mints title "--state"), so the validator must agree or it
-    // would reject an invocation that works today. (Accepted, documented limitation: this also
-    // means `--issues --wat` hides `--wat` in value position — the disease being cured here is
-    // silent swallowing of flags in FLAG position, not this pre-existing value-position quirk.)
-    if (known.takesValue && eq < 0) i += 1;
-  }
+  const unknown = walkArgs(spec, remaining)
+    .filter((t): t is { kind: 'flag'; token: string; known: FlagSpec | undefined } => t.kind === 'flag' && !t.known)
+    .map((t) => t.token);
   if (!unknown.length) return;
 
   const label = `ztrack ${spec.path.join(' ')}`;
