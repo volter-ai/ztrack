@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Deterministic CI coverage for the ztrack loop — everything in demos/loop-e2e.sh that does
-# NOT need a live agent. It drives the real Stop hook (plugins/ztrack-gate/hooks/stop-loop.sh)
+# NOT need a live agent. It drives the real Stop hook (plugins/ztrack/hooks/stop-loop.sh)
 # with crafted session_id payloads and asserts on its exit codes, and exercises the real
 # `ztrack waiver` CLI round-trip (the eslint-`disable`-style per-finding waiver). No model
 # calls, so it runs in CI. Uses the `default` preset.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-hook="$repo_root/plugins/ztrack-gate/hooks/stop-loop.sh"
+hook="$repo_root/plugins/ztrack/hooks/stop-loop.sh"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 tarball="$(cd "$repo_root" && npm pack --pack-destination "$tmp" --silent)"
 

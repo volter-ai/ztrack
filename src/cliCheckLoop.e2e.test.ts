@@ -206,7 +206,7 @@ describe('loop target drives the Stop-hook gate', () => {
     ztrack(['loop', 'stop']);
   }, 30_000);
   // ZTB-11: the gate is root-scoped, not agent-scoped — there's no reliable agent identity at
-  // arm time (see plugins/ztrack-gate/hooks/stop-loop.sh), so arming a DIFFERENT target while
+  // arm time (see plugins/ztrack/hooks/stop-loop.sh), so arming a DIFFERENT target while
   // one is already armed refuses rather than silently stealing the gate out from under whoever
   // armed it (including a subagent's own loop). Re-arming the SAME target (a refresh — new
   // --max, runtime sweep, cap-breadcrumb clear) still succeeds.

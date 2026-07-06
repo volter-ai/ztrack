@@ -1,4 +1,4 @@
-// ZTB-29 dev/03 — best-effort detection of whether the ztrack-gate Stop/SubagentStop hooks can
+// ZTB-29 dev/03 — best-effort detection of whether the ztrack plugin's Stop/SubagentStop hooks can
 // actually fire for a loop this process is about to arm. `ztrack loop start` cannot see every
 // harness that might wire the hooks itself (a different agent runtime, hand-rolled tooling), so
 // this is a HEADS-UP, never a refusal: a negative result WARNS at arm time (README install
@@ -12,20 +12,23 @@
 //   3. <project>/.claude/settings.local.json    — project-scope settings (gitignored)
 //   4. ~/.claude/plugins/installed_plugins.json — the plugin install manifest Claude Code writes
 //
-// From (1)-(3): either `enabledPlugins["ztrack-gate@<marketplace>"]` is present and not explicitly
+// From (1)-(3): either `enabledPlugins["ztrack@<marketplace>"]` is present and not explicitly
 // `false`, or the `hooks.Stop`/`hooks.SubagentStop` arrays mention `stop-loop.sh` in a command —
 // covering both the plugin install route and the manual-wiring route the Guide documents. Stop
 // and SubagentStop can be split across scopes (Claude Code merges settings across files), so
 // "wired" only requires EACH event to appear in at least one of the readable files, not both in
 // the same one.
-// From (4): a `ztrack-gate@...` key recorded as installed, regardless of enabledPlugins — belt
+// From (4): a `ztrack@...` key recorded as installed, regardless of enabledPlugins — belt
 // and suspenders for a plugin installed but whose enabledPlugins entry is missing or stale.
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 const HOOK_NEEDLE = 'stop-loop.sh';
-const PLUGIN_KEY = /^ztrack-gate@/;
+// `ztrack-gate` is the plugin's pre-rename name (≤ plugin 0.2.0): an install made from the old
+// marketplace entry keeps that key in settings/manifests and its hooks keep firing, so it must
+// keep counting as wired — dropping it would false-warn every existing install after an upgrade.
+const PLUGIN_KEY = /^(ztrack|ztrack-gate)@/;
 
 function readJsonSafe(path: string): unknown {
   try {
@@ -72,7 +75,7 @@ export interface GateWiringResult {
   signals: string[]; // human-readable trail of what matched, for debugging; not shown by default
 }
 
-/** Best-effort: can the ztrack-gate Stop/SubagentStop hooks actually fire for a loop armed in
+/** Best-effort: can the ztrack plugin's Stop/SubagentStop hooks actually fire for a loop armed in
  *  `projectRoot` right now? Never throws — every read is defensive (see file header). A `false`
  *  result is NOT proof the gate is absent (another harness may wire it invisibly to this check),
  *  so callers must WARN, never refuse, on a negative result (ZTB-29 dev/03).
@@ -97,7 +100,7 @@ export function detectGateWiring(projectRoot: string, opts: { home?: string } = 
     for (const path of settingsPaths) {
       const data = readJsonSafe(path);
       if (data === null) continue;
-      if (pluginEnabled(data)) { pluginSeen = true; signals.push(`ztrack-gate enabled in ${path}`); }
+      if (pluginEnabled(data)) { pluginSeen = true; signals.push(`ztrack plugin enabled in ${path}`); }
       if (hookMentionsScript(data, 'Stop')) { stopWired = true; signals.push(`Stop hook wired in ${path}`); }
       if (hookMentionsScript(data, 'SubagentStop')) { subagentStopWired = true; signals.push(`SubagentStop hook wired in ${path}`); }
     }
@@ -105,7 +108,7 @@ export function detectGateWiring(projectRoot: string, opts: { home?: string } = 
     const manifest = readJsonSafe(manifestPath);
     if (manifest !== null && manifestHasPlugin(manifest)) {
       pluginSeen = true;
-      signals.push(`ztrack-gate recorded installed in ${manifestPath}`);
+      signals.push(`ztrack plugin recorded installed in ${manifestPath}`);
     }
     return { wired: pluginSeen || (stopWired && subagentStopWired), signals };
   } catch {

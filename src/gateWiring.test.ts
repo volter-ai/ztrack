@@ -29,27 +29,33 @@ describe('detectGateWiring', () => {
     expect(detect(projectRoot).wired).toBe(false);
   });
 
-  test('~/.claude/settings.json enabledPlugins["ztrack-gate@..."]: true -> wired', () => {
+  test('~/.claude/settings.json enabledPlugins["ztrack@..."]: true -> wired', () => {
+    mkdirSync(join(fakeHome, '.claude'), { recursive: true });
+    writeFileSync(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'ztrack@ztrack': true } }));
+    expect(detect(projectRoot).wired).toBe(true);
+  });
+
+  test('the legacy plugin key "ztrack-gate@..." (pre-rename installs) still counts as wired', () => {
     mkdirSync(join(fakeHome, '.claude'), { recursive: true });
     writeFileSync(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'ztrack-gate@ztrack': true } }));
     expect(detect(projectRoot).wired).toBe(true);
   });
 
-  test('enabledPlugins["ztrack-gate@..."]: false -> NOT wired (explicitly disabled)', () => {
+  test('enabledPlugins["ztrack@..."]: false -> NOT wired (explicitly disabled)', () => {
     mkdirSync(join(fakeHome, '.claude'), { recursive: true });
-    writeFileSync(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'ztrack-gate@ztrack': false } }));
+    writeFileSync(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'ztrack@ztrack': false } }));
     expect(detect(projectRoot).wired).toBe(false);
   });
 
   test('project .claude/settings.json with the plugin enabled -> wired', () => {
     mkdirSync(join(projectRoot, '.claude'), { recursive: true });
-    writeFileSync(join(projectRoot, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'ztrack-gate@some-marketplace': true } }));
+    writeFileSync(join(projectRoot, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'ztrack@some-marketplace': true } }));
     expect(detect(projectRoot).wired).toBe(true);
   });
 
   test('project .claude/settings.local.json with the plugin enabled -> wired', () => {
     mkdirSync(join(projectRoot, '.claude'), { recursive: true });
-    writeFileSync(join(projectRoot, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'ztrack-gate@ztrack': true } }));
+    writeFileSync(join(projectRoot, '.claude', 'settings.local.json'), JSON.stringify({ enabledPlugins: { 'ztrack@ztrack': true } }));
     expect(detect(projectRoot).wired).toBe(true);
   });
 
@@ -57,8 +63,8 @@ describe('detectGateWiring', () => {
     mkdirSync(join(projectRoot, '.claude'), { recursive: true });
     writeFileSync(join(projectRoot, '.claude', 'settings.json'), JSON.stringify({
       hooks: {
-        Stop: [{ hooks: [{ type: 'command', command: 'bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh' }] }],
-        SubagentStop: [{ hooks: [{ type: 'command', command: 'bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh' }] }],
+        Stop: [{ hooks: [{ type: 'command', command: 'bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh' }] }],
+        SubagentStop: [{ hooks: [{ type: 'command', command: 'bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh' }] }],
       },
     }));
     expect(detect(projectRoot).wired).toBe(true);
@@ -95,11 +101,11 @@ describe('detectGateWiring', () => {
     expect(detect(projectRoot).wired).toBe(false);
   });
 
-  test('~/.claude/plugins/installed_plugins.json records ztrack-gate -> wired even with no settings.json at all', () => {
+  test('~/.claude/plugins/installed_plugins.json records the plugin -> wired even with no settings.json at all', () => {
     mkdirSync(join(fakeHome, '.claude', 'plugins'), { recursive: true });
     writeFileSync(join(fakeHome, '.claude', 'plugins', 'installed_plugins.json'), JSON.stringify({
       version: 2,
-      plugins: { 'ztrack-gate@ztrack': [{ scope: 'user', installPath: '/x', version: '1.0.0' }] },
+      plugins: { 'ztrack@ztrack': [{ scope: 'user', installPath: '/x', version: '1.0.0' }] },
     }));
     expect(detect(projectRoot).wired).toBe(true);
   });
@@ -120,10 +126,10 @@ describe('detectGateWiring', () => {
     expect(detect(projectRoot).wired).toBe(false);
   });
 
-  test('a plugin key that only partially matches "ztrack-gate" is not confused for it', () => {
+  test('a plugin key that only partially matches "ztrack"/"ztrack-gate" is not confused for it', () => {
     mkdirSync(join(fakeHome, '.claude'), { recursive: true });
-    writeFileSync(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'not-ztrack-gate@x': true, 'ztrack-gate-clone@x': false } }));
-    // 'ztrack-gate-clone@x' does not match the anchored /^ztrack-gate@/ prefix.
+    writeFileSync(join(fakeHome, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'not-ztrack@x': true, 'ztrack-gate-clone@x': true, 'ztrack-mcp@x': true } }));
+    // None match the anchored /^(ztrack|ztrack-gate)@/ prefix — the `@` must follow the exact name.
     expect(detect(projectRoot).wired).toBe(false);
   });
 });

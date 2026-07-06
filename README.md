@@ -92,7 +92,7 @@ plugin once; it's **dormant unless a loop is armed**, so it's safe to leave enab
 
 ```bash
 /plugin marketplace add volter-ai/ztrack     # in Claude Code
-/plugin install ztrack-gate@ztrack
+/plugin install ztrack@ztrack
 ```
 
 Not using Claude Code plugins? Wire the Stop and SubagentStop hooks yourself — see the
@@ -186,7 +186,7 @@ Code; non-plugin wiring is in the [Guide](docs/GUIDE.md#3-usage-drive-an-agent-t
 
 ```bash
 /plugin marketplace add volter-ai/ztrack
-/plugin install ztrack-gate@ztrack
+/plugin install ztrack@ztrack
 ```
 
 **2. Arm a loop** on the issue you're working — two modes, same `start`:

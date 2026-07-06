@@ -100,7 +100,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   // Both end on the same step 4: wiring a coding agent is the recommended flow (README
   // § Agent workflows) and was previously absent here — a user who stopped at init's output
   // never learned the gate/skill/MCP existed.
-  const wireAgent = stackedCommand(4, 'Wire a coding agent (optional)', '/plugin marketplace add volter-ai/ztrack', `Then \`/plugin install ztrack-gate@ztrack\` (Claude Code): a Stop-hook gate that holds the agent's turn until \`${command} loop start <issue-id> --until done\` goes genuinely green, plus a skill teaching it the tracker workflow. MCP alternative: \`claude mcp add ztrack -- npx ztrack mcp serve\`.`);
+  const wireAgent = stackedCommand(4, 'Wire a coding agent (optional)', '/plugin marketplace add volter-ai/ztrack', `Then \`/plugin install ztrack@ztrack\` (Claude Code): a Stop-hook gate that holds the agent's turn until \`${command} loop start <issue-id> --until done\` goes genuinely green, plus a skill teaching it the tracker workflow. MCP alternative: \`claude mcp add ztrack -- npx ztrack mcp serve\`.`);
   const nextSteps = sync
     ? [
         pulled

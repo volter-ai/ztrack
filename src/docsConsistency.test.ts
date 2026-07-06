@@ -140,7 +140,7 @@ describe('docs consistency', () => {
   // Same idea as the twin-dependency phrase pin above: semantic pins on load-bearing claims.
   test('no doc instructs the phantom `status: descoped` escape', () => {
     const hits: string[] = [];
-    for (const doc of DOCS.concat('plugins/ztrack-gate/README.md', '.claude/skills/ztrack/SKILL.md', 'plugins/ztrack-gate/skills/ztrack/SKILL.md', 'TESTING.md', 'ROADMAP.md')) {
+    for (const doc of DOCS.concat('plugins/ztrack/README.md', '.claude/skills/ztrack/SKILL.md', 'plugins/ztrack/skills/ztrack/SKILL.md', 'TESTING.md', 'ROADMAP.md')) {
       const text = readFileSync(join(REPO, doc), 'utf8');
       if (text.includes('status: descoped')) hits.push(doc);
     }
@@ -152,7 +152,7 @@ describe('docs consistency', () => {
   // pin them byte-identical so an edit to one without the other fails here, not in a user's
   // session months later.
   test('the plugin skill and the repo-local skill are byte-identical (no drift)', () => {
-    const plugin = readFileSync(join(REPO, 'plugins/ztrack-gate/skills/ztrack/SKILL.md'), 'utf8');
+    const plugin = readFileSync(join(REPO, 'plugins/ztrack/skills/ztrack/SKILL.md'), 'utf8');
     const local = readFileSync(join(REPO, '.claude/skills/ztrack/SKILL.md'), 'utf8');
     expect(local).toBe(plugin);
   });
@@ -167,8 +167,8 @@ describe('docs consistency', () => {
       ['docs/GUIDE.md', ['--ref', 'waiver_overbroad']],
       ['README.md', ['--ref']],
       ['.claude/skills/ztrack/SKILL.md', ['--ref']],
-      ['plugins/ztrack-gate/skills/ztrack/SKILL.md', ['--ref']],
-      ['plugins/ztrack-gate/README.md', ['--code']],
+      ['plugins/ztrack/skills/ztrack/SKILL.md', ['--ref']],
+      ['plugins/ztrack/README.md', ['--code']],
     ];
     const missing: string[] = [];
     for (const [doc, needles] of mustMention) {

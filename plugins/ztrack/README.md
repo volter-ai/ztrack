@@ -1,4 +1,4 @@
-# ztrack-gate
+# The ztrack plugin
 
 A Claude Code plugin that runs an autonomy **loop** whose completion *oracle* is `ztrack`
 — a ralph loop that automatically knows how to prove success. While the loop is armed, no
@@ -6,13 +6,13 @@ turn ending in the armed root can end until the issue passes `ztrack check` — 
 agent's turn (`Stop`) or a subagent's (`SubagentStop`); it's an executable gate, not a
 phrase match or an LLM judging a transcript. Compose it with the
 [`ralph-loop`](https://github.com/anthropics/claude-code) plugin if you like: ralph
-re-prompts, ztrack-gate decides *done*.
+re-prompts, the ztrack gate decides *done*.
 
 ## Turn it on
 
 ```
 /plugin marketplace add volter-ai/ztrack
-/plugin install ztrack-gate@ztrack
+/plugin install ztrack@ztrack
 ```
 
 Enabling the plugin registers the Stop **and** SubagentStop hooks automatically (no
@@ -54,7 +54,7 @@ ztrack loop stop           # disarm (issue stays open/red; you just stop the loo
 ## Subagents
 
 A subagent's turn ends via `SubagentStop`, not `Stop` — a different hook event, with its own
-payload (`agent_id` alongside `session_id`). ztrack-gate registers the identical hook under
+payload (`agent_id` alongside `session_id`). The plugin registers the identical hook under
 both events (`hooks/hooks.json`), so **while a root is armed, no turn ending in that root ends
 until the target is green — the main agent's or any subagent's it delegates to.** Delegating
 to a subagent is not a way to bypass an armed loop: a subagent that returns "done" while the
@@ -163,7 +163,7 @@ Add this repo as a local-path marketplace, no publishing needed:
 
 ```
 /plugin marketplace add /path/to/volter-ztrack
-/plugin install ztrack-gate@ztrack
+/plugin install ztrack@ztrack
 ```
 
 The real end-to-end test (live headless agent + the loop + real ztrack) is

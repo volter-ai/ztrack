@@ -57,7 +57,7 @@ no gh auth, no live GitHub network call; a CI/publish gate.
 
 `loop-gate-ci.sh` is deterministic CI coverage for the ztrack loop — everything
 in `loop-e2e.sh` that does NOT need a live agent. It drives the real Stop hook
-(`plugins/ztrack-gate/hooks/stop-loop.sh`) with crafted session_id payloads and
+(`plugins/ztrack/hooks/stop-loop.sh`) with crafted session_id payloads and
 asserts on its exit codes, and exercises the real `ztrack waiver` CLI
 round-trip. No model calls, so it runs in CI; a CI gate.
 

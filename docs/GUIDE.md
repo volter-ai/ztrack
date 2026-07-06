@@ -282,7 +282,7 @@ acceptance criteria and passes `ready`'s own gates — a loop for writing a good
 closing one.
 
 `loop start` also does two arm-time honesty checks, warning (never refusing) rather than silently
-doing something surprising: it best-effort detects whether the ztrack-gate Stop/SubagentStop hooks
+doing something surprising: it best-effort detects whether the ztrack plugin's Stop/SubagentStop hooks
 are actually wired anywhere it can see (the plugin enabled, or the hooks wired by hand in Claude
 Code settings) and warns with the install pointer below if not — another harness may wire the hooks
 invisibly to this check, so a negative result only warns; and a BARE arm (no `--until`) on a target
@@ -302,20 +302,20 @@ it's safe to leave enabled globally:
 
 ```
 /plugin marketplace add volter-ai/ztrack
-/plugin install ztrack-gate@ztrack
+/plugin install ztrack@ztrack
 ```
 
 For a non-plugin / custom harness, wire the hook into both your `Stop` **and** `SubagentStop` hooks
 directly (the same script, registered under both events — it reads `hook_event_name` from
 neither; a subagent's turn ends via `SubagentStop`, never `Stop`, so skipping it leaves subagent
-turns ungated) — it ships at `node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh`
+turns ungated) — it ships at `node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh`
 (armed-only). In a Claude Code `settings.json`:
 
 ```json
 {
   "hooks": {
-    "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ],
-    "SubagentStop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack-gate/hooks/stop-loop.sh" } ] } ]
+    "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh" } ] } ],
+    "SubagentStop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh" } ] } ]
   }
 }
 ```

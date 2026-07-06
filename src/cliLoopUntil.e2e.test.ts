@@ -6,7 +6,7 @@
 // dev/02: the stage vocabulary is the active preset's status-enum declaration order (reused from
 // ZTB-23's activeStatusEnum); an unknown --until value fails loud at ARM TIME with a did-you-mean;
 // no loadable preset/enum fails the arm honestly; --until is rejected for a file/multi-issue target.
-// dev/03: `loop start` warns (never refuses) when it can't detect the ztrack-gate is wired —
+// dev/03: `loop start` warns (never refuses) when it can't detect the ztrack plugin's gate is wired —
 // isolate every test from the real developer $HOME so this is deterministic.
 // dev/04: a bare arm on an already-green target warns (still arms); --until on a green-at-
 // current-stage issue does NOT warn (that's the intended use).
@@ -42,7 +42,7 @@ function freshRepo(prefix: string): { root: string; sha: string } {
   return { root, sha };
 }
 
-// Isolate every test from the real developer $HOME (which may or may not have ztrack-gate
+// Isolate every test from the real developer $HOME (which may or may not have the ztrack plugin
 // installed for real) so the dev/03 gate-wiring warning is deterministic — see gateWiring.ts's
 // doc comment: a fresh subprocess reads $HOME at startup via os.homedir(), so this works even
 // though an in-process mutation of process.env.HOME would not (gateWiring.test.ts covers that).
@@ -190,7 +190,7 @@ describe('marker + status: --until is recorded, and bare arm stays byte-identica
 });
 
 describe('gate-wiring detection warns, never refuses (ZTB-29 dev/03)', () => {
-  test('an isolated $HOME with nothing installed -> `loop start` WARNS "ztrack-gate not detected" but still arms', () => {
+  test('an isolated $HOME with nothing installed -> `loop start` WARNS "ztrack plugin not detected" but still arms', () => {
     const { root } = freshRepo('ztrk-until-nowiring-');
     const { home, env } = isolatedHome();
     try {
@@ -198,12 +198,12 @@ describe('gate-wiring detection warns, never refuses (ZTB-29 dev/03)', () => {
       ztrackIn(root, ['issue', 'create', '--title', 'T', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body', '# T'], env);
       const r = ztrackIn(root, ['loop', 'start', 'ZT-1'], env);
       expect(r.code).toBe(0); // WARN, not refuse
-      expect(r.out).toMatch(/ztrack-gate not detected/);
+      expect(r.out).toMatch(/ztrack plugin not detected/);
       expect(r.out).toMatch(/loop armed/);
     } finally { cleanup(root, home); }
   });
 
-  test('a $HOME with the ztrack-gate plugin recorded enabled -> `loop start` prints NO gate-wiring warning', () => {
+  test('a $HOME with the ztrack plugin recorded enabled (under its legacy ztrack-gate key) -> `loop start` prints NO gate-wiring warning', () => {
     const { root } = freshRepo('ztrk-until-wired-');
     const { home, env } = isolatedHome();
     try {
@@ -213,7 +213,7 @@ describe('gate-wiring detection warns, never refuses (ZTB-29 dev/03)', () => {
       ztrackIn(root, ['issue', 'create', '--title', 'T', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body', '# T'], env);
       const r = ztrackIn(root, ['loop', 'start', 'ZT-1'], env);
       expect(r.code).toBe(0);
-      expect(r.out).not.toMatch(/ztrack-gate not detected/);
+      expect(r.out).not.toMatch(/ztrack plugin not detected/);
     } finally { cleanup(root, home); }
   });
 });

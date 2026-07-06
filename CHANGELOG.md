@@ -2,6 +2,36 @@
 
 All notable ztrack release changes are recorded here.
 
+## Unreleased
+
+- **The Claude Code plugin is renamed `ztrack-gate` → `ztrack`** (plugin 0.3.0): it now ships
+  the `ztrack` skill alongside the gate hooks, so the old name undersold it — install is
+  `/plugin install ztrack@ztrack`. Existing installs keep working: their hooks still fire from
+  the installed copy, and gate-wiring detection (`loop start`'s arm-time heads-up) recognizes
+  the legacy `ztrack-gate@…` plugin key alongside the new one, so a pre-rename install never
+  false-warns. Re-install under the new name at your leisure.
+- **The plugin ships the `ztrack` skill** (`plugins/ztrack/skills/ztrack/`): progressive-
+  disclosure knowledge — findings → fix commands, resolution verbs, evidence rules,
+  document-source authoring, loop etiquette, honest escapes — loaded the moment an agent
+  meets a tracker or an armed gate. The repo-local `.claude/skills/ztrack` copy is pinned
+  byte-identical in CI.
+- **`ztrack init` now ends with real onboarding**: adaptive next steps (linked vs local), a
+  "wire a coding agent" step naming the plugin + MCP alternative, and read-next pointers
+  (GUIDE, AGENT-PLAYBOOK). It also warns at init time when `ztrack` isn't resolvable as a
+  project dependency.
+- **A dead validation oracle is surfaced, not silent**: commands that succeed without the
+  preset (issue list/view, import, loop status, …) print a one-line stderr warning naming
+  exactly what's broken and the fix (missing entrypoint, a Node that can't type-strip —
+  diagnosed as too-old vs built-without-TypeScript — or ztrack not installed as a
+  dependency). The probe never executes preset code.
+- **Windows/CRLF document sources are supported end to end**: `import`, document-source
+  write-back, and `fmt` parse in LF space and restore the file's own line endings on write;
+  the old hard CRLF rejection is gone.
+- **`import` no longer mints issues from document *structure* headings**: a bare heading
+  with id-bearing issues nested under it is kept as structure (reported in the plan), while
+  a bare leaf heading still becomes a new issue — matching how `issue list` reads the same
+  file, now pinned by a cross-parser parity test.
+
 ## 1.0.0
 
 - **First stable major.** Code-identical to 0.51.0 — no behavior changes. What 1.0.0 declares

@@ -1,6 +1,6 @@
 ---
 name: ztrack
-description: Work with a ztrack tracker — make `ztrack check`/`loop` green HONESTLY, author issues into stored or document sources, and operate under an armed ztrack-gate Stop hook. Use when a Stop-hook gate holds your turn, when `ztrack check` is red, when marking an acceptance criterion done, when a repo has `.volter/tracker-config.json`, or when asked to file/groom/burn down a backlog.
+description: Work with a ztrack tracker — make `ztrack check`/`loop` green HONESTLY, author issues into stored or document sources, and operate under an armed ztrack-plugin Stop hook. Use when a Stop-hook gate holds your turn, when `ztrack check` is red, when marking an acceptance criterion done, when a repo has `.volter/tracker-config.json`, or when asked to file/groom/burn down a backlog.
 ---
 
 # ztrack: making the gate green honestly
@@ -20,7 +20,7 @@ APP-1  x error  passed_ac_missing_evidence
        ↳ Fix: ztrack ac patch APP-1 dev/01 --json '{"evidence":[{"id":"ev1","image":"<path>","commit":"<sha>","acVersion":1}]}'  (`ztrack ac --help` / `ztrack issue view APP-1` for the AC schema)
 ```
 
-## Operating under an armed gate (ztrack-gate)
+## Operating under an armed gate (the ztrack plugin)
 
 If your turn is being held with "ztrack loop (<issue>): not done yet", a loop is armed on that issue. What to know:
 

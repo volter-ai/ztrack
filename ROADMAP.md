@@ -33,7 +33,7 @@ keeps the core local-first and deterministic.
 
 Follow-on work after the 0.5.0 ship (the autonomy loop + escapes + waiver + descope).
 These make the honest paths work better and the loop tidier. The framing that governs
-them (see `plugins/ztrack-gate`): the loop is **cooperative, not a sandbox** — none of
+them (see `plugins/ztrack`): the loop is **cooperative, not a sandbox** — none of
 these tries to contain an adversarial agent (that's the harness's job). Checked off as
 each lands, with the proof that shows it.
 
@@ -56,7 +56,7 @@ each lands, with the proof that shows it.
   `actions/setup-node@v4 → v5` (runs on Node 24) in `publish.yml`. *Proof:* the workflow
   references v5; the next publish run carries no Node 20 deprecation annotation. ✅
 - [x] **R5 — Document the trust boundary and the descope scope.** Added a "Trust boundary —
-  cooperative, not a sandbox" section to `plugins/ztrack-gate/README.md` and noted that
+  cooperative, not a sandbox" section to `plugins/ztrack/README.md` and noted that
   descope counts toward done only on SDLC-gated presets (under the lighter `spec` preset the
   waiver is the durable escape). *Proof:* the doc sections exist. ✅
 - [x] **R6 — Ship.** Released **0.6.0**: changelog + version bump, tagged `v0.6.0`. *Proof:*
@@ -85,7 +85,7 @@ All follow-ups now closed:
   status, so this was verified a non-issue. The status was later removed outright — today no
   shipped preset has `descoped` in its AC vocabulary (`pending|passed|failed`, or speckit's `pending|done`); narrowing scope
   is an ordinary AC edit through the sanctioned write path (see
-  `plugins/ztrack-gate/README.md` § Escapes). ✅
+  `plugins/ztrack/README.md` § Escapes). ✅
 - [x] **In-loop agent reaching `loop stop` / `waiver sign` — settled as a Non-Goal** (see
   below): we do not build containment; that's the harness's permission layer. The cooperative
   boundary (R5) is the intended design, not a gap. ✅
@@ -114,5 +114,5 @@ isolate.)
   read / write) is the harness's permission and sandbox layer, not ztrack's. ztrack's
   guarantee is narrower and honest: while armed, a turn ends only when the issue actually
   passes `ztrack check`, and every sanctioned way out is recorded (a waiver in the tracker, a
-  capped breadcrumb in `loop status`), never silent. See `plugins/ztrack-gate` for the
+  capped breadcrumb in `loop status`), never silent. See `plugins/ztrack` for the
   trust-boundary writeup.

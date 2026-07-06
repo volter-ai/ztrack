@@ -183,7 +183,7 @@ GraphQL-shaped query against the local tracker store.
   if (resource === 'loop') {
     process.stdout.write(`Usage: ${command} loop <start|stop|status> [<issue-id>|<file.md>] [--max N] [--until <stage>]
 
-A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack-gate
+A ralph loop whose completion oracle is \`check\`. \`start\` arms it; once the ztrack plugin's
 Stop/SubagentStop hooks are wired (README → Agent workflows), every turn in this root — the main
 agent's and any subagent's it delegates to — is held until the loop's oracle passes, capped at --max
 iterations per actor (default 8). \`start\` with no id auto-scopes to the branch/worktree issue;

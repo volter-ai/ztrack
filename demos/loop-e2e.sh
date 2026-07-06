@@ -9,7 +9,7 @@
 set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-hook="$repo_root/plugins/ztrack-gate/hooks/stop-loop.sh"
+hook="$repo_root/plugins/ztrack/hooks/stop-loop.sh"
 model="${LOOP_E2E_MODEL:-haiku}"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 tarball="$(cd "$repo_root" && npm pack --pack-destination "$tmp" --silent)"

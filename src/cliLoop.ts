@@ -123,7 +123,7 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     // hooks invisibly to this check).
     const wiring = detectGateWiring(root);
     if (!wiring.wired) {
-      process.stdout.write(`${statusMark('warn')} ${ui.yellow('ztrack-gate not detected')} ${ui.dim("— this loop only holds turns once the Stop/SubagentStop hooks are wired: install the ztrack-gate plugin (`/plugin marketplace add volter-ai/ztrack` then `/plugin install ztrack-gate@ztrack`), or wire the hooks yourself — see README → \"3. The loop gate\" / docs/GUIDE.md#3-usage-drive-an-agent-to-green. Arming anyway; another harness may wire the hooks in a way this check can't see.")}\n`);
+      process.stdout.write(`${statusMark('warn')} ${ui.yellow('ztrack plugin not detected')} ${ui.dim("— this loop only holds turns once the Stop/SubagentStop hooks are wired: install the ztrack plugin (`/plugin marketplace add volter-ai/ztrack` then `/plugin install ztrack@ztrack`), or wire the hooks yourself — see README → \"3. The loop gate\" / docs/GUIDE.md#3-usage-drive-an-agent-to-green. Arming anyway; another harness may wire the hooks in a way this check can't see.")}\n`);
     }
 
     // ZTB-29 dev/04: a bare arm (no --until) on a target that's ALREADY green at its current stage
@@ -143,7 +143,7 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     await githubSync.syncLinked(root, { pull: true }).catch(() => {});
     const untilSuffix = until ? ` until "${until}"` : '';
     const holdDescription = until ? `${label} reaches "${until}" (and passes check there)` : `${label} is green`;
-    process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label}${untilSuffix} (max ${maxIterations}); once the ztrack-gate Stop/SubagentStop hooks are wired (README → Agent workflows), it holds every turn in this root — the agent's and any subagent's — until ${holdDescription}`)}\n`);
+    process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label}${untilSuffix} (max ${maxIterations}); once the ztrack plugin's Stop/SubagentStop hooks are wired (README → Agent workflows), it holds every turn in this root — the agent's and any subagent's — until ${holdDescription}`)}\n`);
     return true;
   }
   if (action === 'stop') {
