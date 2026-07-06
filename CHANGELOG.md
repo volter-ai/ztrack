@@ -2,6 +2,21 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.0.0
+
+- **First stable major.** Code-identical to 0.51.0 — no behavior changes. What 1.0.0 declares
+  is the contract: from here ztrack follows semver proper, so the CLI flag surface (the
+  declarative registry — every path validated at dispatch, no hidden flags), the package-root
+  programmatic API, and the bundled preset contracts break only at a major version; minor and
+  patch releases are safe to take. The release closes the 0.44→0.50 integrated whole-product
+  review: every finding was either fixed in 0.50.1/0.51.0 or explicitly decided (nothing was
+  frozen in by default).
+- **GitHub Action: the moving major pin is now `volter-ai/ztrack@v1`.** `@v0` stays frozen at
+  v0.51.0 forever, so existing `@v0` consumers keep working unchanged on the last 0.x; move to
+  `@v1` to track 1.x. Exact-version pins (`@vX.Y.Z`) are unaffected. Docs and demo recipes now
+  reference `@v1`, and the pre-1.0 stability warnings in README/API.md are replaced by the
+  semver contract above.
+
 ## 0.51.0
 
 - **Pre-1.0 flag-surface cleanup: three removals/tightenings, decided rather than frozen

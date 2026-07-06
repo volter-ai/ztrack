@@ -110,7 +110,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
-      - uses: volter-ai/ztrack@v0
+      - uses: volter-ai/ztrack@v1
         with:
           root: .volter/root.json
 ```

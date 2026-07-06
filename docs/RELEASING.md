@@ -3,7 +3,7 @@
 ztrack has two public distribution surfaces:
 
 - the npm package, installed with `npx ztrack`
-- the GitHub Action, used as `volter-ai/ztrack@v0`
+- the GitHub Action, used as `volter-ai/ztrack@v1`
 
 Keep package versions, git tags, and action tags aligned. A release is not complete
 until all three surfaces point at the intended code.
@@ -48,17 +48,21 @@ do not run `npm publish` by hand.
 2. Create and push the exact version tag on that commit — this publishes:
 
    ```bash
-   git tag v0.1.2
-   git push origin v0.1.2
+   git tag v1.2.3
+   git push origin v1.2.3
    ```
 
 3. Watch it: `gh run watch` (or the Actions tab). On success the version is live on npm.
 4. Move the major action tag only after the exact version tag exists:
 
    ```bash
-   git tag -f v0 v0.1.2
-   git push origin v0 --force
+   git tag -f v1 v1.2.3
+   git push origin v1 --force
    ```
+
+   The moving tag always matches the current major (`v1` for 1.x). Retired majors' moving
+   tags stay frozen at that line's last release and never move again (`v0` is frozen at
+   v0.51.0 for consumers still pinned to `ztrack@v0`).
 
 ## Credentials (one-time / rotation)
 
@@ -78,7 +82,8 @@ account-wide token.
 
 - Never move an exact version tag such as `v0.1.2` after publishing.
 - Never tag code that differs from the npm package with the same version.
-- Move `v0` only to a release commit that has already been published and exact-tagged.
+- Move the current major tag (`v1`) only to a release commit that has already been published
+  and exact-tagged; never move a retired major's tag (`v0`).
 - If a publish fails after the commit lands, release a new patch version instead of
   reusing a version number.
 
@@ -88,6 +93,6 @@ Before making the repository public, verify:
 
 - the README CI badge resolves
 - `npx ztrack --help` runs from a clean shell
-- `volter-ai/ztrack@v0` resolves in a throwaway GitHub Actions workflow
+- `volter-ai/ztrack@v1` resolves in a throwaway GitHub Actions workflow
 - GitHub Security Advisories are enabled
 - Dependabot is quiet except for expected patch/minor updates

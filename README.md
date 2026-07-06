@@ -353,7 +353,7 @@ turned into an issue, so waiver rows survive untouched — see
 ztrack is built to be an AI agent's **completion oracle** — three ways to wire it, smallest to most
 autonomous:
 
-- **CI gate:** the `volter-ai/ztrack@v0` Action over a committed validated root (or `npx ztrack check --phase gate`) — full recipe, including linked mode, in the [Guide → gate it in CI](docs/GUIDE.md#gate-it-in-ci).
+- **CI gate:** the `volter-ai/ztrack@v1` Action over a committed validated root (or `npx ztrack check --phase gate`) — full recipe, including linked mode, in the [Guide → gate it in CI](docs/GUIDE.md#gate-it-in-ci).
 - **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve` — the agent calls `tracker_check` before finishing.
 - **Autonomy loop:** the [`ztrack loop`](#drive-to-green--ztrack-loop) Stop-hook gate above — the recommended development flow.
 
@@ -394,11 +394,12 @@ drifts from what CI enforces.
 ztrack runs our own autonomous agent fleet in production — it's what we use to ship real code. Every
 release re-proves in CI that a fabricated commit SHA fails the check.
 
-**Stability & dependencies (be honest before adopting).** ztrack is pre-1.0 — minor versions can
-rename presets or flags, so **pin an exact version** and read the [CHANGELOG](CHANGELOG.md) before
-upgrading. The deterministic **local** core (check, evidence, presets) depends only on the markdown
-store and git, and needs nothing beyond `ztrack` itself. **GitHub two-way sync** and **world-backed
-evidence** route through `@volter-ai-dev/twin` (same publisher) — since 0.38.0 that's an **optional
+**Stability & dependencies (be honest before adopting).** Since 1.0.0 ztrack follows semver
+proper: the CLI flag surface, the package-root API, and the bundled preset contracts break only at
+a **major** version — minor and patch releases are safe to take. Still read the
+[CHANGELOG](CHANGELOG.md) before upgrading across a major. The deterministic **local** core
+(check, evidence, presets) depends only on the markdown store and git, and needs nothing beyond
+`ztrack` itself. **GitHub two-way sync** and **world-backed evidence** route through `@volter-ai-dev/twin` (same publisher) — since 0.38.0 that's an **optional
 peer dependency**, not a regular one: adopt only local verification and nothing extra installs or
 runs; adopt sync and you must `npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github`
 yourself, and run the sync command under **bun** (not npx/node) — see the [canonical

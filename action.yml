@@ -1,5 +1,5 @@
 # Consumers:
-#   - uses: volter-ai/ztrack@v0      (moving major tag; or pin an exact vX.Y.Z)
+#   - uses: volter-ai/ztrack@v1      (moving major tag; or pin an exact vX.Y.Z)
 # Runs `ztrack check` as a PR gate: checked ACs must cite evidence that verifies,
 # or the job fails.
 #
