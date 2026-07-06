@@ -147,7 +147,12 @@ class MarkdownSource implements IssueSource {
     if (this.shared) mkdirSync(this.indexDir, { recursive: true });
   }
   ids(): string[] {
-    return [...new Set([...mdIds(this.dir), ...mdIds(this.indexDir), ...(this.mainDir ? mdIds(this.mainDir) : [])])];
+    // Deterministic natural id order (PH-2 before PH-10, fixed 'en' collation): readdir hands back
+    // filesystem hash order, which made `issue list` — and every assertion on it — vary by machine
+    // and by insertion history. Document sources are untouched: their ids() is the file's own
+    // section order, which is meaningful.
+    return [...new Set([...mdIds(this.dir), ...mdIds(this.indexDir), ...(this.mainDir ? mdIds(this.mainDir) : [])])]
+      .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
   }
   // Resolve the readable md for an id, preferring the LIVE owner: the index symlink target (the worktree
   // currently working it), then this checkout's committed copy, then trunk's (post-merge / fallback).
