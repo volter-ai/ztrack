@@ -625,6 +625,30 @@ const DEFAULT_RULES = [
   }),
 ];
 
+// ZTB-38: `input.root` is untrusted here — `checkTrackerRoot` (src/check.ts) hands `loadContext`
+// the raw `--input` JSON before `checkRoot`'s own schema validation ever sees it (the live path is
+// safe by construction: it hands loadContext a loader-built bundle, never a raw root). The three
+// helpers below extract facts BEST-EFFORT: anything not shaped as expected is treated as absent,
+// never thrown on — schema validation is what reports the real shape problem. Two shared walks
+// back all three rather than sprinkling optional chains through each.
+function rootIssuesBestEffort(root: unknown): Record<string, unknown>[] {
+  const issues = (root as { issues?: unknown } | null)?.issues;
+  if (!Array.isArray(issues)) return [];
+  return issues.filter((i): i is Record<string, unknown> => !!i && typeof i === 'object');
+}
+function rootEvidenceBestEffort(root: unknown): Evidence[] {
+  return rootIssuesBestEffort(root).flatMap((i) => {
+    const acs = (i as { acceptanceCriteria?: unknown }).acceptanceCriteria;
+    if (!Array.isArray(acs)) return [];
+    return acs.flatMap((ac) => {
+      if (!ac || typeof ac !== 'object') return [];
+      const evidence = (ac as { evidence?: unknown }).evidence;
+      if (!Array.isArray(evidence)) return [];
+      return evidence.filter((ev): ev is Evidence => !!ev && typeof ev === 'object' && typeof (ev as { commit?: unknown }).commit === 'string');
+    });
+  });
+}
+
 // The default SDLC's PR branches: each issue's `PR:` value (a local branch name).
 // Used by this preset's loadContext to ask the git world for branch heads.
 export function prBranchesFrom(markdown: string): string[] {
@@ -633,7 +657,11 @@ export function prBranchesFrom(markdown: string): string[] {
   return [...markdown.matchAll(/^PR:\s*(\S+)/gim)].map((m) => m[1]!).filter(Boolean);
 }
 function defaultPrBranches(input: PresetContextInput): string[] {
-  if (input.root) return (input.root as unknown as DefaultRoot).issues.map((i) => i.pr?.url).filter((u): u is string => !!u);
+  if (input.root) {
+    return rootIssuesBestEffort(input.root)
+      .map((i) => (i as { pr?: { url?: unknown } }).pr?.url)
+      .filter((u): u is string => typeof u === 'string' && u.length > 0);
+  }
   return input.bundle ? prBranchesFrom(input.bundle) : [];
 }
 
@@ -642,8 +670,7 @@ function defaultPrBranches(input: PresetContextInput): string[] {
 function citedEvidenceFiles(input: PresetContextInput): { commit: string; image: string }[] {
   const isPath = (img: string | undefined): img is string => !!img && !/^(sha256:|https?:\/\/)/i.test(img);
   if (input.root) {
-    return (input.root as unknown as DefaultRoot).issues.flatMap((i) =>
-      i.acceptanceCriteria.flatMap((ac) => ac.evidence.filter((ev) => isPath(ev.image)).map((ev) => ({ commit: ev.commit, image: ev.image! }))));
+    return rootEvidenceBestEffort(input.root).filter((ev) => isPath(ev.image)).map((ev) => ({ commit: ev.commit, image: ev.image! }));
   }
   if (!input.bundle) return [];
   // Order-independent (matches parseEvidenceLine): an `image=` after `commit=` must still resolve,
@@ -659,7 +686,7 @@ function citedEvidenceFiles(input: PresetContextInput): { commit: string; image:
 // reads the AC's declared `paths` off the model, can check them.
 function citedCommits(input: PresetContextInput): string[] {
   if (input.root) {
-    return (input.root as unknown as DefaultRoot).issues.flatMap((i) => i.acceptanceCriteria.flatMap((ac) => ac.evidence.map((ev) => ev.commit)));
+    return rootEvidenceBestEffort(input.root).map((ev) => ev.commit);
   }
   if (!input.bundle) return [];
   return [...input.bundle.matchAll(/^\s*-?\s*evidence\s+\S+:.*?commit=([0-9a-fA-F]{7,40})/gim)].map((m) => m[1]!.toLowerCase());

@@ -141,24 +141,23 @@ describe('check --issues/--case scoping within --input roots (ZTB-36)', () => {
     });
   });
 
-  test('5. shape-broken root ({ issues: 42 }) + --issues --input: the shape finding wins, not the not-found error, no crash', () => {
+  test('5. shape-broken root ({ issues: 42 }) + --issues --input, DEFAULT flags: the shape finding wins, not the not-found error, no crash (ZTB-38)', () => {
     const root = freshRepo('ztrk-input-shape-');
     try {
       writeFileSync(join(root, 'root.json'), JSON.stringify({ issues: 42 }));
-      // --no-verify-commits: the installed preset's loadContext (citedEvidenceFiles/citedCommits
-      // in simple-sdlc.ts) reads `input.root.issues.flatMap` directly, BEFORE checkRoot's own
-      // schema validation runs, whenever commit verification is on (the default) — a PRE-EXISTING
-      // crash surface for any malformed `--input` root (reproduces identically on unpatched
-      // `--input` with no `--issues` at all: `input.root.issues.flatMap is not a function`),
-      // unrelated to ZTB-36 and out of scope here (no engine/preset changes). Skip that branch so
-      // this pin exercises what ZTB-36 actually owns: checkTrackerRoot's tolerant id extraction
-      // and checkRoot's own graceful shape finding, not the separate pre-existing crash.
-      const r = ztrackIn(root, ['check', '--issues', 'ZT-1', '--input', 'root.json', '--no-verify-commits', '--json']);
+      // Default flags (commit verification ON) — ZTB-38 gates checkTrackerRoot's loadContext call
+      // on the root having a usable `issues` array at all, so the installed preset's loadContext
+      // (citedEvidenceFiles/citedCommits in simple-sdlc.ts, which used to dereference
+      // `input.root.issues.flatMap` directly) is never even called here — checkRoot's own shape
+      // validation reports `root_shape_invalid` instead of a raw TypeError.
+      const r = ztrackIn(root, ['check', '--issues', 'ZT-1', '--input', 'root.json', '--json']);
       expect(r.code).not.toBe(0);
       const payload = JSON.parse(r.out) as { ok: boolean; findings: Array<{ code: string }> };
       expect(payload.ok).toBe(false);
       expect(payload.findings.some((f) => f.code === 'root_shape_invalid')).toBe(true);
       expect(r.out + r.err).not.toContain('not found in the --input root');
+      expect(r.out + r.err).not.toContain('flatMap');
+      expect(r.out + r.err).not.toContain('is not a function');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
 
@@ -177,6 +176,55 @@ describe('check --issues/--case scoping within --input roots (ZTB-36)', () => {
       expect(payload.summary.issues).toBe(1);
       expect(payload.summary.acknowledged).toBe(1);
       expect(payload.findings.some((f) => f.code === 'evidence_commit_not_found' && f.severity === 'acknowledged')).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+});
+
+// ZTB-38 — `ztrack check --input badroot.json` where badroot.json is top-level shape-broken
+// crashed with a raw preset TypeError (`input.root.issues.flatMap is not a function`) under
+// DEFAULT flags (commit verification on), before checkRoot's own schema validation ever ran.
+// `--no-verify-commits` masked it (simple-sdlc's loadContext skips the crashing reads when commit
+// verification is off) — these pins run under DEFAULT flags throughout, the money shot as filed.
+describe('malformed --input root reports shape findings, never a raw crash (ZTB-38)', () => {
+  test('1. top-level-broken root ({ issues: 42 }), plain --input, default flags: root_shape_invalid, no TypeError', () => {
+    const root = freshRepo('ztrk-input-crash-toplevel-');
+    try {
+      writeFileSync(join(root, 'badroot.json'), JSON.stringify({ issues: 42 }));
+      const r = ztrackIn(root, ['check', '--input', 'badroot.json', '--json']);
+      expect(r.code).not.toBe(0);
+      const payload = JSON.parse(r.out) as { ok: boolean; findings: Array<{ code: string }> };
+      expect(payload.ok).toBe(false);
+      expect(payload.findings.some((f) => f.code === 'root_shape_invalid')).toBe(true);
+      expect(r.out + r.err).not.toContain('flatMap');
+      expect(r.out + r.err).not.toContain('is not a function');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+
+  test('2a. deep garbage ({ issues: [42] }), plain --input, default flags: shape/wellformed findings, no crash', () => {
+    const root = freshRepo('ztrk-input-crash-deep-num-');
+    try {
+      writeFileSync(join(root, 'badroot.json'), JSON.stringify({ issues: [42] }));
+      const r = ztrackIn(root, ['check', '--input', 'badroot.json', '--json']);
+      expect(r.code).not.toBe(0);
+      const payload = JSON.parse(r.out) as { ok: boolean; findings: Array<{ code: string }> };
+      expect(payload.ok).toBe(false);
+      expect(payload.findings.length).toBeGreaterThan(0);
+      expect(r.out + r.err).not.toContain('flatMap');
+      expect(r.out + r.err).not.toContain('is not a function');
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 60_000);
+
+  test('2b. deep garbage ({ issues: [{"id":"ZT-9"}] }, no acceptanceCriteria), plain --input, default flags: shape/wellformed findings, no crash', () => {
+    const root = freshRepo('ztrk-input-crash-deep-obj-');
+    try {
+      writeFileSync(join(root, 'badroot.json'), JSON.stringify({ issues: [{ id: 'ZT-9' }] }));
+      const r = ztrackIn(root, ['check', '--input', 'badroot.json', '--json']);
+      expect(r.code).not.toBe(0);
+      const payload = JSON.parse(r.out) as { ok: boolean; findings: Array<{ code: string }> };
+      expect(payload.ok).toBe(false);
+      expect(payload.findings.length).toBeGreaterThan(0);
+      expect(r.out + r.err).not.toContain('flatMap');
+      expect(r.out + r.err).not.toContain('is not a function');
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 60_000);
 });

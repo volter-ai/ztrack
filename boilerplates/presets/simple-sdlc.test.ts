@@ -1,7 +1,11 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
 import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance } from '../../src/testkit/presetConformance.ts';
-import { checkDefault, DefaultPreset, DefaultRootSchema, parseDefault, serializeIssue } from './simple-sdlc.ts';
+import { checkDefault, DefaultPreset, type DefaultRoot, DefaultRootSchema, parseDefault, serializeIssue } from './simple-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
 // simple-sdlc is PR-FREE: no PR branches in the git world.
@@ -505,6 +509,55 @@ Relates: D-6
       expect(root.issues[0]!.prose).toBe('- [ ] fix the thing outside any section');
       const r = checkDefault([rec], ctx);
       expect(r.findings.some((f) => f.code === 'ac_outside_section')).toBe(true);
+    });
+  });
+
+  describe('input.root reads tolerate garbage (ZTB-38)', () => {
+    // `input.root` reaches loadContext UNVALIDATED whenever `ztrack check --input` is fed raw
+    // JSON — checkTrackerRoot (src/check.ts) calls loadContext before checkRoot's own schema
+    // validation ever runs (the live path never does this: it hands loadContext a loader-built
+    // bundle, never a raw root). citedEvidenceFiles/citedCommits must extract facts BEST-EFFORT
+    // instead of throwing — exercised here via their observable effect, ctx.git.evidenceBlobs /
+    // commitFiles (where the pre-fix code threw `...issues.flatMap is not a function`).
+    let bareDir: string;
+    beforeAll(() => { bareDir = mkdtempSync(join(tmpdir(), 'ztrk-preset-sdlc-bare-')); });
+    afterAll(() => { rmSync(bareDir, { recursive: true, force: true }); });
+
+    const GARBAGE: unknown[] = [{ issues: 42 }, { issues: [42] }, { issues: [{ id: 'ZT-9' }] }];
+    for (const bad of GARBAGE) {
+      test(`loadContext does not throw on garbage root ${JSON.stringify(bad)}`, async () => {
+        const loadContext = DefaultPreset.loadContext!;
+        const result = await loadContext({ projectRoot: bareDir, verifyCommits: true, root: bad as unknown as CoreRoot });
+        expect(result.git?.evidenceBlobs).toEqual({});
+        expect(result.git?.commitFiles).toEqual({});
+      });
+    }
+
+    test('well-formed root: citedEvidenceFiles/citedCommits resolve identically to before (real commit fixture)', async () => {
+      const repo = mkdtempSync(join(tmpdir(), 'ztrk-preset-sdlc-repo-'));
+      try {
+        const git = (...a: string[]) => spawnSync('git', a, { cwd: repo, encoding: 'utf8' });
+        git('init', '-q');
+        git('config', 'user.email', 't@t.co');
+        git('config', 'user.name', 'Tess');
+        writeFileSync(join(repo, 'shot.png'), 'not-really-a-png');
+        git('add', 'shot.png');
+        git('commit', '-q', '-m', 'add shot');
+        const sha = git('rev-parse', 'HEAD').stdout.trim();
+        const root: DefaultRoot = {
+          issues: [{
+            id: 'ZT-1', title: 'x', summary: '', status: 'draft', assignee: 'otto',
+            acceptanceCriteria: [{
+              id: 'dev/01', status: 'passed', checked: true, text: 'does the thing', version: 1,
+              evidence: [{ id: 'ev1', commit: sha, image: 'shot.png', acVersion: 1 }],
+            }],
+          }],
+        };
+        const loadContext = DefaultPreset.loadContext!;
+        const result = await loadContext({ projectRoot: repo, verifyCommits: true, root: root as unknown as CoreRoot });
+        expect(result.git?.evidenceBlobs).toEqual({ [`${sha}:shot.png`]: true });
+        expect(result.git?.commitFiles?.[sha]).toContain('shot.png');
+      } finally { rmSync(repo, { recursive: true, force: true }); }
     });
   });
 
