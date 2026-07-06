@@ -1,6 +1,8 @@
 # Dialects — design & build plan
 
-*Status: planned (not yet built). The stance this implements is the "Dialects" section of
+*Status: SHIPPED in 1.2.0 (WP1–WP7; user docs live in
+[SOURCES.md → Dialect lenses](SOURCES.md#dialect-lenses-read-a-repos-own-idiom)). This file
+remains the design record. The stance this implements is the "Dialects" section of
 [ROADMAP.md](../ROADMAP.md): ztrack is to task lists what a gradual typechecker is to untyped
 code — read first, rewrite never (by default), inference over annotation, the ids belong to
 the repo, dialects are data, and a conformance corpus is the definition of done.*
@@ -131,7 +133,9 @@ the real reference repo.
 - **`workstream-sections`** (the `## 2. WS1 — title` + `Tasks:`/`**Acceptance:**` shape) —
   the third dialect; needs section-number stripping and benefits from desugar. Decide after
   WP2 proves the extractor set.
-- **Dialect-aware dark-sibling sweep** — v1 sweep stays native-grammar-only.
+- ~~**Dialect-aware dark-sibling sweep** — v1 sweep stays native-grammar-only.~~ Un-deferred
+  during WP5: the sweep turned out to be one `detectDialect` call on the shared floor
+  (`unregistered_dialect_sibling`, documentDiagnostics.ts), cheaper to ship than to fence off.
 
 ## Open questions (with recommendations)
 

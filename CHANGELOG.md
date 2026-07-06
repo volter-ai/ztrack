@@ -2,6 +2,37 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.2.0
+
+**Dialect lenses** (docs/DIALECTS.md): read a repo's OWN task-list idiom as issues — without
+rewriting the file, ever.
+
+- **Two built-in dialects**, interpreted by one data-driven engine (`src/dialects.ts` — adding a
+  dialect adds a registry entry + conformance fixtures, never an `if`): `emoji-register`
+  (`### KQ1 — title` sections with a `- **Status**: 🟢/🟡/🔴` bullet) and `checkbox-roster`
+  (`- [x] **WS-A: title** — …` items, the checkbox as status). An inline dialect object in config
+  covers a team whose 🟡 means something else.
+- **Zero-config detection**: `ztrack check <file>` on an unregistered file in a known dialect
+  shape checks every issue through the detected lens and prints the exact adopt command with the
+  dialect name filled in — the floor is ≥2 issues with an id AND an explicit status (prose never
+  false-positives), and a tie between dialects stays silent. The full check's dark-sibling sweep
+  gained the same eye (`unregistered_dialect_sibling`).
+- **Register-only adoption**: `ztrack import <file> --register --dialect <name>` writes one
+  `{"dialect", "path"}` sources entry and touches nothing else — the file is byte-untouched, and
+  `--dialect` without `--register` refuses (config mutation is always explicit consent). From
+  then on `issue list`/`check`/`loop` serve the file's own ids with true statuses.
+- **Lens issues report, never gate**: a lens file never claimed process discipline, so preset
+  ERRORS on its issues downgrade to warnings (suffixed `dialect lens: reported, never gates`),
+  applied core-side so every preset — stock or forked — gets it for free. Writes routed at a lens
+  issue fail closed naming the upgrade path.
+- **Materialize, the opt-in climb**: `ztrack import <lens-file>` converts a registered lens to
+  the native document grammar through its declared dialect — grammar-legal ids (`WS-A`,
+  `TF-1001`) kept verbatim, hyphenless ones minimally normalized (`KQ3` → `KQ-3`) with the rename
+  recorded on the source entry (`"aliases": {"KQ3": "KQ-3"}`) so old spellings keep resolving
+  (`ztrack check KQ3`, `issue view KQ3`); statuses become `status:` lines; no line of user prose
+  is ever deleted. File rewrite + config upgrade (drop `dialect`/`readonly`) are one stroke, so
+  the path requires `--register` (`--dry-run` previews both halves).
+
 ## 1.1.0
 
 - **`ztrack check <file.md>` now recognizes document grammar** instead of lumping the file into

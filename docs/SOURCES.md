@@ -350,3 +350,58 @@ instead it's one more visible, printed, additive entry.
 (that's copy-out-with-provenance, a different semantic, not materialize-in-place); importing from
 an external tracker (GitHub/Jira — the sync/twin layer's job, see
 [`ztrack sync`](GUIDE.md#how-linked-sync-works)); non-markdown inputs.
+
+## Dialect lenses (read a repo's own idiom)
+
+Some repos already track work in their **own** task-list idiom — a kill-question register with
+emoji statuses, a build checklist of bold-lead checkboxes — and rewriting those files into the
+document grammar just to see them in the tracker would put the tool's needs above the repo's.
+A **dialect lens** reads such a file as issues **without modifying it, ever**: the file stays the
+single source of truth in its own voice; ztrack adapts to the repo, not the repo to ztrack.
+
+A dialect is pure **data** — a declarative description of where issues live in the file
+(`issueBoundary`), what an id looks like (`idPattern`), how status is encoded (a vocabulary map),
+and whether nesting means hierarchy — interpreted by one engine. Two dialects are built in:
+
+| Dialect | Shape it reads | Status encoding |
+|---|---|---|
+| `emoji-register` | `### KQ1 — Is it fun?` sections | a `- **Status**: 🟢/🟡/🔴 …` bullet → done / in-progress / ready |
+| `checkbox-roster` | `- [x] **WS-A: title** — …` items | the checkbox → done / ready |
+
+### The gradual climb: detect → adopt → materialize
+
+1. **Detect (zero config).** `ztrack check <file>` on an unregistered file tries every built-in
+   dialect speculatively; a match needs at least two issues with an id **and** an explicit status
+   (prose never volunteers both — a bold-lead checklist with no ids stays a plain file), and a tie
+   between dialects stays silent. On a hit, every issue is checked **through the lens** and the
+   note prints the exact adopt command with the dialect name already filled in — you never have
+   to know dialect names. The full-tracker check's dark-sibling sweep does the same for a
+   dialect-shaped file sitting beside your registered sources (`unregistered_dialect_sibling`).
+
+2. **Adopt (config-only).** The offered command registers a **read-only lens**:
+
+   ```bash
+   ztrack import stories/KILL-QUESTIONS.md --register --dialect emoji-register
+   ```
+
+   This writes one `{"dialect": "emoji-register", "path": "..."}` entry to
+   `tracker-config.json` and touches **nothing else** — the file itself is byte-untouched
+   (registration is always explicit: `--dialect` without `--register` refuses rather than
+   guessing). From then on `issue list`/`check`/`loop` serve the file's own ids with their true
+   statuses. Lens issues **report but never gate**: the file never claimed process discipline, so
+   preset errors on lens-sourced issues downgrade to warnings (suffixed
+   `dialect lens: reported, never gates`). Every write routed at a lens issue fails closed,
+   naming the upgrade path. A `dialect` entry may also be an inline object (the same schema the
+   registry validates) when a team's 🟡 means something else — see `src/dialects.ts` for the shape.
+
+3. **Materialize (the opt-in climb).** When you want to manage the file *through* ztrack,
+   `ztrack import <lens-file>` converts it to the native document grammar via its **declared**
+   dialect (never the freeform heuristics). Ids already grammar-legal (`WS-A`, `TF-1001`) are
+   kept **verbatim**; a hyphenless id is minimally normalized (`KQ3` → `KQ-3`) and the rename is
+   recorded on the source entry (`"aliases": {"KQ3": "KQ-3"}`) so the old spelling keeps
+   resolving (`ztrack check KQ3`, `issue view KQ3`). Statuses become `status:` header lines; no
+   line of your prose is ever deleted (the original emoji bullets survive as body text). The file
+   rewrite and the config-entry upgrade (drop `dialect`, record aliases) are **one stroke**, so
+   this path requires `--register` — or `--dry-run` to preview both halves.
+
+Design notes and the invariants behind all of this live in [docs/DIALECTS.md](DIALECTS.md).

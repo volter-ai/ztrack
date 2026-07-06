@@ -353,6 +353,15 @@ with a preserved-claim marker (a checked-but-unproven claim is exactly what `che
 turned into an issue, so waiver rows survive untouched — see
 [Sources → Importing a freeform backlog](docs/SOURCES.md#importing-a-freeform-backlog).
 
+And a file that tracks work in a repo's **own** idiom — `### KQ1` sections with
+`- **Status**: 🟢/🟡/🔴` bullets, or `- [x] **WS-A: title**` checkbox rosters — needs no rewrite at
+all: `ztrack check <file>` auto-detects the shape (a **dialect**) and checks every issue through a
+read-only lens, printing the one command that adopts it. Registering the lens is config-only (the
+file is never modified); its issues appear in `issue list`/`check` with their own ids and true
+statuses, reported but never gating. Materializing later (`ztrack import <lens-file> --register`)
+is the opt-in upgrade to the full grammar, with any id renames recorded as aliases so old
+spellings keep resolving — see [Sources → Dialect lenses](docs/SOURCES.md#dialect-lenses-read-a-repos-own-idiom).
+
 ## Agent workflows
 
 ztrack is built to be an AI agent's **completion oracle** — three ways to wire it, smallest to most
