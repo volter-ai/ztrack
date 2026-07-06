@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
+import { parseMarkdownDocumentSource } from './documentParser.ts';
 import { assertNoCrlf, existingIdsInFile, IdAllocator, planAndMaterialize, type ImportPlan } from './importBacklog.ts';
 
 const FIXTURES = join(import.meta.dirname, 'importBacklog.fixtures');
@@ -93,6 +94,33 @@ describe('planAndMaterialize — fixture corpus (dev/31 read-only plan, dev/32 w
       ['APP-1', null], ['APP-2', 'APP-1'], ['APP-3', 'APP-2'], ['APP-4', 'APP-3'],
     ]);
     expect(materialized).toContain('##### Acceptance Criteria'); // level clamps to the AC's own nesting depth
+  });
+
+  test('structure-heading: a bare heading OVER id-bearing issues is kept as structure (reported), a bare leaf still mints', () => {
+    const { plan, materialized, expected } = run('structure-heading');
+    expect(materialized).toBe(expected);
+    // The `# Workstream Q` title is NOT minted — the validated read model never emits a non-id
+    // heading as an issue, and minting it here is exactly how the two front doors used to
+    // disagree by one phantom umbrella on a partially-materialized file.
+    expect(plan.issues.map((i) => [i.id, i.status, i.parentId])).toEqual([
+      ['APP-7', 'existing', null],
+      ['APP-8', 'minted', null], // parent walks PAST the structure heading, same as the read model
+    ]);
+    expect(plan.unmapped.map((n) => [n.line, n.reason.split(' — ')[0]])).toEqual([
+      [1, 'heading has id-bearing issues nested under it'],
+      [6, 'checkbox/TODO: item under a structure heading (not an issue)'],
+    ]);
+  });
+
+  test('parity: after materialization, the read model and a re-import agree on the exact issue set', () => {
+    // The regression guard the original two-parser split lacked: each path's behavior was pinned
+    // individually, but nothing asserted they agree on the same bytes. On a materialized file
+    // they must — same ids, same count, import a no-op.
+    const { materialized } = run('structure-heading');
+    const readModel = parseMarkdownDocumentSource(materialized, 'structure-heading.md');
+    const second = planAndMaterialize(materialized, 'structure-heading.md', { prefix: 'APP', allocator: new IdAllocator() });
+    expect(second.plan.isNoop).toBe(true);
+    expect(readModel.map((i) => i.id).sort()).toEqual(second.plan.issues.map((i) => i.id).sort());
   });
 
   test('already-canonical: the plan is EMPTY (no minted issues/ACs) and materialization is a byte-identical no-op', () => {
@@ -238,7 +266,7 @@ describe('planAndMaterialize — dry-run semantics (writes nothing) and cross-so
 // ── dev/32: the writer — insert-only, idempotent, existing ids untouched, [x] policy, CRLF error ─
 
 describe('planAndMaterialize — writer idempotence + insert-only contract (dev/32)', () => {
-  for (const name of ['mixed-prose-checkboxes', 'pure-checklist', 'mixed-bullet-todo-styles', 'prechecked', 'half-materialized', 'duplicate-titles', 'deep-nesting', 'already-canonical', 'unmapped-preamble', 'multi-list-interleaved-prose', 'multiline-checkbox', 'waivers-idempotent', 'freeform-with-waivers']) {
+  for (const name of ['mixed-prose-checkboxes', 'pure-checklist', 'mixed-bullet-todo-styles', 'prechecked', 'half-materialized', 'duplicate-titles', 'deep-nesting', 'already-canonical', 'unmapped-preamble', 'multi-list-interleaved-prose', 'multiline-checkbox', 'waivers-idempotent', 'freeform-with-waivers', 'structure-heading']) {
     test(`${name}: import ∘ import === import (byte-identical on a second pass)`, () => {
       const { materialized } = run(name);
       const allocator2 = new IdAllocator();

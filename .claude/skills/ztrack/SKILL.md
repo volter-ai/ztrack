@@ -48,7 +48,7 @@ When hand-writing new issues into a `format:"document"` file (a plan/backlog mar
 
 - Match the file's existing section shape exactly — an id-bearing heading (`## APP-12 — Title`), then the header lines (`Status:`, `Assignee:`, priority/labels as the file already does them), then the body, then an `### Acceptance Criteria` list in the preset's AC grammar. Copy a sibling issue as the template; `ztrack fmt --input <file> --check` tells you if your section is canonical.
 - **Pick the next free id in the file's numbering scheme** — grep the tracker first (`ztrack issue list --state all`); a duplicate id fails check loud.
-- **A top-level `#` heading materializes as an umbrella issue on `import`** — only add one if you intend the file to have a parent issue; otherwise start the file directly at the first `##` issue heading.
+- **Bare headings**: on a freeform file (no ids anywhere yet), `import` materializes every heading — a top-level `#` becomes the umbrella issue. Once a file has id-bearing issues, a bare heading *above* them is kept as document structure (reported in the plan, never minted); a bare *leaf* heading still becomes a new issue. Put an id token in a heading yourself if it should BE an issue.
 - Keep the file **LF-ended**; write-back and import splice by line position.
 - Verify before you finish: `ztrack import <file> --dry-run` shows exactly what would materialize; `ztrack check --source <file>` validates just that source.
 

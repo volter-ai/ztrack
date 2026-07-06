@@ -274,6 +274,8 @@ function insertIdIntoHeadingLine(line: string, mintedId: string): string {
 const PRE_CHECKED_MARKER = ' (imported: previously marked done — needs evidence)';
 const MULTILINE_ITEM_REASON = 'multi-line checkbox item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)';
 const MULTILINE_TODO_REASON = 'multi-line TODO: item — move it into the Acceptance Criteria section manually (only single-line items are auto-promoted)';
+const STRUCTURE_HEADING_REASON = 'heading has id-bearing issues nested under it — kept as document structure, not minted as an issue (put an id token in the heading yourself if it should BE an issue)';
+const STRUCTURE_ITEM_REASON = 'checkbox/TODO: item under a structure heading (not an issue) — move it into an issue section manually';
 
 interface AcCandidate {
   line: number; // 0-based, original file
@@ -458,6 +460,24 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
     if (m) { idOf.set(index, m[1]!); allocator.note(m[1]!); }
   }
 
+  // A heading with NO id that already has id-bearing DESCENDANTS is pre-existing structure in a
+  // partially-materialized document (a workstream/plan title above real issues), not an aspiring
+  // issue: the validated read model (documentParser.ts) only ever emits id-bearing headings and
+  // walks parent chains PAST non-id ones, so minting such a heading here would invent an issue
+  // the reader never saw — the two front doors would disagree by exactly that heading (observed
+  // in the field as import minting a 7th umbrella issue over six already-materialized ones). A
+  // bare LEAF heading (no id-bearing descendants) still mints: that's the importer's whole job
+  // on freeform/mixed files, where nothing has an id yet. Computed from the PRE-PASS ids only —
+  // ids minted later this run must not retroactively reclassify an earlier bare heading.
+  const structureIndices = new Set<number>();
+  for (const index of idOf.keys()) {
+    let p = doc.sections[index]!.parentIndex;
+    while (p !== null) {
+      if (!idOf.has(p) && !isReservedHeadingTitle(doc.sections[p]!.title)) structureIndices.add(p);
+      p = doc.sections[p]!.parentIndex;
+    }
+  }
+
   const issues: PlannedIssue[] = [];
   const unmapped: UnmappedNote[] = [];
   const preChecked: Array<{ issueId: string; acId: string; text: string }> = [];
@@ -474,6 +494,17 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
 
   for (const [index, section] of doc.sections.entries()) {
     if (isReservedHeadingTitle(section.title)) continue; // reserved structure — AC handled as part of its parent, below; Waivers is never planned as an issue at all
+
+    if (!idOf.has(index) && structureIndices.has(index)) {
+      // Kept as structure — reported, never silent. Its own loose checkboxes/TODOs are surfaced
+      // too: they sit under a heading that is not (and will not become) an issue, so nothing
+      // downstream would ever relocate or validate them.
+      unmapped.push({ line: section.lineStart, excerpt: section.title.slice(0, 60), reason: STRUCTURE_HEADING_REASON });
+      for (const cand of scanAcCandidates(lines, ownContentStart(doc, index), ownContentEnd(doc, index), codeLines, false, safety, unmapped)) {
+        unmapped.push({ line: cand.line + 1, excerpt: cand.text.slice(0, 60), reason: STRUCTURE_ITEM_REASON });
+      }
+      continue;
+    }
 
     const existingId = idOf.get(index);
     const id = existingId ?? allocator.next(prefix);
