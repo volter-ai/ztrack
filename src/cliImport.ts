@@ -3,7 +3,7 @@
 // materializing/multi-input logic lives in src/importBacklog.ts and src/importDriver.ts; this
 // module is flag parsing + terminal rendering only, following the existing verb-module pattern
 // (cliCheck.ts / cliWaiver.ts / cliLoop.ts).
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import { optionValue } from './cliArgs.ts';
 import { positionalArgs } from './cliTarget.ts';
@@ -11,11 +11,14 @@ import { loadTrackerConfig, projectRootFrom, trackerConfigPath } from './config.
 import { detectDialect, parseWithDialect, resolveDialect } from './dialects.ts';
 import type { ImportPlan } from './importBacklog.ts';
 import { IdAllocator } from './importBacklog.ts';
+import { materializeDialectText } from './dialectMaterialize.ts';
 import {
-  applyRegister, collectConfiguredIds, expandInputs, issuePerFileSourceDirs, planDialectRegister, planRegister, runImportBatch,
+  applyMaterializeUpgrade, applyRegister, collectConfiguredIds, expandInputs, issuePerFileSourceDirs, planDialectRegister, planRegister,
+  registeredLensSources, runImportBatch,
   type FileOutcome,
 } from './importDriver.ts';
 import { statusMark, ui } from './cliStyle.ts';
+import type { ResolvedSource } from './sources.ts';
 import type { TrackerConfig } from './types.ts';
 import { flagSetFor } from './cliRegistry.ts';
 
@@ -40,6 +43,11 @@ const USAGE = 'Usage: ztrack import <path-or-glob>... [--dry-run] [--prefix <ID-
   '                     read-only dialect source instead of materializing it — the file itself\n' +
   '                     is NEVER modified. `ztrack check <file>` detects the dialect and prints\n' +
   '                     this exact command, name filled in. Requires --register (or --dry-run).\n' +
+  'A file already REGISTERED as a dialect lens materializes through its declared dialect instead\n' +
+  'of the freeform heuristics: ids are kept verbatim when grammar-legal, minimally normalized\n' +
+  'otherwise (KQ3 -> KQ-3) with the rename recorded as an alias on the source entry, and the\n' +
+  'entry drops its dialect (the lens is lifted). File rewrite + config upgrade are one stroke,\n' +
+  'so this path requires --register (or --dry-run to preview both).\n' +
   'Pre-checked `- [x]` items import as UNCHECKED, with a preserved-claim marker and a report\n' +
   '(ztrack check rejects a checked AC with no evidence — a materialized file must check green).\n' +
   'See docs/SOURCES.md -> "Importing a freeform backlog".\n';
@@ -129,7 +137,7 @@ export async function handleImportCommand(args: string[]): Promise<boolean> {
   }
 
   const excludeDirs = config ? issuePerFileSourceDirs(projectRoot, config) : [];
-  const files = expandInputs(positionals, cwd, excludeDirs);
+  let files = expandInputs(positionals, cwd, excludeDirs);
   if (files.length === 0) throw new Error(`ztrack import: no .md file(s) found for ${positionals.join(', ')}.`);
 
   // Register-only LENS mode (docs/DIALECTS.md): `--dialect <name>` declares each file as a
@@ -160,6 +168,52 @@ export async function handleImportCommand(args: string[]): Promise<boolean> {
       process.stdout.write(`\n${ui.dim('--dry-run: would register these sources (nothing written, files untouched):')}\n${registerSnippet(toAdd)}\n`);
     }
     return true;
+  }
+
+  // Materialize upgrade (docs/DIALECTS.md WP6): a file already registered as a dialect LENS
+  // converts to the native grammar via ITS OWN declared dialect (the config already says what
+  // the file means — the freeform heuristics below never see it). The file rewrite and the
+  // config-entry upgrade (drop `dialect`/`readonly`, record id aliases) are ONE stroke: a
+  // rewritten file behind a stale lens entry would still read read-only, and a dropped entry
+  // over an untouched file would mis-parse — so without --register (config writes are always
+  // explicit consent) the command refuses instead of leaving the two halves incoherent.
+  const lensSources = config ? registeredLensSources(projectRoot, config, files) : new Map<string, ResolvedSource>();
+  if (lensSources.size) {
+    const rels = [...lensSources.keys()].map((p) => relative(cwd, p) || p);
+    if (!register && !dryRun) {
+      throw new Error(
+        `ztrack import: ${rels.join(', ')} ${rels.length === 1 ? 'is' : 'are'} registered as a read-only dialect lens — materializing rewrites the file AND upgrades its tracker-config.json entry in the same stroke (drop \`dialect\`, record id aliases). ` +
+        'Re-run with --register to consent to the config update, or --dry-run to preview both.',
+      );
+    }
+    for (const [abs, source] of [...lensSources.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      const raw = readFileSync(abs, 'utf8');
+      const hadCrlf = raw.includes('\r\n');
+      const path = relative(cwd, abs) || abs;
+      let result: ReturnType<typeof materializeDialectText>;
+      try {
+        result = materializeDialectText(raw.replace(/\r\n?/g, '\n'), source.dialect!);
+      } catch (e) {
+        process.stdout.write(`${statusMark('warn')} ${path} ${ui.yellow(`skipped: ${e instanceof Error ? e.message : String(e)}`)}\n`);
+        continue;
+      }
+      const renames = Object.entries(result.aliases);
+      const aliasNote = renames.length ? ` — ${renames.map(([oldId, newId]) => `${oldId} -> ${newId}`).join(', ')} (aliased in config)` : '';
+      if (dryRun) {
+        process.stdout.write(`${statusMark('pass')} ${path} ${ui.green(`would materialize ${result.issues.length} issue${result.issues.length === 1 ? '' : 's'} from the '${source.dialectName}' lens`)}${ui.dim(aliasNote)}\n`);
+        for (const issue of result.issues) {
+          process.stdout.write(`  ${ui.cyan(issue.nativeId)} ${issue.title}${issue.nativeId === issue.sourceId ? '' : ui.dim(` (was ${issue.sourceId})`)} ${ui.dim(`[${issue.statusExplicit ? issue.status : 'no status claimed'}]`)}\n`);
+        }
+        for (const line of unifiedDiffLines(raw.replace(/\r\n?/g, '\n'), result.after)) process.stdout.write(`  ${line}\n`);
+        process.stdout.write(`  ${ui.dim(`config entry upgrade (not written): drop "dialect"${renames.length ? `, record "aliases": ${JSON.stringify(result.aliases)}` : ''}`)}\n\n`);
+      } else {
+        writeFileSync(abs, hadCrlf ? result.after.replace(/\n/g, '\r\n') : result.after);
+        applyMaterializeUpgrade(configPath, projectRoot, abs, result.aliases);
+        process.stdout.write(`${statusMark('pass')} ${path} ${ui.green(`materialized ${result.issues.length} issue${result.issues.length === 1 ? '' : 's'} from the '${source.dialectName}' lens; config entry upgraded (dialect dropped)`)}${ui.dim(aliasNote)}\n`);
+      }
+    }
+    files = files.filter((f) => !lensSources.has(f));
+    if (files.length === 0) return true;
   }
 
   const allocator = new IdAllocator();

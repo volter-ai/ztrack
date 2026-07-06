@@ -13,7 +13,7 @@ import { dialectLensInfo, documentHeaderFindings, documentSourceHeaderFindings, 
 import { DialectSource } from './backends/dialectSource.ts';
 import { DocumentSource } from './backends/documentSource.ts';
 import { parseMarkdownDocumentSource } from './documentParser.ts';
-import { resolveSources, type ResolvedSource } from './sources.ts';
+import { resolveSources, sourceAliasMap, type ResolvedSource } from './sources.ts';
 import type { RuleCategory } from './checkRules.ts';
 
 export type TrackerCheckOptions = {
@@ -73,6 +73,13 @@ function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
 export async function checkTracker(options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
+  // Materialize-time id aliases (docs/DIALECTS.md WP6): a scoped `check KQ3` typed with the old
+  // pre-normalization spelling lands on the renamed issue — the same one-hop map the backend's
+  // own lookups use (`MarkdownBackend.loadOne`).
+  if (options.issues?.length) {
+    const aliasMap = (() => { try { return sourceAliasMap(resolveSources(projectRoot, config)); } catch { return new Map<string, string>(); } })();
+    if (options.issues.some((id) => aliasMap.has(id))) options = { ...options, issues: options.issues.map((id) => aliasMap.get(id) ?? id) };
+  }
   const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const { records, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
   const result = check(preset, records, context);

@@ -253,6 +253,50 @@ export function planDialectRegister(projectRoot: string, config: { sources?: Tra
   return planEntries(projectRoot, config, filePaths, (relPath) => ({ dialect: dialectName, path: relPath }));
 }
 
+/** The declared-lens subset of `filePaths` (docs/DIALECTS.md WP6): absolute file path -> the
+ *  ResolvedSource whose `dialect` reads it. These files take the MATERIALIZE-upgrade path in
+ *  `ztrack import` (dialect parse -> native grammar + config-entry upgrade), never the freeform
+ *  heuristics — the registered dialect already says exactly what the file means. */
+export function registeredLensSources(projectRoot: string, config: { sources?: TrackerSourceConfig[] }, filePaths: readonly string[]): Map<string, ResolvedSource> {
+  const byDir = new Map(resolvedSourcesOrEmpty(projectRoot, config).filter((s) => s.dialect).map((s) => [s.dir, s]));
+  const out = new Map<string, ResolvedSource>();
+  for (const path of filePaths) {
+    const source = byDir.get(path);
+    if (source) out.set(path, source);
+  }
+  return out;
+}
+
+/** Upgrade one source's config entry after its file was materialized (docs/DIALECTS.md WP6):
+ *  `dialect` and `readonly` drop (the file now speaks the native grammar and is writable within
+ *  the document source's own rules), `path`/`format`/`name` survive, and the id renames the
+ *  materialization performed are recorded as `aliases` (old -> new) so references keep
+ *  resolving. Same fail-loudly validation discipline as `applyRegister` below. */
+export function applyMaterializeUpgrade(configPath: string, projectRoot: string, absPath: string, aliases: Record<string, string>): void {
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(readFileSync(configPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`materialize: config at ${configPath} is not valid JSON: ${(error as Error).message}`);
+  }
+  let raw: ReturnType<typeof parseTrackerConfig>;
+  try {
+    raw = parseTrackerConfig(parsedJson);
+  } catch (error) {
+    throw new Error(`materialize: config at ${configPath} is invalid, refusing to rewrite it:\n  - ${(error as Error).message}`);
+  }
+  const sources = (raw.sources ?? []).map((entry) => {
+    if (entry.dialect === undefined || resolve(projectRoot, entry.path) !== absPath) return entry;
+    return {
+      ...(Object.keys(aliases).length ? { aliases: { ...(entry.aliases ?? {}), ...aliases } } : (entry.aliases ? { aliases: entry.aliases } : {})),
+      ...(entry.format ? { format: entry.format } : {}),
+      ...(entry.name ? { name: entry.name } : {}),
+      path: entry.path,
+    };
+  });
+  writeFileSync(configPath, `${JSON.stringify({ ...raw, sources }, null, 2)}\n`);
+}
+
 function planEntries(projectRoot: string, config: { sources?: TrackerSourceConfig[] }, filePaths: readonly string[], entryFor: (relPath: string) => TrackerSourceConfig): TrackerSourceConfig[] {
   const existingResolved = new Set((config.sources ?? []).map((s) => resolve(projectRoot, s.path)));
   const toAdd: TrackerSourceConfig[] = [];

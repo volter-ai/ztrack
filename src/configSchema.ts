@@ -37,6 +37,12 @@ const TrackerSourceConfigSchema = z.object({
    *  (there is no half-writable lens; materialize with `ztrack import <file>` to edit through
    *  ztrack). */
   dialect: z.union([z.string(), DialectSchema]).optional(),
+  /** Old id -> current native id, recorded by `ztrack import` when MATERIALIZING a dialect lens
+   *  (docs/DIALECTS.md WP6): a file-native id that wasn't legal document grammar was normalized
+   *  (`"KQ3": "KQ-3"`), and this map keeps the old spelling resolving — `ztrack check KQ3` and
+   *  every backend load land on the renamed issue. Purely additive routing data: it never
+   *  changes what the source holds, and an alias whose target vanished simply stops matching. */
+  aliases: z.record(z.string(), z.string()).optional(),
   /** A stable, user-typeable selector for `--source` (ZTB-33). Optional: when omitted a source is
    *  addressable by exactly the `path` string written here (and by that path's basename). Give a
    *  `name` to decouple the selector from the on-disk path or to make it read nicely

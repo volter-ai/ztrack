@@ -4,6 +4,7 @@ import { checkFile, checkTracker, checkTrackerRoot, type TrackerCheckResult } fr
 import { exportTrackerRoot } from './export.ts';
 import { optionValue, optionValues, splitSelectors } from './cliArgs.ts';
 import { projectRootFrom } from './config.ts';
+import { resolveIdAliases } from './sources.ts';
 import { renderCheckReport, renderScopedReport, summarizeResult } from './cliStyle.ts';
 import { git } from './core/gitWorld.ts';
 import { partitionFindings, resolveActiveIssue } from './core/scope.ts';
@@ -156,6 +157,10 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
     return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
   }
 
+  // Materialize-time id aliases (docs/DIALECTS.md WP6): map user-typed ids to their current
+  // native spelling BEFORE the loader and the not-found gate below see them, so `check KQ3`
+  // lands on the renamed KQ-3 instead of erroring as missing.
+  if (target?.kind === 'issues') target.ids = resolveIdAliases(projectRoot, target.ids);
   const issues = target?.kind === 'issues' ? target.ids : undefined;
   let inputRoot: unknown;
   let inputAbs: string | undefined;

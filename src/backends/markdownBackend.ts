@@ -12,7 +12,7 @@ import { type CanonicalIssue, parseIssue, serializeIssue, stateTypeOf } from './
 import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../config.ts';
 import { git } from '../core/gitWorld.ts';
 import { IdAllocator } from '../idAllocator.ts';
-import { resolveSources, type ResolvedSource } from '../sources.ts';
+import { resolveSources, sourceAliasMap, type ResolvedSource } from '../sources.ts';
 import { DialectSource } from './dialectSource.ts';
 import { DocumentSource } from './documentSource.ts';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
@@ -196,6 +196,9 @@ class MarkdownSource implements IssueSource {
 export class MarkdownBackend implements TrackerBackend {
   readonly name = 'markdown' as const;
   private readonly sources: IssueSource[];
+  /** Old id -> native id, recorded when a dialect lens was materialized (docs/DIALECTS.md WP6;
+   *  see `sourceAliasMap`). Consulted only when a lookup by the typed id finds nothing. */
+  private readonly aliases: Map<string, string>;
   private readonly teamKey: string;
   private readonly projectRoot: string;
   // `sources` (resolved by `resolveSources`) is optional so direct callers (unit tests, and any
@@ -206,6 +209,7 @@ export class MarkdownBackend implements TrackerBackend {
     this.projectRoot = projectRoot;
     this.teamKey = teamKey;
     const resolved = sources && sources.length ? sources : resolveSources(projectRoot, {});
+    this.aliases = sourceAliasMap(resolved);
     // A `document` source (ZTB-4) is a single FILE, parsed into many issues — a wholly different
     // class (DocumentSource) from `issue-per-file`'s directory-shaped MarkdownSource. A document
     // source carrying a `dialect` (docs/DIALECTS.md) is the read-only lens variant
@@ -289,7 +293,13 @@ export class MarkdownBackend implements TrackerBackend {
   }
   private loadOne(id: string): CanonicalIssue | null {
     const source = this.sourceOf(id);
-    return source ? source.load(id) : null;
+    if (source) return source.load(id);
+    // A miss on the typed id falls through to the materialize-time alias map (one hop, never
+    // chained): `issue view KQ3` keeps working after the lens rename normalized it to KQ-3.
+    const target = this.aliases.get(id);
+    if (!target) return null;
+    const aliased = this.sourceOf(target);
+    return aliased ? aliased.load(target) : null;
   }
   // Every (issue, source-path[, span]) pair across ALL declared sources, UNDEDUPED across distinct
   // sources — an id present in two different sources surfaces as two entries here on purpose

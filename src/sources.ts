@@ -3,7 +3,7 @@
 // path (fail-closed on an unsupported format) and the backend (which actually reads/writes them)
 // share one definition of "what a source is" and "which one is THE implicit default".
 import { resolve } from 'node:path';
-import { markdownStoreDir } from './config.ts';
+import { loadTrackerConfig, markdownStoreDir } from './config.ts';
 import { resolveDialect, type Dialect } from './dialects.ts';
 import type { TrackerSourceConfig } from './types.ts';
 
@@ -41,6 +41,35 @@ export interface ResolvedSource {
    *  source is always `readonly` — enforced in `resolveSources`, not left to the caller. */
   dialect?: Dialect;
   dialectName?: string;
+  /** Old id -> current native id, recorded when a dialect lens was MATERIALIZED (`ztrack import`,
+   *  docs/DIALECTS.md WP6). Consumed through `sourceAliasMap` below — never read inline. */
+  aliases?: Record<string, string>;
+}
+
+/** The one merged old-id -> native-id view over every declared source's `aliases` (recorded at
+ *  materialize time). First declaration wins on a (pathological) cross-source key collision —
+ *  the same declared-order determinism `MarkdownBackend.sourceOf` uses for duplicate ids. */
+export function sourceAliasMap(sources: readonly ResolvedSource[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const source of sources) {
+    for (const [oldId, newId] of Object.entries(source.aliases ?? {})) {
+      if (!map.has(oldId)) map.set(oldId, newId);
+    }
+  }
+  return map;
+}
+
+/** One-hop alias resolution for USER-TYPED ids at a CLI boundary (`ztrack check KQ3` after the
+ *  materialization renamed it to KQ-3). Loads the config itself so a call site that never touches
+ *  config (cliCheck) stays that way; any load/resolve failure means "no aliases", never an error
+ *  — this is routing sugar, and the caller's own path will surface the real config problem. */
+export function resolveIdAliases(projectRoot: string, ids: readonly string[]): string[] {
+  try {
+    const map = sourceAliasMap(resolveSources(projectRoot, loadTrackerConfig(projectRoot)));
+    return ids.map((id) => map.get(id) ?? id);
+  } catch {
+    return [...ids];
+  }
 }
 
 /** Resolve the declared `sources` list (or the implicit default when absent) into absolute
@@ -57,7 +86,10 @@ export function resolveSources(projectRoot: string, config: { sources?: TrackerS
     const dir = resolve(projectRoot, entry.path);
     // `name` (ZTB-33): the declared name, else the declared path string verbatim — so an unnamed
     // source is always addressable by exactly what the user wrote in config.
-    const base = { dir, format, isDefault: dir === defaultDir, name: entry.name ?? entry.path, readonly: !!entry.readonly };
+    const base = {
+      dir, format, isDefault: dir === defaultDir, name: entry.name ?? entry.path, readonly: !!entry.readonly,
+      ...(entry.aliases ? { aliases: entry.aliases } : {}),
+    };
     if (entry.dialect === undefined) return base;
     // A dialect lens (docs/DIALECTS.md): document-format only, and always read-only — an explicit
     // `readonly: false` beside `dialect` is a contradiction, refused here rather than half-honored.

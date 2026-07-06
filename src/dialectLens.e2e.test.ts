@@ -142,3 +142,68 @@ describe('dialect detection and the register-only offer', () => {
     expect(r.out).toMatch(/emoji-register/);
   });
 });
+
+// WP6 (docs/DIALECTS.md): the materialize upgrade — `ztrack import <lens-file>` converts the
+// file to native grammar through ITS declared dialect. File rewrite + config-entry upgrade
+// (drop `dialect`, record id aliases) are one stroke, so the path demands --register; old id
+// spellings keep resolving through the recorded aliases. Runs LAST: it converts PLAN.md, which
+// every earlier describe reads through the lens.
+describe('materialize upgrade', () => {
+  const configPath = () => join(root, '.volter', 'tracker-config.json');
+
+  test('without --register the upgrade refuses atomically: file and config both untouched', () => {
+    const fileBefore = readFileSync(join(root, 'PLAN.md'), 'utf8');
+    const configBefore = readFileSync(configPath(), 'utf8');
+    const r = ztrack(['import', 'PLAN.md']);
+    expect(r.code).not.toBe(0);
+    expect(r.out).toMatch(/--register/);
+    expect(r.out).toMatch(/dialect lens/);
+    expect(readFileSync(join(root, 'PLAN.md'), 'utf8')).toBe(fileBefore);
+    expect(readFileSync(configPath(), 'utf8')).toBe(configBefore);
+  });
+
+  test('--dry-run previews the rewrite and the id renames without touching anything', () => {
+    const fileBefore = readFileSync(join(root, 'PLAN.md'), 'utf8');
+    const configBefore = readFileSync(configPath(), 'utf8');
+    const r = ztrack(['import', 'PLAN.md', '--dry-run']);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/would materialize 2 issues/);
+    expect(r.out).toMatch(/KQ1 -> KQ-1/);
+    expect(readFileSync(join(root, 'PLAN.md'), 'utf8')).toBe(fileBefore);
+    expect(readFileSync(configPath(), 'utf8')).toBe(configBefore);
+  });
+
+  test('--register materializes the file AND upgrades the config entry in one stroke', () => {
+    const r = ztrack(['import', 'PLAN.md', '--register']);
+    expect(r.code).toBe(0);
+    expect(r.out).toMatch(/materialized 2 issues/);
+    const after = readFileSync(join(root, 'PLAN.md'), 'utf8');
+    expect(after).toContain('### KQ-1 — Is it fun?');
+    expect(after).toContain('status: done');
+    expect(after).toContain('- **Status**: 🟢 PASS, sessions were great.'); // prose never deleted
+    const sources = (JSON.parse(readFileSync(configPath(), 'utf8')) as { sources: Record<string, unknown>[] }).sources;
+    const plan = sources.find((s) => s['path'] === 'PLAN.md')!;
+    expect(plan['dialect']).toBeUndefined();
+    expect(plan['readonly']).toBeUndefined();
+    expect(plan['aliases']).toEqual({ KQ1: 'KQ-1', KQ2: 'KQ-2' });
+    // the OTHER lens entry is untouched — still a lens
+    expect(sources.find((s) => s['path'] === 'NOTES.md')!['dialect']).toBe('emoji-register');
+  });
+
+  test('the tracker now serves the native ids, and the OLD spellings still resolve via aliases', () => {
+    const list = ztrack(['issue', 'list', '--json', 'identifier,state']);
+    const byId = Object.fromEntries((JSON.parse(list.stdout) as { identifier: string; state: string }[]).map((row) => [row.identifier, row]));
+    expect(byId['KQ-1']!.state).toBe('done');
+    expect(byId['KQ-2']!.state).toBe('ready');
+    expect(byId['KQ1']).toBeUndefined();
+    const view = ztrack(['issue', 'view', 'KQ1', '--json']);
+    expect(view.code).toBe(0);
+    expect(view.stdout).toContain('KQ-1');
+  });
+
+  test('the lens leniency is lifted: check now gates on the materialized issues', () => {
+    const r = ztrack(['check', 'KQ1']); // old spelling — resolves through the alias
+    expect(r.code).not.toBe(0); // done with zero ACs / no assignee: full discipline restored
+    expect(r.out).toContain('KQ-1');
+  });
+});
