@@ -2,7 +2,7 @@
 
 All notable ztrack release changes are recorded here.
 
-## Unreleased
+## 1.1.0
 
 - **`ztrack check <file.md>` now recognizes document grammar** instead of lumping the file into
   one filename-keyed loose issue: a file with id-bearing headings (`## APP-1 — title`) is checked
