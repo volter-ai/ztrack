@@ -2,8 +2,9 @@
 // `evidence add --blob`, were removed once they proved write-only: no `ztrack check` rule in any
 // shipped preset ever read a blob back (`hasBlob`/`getBlob` had no production caller), so a stored
 // blob did nothing for verification. `evidence add` now has ONE honest form — copy the file in and
-// cite its path (verified at the cited commit). This test pins the removal's migration contract:
-// a stray `--blob` flag is inert (ignored), never crashes, and the command still stores by path.
+// cite its path (verified at the cited commit). `--blob` itself was kept around for a while as an
+// accepted no-op after that removal, but was dropped outright pre-1.0 (ZTB-42): this test now pins
+// the TIGHTER contract — a stray `--blob` flag rejects loud (unknown flag) and stores nothing.
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,8 +18,8 @@ function ztrackIn(cwd: string, args: string[]): { code: number; out: string } {
   return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
 }
 
-describe('evidence add — blobStore removed, --blob is inert', () => {
-  test('a stray `--blob` flag is ignored: the command still stores by path and never crashes', () => {
+describe('evidence add — blobStore removed, --blob is REJECTED (ZTB-42)', () => {
+  test('a stray `--blob` flag rejects loud (unknown flag) and stores nothing', () => {
     const root = mkdtempSync(join(tmpdir(), 'ztrk-evid-blob-'));
     try {
       mkdirSync(join(root, '.volter'), { recursive: true });
@@ -26,10 +27,12 @@ describe('evidence add — blobStore removed, --blob is inert', () => {
       const file = join(root, 'shot.png');
       writeFileSync(file, Buffer.from('not-really-a-png'));
       const r = ztrackIn(root, ['evidence', 'add', file, '--blob', '--commit']);
-      expect(r.code).toBe(0);
-      expect(r.out).toMatch(/"path":/);     // commit-mode path output, not a blob ref
-      expect(r.out).toMatch(/"sha256":\s*"sha256:[0-9a-f]{64}"/);
-      expect(r.out).not.toMatch(/"blob":/); // the old content-addressed ref is gone
+      expect(r.code).not.toBe(0);
+      expect(r.out).toMatch(/unknown flag/);
+      expect(r.out).toContain('--blob');
+      // nothing stored: the default evidence dir (.volter/evidence) was never created/populated.
+      const dir = join(root, '.volter', 'evidence');
+      expect(!existsSync(dir) || readdirSync(dir).length === 0).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

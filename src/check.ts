@@ -192,8 +192,8 @@ export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptio
   const config = options.config ?? loadTrackerConfig(projectRoot);
   const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   // ZTB-36: pull the ids up front, tolerantly — reused below both to gate `loadContext` (right
-  // here) and to scope `--issues`/`--case` (further down). Call it once; undefined means the root
-  // is too shape-broken to have a usable `issues` array at all.
+  // here) and to scope `--issues` (further down). Call it once; undefined means the root is too
+  // shape-broken to have a usable `issues` array at all.
   const presentIds = extractRootIssueIds(root);
   // Observed facts are preset-owned (gathered via loadContext); no backend read is needed for an
   // already-exported root. A preset with no loadContext needs none — and neither does a
@@ -210,7 +210,7 @@ export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptio
     ...(options.now ? { now: options.now } : {}),
     ...(options.phase ? { phase: options.phase } : {}),
   };
-  // ZTB-36: `--issues`/`--case` with `--input` now scopes validation to those ids WITHIN the
+  // ZTB-36: `--issues` with `--input` now scopes validation to those ids WITHIN the
   // root, mirroring the live path's loader-side filtering (src/core/loader.ts's `wanted` set in
   // `loadValidationInput`) — unlike `--source`, issue ids ARE present in an exported root, so
   // scoping is meaningful (see cliCheck.ts's --source-refusal comment for the contrast). A

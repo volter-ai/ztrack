@@ -17,9 +17,10 @@ export async function handleEvidenceCommand(args: string[]): Promise<boolean> {
     // Ingest an evidence file: copy it (friendly-named) into the evidence dir, stamp its sha256,
     // and print the path to cite (`image=<path>`) + digest. The verification anchors to the
     // commit, so COMMIT the file (commit mode, the default) — then `git cat-file -e <sha>:<path>`
-    // resolves and the gate accepts it. (The legacy `--blob` content-addressed store was removed
-    // once it proved write-only — no `ztrack check` rule ever read a blob back; a stray `--blob`
-    // now simply falls through to this path, which is the form the gate actually verifies.)
+    // resolves and the gate accepts it. (The legacy `--blob` content-addressed store had already
+    // proved write-only — no `ztrack check` rule ever read a blob back — and was dropped outright
+    // pre-1.0 (ZTB-42): a stray `--blob` now rejects loud as an unknown flag instead of silently
+    // falling through as a no-op.)
     const filePath = optionValue(args, '--file') || positionalArgs(args)[0];
     if (!filePath) throw new Error('usage: ztrack evidence add <file> [--name <name>]   (copies it into the evidence dir; cite the printed `image=<path>` in an `ac patch`, then commit it)');
     const root = projectRootFrom();

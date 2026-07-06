@@ -353,7 +353,7 @@ EOF
     python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('commit=$feature_sha','commit=deadbeef',1))"
     npx ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
     set +e
-    npx ztrack check --verify-commits --json > "sha-red-$cycle.json"
+    npx ztrack check --json > "sha-red-$cycle.json"
     sha_exit=$?
     set -e
     test "$sha_exit" -eq 1
@@ -364,12 +364,12 @@ EOF
   # re-checks cleanly from a fresh clone.
   python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('Status: in-review','Status: in-progress'))"
   npx ztrack issue edit "$issue_id" --state in-progress --body-file "$body_file" >/dev/null
-  npx ztrack check --verify-commits --json > "green-$cycle.json"
+  npx ztrack check --json > "green-$cycle.json"
   test "$(json_field "green-$cycle.json" summary.status)" = "pass"
 
   if (( cycle % 4 == 0 )); then
     npx ztrack export --out .volter/root.json >/dev/null
-    npx ztrack check --input .volter/root.json --verify-commits --json > "root-$cycle.json"
+    npx ztrack check --input .volter/root.json --json > "root-$cycle.json"
     test "$(json_field "root-$cycle.json" summary.status)" = "pass"
   fi
 
@@ -406,14 +406,14 @@ PY
     git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages test docs scripts README.md
     git diff --cached --quiet || git commit -q -m "cycle $cycle adopt verified $capability"
     git clone -q "$app" "$clone"
-    (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
+    (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx ztrack check --input .volter/root.json --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
   fi
 
   note "cycle $cycle complete area=$area issue=$issue_id"
 done
 
 npx ztrack export --out .volter/root.json >/dev/null
-npx ztrack check --input .volter/root.json --verify-commits --json > final-root.json
+npx ztrack check --input .volter/root.json --json > final-root.json
 test "$(json_field final-root.json summary.status)" = "pass"
 git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages test docs scripts README.md
 git diff --cached --quiet || git commit -q -m "complete marathon verified lifecycle"

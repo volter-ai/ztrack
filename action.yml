@@ -21,8 +21,9 @@ inputs:
     description: >
       Path to a committed validated root (the JSON written by `ztrack export`,
       shape { "issues": [ ... ] }). When set, ztrack validates this root instead of
-      reading a live tracker store, with --verify-commits. Recommended for CI
-      because a fresh checkout does not preserve the local tracker store. This does
+      reading a live tracker store (commit existence is verified by default).
+      Recommended for CI because a fresh checkout does not preserve the local
+      tracker store. This does
       NOT change which preset executes — see `preset` below and SECURITY.md for the
       fork-PR-safe combination. (If you have an old `.volter/snapshot.json` from a
       previous ztrack version, re-run `ztrack export` to regenerate it as a
@@ -65,7 +66,7 @@ runs:
         if [ -n "$ROOT" ]; then
           # `root` avoids reading the live tracker store — it does NOT avoid executing a
           # preset. Without `preset`, this still runs the checkout's own preset.mts.
-          "${ZTRACK[@]}" check --input "$ROOT" --verify-commits ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
+          "${ZTRACK[@]}" check --input "$ROOT" ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
         else
           if [ ! -f .volter/tracker-config.json ]; then
             echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2

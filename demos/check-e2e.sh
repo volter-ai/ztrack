@@ -53,11 +53,11 @@ d="$(new_repo clean)"; s="$(sha "$d")"
 mkissue "$d" ok "## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n  - evidence ev1: commit=$s acv=1\n  - proof: \"ev1 proves it\" -> ev1\n"
 ok "$(chk "$d")" 0 "a fully-cited green issue passes"
 
-echo "## default preset — --verify-commits catches a cited-but-nonexistent commit"
+echo "## default preset — commit verification (on by default) catches a cited-but-nonexistent commit"
 d="$(new_repo verify)"
 mkissue "$d" v '## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n  - evidence ev1: commit=deadbeef1234 acv=1\n  - proof: "x" -> ev1\n'
-vout="$( ( cd "$d" && npx ztrack check --verify-commits 2>&1 ) || true )"
-ok "$(yn "$(has "$vout" 'evidence_commit_not_found')")" Y "a nonexistent cited commit fires under --verify-commits"
+vout="$( ( cd "$d" && npx ztrack check 2>&1 ) || true )"
+ok "$(yn "$(has "$vout" 'evidence_commit_not_found')")" Y "a nonexistent cited commit fires under default commit verification"
 
 echo "## shell completions — the generated scripts are valid and cover the commands"
 d="$(new_repo completions)"

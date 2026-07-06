@@ -12,7 +12,7 @@ actual `ztrack` binary. No mocks; the only thing that isn't real is the live age
 
 - **`demos/check-e2e.sh`** — the generic preset's `ztrack check` rule behaviors through the
   installed CLI: checkbox/status mismatch, checked-AC commit/evidence gates, unknown
-  evidence, blocking (self / missing / cycle), `--verify-commits`, the SDLC gates
+  evidence, blocking (self / missing / cycle), default-on commit verification, the SDLC gates
   (missing-AC, done-with-unpassed, missing source marker), and canceled-case exemption.
 - **`demos/loop-gate-ci.sh`** — the loop Stop hook's full decision table (armed/held/released,
   per-session exemption non-leak, iteration cap), the `ztrack waiver` round-trip, and the

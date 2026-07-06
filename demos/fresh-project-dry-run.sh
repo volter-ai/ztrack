@@ -30,12 +30,12 @@ sha="$(git rev-parse HEAD)"
 npx ztrack init --team APP --preset default >/dev/null
 body deadbeef
 npx ztrack issue create --title "Dry default" --label type:case --state ready --assignee dry-run --body-file body.md >/dev/null
-set +e; npx ztrack check --verify-commits --json > red.json; red_exit=$?; set -e
+set +e; npx ztrack check --json > red.json; red_exit=$?; set -e
 test "$red_exit" -eq 1
 test "$(json_field red.json findings.0.code)" = "evidence_commit_not_found"
 body "$sha"
 npx ztrack issue edit APP-1 --body-file body.md >/dev/null
-npx ztrack check --verify-commits --json > green.json
+npx ztrack check --json > green.json
 test "$(json_field green.json summary.status)" = "pass"
 printf 'default red/green ok\n'
 

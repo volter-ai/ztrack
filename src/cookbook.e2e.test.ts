@@ -68,7 +68,7 @@ describe('cookbook: the documented local getting-started recipe', () => {
 
   test('the fabricated-commit DEMO is caught (the README hook)', () => {
     writeFileSync(join(root, 'fake.md'), `Assignee: me\nStatus: ready\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 GET /health returns 200\n  - status: passed\n  - evidence ev1: commit=deadbeef acv=1\n  - proof: "screenshot shows a 200 response" -> ev1\n`);
-    const r = zt(['check', './fake.md', '--verify-commits']);
+    const r = zt(['check', './fake.md']);
     expect(r.code).not.toBe(0);
     expect(r.out).toMatch(/deadbeef/);
   });

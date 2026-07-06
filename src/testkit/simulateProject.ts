@@ -17,7 +17,6 @@ const REPO = join(import.meta.dir, '..', '..');
 const CLI = join(REPO, 'src', 'cli.ts');
 const FEATURES = Number(process.env.SIM_FEATURES ?? 25);
 const STREAMS = Number(process.env.SIM_STREAMS ?? 4);
-const VERIFY = '--verify-commits';
 
 type Res = { code: number; out: string };
 const sh = (cwd: string, cmd: string, args: string[]): Res => { const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };
@@ -31,7 +30,8 @@ const withGit = <T>(fn: () => T): Promise<T> => { const run = gitGate.then(fn); 
 const AC = (box: string, lines: string) => `Summary: feature work.\n\n## Acceptance Criteria\n\n- ${box} dev/01 v1 the observable outcome\n${lines}`;
 const pendingBody = AC('[ ]', '  - status: pending\n');
 const realBody = (sha: string) => AC('[x]', `  - status: passed\n  - evidence ev1: commit=${sha} acv=1\n  - proof: "ev1 demonstrates the outcome" -> ev1\n`);
-// the adversarial cheat corpus — each MUST be caught by `check --auto-scope --verify-commits`.
+// the adversarial cheat corpus — each MUST be caught by `check --auto-scope` (commit verification
+// is on by default).
 const CHEATS: Record<string, (sha: string) => string> = {
   fakeCommit: () => AC('[x]', '  - status: passed\n  - evidence ev1: commit=deadbeef99 acv=1\n  - proof: "ev1 shows it" -> ev1\n'),
   noEvidence: () => AC('[x]', '  - status: passed\n'),
@@ -54,13 +54,13 @@ async function develop(wt: string, id: string, cheat: string): Promise<FeatureRe
   // 1) attempt a FAKE completion — the gate must REJECT it
   writeFileSync(join(wt, 'edit.md'), CHEATS[cheat]!(sha));
   zt(wt, 'issue', 'edit', id, '--body-file', 'edit.md');
-  const fake = zt(wt, 'check', '--auto-scope', VERIFY);
+  const fake = zt(wt, 'check', '--auto-scope');
   const caughtFake = fake.code !== 0;
 
   // 2) fix with real evidence — the gate must ACCEPT it
   writeFileSync(join(wt, 'edit.md'), realBody(sha));
   zt(wt, 'issue', 'edit', id, '--body-file', 'edit.md');
-  const real = zt(wt, 'check', '--auto-scope', VERIFY);
+  const real = zt(wt, 'check', '--auto-scope');
   const realPassed = real.code === 0;
 
   zt(wt, 'loop', 'stop');
@@ -110,7 +110,7 @@ async function main() {
 
   // integrate every stream into main, then verify the whole project
   for (let k = 0; k < STREAMS; k++) await withGit(() => git(root, 'merge', '-q', '--no-edit', `stream-${k}`));
-  const finalAll = zt(root, 'check', VERIFY);
+  const finalAll = zt(root, 'check');
 
   const slipped = results.filter((r) => !r.caughtFake);
   const falseFlags = results.filter((r) => !r.realPassed);

@@ -2,6 +2,27 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.51.0
+
+- **Pre-1.0 flag-surface cleanup: three removals/tightenings, decided rather than frozen
+  into 1.0.** (1) `--case` — the hidden accepted alias of `--issues` on `check` — is
+  removed; `--issues` is the one spelling, and a stray `--case` now rejects loud as an
+  unknown flag. (2) The two inert hidden flags are removed outright: `--verify-commits`
+  (a no-op alias of `check`'s default-on commit verification) and `--blob` (the stray
+  flag left from the long-removed content-addressed evidence store). Both now reject
+  loud; `--no-verify-commits` — the real escape hatch for shallow/CI checkouts — is
+  unchanged. The bundled GitHub Action no longer passes `--verify-commits` (it runs the
+  CLI from its own checkout, so the action and CLI always move together per tag);
+  SECURITY.md's fork-PR recipe and all demos drop the no-op flag. No hidden flags remain
+  in the registry. (3) A non-repeatable value-taking flag given more than once — space
+  form, `=` form, or a mix — now rejects loud on every command (`--issues given 2 times;
+  it may be given only once`). Before, the handlers' first-wins parse silently dropped
+  the later occurrences: `check --issues ZT-1 --issues ZT-2` checked only ZT-1 and
+  exited 0. Registry-declared repeatables (`--source`, `--label`, `--add-label`,
+  `--remove-label`) keep their union grammar byte-identically, and repeated bool flags
+  stay accepted (idempotent). 23 new tests plus 6 flipped pins (960 → 983), the new
+  rejection pins proven failing on the previous release.
+
 ## 0.50.1
 
 - **A typo'd flag can no longer hide behind an omitted flag value.** The 0.49.0 dispatch
