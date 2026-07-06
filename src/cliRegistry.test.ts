@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { REGISTRY, allRegisteredFlagTokens, flagTokensForTest, positionalArgs } from './cliRegistry.ts';
+import { REGISTRY, allRegisteredFlagTokens, flagTokensForTest, positionalArgs, rejectUnknownFlags } from './cliRegistry.ts';
 import { printIssueActionHelp, printResourceHelp } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
 import { handleImportCommand } from './cliImport.ts';
@@ -207,5 +207,43 @@ describe('cliRegistry.positionalArgs (ZTB-39)', () => {
 
   test('a bool flag (--attach) consumes nothing — a positional right after it is still found', () => {
     expect(positionalArgs(['evidence', 'add', '--attach', 'real.png'])).toEqual(['real.png']);
+  });
+});
+
+// ZTB-41: `walkArgs` (shared by `rejectUnknownFlags` and `positionalArgs`) must not consume a
+// `--`-leading token as a known value-taking flag's space-form value — the same guard
+// `optionValue` (cliArgs.ts) has always had. Unit-level pins on the two exported entry points,
+// no process spawn.
+describe('cliRegistry walkArgs `--`-guard on consume-next (ZTB-41)', () => {
+  test('positionalArgs: a `--`-leading token right after an omitted-value flag is NOT swallowed as its value — it is classified as a flag, so nothing is positional', () => {
+    expect(positionalArgs(['evidence', 'add', '--name', '--typo', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('rejectUnknownFlags: the same shape now throws, naming the swallowed-in-0.50.0 typo', () => {
+    expect(() => rejectUnknownFlags(['evidence', 'add', '--name', '--typo', 'real.png'])).toThrow(/--typo/);
+  });
+
+  test('rejectUnknownFlags: a `--`-leading token after an omitted-value flag that happens to be a KNOWN flag name still passes (nothing unknown) — registry classification differs from 0.50.0 but the validator does not reject', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--state', '--json', 'identifier'])).not.toThrow();
+  });
+
+  test('rejectUnknownFlags: a single-dash value (`-5`) is still consumed as the value, not classified as a flag', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--limit', '-5'])).not.toThrow();
+  });
+
+  test('positionalArgs: single-dash value after a value flag is still consumed, so it is not returned as a positional', () => {
+    expect(positionalArgs(['issue', 'list', '--limit', '-5', 'ZT-1'])).toEqual(['ZT-1']);
+  });
+
+  test('rejectUnknownFlags: the `=` form is unaffected — `--name=--typo` is one token, consumes nothing, no rejection', () => {
+    expect(() => rejectUnknownFlags(['evidence', 'add', '--name=--typo', 'real.png'])).not.toThrow();
+  });
+
+  test('positionalArgs: the `=` form is unaffected — the file is still found', () => {
+    expect(positionalArgs(['evidence', 'add', '--name=--typo', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('rejectUnknownFlags: a typo NOT preceded by an omitted-value flag rejects exactly as before (byte-identical shape)', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--stat', 'open'])).toThrow(/--stat/);
   });
 });

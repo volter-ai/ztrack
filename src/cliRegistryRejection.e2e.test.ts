@@ -6,7 +6,7 @@
 // results.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -239,5 +239,90 @@ describe('cliRegistry: ghost-verb truth (ZTB-24 dev/05)', () => {
     const view = JSON.parse(ztrackIn(root, ['issue', 'view', id, '--json']).out) as { state: { name: string }; comments: { nodes: Array<{ body: string }> } };
     expect(view.state.name).toBe('done');
     expect(view.comments.nodes.some((c) => c.body === 'closed via file content')).toBe(true);
+  });
+});
+
+// ZTB-41: `walkArgs` (src/cliRegistry.ts, shared by `rejectUnknownFlags` and `positionalArgs`)
+// unconditionally consumed the token after a known value-taking flag as its value — even one
+// starting with `--` — while `optionValue` (the parser most handlers actually use) has always
+// guarded against exactly this. So a genuinely-unknown flag right after an omitted-value flag was
+// absorbed by the registry walk (never classified, never rejected) while the handler independently
+// dropped it: a silent wrong result, not a loud error. The fix adds the same `--`-guard to
+// `walkArgs`'s consume-next. PROOF these pins are new behavior (not already true on unmodified
+// main): `git stash` (reverts src/cliRegistry.ts to the v0.50.0 walk), then
+// `bun test -t 'ZTB-41' src/cliRegistryRejection.e2e.test.ts` — every swallowed-typo test below
+// fails on main (wrong exit code and/or wrong error text); `git stash pop` restores the fix. See
+// the build report for the actual transcript.
+describe('cliRegistry: walkArgs `--`-guard on consume-next (ZTB-41)', () => {
+  let root = '';
+  beforeAll(() => { root = freshRepo('ztrk-reg-walkargs-'); }, 60_000);
+  afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+
+  test('41a. THE FILED MONEY SHOT: `issue list --state --stat done` rejects loud and suggests --state (today/main: exit 0, prints `[]`) — flagVal-family command', () => {
+    const r = ztrackIn(root, ['issue', 'list', '--state', '--stat', 'done']);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toContain('--stat');
+    expect(all).toMatch(/did you mean --state/i);
+  });
+
+  test('41b. `evidence add --name --typo <file> --commit` rejects loud naming --typo and stores NOTHING (today/main: exit 0, typo swallowed as the name, file stored) — optionValue-family command', () => {
+    const file = join(root, 'shot-41b.png');
+    writeFileSync(file, Buffer.from('ZTB-41b evidence bytes'));
+    const evidenceDirPath = join(root, '.volter', 'evidence');
+    const before = existsSync(evidenceDirPath) ? new Set(readdirSync(evidenceDirPath)) : new Set();
+    const r = ztrackIn(root, ['evidence', 'add', '--name', '--typo', file, '--commit']);
+    expect(r.code).not.toBe(0);
+    expect(r.err + r.out).toContain('--typo');
+    expect(r.err + r.out).toMatch(/unknown flag/i);
+    const after = existsSync(evidenceDirPath) ? new Set(readdirSync(evidenceDirPath)) : new Set();
+    expect(after).toEqual(before); // nothing new landed in the evidence dir — the handler never ran
+  });
+
+  test('41c. `waiver sign --code --typoflag <id>` gives an unknown-flag error naming --typoflag, not the misleading missing-id error (today/main: "needs an issue id") — optionValue-family command', () => {
+    const id = (JSON.parse(ztrackIn(root, ['issue', 'create', '--title', 'For waiver typo']).out) as { identifier: string }).identifier;
+    const r = ztrackIn(root, ['waiver', 'sign', '--code', '--typoflag', id]);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toMatch(/unknown flag/i);
+    expect(all).toContain('--typoflag');
+    expect(all).not.toMatch(/needs an issue id/i);
+  });
+
+  test('41d. frontier path: `issue list --actionable --state --typo` rejects loud (today/main: exit 0, unfiltered)', () => {
+    const r = ztrackIn(root, ['issue', 'list', '--actionable', '--state', '--typo']);
+    expect(r.code).not.toBe(0);
+    expect(r.out + r.err).toContain('--typo');
+    expect(r.out + r.err).toMatch(/unknown flag/i);
+  });
+
+  test('41e. a typo NOT preceded by an omitted-value flag rejects exactly as before (byte-identical to the ZTB-24 pin)', () => {
+    const withGuard = ztrackIn(root, ['issue', 'list', '--stat', 'open']);
+    expect(withGuard.code).not.toBe(0);
+    expect(withGuard.out + withGuard.err).toMatch(/did you mean --state/i);
+  });
+
+  test('41f. genuine-value invocations stay byte-identical: `--state done`, `--state=done`, `--limit -5` (single-dash value, not a flag)', () => {
+    const openId = (JSON.parse(ztrackIn(root, ['issue', 'create', '--title', 'ZTB-41f open', '--state', 'draft']).out) as { identifier: string }).identifier;
+    const space = ztrackIn(root, ['issue', 'list', '--state', 'open', '--json', 'identifier']);
+    expect(space.code).toBe(0);
+    expect((JSON.parse(space.out) as Array<{ identifier: string }>).map((x) => x.identifier)).toContain(openId);
+    const eq = ztrackIn(root, ['issue', 'list', '--state=open', '--json', 'identifier']);
+    expect(eq.code).toBe(0);
+    expect(JSON.parse(eq.out)).toEqual(JSON.parse(space.out));
+    // `--limit -5` — a single-dash token is a genuine value, never a flag; must not be rejected.
+    const limited = ztrackIn(root, ['issue', 'list', '--limit', '-5', '--json', 'identifier']);
+    expect(limited.code).toBe(0);
+    expect(() => JSON.parse(limited.out)).not.toThrow();
+  });
+
+  test('41g. `check`/`export`/`import` layer priority: `check --input --typo` is still an unknown-flag error naming --typo, exit != 0 (today/main: cliCheck.ts\'s own "Valid flags:" scan wins because the registry silently swallowed --typo as --input\'s value; after the fix the registry\'s dispatch-time validator fires FIRST — same shape of error, different wording layer — "Accepted flags:"/did-you-mean instead of "Valid flags:")', () => {
+    const r = ztrackIn(root, ['check', '--input', '--typo']);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toContain('--typo');
+    expect(all).toMatch(/unknown flag/i);
+    expect(all).toContain('Accepted flags:'); // the registry's wording now wins this shape (was "Valid flags:" pre-ZTB-41)
+    expect(all).not.toContain('Valid flags:');
   });
 });
