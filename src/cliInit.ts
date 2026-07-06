@@ -78,8 +78,9 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     if (policy && !['hub-wins', 'twin-wins', 'merge'].includes(policy)) throw new Error(`ztrack init: --policy must be merge | hub-wins | twin-wins (got '${policy}')`);
     sync = { provider: 'github', repo, ...(policy ? { policy: policy as 'hub-wins' | 'twin-wins' | 'merge' } : {}) };
   }
-  // Board scope (unlinked tracker). Default 'shared' — a central, cross-worktree board. `--branch` opts
-  // into the strict branch-scoped board (committed per-branch, no central index); `--shared` is explicit/default.
+  // Board scope (unlinked tracker). Default 'shared' — a central, cross-worktree board; there is no
+  // `--shared` flag (shared is simply what you get when `--branch` is absent). `--branch` opts into
+  // the strict branch-scoped board instead (committed per-branch, no central index).
   const board = args.includes('--branch') ? ('branch' as const) : ('shared' as const);
   const result = initTrackerProject(root, optionValue(args, '--team') || 'LOCAL', { preset, ...(sync ? { sync } : {}), board });
   if (result.alreadyInitialized) {

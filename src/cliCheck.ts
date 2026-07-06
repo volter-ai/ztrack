@@ -12,6 +12,7 @@ import { readLoopMarker } from './loopState.ts';
 import { activeStatusEnum } from './presetRegistry.ts';
 import type { Finding } from './core/engine.ts';
 import { RULE_CATEGORIES, type RuleCategory } from './checkRules.ts';
+import { flagSetFor } from './cliRegistry.ts';
 
 async function writeOutput(text: string, outPath: string): Promise<void> {
   if (!outPath) { process.stdout.write(text); return; }
@@ -40,9 +41,12 @@ function parseCategories(flag: string): Partial<Record<RuleCategory, number>> | 
   })) as Partial<Record<RuleCategory, number>>;
 }
 
+// ZTB-24: this allow-list's flag SET now DERIVES from src/cliRegistry.ts — one source of truth
+// shared with the new dispatch-time validator — instead of a hand-maintained second copy. The
+// scan/error wording below (position-insensitive, its own message) is unchanged.
 const KNOWN_FLAGS: Record<string, Set<string>> = {
-  export: new Set(['--out', '--issues']),
-  check: new Set(['--input', '--issues', '--case', '--categories', '--phase', '--fail-on-warning', '--verify-commits', '--no-verify-commits', '--errors-only', '--output', '--json', '--max-findings', '--auto-scope', '--preset', '--source']),
+  export: flagSetFor(['export']),
+  check: flagSetFor(['check']),
 };
 
 /** `ztrack check` (validate the live tracker or a committed validated root) and
@@ -51,10 +55,13 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (args[0] !== 'check' && args[0] !== 'export') return false;
   const action = args[0];
   const flagArgs = args.slice(1);
-  if (flagArgs[0] === '--help' || flagArgs[0] === '-h' || flagArgs[0] === 'help') {
+  // ZTB-24 dev/06: `--help`/`-h` anywhere in a check/export invocation prints the usage — not just
+  // when it's the FIRST token. Before this, `check <target> --help` fell through to the
+  // unknown-flag guard below (`--help` isn't in KNOWN_FLAGS) and errored instead of helping.
+  if (flagArgs.some((a) => a === '--help' || a === '-h' || a === 'help')) {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud)\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud). --case is an accepted alias of --issues.\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
