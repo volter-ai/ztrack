@@ -191,9 +191,17 @@ export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptio
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
   const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
-  // Observed facts are preset-owned (gathered via loadContext); no backend read is
-  // needed for an already-exported root. A preset with no loadContext needs none.
-  const observed = preset.loadContext
+  // ZTB-36: pull the ids up front, tolerantly — reused below both to gate `loadContext` (right
+  // here) and to scope `--issues`/`--case` (further down). Call it once; undefined means the root
+  // is too shape-broken to have a usable `issues` array at all.
+  const presentIds = extractRootIssueIds(root);
+  // Observed facts are preset-owned (gathered via loadContext); no backend read is needed for an
+  // already-exported root. A preset with no loadContext needs none — and neither does a
+  // top-level-broken root (ZTB-38): `checkRoot`'s schema validation is guaranteed to fail on
+  // shape alone, so no observed facts could matter, and skipping the call keeps even a STALE
+  // installed preset copy (one that hasn't run `preset upgrade` past ZTB-38's hardening) safe
+  // from a blind `input.root` dereference before validation ever runs.
+  const observed = preset.loadContext && presentIds !== undefined
     ? await preset.loadContext({ projectRoot, verifyCommits: options.verifyCommits, root: root as CoreRoot })
     : {};
   const context: Context = {
@@ -212,7 +220,6 @@ export async function checkTrackerRoot(root: unknown, options: TrackerCheckOptio
   // the caller's root object is never mutated. When the root is too broken to extract ids
   // (`presentIds` undefined), skip filtering entirely so `checkRoot`'s own shape findings fire
   // instead of a spurious not-found report — a shape error must win, and nothing may crash.
-  const presentIds = extractRootIssueIds(root);
   const wanted = options.issues ? new Set(options.issues.map(String)) : null;
   const scopedRoot = wanted && presentIds
     ? { ...(root as Record<string, unknown>), issues: (root as { issues: unknown[] }).issues.filter((entry) => wanted.has(String((entry as { id?: unknown } | null)?.id))) }
