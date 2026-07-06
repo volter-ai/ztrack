@@ -200,10 +200,15 @@ type WalkedToken =
 /** The one walk both `rejectUnknownFlags` and `positionalArgs` consume, so the two can never
  *  disagree about which token is a value. Per token (after `spec.path` has been sliced off):
  *  HELP_TOKENS are dropped; a `--token` is classified 'flag' (known or not) and, if it's a KNOWN
- *  value-taking flag with NO `=` form, unconditionally consumes (skips) the very next token as its
- *  value — even one that itself looks like a flag, exactly like markdownBackend's flagVal (and
- *  optionValue) already do at runtime, so this walk must agree with real parsers or it would
- *  misread an invocation that works today; everything else is classified 'positional'. */
+ *  value-taking flag with NO `=` form, consumes (skips) the very next token as its value ONLY when
+ *  that token exists and does not itself look like a flag (`--`-prefixed) — the same guard
+ *  `optionValue` has always had (ZTB-41). A following `--token` is instead classified on its own
+ *  turn: known → fine, unknown → rejected loud with did-you-mean by the existing mechanism. This
+ *  makes the registry walk deliberately STRICTER than the backend's `flagVal`/`flagAll` (which
+ *  still unconditionally consume next-token as value): the only possible effect of the mismatch is
+ *  converting a silent wrong result into a loud rejection before any handler runs — it can never
+ *  misread an invocation that works today via the handler's own parser. Everything else is
+ *  classified 'positional'. */
 function walkArgs(spec: CommandSpec, remaining: string[]): WalkedToken[] {
   const byToken = new Map<string, FlagSpec>();
   for (const f of spec.flags) { byToken.set(f.name, f); for (const a of f.aliases ?? []) byToken.set(a, f); }
@@ -217,17 +222,21 @@ function walkArgs(spec: CommandSpec, remaining: string[]): WalkedToken[] {
     const base = eq >= 0 ? token.slice(0, eq) : token;
     const known = byToken.get(base);
     out.push({ kind: 'flag', token, known });
-    if (known && known.takesValue && eq < 0) i += 1;
+    if (known && known.takesValue && eq < 0) {
+      const next = remaining[i + 1];
+      if (next !== undefined && !next.startsWith('--')) i += 1;
+    }
   }
   return out;
 }
 
 /** The POSITIONAL tokens of a registered command invocation — every token that is neither a flag
  *  nor a recognized value-taking flag's consumed value. Walks exactly like `rejectUnknownFlags`
- *  (same `=` handling, same unconditional consume-next for a recognized value flag in space form),
- *  via the shared `walkArgs`, so the two can never disagree about which token is a value. Returns
- *  `[]` for an unregistered command path. `args` is the full command vector (e.g.
- *  `['evidence','add',...]`) — this resolves the command's own spec and slices its path off. */
+ *  (same `=` handling, same guarded consume-next for a recognized value flag in space form — see
+ *  ZTB-41 note on `walkArgs`), via the shared `walkArgs`, so the two can never disagree about which
+ *  token is a value. Returns `[]` for an unregistered command path. `args` is the full command
+ *  vector (e.g. `['evidence','add',...]`) — this resolves the command's own spec and slices its
+ *  path off. */
 export function positionalArgs(args: string[]): string[] {
   const spec = commandSpecFor(args);
   if (!spec) return [];
@@ -241,9 +250,11 @@ export function positionalArgs(args: string[]): string[] {
  *  completions interceptions (those must stay config-free and never reach here) and BEFORE
  *  `handleInitCommand`, so it covers every real command. Never rejects an invocation that works
  *  today: an unregistered command path is a silent no-op (existing backend/handler error paths are
- *  untouched), and the walk below mirrors markdownBackend's own flagVal — a recognized value flag
- *  unconditionally consumes the next token (even one that looks like another flag) as its value,
- *  exactly like the real parsers do, so a genuinely-working-today invocation is never misread. */
+ *  untouched), and (since ZTB-41) the walk below is deliberately STRICTER than markdownBackend's own
+ *  flagVal/optionValue-family parsers at the one shape where they used to diverge (a space-form
+ *  value token that itself looks like a flag) — see `walkArgs`'s docstring — so a
+ *  genuinely-working-today invocation is never misread; the only effect on a previously-silent
+ *  mismatch is a loud rejection here before any handler runs. */
 export function rejectUnknownFlags(args: string[]): void {
   const spec = commandSpecFor(args);
   if (!spec) return; // unregistered command — not this validator's job (ghost/stub/unknown verb)
