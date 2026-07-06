@@ -307,10 +307,15 @@ function noteDocumentFile(result: TrackerCheckResult): void {
   const shown = rel && !rel.startsWith('..') ? rel : doc.path;
   const ids = doc.issueIds.length > 4 ? `${doc.issueIds.slice(0, 4).join(', ')}, …` : doc.issueIds.join(', ');
   if (doc.registeredName === null) {
-    process.stderr.write(
-      `note: ${shown} parses as a document source holding ${doc.issueIds.length} issue(s) (${ids}) — all were checked. `
-      + 'The file is NOT registered in tracker-config.json, so the tracker itself (issue list / check / loop) cannot see these issues.\n'
-      + `      To register it: ztrack import ${shown} --register\n`,
+    // A dialect match gets the LENS offer: `--register --dialect <name>` writes only the config
+    // entry (read-only lens, docs/DIALECTS.md) — the file itself is never rewritten.
+    process.stderr.write(doc.dialect
+      ? `note: ${shown} matches the '${doc.dialect}' dialect and holds ${doc.issueIds.length} issue(s) (${ids}) — all were checked through that lens (reported, never gates). `
+        + 'The file is NOT registered in tracker-config.json, so the tracker itself (issue list / check / loop) cannot see these issues.\n'
+        + `      To register it as a read-only lens (the file is never modified): ztrack import ${shown} --register --dialect ${doc.dialect}\n`
+      : `note: ${shown} parses as a document source holding ${doc.issueIds.length} issue(s) (${ids}) — all were checked. `
+        + 'The file is NOT registered in tracker-config.json, so the tracker itself (issue list / check / loop) cannot see these issues.\n'
+        + `      To register it: ztrack import ${shown} --register\n`,
     );
   } else {
     process.stderr.write(

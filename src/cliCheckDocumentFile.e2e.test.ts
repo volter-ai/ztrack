@@ -176,4 +176,15 @@ describe('unregistered document sibling warning', () => {
     expect(sib(['check', 'DOC-1']).out).not.toMatch(/unregistered_document_sibling/);
     expect(sib(['check', '--source', 'backlog/workstream-a.md']).out).not.toMatch(/unregistered_document_sibling/);
   });
+
+  test('a sibling in a DIALECT shape (docs/DIALECTS.md) warns too, with the lens-flavored offer', () => {
+    writeFileSync(join(sibRoot, 'backlog', 'experiments.md'),
+      '# Experiments\n\n### EX1 — First\n\n- **Status**: 🟢 done.\n\n### EX2 — Second\n\n- **Status**: 🔴 waiting.\n');
+    const r = sib(['check']);
+    expect(r.code).toBe(0);                                          // warning, not an error
+    expect(r.stdout).toMatch(/unregistered_dialect_sibling/);
+    expect(r.stdout).toMatch(/'emoji-register' dialect/);
+    expect(r.stdout).toMatch(/ztrack import backlog\/experiments\.md --register --dialect emoji-register/);
+    rmSync(join(sibRoot, 'backlog', 'experiments.md'));
+  });
 });

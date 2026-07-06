@@ -14,7 +14,9 @@ import { dirname, join, relative } from 'node:path';
 import type { Finding } from './core/engine.ts';
 import type { TrackerConfig } from './types.ts';
 import { resolveSources } from './sources.ts';
+import { DialectSource } from './backends/dialectSource.ts';
 import { DocumentSource } from './backends/documentSource.ts';
+import { detectDialect, type Dialect } from './dialects.ts';
 import { parseMarkdownDocumentSource } from './documentParser.ts';
 
 /** One already-constructed DocumentSource's header diagnostics as findings — shared by the
@@ -54,24 +56,68 @@ export function unregisteredSiblingFindings(projectRoot: string, config: Pick<Tr
       const path = join(dir, entry);
       if (registeredPaths.has(path)) continue;
       let ids: string[];
+      let content: string;
       try {
         if (statSync(path).size > SIBLING_SCAN_MAX_BYTES) continue;
-        ids = parseMarkdownDocumentSource(readFileSync(path, 'utf8'), path)
+        content = readFileSync(path, 'utf8');
+        ids = parseMarkdownDocumentSource(content, path)
           .filter((p) => p.lineStart !== undefined && /\d/.test(p.id))
           .map((p) => p.id);
       } catch { continue; } // unreadable / not parseable — best-effort, never fail the check over a bystander file
-      if (!ids.length) continue;
       const rel = relative(projectRoot, path);
-      const shown = ids.length > 4 ? `${ids.slice(0, 4).join(', ')}, …` : ids.join(', ');
+      if (ids.length) {
+        const shown = ids.length > 4 ? `${ids.slice(0, 4).join(', ')}, …` : ids.join(', ');
+        findings.push({
+          code: 'unregistered_document_sibling', severity: 'warning',
+          message: `${rel} sits beside registered document source(s) and holds ${ids.length} issue(s) in document grammar (${shown}) but is NOT a registered source — the tracker cannot see them.`,
+          fix: `Register it: \`ztrack import ${rel} --register\` — or move the file elsewhere if it is intentionally not tracked.`,
+          origin: { path },
+        });
+        continue;
+      }
+      // Not native grammar — a sibling in a known DIALECT shape (docs/DIALECTS.md) is the same
+      // dark-sibling incident with a different surface; same floor as the file-target check
+      // (detectDialect: ≥2 explicit statuses, ties stay silent), same offer, lens flavored.
+      const detected = detectDialect(content.replace(/\r\n?/g, '\n'));
+      if (!detected) continue;
+      const shown = detected.ids.length > 4 ? `${detected.ids.slice(0, 4).join(', ')}, …` : detected.ids.join(', ');
       findings.push({
-        code: 'unregistered_document_sibling', severity: 'warning',
-        message: `${rel} sits beside registered document source(s) and holds ${ids.length} issue(s) in document grammar (${shown}) but is NOT a registered source — the tracker cannot see them.`,
-        fix: `Register it: \`ztrack import ${rel} --register\` — or move the file elsewhere if it is intentionally not tracked.`,
+        code: 'unregistered_dialect_sibling', severity: 'warning',
+        message: `${rel} sits beside registered document source(s) and matches the '${detected.name}' dialect with ${detected.ids.length} issue(s) (${shown}) but is NOT a registered source — the tracker cannot see them.`,
+        fix: `Register it as a read-only lens (the file is never modified): \`ztrack import ${rel} --register --dialect ${detected.name}\` — or move the file elsewhere if it is intentionally not tracked.`,
         origin: { path },
       });
     }
   }
   return findings;
+}
+
+/** Everything `checkTracker` needs to know about dialect LENS sources (docs/DIALECTS.md), read
+ *  directly off disk the same cross-cutting way header diagnostics are: which issue ids live
+ *  behind a lens (the leniency post-filter's key — a lens file never claimed process discipline,
+ *  so preset ERRORS on its issues downgrade to warnings), and the engine's own parse diagnostics
+ *  as warning findings (duplicate ids, unrecognized status tokens). */
+export function dialectLensInfo(projectRoot: string, config: Pick<TrackerConfig, 'sources'>): { findings: Finding[]; issueIds: Set<string> } {
+  const findings: Finding[] = [];
+  const issueIds = new Set<string>();
+  for (const resolved of resolveSources(projectRoot, config)) {
+    if (!resolved.dialect) continue;
+    let source: DialectSource;
+    try {
+      source = new DialectSource(resolved as typeof resolved & { dialect: Dialect });
+    } catch {
+      continue; // best-effort, like documentHeaderFindings — the backend's own read path surfaces a real failure
+    }
+    for (const id of source.ids()) issueIds.add(id);
+    for (const diagnostic of source.diagnostics()) {
+      findings.push({
+        code: `dialect_${diagnostic.kind}`, issueId: diagnostic.id, severity: 'warning',
+        message: `${resolved.dir}:${diagnostic.line}: ${diagnostic.message}`,
+        origin: { path: resolved.dir },
+      });
+    }
+  }
+  return { findings, issueIds };
 }
 
 export function documentHeaderFindings(projectRoot: string, config: Pick<TrackerConfig, 'sources'>): Finding[] {

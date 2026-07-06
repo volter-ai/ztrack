@@ -8,10 +8,12 @@ import { resolveTrackerValidation } from './presetRegistry.ts';
 import { buildContext, loadValidationInput } from './core/loader.ts';
 import { check, checkRoot, type CheckResult, type Context, type CoreRoot, type Finding, type IssueRecord } from './core/engine.ts';
 import { conflictFindings } from './sync/conflicts.ts';
-import { documentHeaderFindings, documentSourceHeaderFindings, unregisteredSiblingFindings } from './documentDiagnostics.ts';
+import { detectDialect, type Dialect } from './dialects.ts';
+import { dialectLensInfo, documentHeaderFindings, documentSourceHeaderFindings, unregisteredSiblingFindings } from './documentDiagnostics.ts';
+import { DialectSource } from './backends/dialectSource.ts';
 import { DocumentSource } from './backends/documentSource.ts';
 import { parseMarkdownDocumentSource } from './documentParser.ts';
-import { resolveSources } from './sources.ts';
+import { resolveSources, type ResolvedSource } from './sources.ts';
 import type { RuleCategory } from './checkRules.ts';
 
 export type TrackerCheckOptions = {
@@ -48,8 +50,11 @@ export type TrackerCheckResult = CheckResult<CoreRoot> & {
    *  such, instead of as one loose issue. `registeredName` is the declared source's `--source`
    *  selector when the file IS one of the tracker's registered sources, else null — the CLI uses
    *  null to OFFER `ztrack import <file> --register` (never to run it: mutating
-   *  tracker-config.json is the user's call). */
-  documentFile?: { path: string; issueIds: string[]; registeredName: string | null };
+   *  tracker-config.json is the user's call). `dialect` is set when the file matched a DIALECT
+   *  (docs/DIALECTS.md) rather than the native grammar — declared on a registered source, or
+   *  detected (`detectDialect`) on an unregistered file — and names the dialect the offer should
+   *  carry (`--register --dialect <name>`). */
+  documentFile?: { dialect?: string; path: string; issueIds: string[]; registeredName: string | null };
 };
 
 function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
@@ -72,6 +77,19 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   const { records, context } = await loadValidationInput(preset, loadOpts(projectRoot, options));
   const result = check(preset, records, context);
   const loadedIssueIds = records.map((r) => r.id);
+  // Dialect-lens leniency (docs/DIALECTS.md), the waiver-shaped post-filter: an issue read
+  // through a dialect LENS never claimed process discipline (no ACs, inferred status), so preset
+  // ERRORS on it downgrade to warnings — structural truth without gating. Applied core-side so
+  // every preset, stock or forked, gets correct lens behavior without changing a line; the
+  // engine's own parse diagnostics ride in as warnings the same way. Materializing the file
+  // (`ztrack import`) lifts the lens and restores full discipline.
+  const lens = dialectLensInfo(projectRoot, config);
+  if (lens.issueIds.size) {
+    result.findings = result.findings.map((f) => f.issueId && lens.issueIds.has(f.issueId) && f.severity === 'error'
+      ? { ...f, message: `${f.message} (dialect lens: reported, never gates — materialize with \`ztrack import\` for full discipline)`, severity: 'warning' as const }
+      : f);
+    result.ok = !result.findings.some((f) => f.severity === 'error');
+  }
   // Cross-cutting sync conflicts gate the check (until resolved), scoped to the checked issues.
   const conflicts = conflictFindings(projectRoot, new Set((result.export?.issues ?? []).map((i) => i.id)));
   // Cross-cutting document-source header diagnostics (ZTB-23 dev/04): warnings, never gate —
@@ -83,7 +101,7 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   // no issueId it partitions as blocking — but warnings never fail the gate, only errors do), and
   // that's deliberate: an agent mid-burn-down is exactly who authors the next dark sibling.
   const siblingFindings = options.issues || options.sources?.length ? [] : unregisteredSiblingFindings(projectRoot, config);
-  const extra = [...conflicts, ...headerFindings, ...siblingFindings];
+  const extra = [...conflicts, ...headerFindings, ...siblingFindings, ...lens.findings];
   if (!extra.length) return { ...result, loadedIssueIds };
   const findings = [...result.findings, ...extra];
   return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings, loadedIssueIds };
@@ -189,6 +207,14 @@ function safeRealpath(path: string): string {
   try { return realpathSync(path); } catch { return path; }
 }
 
+// Registered = the file is one of the tracker's declared sources (realpath-tolerant: the target
+// path arrives via cwd, the declared path via projectRoot — symlinked tmp dirs etc. must not make
+// a registered file look unregistered). Shared by the document and dialect file-check modes.
+function findRegisteredSource(abs: string, projectRoot: string, config: ReturnType<typeof loadTrackerConfig>): ResolvedSource | undefined {
+  const realAbs = safeRealpath(abs);
+  return resolveSources(projectRoot, config).find((s) => s.format === 'document' && (s.dir === abs || safeRealpath(s.dir) === realAbs));
+}
+
 /** Validate a document-grammar file: every issue the document parse yields, presented exactly as
  *  a registered document source would present them (DocumentSource's decompose/heading-shift),
  *  checked in one batch so intra-file relations resolve. */
@@ -208,11 +234,7 @@ async function checkDocumentFile(abs: string, config: ReturnType<typeof loadTrac
   });
   const context = await buildContext(preset, records, loadOpts(projectRoot, options));
   const result = check(preset, records, context);
-  // Registered = the file is one of the tracker's declared document sources (realpath-tolerant:
-  // the target path arrives via cwd, the declared path via projectRoot — symlinked tmp dirs etc.
-  // must not make a registered file look unregistered).
-  const realAbs = safeRealpath(abs);
-  const registered = resolveSources(projectRoot, config).find((s) => s.format === 'document' && (s.dir === abs || safeRealpath(s.dir) === realAbs));
+  const registered = findRegisteredSource(abs, projectRoot, config);
   const headerFindings = documentSourceHeaderFindings(source, abs);
   const findings = [...headerFindings, ...result.findings];
   return {
@@ -224,9 +246,53 @@ async function checkDocumentFile(abs: string, config: ReturnType<typeof loadTrac
   };
 }
 
+/** Validate a file through a dialect LENS (docs/DIALECTS.md) — the file's own task-list idiom,
+ *  declared (a registered dialect source) or detected (`detectDialect`). Same batch shape as
+ *  `checkDocumentFile`, with the lens leniency applied HERE (a lens file never claimed process
+ *  discipline, so preset ERRORS on its issues downgrade to warnings — structural truth without
+ *  gating) plus the engine's own parse diagnostics as warnings. `documentFile.dialect` carries
+ *  the name so the CLI's note can offer `ztrack import <file> --register --dialect <name>`. */
+async function checkDialectFile(abs: string, dialect: { dialect: Dialect; name: string }, config: ReturnType<typeof loadTrackerConfig>, projectRoot: string, options: TrackerCheckOptions): Promise<TrackerCheckResult> {
+  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
+  const source = new DialectSource({ dialect: dialect.dialect, dialectName: dialect.name, dir: abs, format: 'document', isDefault: false, name: basename(abs), readonly: true });
+  const records: IssueRecord[] = source.ids().map((id) => {
+    const issue = source.load(id)!;
+    return {
+      id, title: issue.title, status: issue.state,
+      ...(issue.children.length ? { children: issue.children } : {}),
+      body: issue.body,
+      origin: source.origin(id),
+    };
+  });
+  const context = await buildContext(preset, records, loadOpts(projectRoot, options));
+  const result = check(preset, records, context);
+  const lensIds = new Set(records.map((r) => r.id));
+  const diagnosticFindings: Finding[] = source.diagnostics().map((d) => ({
+    code: `dialect_${d.kind}`, issueId: d.id, severity: 'warning' as const,
+    message: `${abs}:${d.line}: ${d.message}`,
+    origin: { path: abs },
+  }));
+  const findings = [
+    ...diagnosticFindings,
+    ...result.findings.map((f) => f.issueId && lensIds.has(f.issueId) && f.severity === 'error'
+      ? { ...f, message: `${f.message} (dialect lens: reported, never gates — materialize with \`ztrack import\` for full discipline)`, severity: 'warning' as const }
+      : f),
+  ];
+  const registered = findRegisteredSource(abs, projectRoot, config);
+  return {
+    ...result,
+    ok: !findings.some((f) => f.severity === 'error'),
+    findings,
+    loadedIssueIds: records.map((r) => r.id),
+    documentFile: { dialect: dialect.name, path: abs, issueIds: records.map((r) => r.id), registeredName: registered?.name ?? null },
+  };
+}
+
 /** Validate a single markdown file against the installed preset. A file in DOCUMENT grammar
  *  (id-bearing section headings) is checked as the multi-issue document it is — see
- *  `checkDocumentFile` above; anything else is treated as ONE loose issue. The file need not be
+ *  `checkDocumentFile` above. A file that instead matches a DIALECT — declared on a registered
+ *  source, else detected (`detectDialect`'s ≥2-explicit-status floor) — is checked through that
+ *  lens (`checkDialectFile`). Anything else is treated as ONE loose issue. The file need not be
  *  in the tracker — `ztrack check ./some-issue.md`. */
 export async function checkFile(filePath: string, options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
@@ -235,6 +301,14 @@ export async function checkFile(filePath: string, options: TrackerCheckOptions =
   if (!existsSync(abs)) throw new Error(`ztrack check: file not found: ${filePath}`);
   const content = readFileSync(abs, 'utf8');
   if (isDocumentGrammarFile(content, abs)) return checkDocumentFile(abs, config, projectRoot, options);
+  // Dialect mode. A DECLARED dialect (the file is a registered dialect source) always wins over
+  // detection — the user already told us how to read this file; detection is only for the
+  // unregistered case, and its floor (≥2 issues with explicit status, no ties) keeps a genuinely
+  // loose file from flipping modes over a coincidence.
+  const registered = findRegisteredSource(abs, projectRoot, config);
+  if (registered?.dialect) return checkDialectFile(abs, { dialect: registered.dialect, name: registered.dialectName ?? 'inline' }, config, projectRoot, options);
+  const detected = detectDialect(content.replace(/\r\n?/g, '\n'));
+  if (detected) return checkDialectFile(abs, { dialect: detected.dialect, name: detected.name }, config, projectRoot, options);
   const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const diagnostics: Finding[] = [];
   const record = fileToRecord(abs, content, diagnostics);
