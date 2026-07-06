@@ -56,19 +56,23 @@ describe('cliRegistry: dispatch-time unknown-flag rejection (ZTB-24 dev/01)', ()
     expect(r.code).not.toBe(0);
   });
 
-  // Re-verified against unmodified main (`git show main:src/backends/markdownBackend.ts`):
-  // `issue create --title --state --state draft` does NOT create there either — the literal
-  // value "--state" (consumed as --title's value, hence also read back out as --state's value by
-  // the SEPARATE flagVal(args,'state') lookup) is rejected by the PRE-EXISTING (ZTB-23)
-  // invalidStateError gate, unrelated to this fix. What matters here is that the NEW registry
-  // validator doesn't front-run that with ITS OWN "--state: unknown flag" error — the value-in-
-  // flag-position token must reach the SAME pre-existing gate as it did before this fix, byte for
-  // byte, not a new one.
-  test('2a. value-position preservation: `issue create --title --state --state draft` reaches the SAME pre-existing state-vocabulary error, not a new "unknown flag" one', () => {
+  // FLIPPED by ZTB-42 (Part 3): before ZTB-42, `issue create --title --state --state draft` did
+  // NOT create — the literal value "--state" (consumed as --title's value under the backend's own
+  // guardless flagVal, hence also read back out as --state's value by the SEPARATE
+  // flagVal(args,'state') lookup) was rejected by the PRE-EXISTING (ZTB-23) invalidStateError gate,
+  // and this test pinned that the NEW (ZTB-24) registry validator didn't front-run that with ITS
+  // OWN "--state: unknown flag" error. ZTB-42 changes what "front-run" means: `--state` now
+  // genuinely occurs TWICE in this invocation (the ZTB-41 `--`-guard classifies both as flag
+  // occurrences — the first's value is omitted because `--state` looks like a flag, not consumed;
+  // the second consumes `draft`), which is exactly the repeat shape Part 3 targets. The registry
+  // now catches it BEFORE the handler ever runs, with the repeat-count message — a NEW rejection,
+  // but the one this spec commissions, not an "unknown flag" one and not silent first-wins.
+  test('2a. FLIPPED (ZTB-42): `issue create --title --state --state draft` now rejects at the registry (repeat), not the old state-vocabulary error', () => {
     const r = ztrackIn(root, ['issue', 'create', '--title', '--state', '--state', 'draft']);
     expect(r.code).not.toBe(0);
     const all = r.out + r.err;
-    expect(all).toContain('is not a valid status for the active preset');
+    expect(all).toMatch(/--state given 2 times/);
+    expect(all).not.toContain('is not a valid status for the active preset');
     expect(all).not.toMatch(/unknown flag/i);
   });
 
@@ -324,5 +328,102 @@ describe('cliRegistry: walkArgs `--`-guard on consume-next (ZTB-41)', () => {
     expect(all).toMatch(/unknown flag/i);
     expect(all).toContain('Accepted flags:'); // the registry's wording now wins this shape (was "Valid flags:" pre-ZTB-41)
     expect(all).not.toContain('Valid flags:');
+  });
+});
+
+// ZTB-42: pre-1.0 flag-surface cleanup — black-box e2e proof of the full behavior contract.
+// (1) `--case` (the `--issues` alias) removed outright. (2) the inert hidden flags
+// `--verify-commits` (check) and `--blob` (evidence add) removed outright. (3) a non-repeatable
+// value-taking flag given more than once now rejects loud at the registry, BEFORE any handler
+// runs (same layer-priority precedent as 41g above) — registry-declared repeatables (`--source`,
+// `--label`, `--add-label`, `--remove-label`) are unaffected and keep their ZTB-40 union grammar.
+describe('cliRegistry: ZTB-42 pre-1.0 flag-surface cleanup', () => {
+  let root = '';
+  beforeAll(() => { root = freshRepo('ztrk-reg-42-'); }, 60_000);
+  afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
+
+  test('42a. `--case` is REMOVED (not an alias of --issues any more): rejects loud naming --case', () => {
+    const r = ztrackIn(root, ['check', '--case', 'ZT-1']);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toContain('--case');
+    expect(all).toMatch(/unknown flag/i);
+  });
+
+  test('42b. `--verify-commits` is REMOVED (was an accepted no-op): rejects loud, exit != 0', () => {
+    const r = ztrackIn(root, ['check', '--verify-commits']);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toContain('--verify-commits');
+    expect(all).toMatch(/unknown flag/i);
+  });
+
+  test('42c. the action\'s old shape also rejects: `check --input root.json --verify-commits`', () => {
+    expect(ztrackIn(root, ['export', '--out', 'root.json']).code).toBe(0);
+    const r = ztrackIn(root, ['check', '--input', 'root.json', '--verify-commits']);
+    expect(r.code).not.toBe(0);
+    expect(r.out + r.err).toContain('--verify-commits');
+  });
+
+  test('42d. `--no-verify-commits` is UNCHANGED: still accepted (real escape hatch, not removed)', () => {
+    const r = ztrackIn(root, ['check', '--no-verify-commits', '--json']);
+    expect(r.out + r.err).not.toMatch(/unknown flag/i);
+  });
+
+  test('42e. `evidence add <file> --blob --commit` is REMOVED (was inert): rejects loud, stores nothing', () => {
+    const file = join(root, 'shot-42e.png');
+    writeFileSync(file, Buffer.from('ZTB-42e evidence bytes'));
+    const evidenceDirPath = join(root, '.volter', 'evidence');
+    const before = existsSync(evidenceDirPath) ? new Set(readdirSync(evidenceDirPath)) : new Set();
+    const r = ztrackIn(root, ['evidence', 'add', file, '--blob', '--commit']);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toContain('--blob');
+    expect(all).toMatch(/unknown flag/i);
+    const after = existsSync(evidenceDirPath) ? new Set(readdirSync(evidenceDirPath)) : new Set();
+    expect(after).toEqual(before); // nothing new landed — the handler never ran
+  });
+
+  test('42f. `check --issues ZT-1 --issues ZT-2` rejects loud ("given 2 times"), not silent first-wins', () => {
+    const r = ztrackIn(root, ['check', '--issues', 'ZT-1', '--issues', 'ZT-2']);
+    expect(r.code).not.toBe(0);
+    expect(r.out + r.err).toMatch(/--issues given 2 times/);
+  });
+
+  test('42g. `issue list --state open --state done` rejects loud (today/main: first-wins, silent)', () => {
+    const r = ztrackIn(root, ['issue', 'list', '--state', 'open', '--state', 'done']);
+    expect(r.code).not.toBe(0);
+    expect(r.out + r.err).toMatch(/--state given 2 times/);
+  });
+
+  test('42h. `check --source a --source b` is UNCHANGED: still unions (ZTB-40 repeatable, no rejection)', () => {
+    const r = ztrackIn(root, ['check', '--source', 'a', '--source', 'b', '--json']);
+    expect(r.out + r.err).not.toMatch(/given \d+ times/);
+  });
+
+  test('42i. `issue edit <id> --add-label x --add-label y` is UNCHANGED: still unions', () => {
+    const id = (JSON.parse(ztrackIn(root, ['issue', 'create', '--title', 'For 42i']).out) as { identifier: string }).identifier;
+    const r = ztrackIn(root, ['issue', 'edit', id, '--add-label', 'x', '--add-label', 'y']);
+    expect(r.code).toBe(0);
+    expect(r.out + r.err).not.toMatch(/given \d+ times/);
+  });
+
+  test('42j. ZTB-41 x ZTB-42 compound shape: `check --issues --issues` rejects loud (2 occurrences, not a swallowed value)', () => {
+    const r = ztrackIn(root, ['check', '--issues', '--issues']);
+    expect(r.code).not.toBe(0);
+    expect(r.out + r.err).toMatch(/--issues given 2 times/);
+  });
+
+  test('42k. layer priority (41g precedent): `check --categories a=1 --categories b=2` gets the REGISTRY\'s repeat message, not cliCheck.ts\'s own KNOWN_FLAGS/parseCategories path', () => {
+    const r = ztrackIn(root, ['check', '--categories', 'visual=1', '--categories', 'visual=2']);
+    expect(r.code).not.toBe(0);
+    const all = r.out + r.err;
+    expect(all).toMatch(/ztrack check: --categories given 2 times/);
+    expect(all).not.toMatch(/invalid --categories entry/); // parseCategories never ran
+  });
+
+  test('42l. bool flag repeats are still accepted (out of scope, idempotent): `check --json --json`', () => {
+    const r = ztrackIn(root, ['check', '--json', '--json']);
+    expect(r.out + r.err).not.toMatch(/given \d+ times/);
   });
 });

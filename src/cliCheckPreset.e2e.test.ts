@@ -68,16 +68,16 @@ describe('check --preset — identical gating to the entrypoint route (ZTB-13 de
   });
 
   test('live-tracker mode: a red issue fails identically with and without --preset', () => {
-    const withEntrypoint = ztrackIn(root, ['check', 'ZT-2', '--verify-commits']);
-    const withPreset = ztrackIn(root, ['check', 'ZT-2', '--verify-commits', '--preset', trustedPreset]);
+    const withEntrypoint = ztrackIn(root, ['check', 'ZT-2']);
+    const withPreset = ztrackIn(root, ['check', 'ZT-2', '--preset', trustedPreset]);
     expect(withEntrypoint.code).not.toBe(0);
     expect(withPreset.code).not.toBe(0);
     expect(withPreset.out).toMatch(/deadbeef/);
   });
 
   test('--input mode: a committed root gates identically with and without --preset', () => {
-    const withEntrypoint = ztrackIn(root, ['check', '--input', 'root.json', '--verify-commits']);
-    const withPreset = ztrackIn(root, ['check', '--input', 'root.json', '--verify-commits', '--preset', trustedPreset]);
+    const withEntrypoint = ztrackIn(root, ['check', '--input', 'root.json']);
+    const withPreset = ztrackIn(root, ['check', '--input', 'root.json', '--preset', trustedPreset]);
     expect(withEntrypoint.code).not.toBe(0); // ZT-2's fabricated commit fails the whole root
     expect(withPreset.code).toBe(withEntrypoint.code);
     expect(withPreset.out).toMatch(/deadbeef/);
@@ -85,8 +85,8 @@ describe('check --preset — identical gating to the entrypoint route (ZTB-13 de
 
   test('--preset works on a loose-file check too (the third check mode)', () => {
     writeFileSync(join(root, 'loose.md'), `Status: ready\n\n${FAILING_AC}`);
-    const withEntrypoint = ztrackIn(root, ['check', './loose.md', '--verify-commits']);
-    const withPreset = ztrackIn(root, ['check', './loose.md', '--verify-commits', '--preset', trustedPreset]);
+    const withEntrypoint = ztrackIn(root, ['check', './loose.md']);
+    const withPreset = ztrackIn(root, ['check', './loose.md', '--preset', trustedPreset]);
     expect(withEntrypoint.code).not.toBe(0);
     expect(withPreset.code).toBe(withEntrypoint.code);
     expect(withPreset.out).toMatch(/deadbeef/);
@@ -111,7 +111,7 @@ describe('check --preset — identical gating to the entrypoint route (ZTB-13 de
   // "check targets" suite, re-run here to pin that adding --preset did not perturb the bare route.
   test('bare check (no --preset) is unaffected: same pass/fail split as always', () => {
     expect(ztrackIn(root, ['check', 'ZT-1']).code).toBe(0);
-    expect(ztrackIn(root, ['check', 'ZT-2', '--verify-commits']).code).not.toBe(0);
+    expect(ztrackIn(root, ['check', 'ZT-2']).code).not.toBe(0);
   });
 });
 
@@ -153,14 +153,14 @@ describe('check --preset — the configured entrypoint is not imported (ZTB-13 d
 
   test('(i) --input WITHOUT --preset: the documented bug — the sentinel appears', () => {
     if (existsSync(sentinelPath)) unlinkSync(sentinelPath);
-    const r = ztrackIn(root, ['check', '--input', 'root.json', '--verify-commits']);
+    const r = ztrackIn(root, ['check', '--input', 'root.json']);
     expect(existsSync(sentinelPath)).toBe(true); // the configured entrypoint WAS imported and executed
     expect(r.code).toBe(0); // ZT-1 alone is clean, so this also proves the preset still validates for real
   });
 
   test('(ii) --input WITH --preset <trusted, outside the project>: validates green, sentinel absent', () => {
     if (existsSync(sentinelPath)) unlinkSync(sentinelPath);
-    const r = ztrackIn(root, ['check', '--input', 'root.json', '--verify-commits', '--preset', trustedPreset]);
+    const r = ztrackIn(root, ['check', '--input', 'root.json', '--preset', trustedPreset]);
     expect(r.code).toBe(0);
     expect(existsSync(sentinelPath)).toBe(false); // the configured (sentinel-carrying) entrypoint was never imported
   });

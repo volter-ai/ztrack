@@ -14,7 +14,6 @@ import { join } from 'node:path';
 const REPO = join(import.meta.dir, '..', '..');
 const CLI = join(REPO, 'src', 'cli.ts');
 const N = Number(process.env.SIM_FEATURES ?? 12);
-const VERIFY = '--verify-commits';
 
 type Res = { code: number; out: string };
 const sh = (cwd: string, cmd: string, args: string[]): Res => { const r = spawnSync(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };
@@ -74,10 +73,10 @@ async function main() {
       zt(root, 'loop', 'start', id); // pin the gate to this issue; --auto-scope does NOT auto-sync
       writeFileSync(join(root, 'e.md'), CHEATS[cheat]!(sha));
       zt(root, 'issue', 'edit', id, '--assignee', 'me', '--state', 'ready', '--body-file', 'e.md');
-      if (zt(root, 'check', '--auto-scope', VERIFY).code !== 0) caught++; else fail(`FAKE on ${id} [${cheat}] slipped`);
+      if (zt(root, 'check', '--auto-scope').code !== 0) caught++; else fail(`FAKE on ${id} [${cheat}] slipped`);
       writeFileSync(join(root, 'e.md'), realBody(sha));
       zt(root, 'issue', 'edit', id, '--assignee', 'me', '--state', 'ready', '--body-file', 'e.md');
-      if (zt(root, 'check', '--auto-scope', VERIFY).code === 0) passed++; else fail(`REAL ${id} falsely flagged`);
+      if (zt(root, 'check', '--auto-scope').code === 0) passed++; else fail(`REAL ${id} falsely flagged`);
       zt(root, 'loop', 'stop');
       zt(root, 'sync', 'github'); // push the finished, real work to GitHub
       if (k % 4 === 0) log(`  …developed ${k + 1}/${ids.length}`);

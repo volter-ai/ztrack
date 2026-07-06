@@ -22,7 +22,7 @@ describe('scaffoldProject — realistic fixtures with known outcomes', () => {
     expect(p.ids).toEqual(['APP-1', 'APP-2', 'APP-3', 'APP-4']);
     expect(p.sha).toMatch(/^[0-9a-f]{40}$/);
 
-    const green = (id: string) => p.zt('check', id, '--verify-commits').code === 0;
+    const green = (id: string) => p.zt('check', id).code === 0;
     expect(green('APP-1')).toBe(true);   // pending AC — nothing claimed done
     expect(green('APP-2')).toBe(true);   // checked AC citing the REAL commit
     expect(green('APP-3')).toBe(false);  // checked AC citing a fake commit

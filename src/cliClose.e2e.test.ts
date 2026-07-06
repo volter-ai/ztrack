@@ -24,7 +24,7 @@ function ztrackIn(cwd: string, args: string[]): { code: number; out: string; err
 const gitIn = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encoding: 'utf8' });
 
 // Crib the body format from demos/fresh-project-dry-run.sh's `body()` helper: one dev AC, checked
-// and marked passed, with evidence citing a real commit sha the check's `--verify-commits`-style
+// and marked passed, with evidence citing a real commit sha the check's default-on
 // commit-existence gate can resolve against the fixture's own git history.
 function acBody(sha: string): string {
   return [

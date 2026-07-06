@@ -31,8 +31,20 @@ describe('findings are self-documenting AND self-closing', () => {
     writeFileSync(join(root, 'b.md'), '## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: passed\n');
     zt('issue', 'create', '--title', 'F', '--label', 'type:case', '--state', 'ready', '--assignee', 'me', '--body-file', 'b.md');
 
-    // the agent runs the gate and READS the finding's fix (no prior knowledge of `ac patch`)
-    const out = zt('check', '--json', '--verify-commits').out;
+    // ZTB-42: `--verify-commits` (formerly an accepted no-op back-compat alias for the
+    // always-on-by-default commit verification) was removed pre-1.0 — a stray occurrence now
+    // rejects loud as an unknown flag instead of being silently accepted, so this OLD invocation
+    // no longer works and must not be relied on.
+    const rejected = zt('check', '--json', '--verify-commits');
+    expect(rejected.code).not.toBe(0);
+    expect(rejected.out).toMatch(/unknown flag/);
+    expect(rejected.out).toContain('--verify-commits');
+    // did-you-mean: `--no-verify-commits` is the closest registered flag by edit distance.
+    expect(rejected.out).toContain('--no-verify-commits');
+
+    // the agent runs the gate and READS the finding's fix (no prior knowledge of `ac patch`) —
+    // commit verification is on by default, so no flag is needed here.
+    const out = zt('check', '--json').out;
     const result = JSON.parse(out.slice(out.indexOf('{'))) as { findings: Array<{ code: string; fix?: string; acId?: string }> };
     const finding = result.findings.find((f) => f.code === 'passed_ac_missing_evidence')!;
     expect(finding.fix).toMatch(/ztrack ac patch APP-1 dev\/01 --json/); // the finding names the exact command + target
@@ -42,7 +54,11 @@ describe('findings are self-documenting AND self-closing', () => {
     const patch = { evidence: [{ id: 'ev1', commit: sha, acVersion: 1 }], proof: { explanation: 'ev1 shows the outcome', evidenceRefs: ['ev1'] } };
     expect(zt('ac', 'patch', 'APP-1', 'dev/01', '--json', JSON.stringify(patch)).code).toBe(0);
 
-    // gate is now green — the loop closed from the finding alone
-    expect(zt('check', '--verify-commits').code).toBe(0);
+    // gate is now green — the loop closed from the finding alone. `--verify-commits` is gone
+    // (ZTB-42); commit verification is on by default so plain `check` still proves the same thing.
+    expect(zt('check').code).toBe(0);
+    const stillRejected = zt('check', '--verify-commits');
+    expect(stillRejected.code).not.toBe(0);
+    expect(stillRejected.out).toMatch(/unknown flag/);
   }, 60_000);
 });

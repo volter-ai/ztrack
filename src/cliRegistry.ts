@@ -24,7 +24,8 @@ export type FlagSpec = {
   name: string;            // canonical form, e.g. '--state'
   takesValue: boolean;
   repeatable?: boolean;    // may legitimately appear more than once (e.g. --label, --source)
-  aliases?: string[];      // e.g. '--case' aliases '--issues' on `check`
+  aliases?: string[];      // alternate spellings accepted for the same flag (none currently declared —
+                           // the mechanism stays for the next one; ZTB-42 removed the one user, --case)
   hidden?: boolean;        // parsed and accepted, but deliberately undocumented (see cliHelp.ts)
 };
 export type CommandSpec = {
@@ -44,13 +45,12 @@ function bool(name: string, opts: Partial<Pick<FlagSpec, 'aliases' | 'repeatable
 // cli.ts, for ease of cross-checking.
 export const REGISTRY: CommandSpec[] = [
   { path: ['check'], flags: [
-    val('--issues', { aliases: ['--case'] }),
+    val('--issues'),
     val('--source', { repeatable: true }),
     val('--categories'),
     val('--phase'),
     bool('--fail-on-warning'),
     bool('--no-verify-commits'),
-    bool('--verify-commits', { hidden: true }), // accepted no-op alias, back-compat only
     val('--input'),
     bool('--auto-scope'),
     val('--output'),
@@ -112,7 +112,6 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['sync', 'github'], flags: [ val('--repo'), bool('--pull'), bool('--push'), val('--policy'), bool('--json') ] },
   { path: ['evidence', 'add'], flags: [
     val('--file'), val('--name'), bool('--attach'), bool('--commit'),
-    bool('--blob', { hidden: true }), // legacy content-addressed store, removed; a stray --blob is inert (cliEvidence.e2e.test.ts pins this)
   ] },
   { path: ['evidence', 'keygen'], flags: [ val('--out-dir') ] },
   { path: ['evidence', 'verify'], flags: [ val('--bundle'), val('--key'), val('--issues') ] },
@@ -147,10 +146,13 @@ function exactSpecFor(path: string[]): CommandSpec | undefined {
 }
 
 /** Every accepted flag TOKEN for one command — its own flags' names AND aliases. `includeHidden`
- *  (default true) controls whether deliberately-undocumented flags (e.g. `--verify-commits`,
- *  `--blob`) are included; they must stay ACCEPTED even when not shown in any help text or
- *  "accepted flags" hint. Exported (as `flagTokensForTest`) purely for cliRegistry.test.ts's
- *  registry<->help drift test — not part of the runtime API other exports above serve. */
+ *  (default true) controls whether deliberately-undocumented flags are included; a hidden flag
+ *  must stay ACCEPTED even when not shown in any help text or "accepted flags" hint — the field
+ *  and this machinery stay for the next one, though no flag is currently declared `hidden` (ZTB-42
+ *  removed the two that were, `--verify-commits` and `--blob`; both had proved genuinely inert and
+ *  were dropped outright rather than kept as accepted no-ops). Exported (as `flagTokensForTest`)
+ *  purely for cliRegistry.test.ts's registry<->help drift test — not part of the runtime API other
+ *  exports above serve. */
 function flagTokens(spec: CommandSpec, includeHidden = true): string[] {
   const out: string[] = [];
   for (const f of spec.flags) {
@@ -259,20 +261,43 @@ export function rejectUnknownFlags(args: string[]): void {
   const spec = commandSpecFor(args);
   if (!spec) return; // unregistered command — not this validator's job (ghost/stub/unknown verb)
   const remaining = args.slice(spec.path.length);
-  const unknown = walkArgs(spec, remaining)
+  const label = `ztrack ${spec.path.join(' ')}`;
+  const walked = walkArgs(spec, remaining);
+
+  const unknown = walked
     .filter((t): t is { kind: 'flag'; token: string; known: FlagSpec | undefined } => t.kind === 'flag' && !t.known)
     .map((t) => t.token);
-  if (!unknown.length) return;
-
-  const label = `ztrack ${spec.path.join(' ')}`;
-  const accepted = flagTokens(spec, false).sort();
-  const withSuggestions = unknown.map((token) => {
-    const base = token.includes('=') ? token.slice(0, token.indexOf('=')) : token;
-    return { token, suggestion: nearestKey(base, flagTokens(spec)) };
-  });
-  if (withSuggestions.some((u) => u.suggestion)) {
-    const parts = withSuggestions.map((u) => (u.suggestion ? `${u.token} (did you mean ${u.suggestion}?)` : u.token));
-    throw new Error(`${label}: unknown flag(s) ${parts.join(', ')}.`);
+  if (unknown.length) {
+    const accepted = flagTokens(spec, false).sort();
+    const withSuggestions = unknown.map((token) => {
+      const base = token.includes('=') ? token.slice(0, token.indexOf('=')) : token;
+      return { token, suggestion: nearestKey(base, flagTokens(spec)) };
+    });
+    if (withSuggestions.some((u) => u.suggestion)) {
+      const parts = withSuggestions.map((u) => (u.suggestion ? `${u.token} (did you mean ${u.suggestion}?)` : u.token));
+      throw new Error(`${label}: unknown flag(s) ${parts.join(', ')}.`);
+    }
+    throw new Error(`${label}: unknown flag(s) ${unknown.join(', ')}. Accepted flags: ${accepted.join(' ')}`);
   }
-  throw new Error(`${label}: unknown flag(s) ${unknown.join(', ')}. Accepted flags: ${accepted.join(' ')}`);
+
+  // ZTB-42: a non-repeatable value-taking flag given more than once used to silently keep only
+  // the FIRST occurrence (every handler reads it via `optionValue`, which is first-wins) — a
+  // decided pre-1.0 tightening, not a frozen behavior: reject loud instead, the same way an
+  // unknown flag does. Both the space form (`--flag value`) and the `=` form (`--flag=value`)
+  // count, and a mix of the two counts too — `walkArgs` already collapses both spellings (and any
+  // aliases) onto the one shared `FlagSpec` object, so counting by that object's identity unions
+  // them correctly. Registry-declared repeatables (`--source`, `--label`, `--add-label`,
+  // `--remove-label` — ZTB-40's union grammar) are explicitly exempt and keep working byte-
+  // identically. Bool flags are out of scope entirely (a repeated bool is idempotent — no
+  // information is lost by keeping only one, unlike a repeated value flag where the LOSS is the
+  // whole bug) — this loop only ever counts `takesValue` flags.
+  const counts = new Map<FlagSpec, number>();
+  for (const t of walked) {
+    if (t.kind !== 'flag' || !t.known) continue;
+    if (!t.known.takesValue || t.known.repeatable) continue;
+    counts.set(t.known, (counts.get(t.known) ?? 0) + 1);
+  }
+  for (const [flag, count] of counts) {
+    if (count > 1) throw new Error(`${label}: ${flag.name} given ${count} times; it may be given only once.`);
+  }
 }

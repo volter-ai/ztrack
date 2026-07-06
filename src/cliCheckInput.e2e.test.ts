@@ -1,5 +1,5 @@
 // ZTB-36 — black-box e2e (real CLI, spawnSync): `check --issues a,b --input root.json` used to
-// be silently inert. The parsed `--issues`/`--case` value never reached `checkTrackerRoot` —
+// be silently inert. The parsed `--issues` value never reached `checkTrackerRoot` —
 // `target` is forced `null` on the `--input` path (see cliCheck.ts's "Resolve the unified
 // TARGET" comment), and `issues` (derived from `target`) is always undefined there — so a
 // typo'd or stale id in a CI invocation validating a committed root silently passed with
@@ -67,7 +67,7 @@ const ackOnlyBody = [
   `- code: evidence_commit_not_found ref: ${FAKE_ACK} reason: destroyed in the incident by: Tess (t@t.co)`, '',
 ].join('\n');
 
-describe('check --issues/--case scoping within --input roots (ZTB-36)', () => {
+describe('check --issues scoping within --input roots (ZTB-36; --case removed pre-1.0 by ZTB-42)', () => {
   test('1. typo\'d id errors loud, naming the --input root (the money shot)', () => {
     const root = freshRepo('ztrk-input-typo-');
     try {
@@ -132,12 +132,16 @@ describe('check --issues/--case scoping within --input roots (ZTB-36)', () => {
       expect(payload.findings.some((f) => f.code === 'evidence_commit_not_found' && f.issueId === idBad)).toBe(true);
     });
 
-    test('4. --case is a full alias of --issues on the --input path', () => {
+    test('4. --case is REMOVED (ZTB-42): rejects loud as an unknown flag on the --input path', () => {
       const r = ztrackIn(root, ['check', '--case', idClean, '--input', 'root.json', '--json']);
-      expect(r.code).toBe(0);
-      const payload = JSON.parse(r.out) as { ok: boolean; summary: { issues: number } };
-      expect(payload.ok).toBe(true);
-      expect(payload.summary.issues).toBe(1);
+      expect(r.code).not.toBe(0);
+      const all = r.out + r.err;
+      expect(all).toMatch(/unknown flag/);
+      expect(all).toContain('--case');
+      // did-you-mean is whatever the registry's edit-distance match actually produces for
+      // '--case' against `check`'s flag set — currently `--phase`, not `--issues` (closer edit
+      // distance); not force-pinned to a "nicer" suggestion.
+      expect(all).toContain('--phase');
     });
   });
 

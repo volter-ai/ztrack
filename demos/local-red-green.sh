@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Local red→green on the `default` preset: a passed AC that cites a fabricated commit is RED
-# (evidence_commit_not_found under --verify-commits); swapping in the repo's real HEAD makes it
-# GREEN. Runs against the source CLI when available, else the published `ztrack`.
+# (evidence_commit_not_found under commit verification, on by default); swapping in the repo's
+# real HEAD makes it GREEN. Runs against the source CLI when available, else the published
+# `ztrack`.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -45,7 +46,7 @@ body deadbeef
   --body-file body.md >/dev/null 2>/dev/null
 
 set +e
-"${ztrack[@]}" check --verify-commits --json > red.json
+"${ztrack[@]}" check --json > red.json
 red_exit=$?
 set -e
 
@@ -53,7 +54,7 @@ body "$real_sha"
 "${ztrack[@]}" issue edit APP-1 --body-file body.md >/dev/null
 
 set +e
-"${ztrack[@]}" check --verify-commits --json > green.json
+"${ztrack[@]}" check --json > green.json
 green_exit=$?
 set -e
 

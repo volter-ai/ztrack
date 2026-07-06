@@ -247,3 +247,68 @@ describe('cliRegistry walkArgs `--`-guard on consume-next (ZTB-41)', () => {
     expect(() => rejectUnknownFlags(['issue', 'list', '--stat', 'open'])).toThrow(/--stat/);
   });
 });
+
+// ZTB-42: a non-repeatable value-taking flag given more than once used to silently keep only the
+// FIRST occurrence (every handler reads it via `optionValue`) — now the registry rejects it loud,
+// the same way an unknown flag does. Registry-declared repeatables (`--source`, `--label`,
+// `--add-label`, `--remove-label`) are exempt and keep their ZTB-40 union grammar. Bool repeats
+// are out of scope entirely (idempotent).
+describe('cliRegistry: repeated non-repeatable value flags reject loud (ZTB-42)', () => {
+  test('space form: --issues given twice rejects, naming the flag and the count', () => {
+    expect(() => rejectUnknownFlags(['check', '--issues', 'ZT-1', '--issues', 'ZT-2']))
+      .toThrow(/--issues given 2 times/);
+  });
+
+  test('`=` form: --input given twice (both `=`) rejects', () => {
+    expect(() => rejectUnknownFlags(['check', '--input=a.json', '--input=b.json']))
+      .toThrow(/--input given 2 times/);
+  });
+
+  test('mixed space + `=` form counts both occurrences toward the same flag', () => {
+    expect(() => rejectUnknownFlags(['check', '--input', 'a.json', '--input=b.json']))
+      .toThrow(/--input given 2 times/);
+  });
+
+  test('three occurrences reports the real count, not just ">1"', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--state', 'open', '--state', 'done', '--state', 'closed']))
+      .toThrow(/--state given 3 times/);
+  });
+
+  test('a single occurrence of a non-repeatable value flag is unaffected', () => {
+    expect(() => rejectUnknownFlags(['check', '--issues', 'ZT-1'])).not.toThrow();
+  });
+
+  test('registry-declared repeatable exemption: --source given twice still unions, no throw (ZTB-40 unchanged)', () => {
+    expect(() => rejectUnknownFlags(['check', '--source', 'a', '--source', 'b'])).not.toThrow();
+    expect(() => rejectUnknownFlags(['issue', 'list', '--source', 'a', '--source', 'b'])).not.toThrow();
+  });
+
+  test('registry-declared repeatable exemption: --add-label / --remove-label repeats still work', () => {
+    expect(() => rejectUnknownFlags(['issue', 'edit', 'ZT-1', '--add-label', 'x', '--add-label', 'y'])).not.toThrow();
+    expect(() => rejectUnknownFlags(['issue', 'edit', 'ZT-1', '--remove-label', 'x', '--remove-label', 'y'])).not.toThrow();
+  });
+
+  test('bool flags repeated are still accepted (out of scope — idempotent)', () => {
+    expect(() => rejectUnknownFlags(['check', '--json', '--json'])).not.toThrow();
+    expect(() => rejectUnknownFlags(['check', '--fail-on-warning', '--fail-on-warning'])).not.toThrow();
+  });
+
+  // Part 1: `--case` no longer aliases `--issues` — alias-less, it is simply unknown.
+  test('`--case` is REMOVED as an alias of --issues: unknown flag, naming --case', () => {
+    expect(() => rejectUnknownFlags(['check', '--case', 'ZT-1'])).toThrow(/unknown flag.*--case/s);
+  });
+
+  // ZTB-41 compound shape: `--issues --issues` (the second one lands in the first's value slot,
+  // so the ZTB-41 `--`-guard classifies it as its own flag occurrence, not a swallowed value) —
+  // now caught by repeat enforcement (2 occurrences of --issues), loud either way.
+  test('ZTB-41 x ZTB-42 compound shape: `--issues --issues` rejects (2 occurrences, not a swallowed value)', () => {
+    expect(() => rejectUnknownFlags(['check', '--issues', '--issues'])).toThrow(/--issues given 2 times/);
+  });
+
+  // check/export/import: the registry fires before the legacy KNOWN_FLAGS scan (ZTB-41 precedent,
+  // 41g) — a repeated flag there gets the REGISTRY's message, not the handler's own.
+  test('check\'s own KNOWN_FLAGS scan never gets a chance to run: registry throws first, same message shape', () => {
+    expect(() => rejectUnknownFlags(['check', '--categories', 'visual=1', '--categories', 'visual=2']))
+      .toThrow(/ztrack check: --categories given 2 times/);
+  });
+});

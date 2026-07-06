@@ -55,7 +55,7 @@ describe('check targets', () => {
   });
   test('a markdown file is checked as one issue and catches a fabricated commit', () => {
     writeFileSync(join(root, 'loose.md'), `Status: ready\n\n${FAILING_AC}`);
-    const r = ztrack(['check', './loose.md', '--verify-commits']);
+    const r = ztrack(['check', './loose.md']);
     expect(r.code).not.toBe(0);
     expect(r.out).toMatch(/deadbeef/);
   });
@@ -64,7 +64,7 @@ describe('check targets', () => {
   test('a loose-file check finding carries origin.path pointing at that file', () => {
     const loosePath = join(root, 'loose-origin.md');
     writeFileSync(loosePath, `Status: ready\n\n${FAILING_AC}`);
-    const r = ztrack(['check', './loose-origin.md', '--verify-commits', '--json']);
+    const r = ztrack(['check', './loose-origin.md', '--json']);
     expect(r.code).not.toBe(0);
     const payload = JSON.parse(r.out) as { findings: Array<{ code: string; origin?: { path: string; line?: number } }> };
     const finding = payload.findings.find((f) => f.origin);
@@ -73,7 +73,7 @@ describe('check targets', () => {
     expect(finding?.origin?.path).toBe(realpathSync(loosePath));
   });
   test('a store-backed check finding carries origin.path pointing at the real .md file', () => {
-    const r = ztrack(['check', 'ZT-2', '--verify-commits', '--json']); // ZT-2's fake commit fails under commit verification
+    const r = ztrack(['check', 'ZT-2', '--json']); // ZT-2's fake commit fails under commit verification
     expect(r.code).not.toBe(0);
     const payload = JSON.parse(r.out) as { findings: Array<{ code: string; issueId?: string; origin?: { path: string; line?: number } }> };
     const finding = payload.findings.find((f) => f.issueId === 'ZT-2' && f.origin);
@@ -144,14 +144,16 @@ describe('check targets', () => {
     expect(good.code).toBe(0); // ZT-1 is the clean issue; a real category name changes nothing about that
   });
   // Commit existence is verified by DEFAULT (the core guarantee). `--no-verify-commits` is the
-  // escape hatch for shallow/CI checkouts that lack the cited commits; `--verify-commits` is kept
-  // as an accepted no-op alias (docs used to teach it, and it must not error).
-  test('commit verification is default-on; --no-verify-commits opts out; --verify-commits is accepted', () => {
+  // escape hatch for shallow/CI checkouts that lack the cited commits. `--verify-commits` (a
+  // former no-op back-compat alias) was removed pre-1.0 (ZTB-42): a stray occurrence now rejects
+  // loud as an unknown flag instead of being silently accepted.
+  test('commit verification is default-on; --no-verify-commits opts out; --verify-commits is REJECTED (removed, ZTB-42)', () => {
     expect(ztrack(['check', 'ZT-2']).code).not.toBe(0);                     // fake commit caught with no flag
     expect(ztrack(['check', 'ZT-2', '--no-verify-commits']).code).toBe(0);  // escape hatch skips the commit check
-    const alias = ztrack(['check', 'ZT-2', '--verify-commits']);
-    expect(alias.code).not.toBe(0);                                         // alias still verifies (not "unknown flag")
-    expect(alias.out).not.toMatch(/unknown flag/);
+    const removed = ztrack(['check', 'ZT-2', '--verify-commits']);
+    expect(removed.code).not.toBe(0);
+    expect(removed.out).toMatch(/unknown flag/);
+    expect(removed.out).toMatch(/--verify-commits/);
   });
 });
 
@@ -162,19 +164,19 @@ describe('loop target drives the Stop-hook gate', () => {
   test('loop start <id> scopes the gate to that issue (other red issues are informational)', () => {
     ztrack(['loop', 'stop']); // isolate from whatever the previous test left armed
     expect(ztrack(['loop', 'start', 'ZT-1']).code).toBe(0);
-    // ZT-2 is red under --verify-commits, but the armed loop gates on ZT-1 → turn may end.
-    expect(ztrack(['check', '--auto-scope', '--verify-commits']).code).toBe(0);
+    // ZT-2 is red under default commit verification, but the armed loop gates on ZT-1 → turn may end.
+    expect(ztrack(['check', '--auto-scope']).code).toBe(0);
   });
   test('loop start on the red issue gates on it → the turn is held (nonzero)', () => {
     ztrack(['loop', 'stop']); // ZT-1 is still armed from the previous test; disarm before re-targeting
     expect(ztrack(['loop', 'start', 'ZT-2']).code).toBe(0);
-    expect(ztrack(['check', '--auto-scope', '--verify-commits']).code).not.toBe(0);
+    expect(ztrack(['check', '--auto-scope']).code).not.toBe(0);
   });
   test('loop start <file.md> gates on that file', () => {
     ztrack(['loop', 'stop']); // ZT-2 is still armed from the previous test; disarm before re-targeting
     writeFileSync(join(root, 'loop-target.md'), `Status: ready\n\n${FAILING_AC}`);
     expect(ztrack(['loop', 'start', './loop-target.md']).code).toBe(0);
-    const r = ztrack(['check', '--auto-scope', '--verify-commits']);
+    const r = ztrack(['check', '--auto-scope']);
     expect(r.code).not.toBe(0);
     expect(r.out).toMatch(/deadbeef/);
     ztrack(['loop', 'stop']);

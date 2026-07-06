@@ -18,8 +18,8 @@ scripts.
 - The entrypoint is confined to the project directory (it cannot point the import
   at an arbitrary host path), but it can still run arbitrary code within the
   process.
-- **The committed validated-root path (`ztrack check --input .volter/root.json
-  --verify-commits`, the `root` input of the GitHub Action) does NOT avoid executing a
+- **The committed validated-root path (`ztrack check --input .volter/root.json`,
+  the `root` input of the GitHub Action) does NOT avoid executing a
   preset.** It avoids reading the live tracker store (useful because a fresh CI checkout
   doesn't have it) — but `--input` still loads and executes the checkout's configured
   `preset.mts` to validate that root, exactly like every other check surface. There is no
@@ -36,7 +36,7 @@ scripts.
      sandboxed/no-secrets job, or better, have the PR author commit the root and skip this
      step entirely.
   4. Validate the head's root with the base's preset, both from the trusted checkout:
-     `ztrack check --input head/.volter/root.json --verify-commits --preset
+     `ztrack check --input head/.volter/root.json --preset
      base/.volter/tracker/validation/preset.mts` (or the `root`/`preset` Action inputs).
      Only `base/`'s code executes; the head's `preset.mts` never runs on your runner.
 - Avoid running a bare live-tracker `ztrack check` (no `--input`, no `--preset`) on

@@ -4,9 +4,9 @@
 // `init --sync`'d (linked), seeded with issues from a declarative spec, optionally committed (so
 // clones/CI/worktrees see them) with branches for auto-scope tests.
 //
-// The four issue SHAPES each produce a KNOWN check outcome under --verify-commits (proven by
-// scaffold.test.ts): `pending` → GREEN, `realCommit` → GREEN, `fakeCommit` → RED
-// (evidence_commit_not_found), `noEvidence` → RED (passed_ac_missing_evidence).
+// The four issue SHAPES each produce a KNOWN check outcome under commit verification, which is on
+// by default (proven by scaffold.test.ts): `pending` → GREEN, `realCommit` → GREEN, `fakeCommit` →
+// RED (evidence_commit_not_found), `noEvidence` → RED (passed_ac_missing_evidence).
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

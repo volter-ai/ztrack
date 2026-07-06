@@ -186,8 +186,9 @@ cli.ts → cliCheck (check)
 ```
 
 `ztrack check` validates the live tracker; flags: `--input root.json` (validate a
-committed validated root instead of the live store), `--verify-commits`,
-`--categories name=N,...`, `--fail-on-warning`, `--errors-only`, `--json`, `--output`,
+committed validated root instead of the live store — commit existence is verified by
+default; `--no-verify-commits` skips it), `--categories name=N,...`, `--fail-on-warning`,
+`--errors-only`, `--json`, `--output`,
 `--max-findings`. `--fail-on-warning` gates on real `warning`-severity findings only —
 acknowledged (waived) findings never trip it — and the exit code, the pass/fail banner, the
 trailing exit-hint line, and `--json`'s `ok`/`summary.status` all derive from that same one

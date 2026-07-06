@@ -300,7 +300,7 @@ write_body broken.md \
 npx ztrack issue create --title "Reject empty task titles" --label type:bug --label area:store --state in-progress --assignee maintainer --body-file broken.md >/dev/null
 
 set +e
-npx ztrack check --verify-commits --json > red.json
+npx ztrack check --json > red.json
 red_exit=$?
 set -e
 test "$red_exit" -eq 1
@@ -314,7 +314,7 @@ p = Path("broken.md")
 p.write_text(p.read_text().replace("deadbee", sys.argv[1]))
 PY
 npx ztrack issue edit OSS-4 --body-file broken.md >/dev/null
-npx ztrack check --verify-commits --json > green.json
+npx ztrack check --json > green.json
 test "$(json_field green.json summary.status)" = "pass"
 test "$(json_field green.json summary.issues)" -eq 4
 
@@ -326,7 +326,7 @@ PY
 )" -ge 3
 
 npx ztrack export --out .volter/root.json >/dev/null
-npx ztrack check --input .volter/root.json --verify-commits --json > root-check.json
+npx ztrack check --input .volter/root.json --json > root-check.json
 test "$(json_field root-check.json summary.status)" = "pass"
 
 mkdir -p .github/workflows
@@ -406,7 +406,7 @@ git clone -q "$app" "$clone"
 cd "$clone"
 npm ci >/dev/null
 npm test >/dev/null
-npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json
+npx ztrack check --input .volter/root.json --json > clone-check.json
 test "$(json_field clone-check.json summary.status)" = "pass"
 
 printf 'full dev cycle ok\n'

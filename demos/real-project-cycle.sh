@@ -366,13 +366,13 @@ npx ztrack issue edit INV-2 --state in-progress --body-file api.md >/dev/null
 npx ztrack check --json > rollout-green.json
 test "$(json_field rollout-green.json summary.status)" = "pass"
 
-# A fabricated commit on an evidence line is caught under --verify-commits, then fixed.
+# A fabricated commit on an evidence line is caught under default commit verification, then fixed.
 pass_ac admin.md dev/01 "Admin summary renders reserved and on-hand counts." "$admin_sha" E1
 pass_ac admin.md dev/02 "Summary works with multiple SKUs." deadbeef E2
 pass_ac admin.md proc/01 "Docs identify who owns the admin view." "$docs_sha" E3
 npx ztrack issue edit INV-3 --body-file admin.md >/dev/null
 set +e
-npx ztrack check --verify-commits --json > bad-sha-red.json
+npx ztrack check --json > bad-sha-red.json
 sha_exit=$?
 set -e
 test "$sha_exit" -eq 1
@@ -389,12 +389,12 @@ pass_ac docs.md dev/01 "Runbook explains monitoring." "$docs_sha" E1
 pass_ac docs.md dev/02 "ADR records conflict semantics." "$docs_sha" E2
 pass_ac docs.md proc/01 "Release notes link to the runbook." "$docs_sha" E3
 npx ztrack issue edit INV-4 --body-file docs.md >/dev/null
-npx ztrack check --verify-commits --json > final-check.json
+npx ztrack check --json > final-check.json
 test "$(json_field final-check.json summary.status)" = "pass"
 test "$(json_field final-check.json summary.issues)" -eq 4
 
 npx ztrack export --out .volter/root.json >/dev/null
-npx ztrack check --input .volter/root.json --verify-commits --json > root-check.json
+npx ztrack check --input .volter/root.json --json > root-check.json
 test "$(json_field root-check.json summary.status)" = "pass"
 
 mkdir -p .github/workflows
@@ -463,7 +463,7 @@ cd "$clone"
 npm ci >/dev/null
 npm test >/dev/null
 npm run lint >/dev/null
-npx ztrack check --input .volter/root.json --verify-commits --json > clone-check.json
+npx ztrack check --input .volter/root.json --json > clone-check.json
 test "$(json_field clone-check.json summary.status)" = "pass"
 
 printf 'real project cycle ok\n'
