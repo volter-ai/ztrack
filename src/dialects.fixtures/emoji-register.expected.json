@@ -1,0 +1,10 @@
+{
+  "detects": "emoji-register",
+  "diagnostics": [{ "id": "KQ4", "kind": "status_unrecognized" }],
+  "issues": [
+    { "children": [], "id": "KQ1", "parent": null, "status": "in-progress", "statusExplicit": true, "title": "Is a tiny model fun to talk to?" },
+    { "children": [], "id": "KQ2", "parent": null, "status": "ready", "statusExplicit": true, "title": "Does curriculum produce perceivably different personalities?" },
+    { "children": [], "id": "KQ3", "parent": null, "status": "done", "statusExplicit": true, "title": "Does the 8GB min-spec actually work?" },
+    { "children": [], "id": "KQ4", "parent": null, "status": "draft", "statusExplicit": false, "title": "Is real-time training pacing fun or miserable?" }
+  ]
+}

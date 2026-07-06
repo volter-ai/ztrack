@@ -1,0 +1,10 @@
+{
+  "detects": "checkbox-roster",
+  "diagnostics": [],
+  "issues": [
+    { "children": [], "id": "WS-A", "parent": null, "status": "done", "statusExplicit": true, "title": "server core" },
+    { "children": [], "id": "WS-B", "parent": null, "status": "done", "statusExplicit": true, "title": "contracts + auditions" },
+    { "children": [], "id": "WS-C", "parent": null, "status": "ready", "statusExplicit": true, "title": "bench + notebook + market v0" },
+    { "children": [], "id": "B3", "parent": null, "status": "ready", "statusExplicit": true, "title": "short lessons" }
+  ]
+}
