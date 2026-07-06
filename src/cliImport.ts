@@ -15,9 +15,12 @@ import {
 } from './importDriver.ts';
 import { statusMark, ui } from './cliStyle.ts';
 import type { TrackerConfig } from './types.ts';
+import { flagSetFor } from './cliRegistry.ts';
 
 const VALUE_FLAGS = new Set(['--prefix']);
-const KNOWN_FLAGS = new Set(['--prefix', '--dry-run', '--register']);
+// ZTB-24: derives from src/cliRegistry.ts — one source of truth shared with the new dispatch-time
+// validator — instead of a hand-maintained second copy of the same flag set.
+const KNOWN_FLAGS = flagSetFor(['import']);
 
 const USAGE = 'Usage: ztrack import <path-or-glob>... [--dry-run] [--prefix <ID-PREFIX>] [--register]\n\n' +
   'Materializes a freeform/mixed-markdown backlog (headings, prose, checkboxes, TODO: lines) into\n' +

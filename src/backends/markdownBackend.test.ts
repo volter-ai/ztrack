@@ -107,6 +107,58 @@ describe('markdown backend (peer to local) — CRUD + shapes over the .md store'
     expect((await be.command(['snapshot', 'project-manager', '--format', 'json'])).stderr).toContain('snapshot');
   });
 
+  // ZTB-24 dev/03: `--flag=value` support in flagVal/flagAll, mirroring cliArgs.ts's optionValue.
+  // The space form keeps working unchanged; `=` is purely additive.
+  test('flagVal/flagAll accept the `--flag=value` form alongside `--flag value`', async () => {
+    const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
+    const created = J(await be.command(['issue', 'create', '--title=Eq form', '--state=Ready', '--label=a', '--label=b']));
+    expect(created).toMatchObject({ title: 'Eq form', state: { name: 'Ready', type: 'open' } });
+    expect(created.labels.nodes.map((n: { name: string }) => n.name)).toEqual(['a', 'b']);
+
+    // filters actually filter with the `=` form, not just "exits 0" — the money shot: `=` is NEW
+    // for this backend and must genuinely work, not silently no-op.
+    const openOnly = J(await be.command(['issue', 'list', '--state=open', '--json', 'identifier']));
+    expect(openOnly.map((r: { identifier: string }) => r.identifier)).toEqual(['PH-1']);
+
+    await be.command(['issue', 'edit', 'PH-1', '--state=Backlog']);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--json'])).state).toEqual({ name: 'Backlog', type: 'open' });
+  });
+
+  // ZTB-24 dev/05: three long-documented-but-never-implemented pieces, now real.
+  test('`issue get` is a full alias of `issue view`', async () => {
+    const be = createMarkdownBackend(mkdtempSync(join(tmpdir(), 'mdbe-')), 'PH');
+    await be.command(['issue', 'create', '--title', 'Aliased', '--body', '# Aliased\n\nbody text']);
+    expect(J(await be.command(['issue', 'get', 'PH-1', '--json']))).toEqual(J(await be.command(['issue', 'view', 'PH-1', '--json'])));
+    expect((await be.command(['issue', 'get', 'PH-1'])).stdout).toContain('Aliased');
+  });
+
+  test('`issue comment --body-file` reads the file (inline `--body` still wins when both given)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mdbe-'));
+    const be = createMarkdownBackend(dir, 'PH');
+    await be.command(['issue', 'create', '--title', 'C']);
+    const bodyPath = join(dir, 'comment.md');
+    writeFileSync(bodyPath, 'from a file');
+    await be.command(['issue', 'comment', 'PH-1', '--body-file', bodyPath]);
+    expect(J(await be.command(['issue', 'view', 'PH-1', '--comments', '--json'])).comments.nodes[0]).toMatchObject({ body: 'from a file' });
+
+    writeFileSync(bodyPath, 'ignored — inline wins');
+    await be.command(['issue', 'comment', 'PH-1', '--body', 'inline wins', '--body-file', bodyPath]);
+    const comments = J(await be.command(['issue', 'view', 'PH-1', '--comments', '--json'])).comments.nodes;
+    expect(comments[comments.length - 1]).toMatchObject({ body: 'inline wins' });
+  });
+
+  test('`issue close --comment-file` records the file\'s content (inline `--comment` still wins)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mdbe-'));
+    const be = createMarkdownBackend(dir, 'PH');
+    await be.command(['issue', 'create', '--title', 'Closeable']);
+    const commentPath = join(dir, 'close-note.md');
+    writeFileSync(commentPath, 'closed via file');
+    await be.command(['issue', 'close', 'PH-1', '--comment-file', commentPath]);
+    const v1 = J(await be.command(['issue', 'view', 'PH-1', '--comments', '--json']));
+    expect(v1.state).toEqual({ name: 'done', type: 'completed' });
+    expect(v1.comments.nodes[0]).toMatchObject({ body: 'closed via file' });
+  });
+
   // ZTB-19 (ZL-E9b): the unsupported-command stderr had no trailing newline and no pointer to
   // `ztrack --help`, so it ran into the next line of terminal output and left the operator with
   // nowhere to go for the real command list.

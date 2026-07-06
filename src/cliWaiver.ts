@@ -72,11 +72,14 @@ export async function handleWaiverCommand(args: string[]): Promise<boolean> {
   if (args[0] !== 'waiver') return false;
   const command = commandName();
   const action = args[1];
-  const projectRoot = projectRootFrom();
+  // `--help` must be a TOTAL function (no tracker config loaded) like every other verb's — checked
+  // BEFORE `projectRootFrom()` below (which throws with no config), so `ztrack waiver --help` works
+  // in an uninitialized repo instead of erroring on the wrong thing.
   if (!action || ['--help', '-h', 'help'].includes(action)) {
     process.stdout.write(`Usage: ${command} waiver <sign <issue> --code <finding-code> [--ac <acId>] [--ref <subject>] --reason "..." | clear <issue> [--code <code>] | status <issue> | migrate <issue> | migrate --all>\n\nAcknowledges ONE check finding (by its code) on <issue>, signed as your git identity, in the issue's \`## Waivers\` section. \`--ref <subject>\` pins the waiver to a single occurrence (the offending value, e.g. a commit sha) — the \`// eslint-disable-next-line\` form; \`sign\` auto-captures it when the finding is unambiguous. An unpinned waiver that could be pinned is reported \`waiver_overbroad\`; one that matches nothing is \`waiver_unused\`. \`migrate\` rewrites legacy unpinned waivers into per-occurrence pinned rows. Prefer fixing the issue — waive only a finding you knowingly accept.\n`);
     return true;
   }
+  const projectRoot = projectRootFrom();
   const id = args[2];
   const migrateAll = action === 'migrate' && args.includes('--all');
   if (!migrateAll && (!id || id.startsWith('-'))) throw new Error(`${command} waiver ${action}: needs an issue id, e.g. \`${command} waiver ${action} APP-1\`${action === 'migrate' ? ` (or \`${command} waiver migrate --all\`)` : ''}`);

@@ -79,13 +79,40 @@ function listRow(c: CanonicalIssue, fields: string[], path: string, span?: { lin
   return row;
 }
 
-function flagVal(args: string[], name: string): string | undefined { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : undefined; }
-function flagAll(args: string[], name: string): string[] { const out: string[] = []; for (let i = 0; i < args.length; i += 1) if (args[i] === `--${name}`) out.push(args[i + 1]!); return out; }
+// ZTB-24 dev/03: `--flag=value` support, mirroring cliArgs.ts's optionValue — `flagVal` still
+// returns undefined when the flag is absent, and KEEPS its consume-next-token behavior for the
+// space form (deliberately NOT porting optionValue's `--`-guard there, which would change what
+// today's callers already depend on — see cliRegistry.ts's rejectUnknownFlags for why that
+// consume-next-token behavior is load-bearing).
+function flagVal(args: string[], name: string): string | undefined {
+  const key = `--${name}`;
+  const inline = args.find((a) => a.startsWith(`${key}=`));
+  if (inline !== undefined) return inline.slice(key.length + 1);
+  const i = args.indexOf(key);
+  return i >= 0 ? args[i + 1] : undefined;
+}
+function flagAll(args: string[], name: string): string[] {
+  const key = `--${name}`;
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i]!;
+    if (a === key) out.push(args[i + 1]!);
+    else if (a.startsWith(`${key}=`)) out.push(a.slice(key.length + 1));
+  }
+  return out;
+}
 // The CLI passes an issue body either inline (`--body`) or by path (`--body-file`); read
 // both, else the file content is silently dropped (the issue stores no acceptance criteria).
 function bodyArg(args: string[]): string | undefined {
   const inline = flagVal(args, 'body'); if (inline !== undefined) return inline;
   const file = flagVal(args, 'body-file'); if (file !== undefined) return readFileSync(file, 'utf8');
+  return undefined;
+}
+// ZTB-24 dev/05: `issue close --comment-file` — symmetric to bodyArg's --body/--body-file
+// precedence (inline `--comment` wins when both are given).
+function commentArg(args: string[]): string | undefined {
+  const inline = flagVal(args, 'comment'); if (inline !== undefined) return inline;
+  const file = flagVal(args, 'comment-file'); if (file !== undefined) return readFileSync(file, 'utf8');
   return undefined;
 }
 const ok = (stdout: string): TrackerCommandResult => ({ stdout, stderr: '' });
@@ -338,7 +365,7 @@ export class MarkdownBackend implements TrackerBackend {
       const limit = flagVal(args, 'limit'); const limitN = Number(limit); if (limit && Number.isFinite(limitN) && limitN >= 0) rows = rows.slice(0, limitN);
       return ok(JSON.stringify(rows.map((r) => listRow(r.c, fields, r.path, r, r.source)), null, 2));
     }
-    if (verb === 'issue' && sub === 'view') {
+    if (verb === 'issue' && (sub === 'view' || sub === 'get')) { // ZTB-24 dev/05: `get` is a full alias of `view`
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
       if (!args.includes('--json')) return ok(c.body);
       // children are recursively denormalized to full child objects (matches local's view)
@@ -443,7 +470,9 @@ export class MarkdownBackend implements TrackerBackend {
     }
     if (verb === 'issue' && sub === 'comment') {
       const c = this.loadOne(rest[0]!); if (!c) return { stdout: '', stderr: `issue ${rest[0]} not found` };
-      c.comments.push({ user: 'local', createdAt: new Date().toISOString(), body: flagVal(args, 'body') ?? '' });
+      // ZTB-24 dev/05: `--body-file` (long documented, never implemented) — same shared bodyArg
+      // create/edit already use, so a file's content is no longer silently dropped here.
+      c.comments.push({ user: 'local', createdAt: new Date().toISOString(), body: bodyArg(args) ?? '' });
       c.updatedAt = new Date().toISOString();
       this.writeIssue(c);
       return ok('');
@@ -484,7 +513,9 @@ export class MarkdownBackend implements TrackerBackend {
       }
       c.state = 'done'; c.stateType = 'completed';
       const now = new Date().toISOString(); c.updatedAt = now; c.completedAt = now;
-      const cmt = flagVal(args, 'comment'); if (cmt) c.comments.push({ user: 'local', createdAt: now, body: cmt });
+      // ZTB-24 dev/05: `--comment-file` (long documented, never implemented) — inline `--comment`
+      // still wins when both are given, matching bodyArg's precedence.
+      const cmt = commentArg(args); if (cmt) c.comments.push({ user: 'local', createdAt: now, body: cmt });
       this.writeIssue(c);
       return ok('');
     }

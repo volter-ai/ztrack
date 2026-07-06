@@ -1,11 +1,20 @@
 import { loadTrackerConfig, projectRootFrom } from './config.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { heading, helpSection, ui } from './cliStyle.ts';
+import { usageFromRegistry } from './cliRegistry.ts';
 
 export function commandName(): string {
   const invoked = (process.argv[1] || '').split(/[\\/]/).pop() || '';
   return invoked && !['cli.js', 'cli.ts', 'node', 'bun'].includes(invoked) ? invoked : 'ztrack';
 }
+
+// The top-level resource list — the single source of truth for both printHelp's "Resources" line
+// and ZTB-24 dev/02's "no help for '<x>'" guidance (cli.ts) — so the two can't drift apart. `search`
+// and `view` (ZTB-24 dev/05) were 100% prose with zero implementation and are gone from here.
+export const TOP_LEVEL_RESOURCES = [
+  'init', 'migrate-local', 'issue', 'project', 'api', 'check', 'export', 'import',
+  'fmt', 'lint', 'tx', 'evidence', 'ac', 'mcp', 'sync', 'visualizer', 'loop', 'waiver', 'preset', 'completions',
+];
 
 export function printHelp(): void {
   const command = commandName();
@@ -38,8 +47,8 @@ ${helpSection('bottom', 'Data', [
   ])}
 
 ${ui.bold('Resources')}
-  init, migrate-local, issue, project, search, view, api, check, export, import
-  fmt, lint, tx, evidence, ac, mcp, sync, visualizer, loop, waiver, preset, completions
+  ${TOP_LEVEL_RESOURCES.slice(0, 8).join(', ')}
+  ${TOP_LEVEL_RESOURCES.slice(8).join(', ')}
 
 ${ui.dim(`Shell completion:  source <(${command} completions bash)   # or zsh`)}
 ${ui.dim(`Use ${command} <resource> --help or ${command} issue <action> --help for focused help.`)}
@@ -81,29 +90,34 @@ One or two source-grounded sentences.
 
 export function printIssueActionHelp(action: string): boolean {
   const command = commandName();
+  // ZTB-24 dev/05: `relate`/`relations`/`unrelate`/`history`/`comments` were documented, with full
+  // usage lines, for verbs that DO NOT EXIST — no markdownBackend match, no cli.ts interception;
+  // live-verified to error `markdown backend: unsupported command`. Removed rather than
+  // implemented (out of scope for this fix). `--jq` (never read by the backend — verified
+  // `issue list --jq` returns unfiltered output) and `--comments` on `view`/`get` (never read) are
+  // gone too. `patch`/`delete` (ZTB-18 dev/03) are new entries — `patch`'s flags are rendered
+  // straight from the registry (usageFromRegistry) rather than hand-typed, per the AC.
   const usage: Record<string, string> = {
     scaffold: `${command} issue scaffold [--title text]`,
     list: `${command} issue list [--search text] [--state name|open|closed|all] [--label name] [--parent id] [--source name] [--limit n] [--json fields] | --actionable|--blocked [--state ...] [--label ...] [--search ...] [--limit n] [--json fields]`,
-    view: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
-    get: `${command} issue view <issue> [--json fields] [--comments] [--jq expr]`,
+    view: `${command} issue view <issue> [--json fields]`,
+    get: `${command} issue view <issue> [--json fields]`, // `get` is a full alias of `view`
     create: `${command} issue create [--title text] [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id] [--project name]`,
-    edit: `${command} issue edit <issue> [--title text] [--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent] [--project name] [--remove-project]`,
+    edit: `${command} issue edit <issue> [--title text] [--body text|--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent] [--project name] [--remove-project] [--expect-state name] [--expect-body-sha sha256]`,
     close: `${command} issue close <issue> [--reason completed] [--comment text|--comment-file path]`,
     comment: `${command} issue comment <issue> --body text|--body-file path`,
-    comments: `${command} issue comments <issue> [--jq expr]`,
-    history: `${command} issue history <issue> [--json] [--limit n] [--jq expr]`,
-    relate: `${command} issue relate <issue> --blocks <blocked-issue>`,
-    relations: `${command} issue relations <issue>|--all`,
-    unrelate: `${command} issue unrelate <issue> --blocks <blocked-issue>`,
+    patch: `${command} issue patch <issue> ${usageFromRegistry(['issue', 'patch'])}`,
+    delete: `${command} issue delete <issue> ${usageFromRegistry(['issue', 'delete'])}`.trim(),
   };
   // Extra explanatory line for an action whose usage grammar alone doesn't say enough —
   // `create`'s title derivation, `edit`'s write-time --state check, and `close`'s deliberate
   // refusal of --reason canceled (and of anything else it doesn't recognize).
   const notes: Record<string, string> = {
     create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title). An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match.`,
-    edit: `An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match, instead of writing a value 'ztrack check' would reject later.`,
-    close: `--reason accepts only 'completed' (the default) or 'canceled'; any other value is refused. --reason canceled is itself refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or 'issue edit --state <status>' instead.`,
+    edit: `An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match, instead of writing a value 'ztrack check' would reject later. --expect-state/--expect-body-sha are optimistic-concurrency preconditions: if the tracker's current state/body sha256 doesn't match, edit refuses with a precondition-failed JSON payload (exit 1) and writes nothing.`,
+    close: `--reason accepts only 'completed' (the default) or 'canceled'; any other value is refused. --reason canceled is itself refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or assign a real status via 'issue edit' instead.`,
     list: `--actionable: the dispatch frontier — not-done issues with no unmet (transitive) blocker, safe to dispatch right now. --blocked: the complement — not-done AND blocked, each row naming its NEAREST unmet blocker(s) (direct hop, not the whole transitive closure) in a "blockers" field. The two are mutually exclusive over the SAME underlying computation (core/blocking.ts's issueFrontier); neither --parent nor --source is supported on either (the frontier is a whole-graph view over the source-erased validated model). --source name (repeatable) scopes a PLAIN list to the named declared source(s), matching by a source's config name, its path, or its path basename; an unknown name errors listing the available ones. 'source' is a selectable --json field naming each row's owning source. Default fields are identifier,title,state; --json overrides them (--blocked always includes "blockers").`,
+    patch: `Overlays the preset's SCHEMA fields onto the issue (run \`${command} issue view\` to see the shape), then re-serializes through the preset — e.g. --json '{"status":"done"}'. The claim is then verified by \`${command} check\`. --dry-run previews without writing.`,
   };
   const line = usage[action];
   if (!line) return false;
@@ -115,7 +129,7 @@ export function printIssueActionHelp(action: string): boolean {
 export function printResourceHelp(resource: string): boolean {
   const command = commandName();
   if (resource === 'init') {
-    process.stdout.write(`Usage: ${command} init [--team KEY] [--preset <name>] [--branch] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
+    process.stdout.write(`Usage: ${command} init [--root dir] [--team KEY] [--preset <name>] [--branch] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
 
 Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
   (no flags)                 a LOCAL tracker with the recommended preset. The markdown issue store is
@@ -129,6 +143,7 @@ Installs an editable preset (.volter/tracker/validation/preset.mts) + config.
   --sync github --repo o/n   LINK to GitHub Issues (two-way sync) and pull existing issues;
                              GitHub becomes the source of truth (the local store is gitignored).
   --policy …                 conflict-resolution default for a linked tracker (default merge).
+  --root dir                 initialize a different directory instead of the current one.
 
 Two intakes, by what you already have: issues on GITHUB → \`--sync github --repo o/n\` (linked; they
 pull in). A pile of TASKS and no tracker → plain \`${command} init\` (local), then \`${command} import
@@ -192,18 +207,16 @@ Two modes, same \`start\`:
   if (resource === 'issue') {
     process.stdout.write(`Usage: ${command} issue <action> [args...]
 
-Actions: scaffold, list, view, get, create, edit, patch, delete, close, comment, comments,
-history, relate, relations, unrelate.
+Actions: scaffold, list, view, get, create, edit, patch, delete, close, comment.
   ${command} issue patch <issue> --json '{...}'   overlay the preset's schema fields (see \`issue view\`)
 `);
     return true;
   }
-  if (resource === 'project' || resource === 'milestone') {
-    process.stdout.write(`Usage: ${command} ${resource} <list|view|get|issues|create|update> [args...]\n`);
-    return true;
-  }
-  if (resource === 'search' || resource === 'query' || resource === 'view') {
-    process.stdout.write(`Usage: ${command} ${resource} <text-or-name> [args...]\n`);
+  // ZTB-24 dev/05: `milestone` and the wider <list|view|get|issues|create|update> grammar were
+  // 100% prose with zero implementation — the only real project verb is `project list` (returns
+  // `[]` today; markdownBackend.ts).
+  if (resource === 'project') {
+    process.stdout.write(`Usage: ${command} project list [args...]\n`);
     return true;
   }
   // `check`/`export --help` fall through to handleCheckCommand, the single source of truth for
@@ -219,14 +232,18 @@ default, port 3300, project = current tracker root. Requires Bun (bun.sh).
   if (resource === 'evidence') {
     process.stdout.write(`Usage: ${command} evidence <add|verify|keygen|export> [args...]
 
-  ${command} evidence add <file> [--name <n>]      COMMIT mode (default): copy into the evidence
-       dir; cite the printed \`image=<path>\` and commit it → verified at the cited commit.
+  ${command} evidence add <file>|--file path [--name <n>] [--commit]   COMMIT mode (default): copy
+       into the evidence dir; cite the printed \`image=<path>\` and commit it → verified at the cited
+       commit. --commit forces commit mode even when \`evidence.store\` defaults to attach.
   ${command} evidence add <file> --attach          ATTACH mode (linked GitHub repo): upload as a
        release asset; cite \`image=<url> sha256=<digest>\`. The gate accepts it offline (the digest
        is a tamper-evident pin); run \`evidence verify\` to fetch + compare.
   ${command} evidence verify [--issues a,b]         fetch every URL-pinned evidence and check its
        content matches the pinned sha256 (the network step \`check\` skips). gh-auth for private repos.
-  ${command} evidence keygen / export               DSSE signing key / in-toto attestation export.
+  ${command} evidence verify --bundle envelopes.json --key public.pem   verify a DSSE bundle offline.
+  ${command} evidence keygen [--out-dir dir]        DSSE signing keypair (default .volter/keys).
+  ${command} evidence export --format in-toto [--issues a,b] [--sign --sign-key key.pem] [--out file]
+       in-toto attestation export; --sign requires --sign-key (from \`evidence keygen\`).
 
 Evidence is commit + proof at its core; an image is optional and verified when cited. Storage is
 set by \`evidence.store\` in the config (default \`commit\`; \`attach\` uploads to the linked repo).

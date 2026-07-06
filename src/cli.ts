@@ -16,7 +16,7 @@ import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
 import { handleApiCommand } from './cliApi.ts';
 import { handleEvidenceCommand } from './cliEvidence.ts';
-import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody } from './cliHelp.ts';
+import { commandName, printHelp, printIssueActionHelp, printResourceHelp, scaffoldCaseBody, TOP_LEVEL_RESOURCES } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
 import { handleImportCommand } from './cliImport.ts';
 import { handleCompletionsCommand } from './cliCompletions.ts';
@@ -30,6 +30,7 @@ import { handleLintCommand } from './cliLint.ts';
 import { handleSyncCommand } from './cliSync.ts';
 import { handlePatchCommand } from './cliPatch.ts';
 import { isMutatingCommand, observeAfterMutation } from './cliAudit.ts';
+import { rejectUnknownFlags } from './cliRegistry.ts';
 import { heading, statusMark, ui } from './cliStyle.ts';
 
 // The installed preset is `.volter/tracker/validation/preset.mts`, loaded at runtime via Node's
@@ -64,8 +65,21 @@ async function activePresetScaffold(title: string): Promise<string | undefined> 
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  let args = process.argv.slice(2);
   const command = commandName();
+  // ZTB-24 dev/02: `ztrack help <x> [<y>]` re-routes as if the user had typed `<x> [<y>] --help` —
+  // reusing the SAME interception chain below (issue-action help, resource help, check/export's own
+  // --help, waiver/import/preset's own --help) rather than duplicating any of it. Bare
+  // `help`/`--help`/`-h` (no more tokens) is unaffected — it still falls straight into the generic
+  // `printHelp()` immediately below. `helpRewriteResource` stays set only long enough to detect,
+  // right before the final generic-backend fallthrough far below, that NOTHING in that chain
+  // claimed it (an unknown resource) — today's bug was silently printing the generic help for that
+  // case instead of naming the problem.
+  let helpRewriteResource: string | undefined;
+  if (args[0] === 'help' && args.length > 1) {
+    helpRewriteResource = args[1];
+    args = [...args.slice(1), '--help'];
+  }
   if (!args.length || ['help', '--help', '-h'].includes(args[0]!)) {
     printHelp();
     return;
@@ -95,6 +109,23 @@ async function main(): Promise<void> {
   if (args.slice(1).some((arg) => arg === '--help' || arg === '-h' || arg === 'help') && printResourceHelp(args[0]!)) {
     return;
   }
+
+  // ZTB-24 dev/02: help must stay TOTAL and config-free. Every `help <x>` target is claimed by the
+  // config-free interceptions above except check/export/import/waiver/preset, whose own handlers
+  // below print their --help without touching tracker config. Anything else still unclaimed here
+  // has no help to give — say so NOW, before the dispatch below can demand a tracker config for a
+  // question ("what is 'wat'?") that never needed one.
+  if (helpRewriteResource !== undefined && !['check', 'export', 'import', 'waiver', 'preset'].includes(args[0]!)) {
+    throw new Error(`ztrack: no help for '${helpRewriteResource}' — try '${command} --help' or one of: ${TOP_LEVEL_RESOURCES.join(', ')}`);
+  }
+
+  // ZTB-24 dev/01: reject an unregistered flag on any REAL command before it can be silently
+  // swallowed (e.g. `issue list --stat open`, a typo of `--state`, used to return the whole
+  // unfiltered list at exit 0). Placed after every help/version/completions interception above
+  // (which must stay total and config-free) and before the first command handler below, so it
+  // covers everything. A no-op for any command path not in the registry — that preserves today's
+  // existing behavior for ghosts/stubs/genuinely-unknown verbs untouched by this fix.
+  rejectUnknownFlags(args);
 
   if (await handleInitCommand(args)) return;
 
@@ -308,6 +339,15 @@ async function main(): Promise<void> {
         arg !== '--expect-state' && arg !== '--expect-body-sha' &&
         args[index - 1] !== '--expect-state' && args[index - 1] !== '--expect-body-sha');
     }
+  }
+
+  // ZTB-24 dev/02 safety net: unknown `help <x>` resources were already rejected config-free right
+  // after the resource-help interception up top; this catches the remaining case — one of the five
+  // downstream help-capable commands (check/export/import/waiver/preset) whose handler failed to
+  // claim `<x> --help` (should be unreachable today, but a future chain edit must land HERE, the
+  // last point before generic backend dispatch, not in a misleading "unsupported command" error).
+  if (helpRewriteResource !== undefined) {
+    throw new Error(`ztrack: no help for '${helpRewriteResource}' — try '${command} --help' or one of: ${TOP_LEVEL_RESOURCES.join(', ')}`);
   }
 
   const result = await client.command(forwardArgs, args[0] === 'extract-issue-ref' ? await readStdinIfPiped() : undefined);
