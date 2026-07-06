@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import type { TrackerBackendName } from './types.ts';
 import { RULE_CATEGORIES } from './checkRules.ts';
+import { DialectSchema } from './dialects.ts';
 
 /** One declared markdown source (ZTB-3). `path` is project-root-relative: a DIRECTORY of
  *  one-issue-per-file markdown (`issue-per-file`), or a single markdown FILE decomposed into many
@@ -28,6 +29,14 @@ const TrackerSourceConfigSchema = z.object({
   path: z.string(),
   format: z.enum(['issue-per-file', 'document']).optional(),
   readonly: z.boolean().optional(),
+  /** Read this file through a DIALECT lens (docs/DIALECTS.md): the repo's own task-list idiom
+   *  (emoji status registers, checkbox rosters, …) parsed as issues WITHOUT rewriting the file.
+   *  A string names a built-in (`src/dialects.ts` registry — unknown names error); an object is
+   *  an inline dialect validated against the same schema. Only legal on a `document` source, and
+   *  it IMPLIES `readonly` — declaring `readonly: false` alongside `dialect` is a config error
+   *  (there is no half-writable lens; materialize with `ztrack import <file>` to edit through
+   *  ztrack). */
+  dialect: z.union([z.string(), DialectSchema]).optional(),
   /** A stable, user-typeable selector for `--source` (ZTB-33). Optional: when omitted a source is
    *  addressable by exactly the `path` string written here (and by that path's basename). Give a
    *  `name` to decouple the selector from the on-disk path or to make it read nicely

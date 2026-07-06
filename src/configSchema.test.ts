@@ -52,7 +52,7 @@ describe('KNOWN_KEYS — generated from TrackerConfigSchema (ZTB-26 dev/02)', ()
   const EXPECTED_KNOWN_KEYS: Record<string, string[]> = {
     '': ['backend', 'local', 'sources', 'board', 'sync', 'evidence', 'relevance', 'validation', 'organization'],
     local: ['teamKey', 'database', 'store'],
-    'sources[]': ['path', 'format', 'readonly', 'name'],
+    'sources[]': ['path', 'format', 'readonly', 'dialect', 'name'],
     sync: ['provider', 'repo', 'policy'],
     evidence: ['store', 'dir'],
     validation: ['entrypoint', 'installedFrom'],

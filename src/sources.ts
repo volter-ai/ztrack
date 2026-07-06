@@ -4,6 +4,7 @@
 // share one definition of "what a source is" and "which one is THE implicit default".
 import { resolve } from 'node:path';
 import { markdownStoreDir } from './config.ts';
+import { resolveDialect, type Dialect } from './dialects.ts';
 import type { TrackerSourceConfig } from './types.ts';
 
 export type SourceFormat = 'issue-per-file' | 'document';
@@ -35,6 +36,11 @@ export interface ResolvedSource {
    *  it isn't new). At most one entry is ever the default; a `document` source (a FILE path) can
    *  never equal the default directory, so this is always false for one. */
   isDefault: boolean;
+  /** Present iff the entry declares a `dialect` (docs/DIALECTS.md): the resolved dialect object
+   *  (named ones looked up in the registry here, fail-closed) and its display name. A dialect
+   *  source is always `readonly` — enforced in `resolveSources`, not left to the caller. */
+  dialect?: Dialect;
+  dialectName?: string;
 }
 
 /** Resolve the declared `sources` list (or the implicit default when absent) into absolute
@@ -51,6 +57,13 @@ export function resolveSources(projectRoot: string, config: { sources?: TrackerS
     const dir = resolve(projectRoot, entry.path);
     // `name` (ZTB-33): the declared name, else the declared path string verbatim — so an unnamed
     // source is always addressable by exactly what the user wrote in config.
-    return { dir, format, readonly: !!entry.readonly, isDefault: dir === defaultDir, name: entry.name ?? entry.path };
+    const base = { dir, format, isDefault: dir === defaultDir, name: entry.name ?? entry.path, readonly: !!entry.readonly };
+    if (entry.dialect === undefined) return base;
+    // A dialect lens (docs/DIALECTS.md): document-format only, and always read-only — an explicit
+    // `readonly: false` beside `dialect` is a contradiction, refused here rather than half-honored.
+    if (format !== 'document') throw new Error(`source '${base.name}': dialect requires format "document" (got "${format}")`);
+    if (entry.readonly === false) throw new Error(`source '${base.name}': a dialect source is always readonly — remove "readonly": false, or drop the dialect and materialize the file with \`ztrack import ${entry.path}\``);
+    const { dialect, name: dialectName } = resolveDialect(entry.dialect);
+    return { ...base, dialect, dialectName, readonly: true };
   });
 }

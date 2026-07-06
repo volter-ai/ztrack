@@ -163,3 +163,50 @@ describe('resolveSources (ZTB-3)', () => {
     expect(resolveSources(bare, loadTrackerConfig(bare)).map((s) => s.name)).toEqual(['default']);
   });
 });
+
+describe('resolveSources — dialect sources (docs/DIALECTS.md)', () => {
+  test('a named dialect resolves from the registry and forces readonly', () => {
+    const root = project({ backend: 'markdown', sources: [{ dialect: 'emoji-register', path: 'PLAN.md' }] });
+    const [source] = resolveSources(root, loadTrackerConfig(root));
+    expect(source!.dialectName).toBe('emoji-register');
+    expect(source!.dialect?.issueBoundary).toBe('heading');
+    expect(source!.readonly).toBe(true);   // implied, not declared
+    expect(source!.format).toBe('document');
+  });
+
+  test('an inline dialect object validates and resolves as name "inline"', () => {
+    const root = project({
+      backend: 'markdown',
+      sources: [{
+        dialect: {
+          hierarchy: 'flat', idPattern: 'T\\d+', issueBoundary: 'heading',
+          status: { at: 'field-bullet', label: 'State', vocabulary: { OPEN: 'ready' } },
+        },
+        path: 'PLAN.md',
+      }],
+    });
+    const [source] = resolveSources(root, loadTrackerConfig(root));
+    expect(source!.dialectName).toBe('inline');
+    expect(source!.dialect?.idPattern).toBe('T\\d+');
+  });
+
+  test('an unknown dialect name fails closed, naming the available set', () => {
+    const root = project({ backend: 'markdown', sources: [{ dialect: 'klingon', path: 'PLAN.md' }] });
+    expect(() => resolveSources(root, loadTrackerConfig(root))).toThrow(/unknown dialect 'klingon'/);
+  });
+
+  test('dialect on a non-document source fails closed', () => {
+    const root = project({ backend: 'markdown', sources: [{ dialect: 'emoji-register', format: 'issue-per-file', path: 'issues' }] });
+    expect(() => resolveSources(root, loadTrackerConfig(root))).toThrow(/dialect requires format "document"/);
+  });
+
+  test('explicit readonly: false beside dialect is a contradiction, refused', () => {
+    const root = project({ backend: 'markdown', sources: [{ dialect: 'emoji-register', path: 'PLAN.md', readonly: false }] });
+    expect(() => resolveSources(root, loadTrackerConfig(root))).toThrow(/always readonly/);
+  });
+
+  test('a malformed inline dialect is rejected by the config schema itself', () => {
+    const root = project({ backend: 'markdown', sources: [{ dialect: { bogus: true }, path: 'PLAN.md' }] });
+    expect(() => loadTrackerConfig(root)).toThrow();
+  });
+});
