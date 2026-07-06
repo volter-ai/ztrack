@@ -2,6 +2,25 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.50.1
+
+- **A typo'd flag can no longer hide behind an omitted flag value.** The 0.49.0 dispatch
+  validator's shared token walk unconditionally consumed the token after a known
+  value-taking flag as its value — even one starting with `--` — while `optionValue` (the
+  parser most handlers use) has always guarded against exactly that. So `issue list
+  --state --stat done` exited 0 printing `[]` (the typo silently absorbed by the walk,
+  the omitted-value flag silently dropped by the handler), `evidence add --name --typo
+  file --commit` stored the file with the typo swallowed, and `waiver sign --code
+  --typoflag id` gave a misleading missing-id error; only `check`/`export`/`import` were
+  shielded, by their own legacy scans. The walk now applies `optionValue`'s `--`-guard,
+  making the registry deliberately stricter than the backend parsers at the one shape
+  where they diverged — the mismatch can only turn a silent wrong result into a loud
+  pre-handler rejection. Deliberate consequence: a space-form value literally starting
+  with `--` now rejects (use the `=` form); nothing shipped relied on the old shape. On
+  `check`/`export`/`import` the registry's "Accepted flags:" error now fires before the
+  legacy scan's wording for this shape. 15 new tests (945 → 960), swallowed-typo pins
+  proven failing on 0.50.0.
+
 ## 0.50.0
 
 - **One `--source` grammar everywhere — repeatable AND comma-separated, union, per-selector
