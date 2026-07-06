@@ -93,7 +93,8 @@ the config says `format:"document"`. The document itself is the source of truth,
 humans and agents.
 
 With 2+ declared sources, `issue list --source <name>` and `check --source <name>` scope a listing
-or a validation run to one source ([Sources → scoping](SOURCES.md#scoping-to-one-source---source));
+or a validation run to one or more sources — `--source` is repeatable and each occurrence may also
+be comma-separated, on both commands ([Sources → scoping](SOURCES.md#scoping-to-one-source---source));
 the `--actionable/--blocked` frontier stays whole-graph and refuses `--source`.
 
 For a document source, `ac patch` and title/body edits (`issue edit --title`/`--body`) still work

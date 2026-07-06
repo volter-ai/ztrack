@@ -56,19 +56,26 @@ directly in the document source's grammar and re-run `ztrack check`.
 ## Scoping to one source (`--source`)
 
 By default every command reads the whole union. Once you have 2+ sources you can scope `issue list`
-and `ztrack check` to one (or several) of them by name:
+and `ztrack check` to one (or several) of them by name. Both commands share the SAME grammar
+(ZTB-40): `--source` is repeatable, and each occurrence may ALSO be comma-separated — occurrences
+and comma-parts union, order-preserving and deduped:
 
 ```sh
-ztrack issue list --source backlog                 # only the source named "backlog"
-ztrack issue list --source backlog --source vendor  # the union of two sources (repeatable)
+ztrack issue list --source backlog                  # only the source named "backlog"
+ztrack issue list --source backlog --source vendor  # repeatable: the union of two sources
+ztrack issue list --source backlog,vendor           # comma-separated: the same union
 ztrack issue list --json identifier,source          # `source` is a selectable field: which source each row came from
 ztrack check --source backlog                       # validate only the "backlog" source
-ztrack check --source backlog,vendor                # comma-separated list
+ztrack check --source backlog,vendor                # comma-separated: the union of two sources
+ztrack check --source backlog --source vendor       # repeatable: the same union
 ```
 
 A selector matches a source by its `name` (config `name`, else the declared `path`) **or** the
-basename of its path — so a source at `.volter/tracker` is reachable as `--source tracker`. An
-unknown selector is a hard error listing the available source names, never a silent empty result.
+basename of its path — so a source at `.volter/tracker` is reachable as `--source tracker`. Every
+selector is checked individually: `--source backlog,typo` is a hard error naming `typo` and listing
+the available source names, even though `backlog` matched — a scoping flag that silently narrowed to
+less than you asked for would be worse than a loud refusal. A wholly unknown selector (none match) is
+the same error, never a silent empty result.
 
 Scoping `check` to a single source narrows what is validated: the cross-source `issue_id_conflict`
 rule cannot fire when you've asked for one source alone (there is nothing else to conflict with).

@@ -53,8 +53,10 @@ for an editor integration, or open the exact location in a PR comment — withou
 
 `TrackerCheckOptions`: `{ projectRoot?, config?, issues?, sources?, failOnWarning?, categories?, verifyCommits?, now?, phase? }`.
 - `issues: ['A-1']` scopes the check to named issues; `sources: ['backlog']` scopes it to declared
-  source(s) by config `name`/path/path-basename (mirrors `ztrack check --source`; an unknown
-  selector throws listing the available names); `phase: 'gate'` runs only the continuous-gate rules
+  source(s) by config `name`/path/path-basename (mirrors `ztrack check --source`, which is
+  repeatable and comma-separated — see docs/SOURCES.md; any selector matching zero sources throws,
+  naming it and listing the available names, even when other array entries matched); `phase: 'gate'`
+  runs only the continuous-gate rules
   (skip transition/promotion checks); `verifyCommits: false` is the escape hatch for shallow/CI
   checkouts. `failOnWarning` is accepted here but has no effect on `result.ok` — the
   warnings-also-gate decision (and the acknowledged-findings-never-count rule) is a CLI-only

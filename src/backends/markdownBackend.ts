@@ -17,6 +17,7 @@ import { DocumentSource } from './documentSource.ts';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
 import { activeStatusEnum } from '../presetRegistry.ts';
 import { nearestKey } from '../configSchema.ts';
+import { splitSelectors } from '../cliArgs.ts';
 
 // Issue ids name files in the store; reject anything that isn't a plain id so a
 // crafted id (or a `Children:` ref read from a file) can't traverse out of the store.
@@ -298,16 +299,21 @@ export class MarkdownBackend implements TrackerBackend {
   }
   // ZTB-33: resolve `--source` selectors to the declared sources they name. A selector matches a
   // source by its `name` (config `name`, else the declared path) OR the basename of its location
-  // (so `--source tracker` reaches `.volter/tracker`). Repeatable selectors union. An unknown
-  // selector is a hard error listing every available name — never a silent empty result, which
-  // would read as "that source has no issues" rather than "you named a source that doesn't exist".
+  // (so `--source tracker` reaches `.volter/tracker`). Repeatable selectors union. ZTB-40: each
+  // selector is validated INDIVIDUALLY — `--source real,typo` used to silently drop `typo` as long
+  // as `real` matched something; now every selector that matches zero sources is collected and the
+  // whole invocation fails loud naming ALL of them, even when other selectors in the same
+  // invocation matched. A selector matching a source by both name AND basename is deduped, along
+  // with a source reached by two different selectors — the shape below (filter the declared list,
+  // never build up from selector hits) already gives that, in source-declaration order.
   private selectSources(selectors: string[]): IssueSource[] {
-    const matched = this.sources.filter((s) => selectors.some((sel) => sel === s.name || sel === basename(s.location)));
-    if (matched.length === 0) {
+    const matches = (sel: string) => this.sources.some((s) => sel === s.name || sel === basename(s.location));
+    const missed = selectors.filter((sel) => !matches(sel));
+    if (missed.length > 0) {
       const available = [...new Set(this.sources.map((s) => s.name))].join(', ');
-      throw new Error(`no declared source matches --source ${selectors.join(' / ')}. Available source(s): ${available}.`);
+      throw new Error(`no declared source matches --source ${missed.join(' / ')}. Available source(s): ${available}.`);
     }
-    return matched;
+    return this.sources.filter((s) => selectors.some((sel) => sel === s.name || sel === basename(s.location)));
   }
   private loadAll(): CanonicalIssue[] { return this.loadAllRaw().map((r) => r.c); }
   // The full origin (path + optional line span) id's content actually resolved from (first source
@@ -349,9 +355,11 @@ export class MarkdownBackend implements TrackerBackend {
     const [verb, sub, ...rest] = args;
     if (verb === 'issue' && sub === 'list') {
       const fields = (flagVal(args, 'json') ?? 'identifier').split(',').map((s) => s.trim()).filter(Boolean);
-      // `--source` (ZTB-33, repeatable): scope the union to the named source(s) before any other
-      // filter. An unknown selector throws (selectSources) rather than returning nothing.
-      let rows = this.loadAllRaw(flagAll(args, 'source'));
+      // `--source` (ZTB-33, repeatable; ZTB-40, comma-separated too — the one grammar shared with
+      // `check`): scope the union to the named source(s) before any other filter. A selector
+      // matching zero sources throws (selectSources) rather than returning nothing, even when
+      // other selectors in the same invocation matched.
+      let rows = this.loadAllRaw(splitSelectors(flagAll(args, 'source')));
       // `--state` is either a status TYPE (`open` = not closed, `closed` = completed/canceled,
       // `all` = no filter — what the local backend and the recovery scripts use) or a literal
       // state name ("In Progress"). Matching `open` as a literal name returns nothing.

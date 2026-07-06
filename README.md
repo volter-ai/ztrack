@@ -335,8 +335,9 @@ npx ztrack check                                # reads PLAN.md like any other s
 recorded span — patching `dev/01` above changes only its checkbox and status/evidence/proof lines;
 every other byte in `PLAN.md` is untouched. State, assignee, and anything wider than title/body
 still fail closed, naming the file to edit directly instead. With 2+ declared sources,
-`--source <name>` scopes `issue list` and `check` to just the one you name. Grammar, the write
-model, scoping, and diagnostics: [Sources](docs/SOURCES.md).
+`--source <name>` scopes `issue list` and `check` to one or more of them (repeatable AND
+comma-separated, on both commands). Grammar, the write model, scoping, and diagnostics:
+[Sources](docs/SOURCES.md).
 
 Already have a messier backlog — headings, prose, checkboxes, no id tokens? `ztrack import` (accepts
 a file, a directory, or a quoted glob) materializes it into that same grammar **in place**,

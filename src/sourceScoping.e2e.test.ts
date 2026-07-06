@@ -169,4 +169,87 @@ describe('`--source` scoping (ZTB-33): list/check by source name, basename, and 
       ztIn(root, 'loop', 'stop');
     }
   });
+
+  // ZTB-40: one `--source` grammar everywhere it's accepted — every occurrence may be
+  // comma-separated; occurrences and comma-parts union, order-preserving, deduped. Before this fix,
+  // `issue list` was repeatable-only (a comma-separated occurrence was one unknown selector) and
+  // `check` was comma-only-FIRST-OCCURRENCE (a second `--source` was silently dropped). Tests
+  // 12-15 + 18 pin the unified grammar; tests 16-17 pin the per-selector loud-failure fix (the
+  // honesty core of ZTB-40) — test 16 PROVES it fails on unmodified main (see the comment there).
+
+  test('12. `issue list --source a,b` (comma form) unions both sources — NEW: pre-ZTB-40 this was one unknown selector "alpha,store-b"', () => {
+    const list = ztIn(root, 'issue', 'list', '--source', 'alpha,store-b', '--json', 'identifier');
+    expect(list.code).toBe(0);
+    expect(rows(list.out).map((r) => r.identifier).sort()).toEqual([idAlpha, idBeta].sort());
+  });
+
+  test('13. `check --source alpha --source store-b` (repeatable form) unions both — NEW: pre-ZTB-40 `optionValue` returned only the FIRST occurrence, so `store-b` was silently ignored', () => {
+    const both = ztIn(root, 'check', '--source', 'alpha', '--source', 'store-b');
+    expect(both.code).not.toBe(0); // the store-b finding fires -> not silently scoped to alpha alone
+    expect(both.out).toContain('passed_ac_missing_evidence');
+  });
+
+  test('14. mixed repeatable + comma-separated selectors union and dedupe on both commands', () => {
+    const list = ztIn(root, 'issue', 'list', '--source', 'alpha', '--source', 'store-b,alpha', '--json', 'identifier');
+    expect(list.code).toBe(0);
+    expect(rows(list.out).map((r) => r.identifier).sort()).toEqual([idAlpha, idBeta].sort());
+    const check = ztIn(root, 'check', '--source', 'alpha', '--source', 'store-b,alpha');
+    expect(check.code).not.toBe(0);
+    expect(check.out).toContain('passed_ac_missing_evidence');
+  });
+
+  test('15. `--source=alpha,store-b` (the "=" form) behaves identically to the space form, on both commands', () => {
+    const list = ztIn(root, 'issue', 'list', '--source=alpha,store-b', '--json', 'identifier');
+    expect(list.code).toBe(0);
+    expect(rows(list.out).map((r) => r.identifier).sort()).toEqual([idAlpha, idBeta].sort());
+    const check = ztIn(root, 'check', '--source=alpha,store-b');
+    expect(check.code).not.toBe(0);
+    expect(check.out).toContain('passed_ac_missing_evidence');
+  });
+
+  // ZTB-40's honesty core: a selector that matches NOTHING must fail the whole invocation loud,
+  // naming it and the available source names, even when another selector in the SAME invocation
+  // DID match. Pre-ZTB-40 `selectSources` only errored when NOTHING matched at all, so
+  // `check --source alpha,typo` silently narrowed to `alpha` alone and passed/failed on that
+  // narrower scope without ever mentioning `typo` — the exact "scoping tool silently narrows to
+  // less than you asked for" disease class named in the spec. PROOF this is new behavior: run
+  // `git stash` to revert to unmodified main, then `bun test -t '16\.' src/sourceScoping.e2e.test.ts`
+  // (or re-run this whole file) — on main this test's `check --source alpha,typo` assertion fails
+  // because the command exits 0 (scoped silently to `alpha`, which is clean) instead of erroring;
+  // `git stash pop` restores the fix. See the build report for the actual stash transcript.
+  test('16. `--source <real>,<typo>` fails loud naming the typo AND the available names, even though the real selector matched (partial-miss loud failure)', () => {
+    const list = ztIn(root, 'issue', 'list', '--source', 'alpha,typo', '--json', 'identifier');
+    expect(list.code).not.toBe(0);
+    expect(list.out).toContain('no declared source matches');
+    expect(list.out).toContain('typo');
+    expect(list.out).toContain('alpha');
+    expect(list.out).toContain('store-b');
+    // `alpha` alone WOULD be clean (test 5's `toAlpha` proves it green-scoped) — so a `check
+    // --source alpha,typo` that instead silently scoped to `alpha` would exit 0 here. It must not.
+    const check = ztIn(root, 'check', '--source', 'alpha,typo');
+    expect(check.code).not.toBe(0);
+    expect(check.out).toContain('no declared source matches');
+    expect(check.out).toContain('typo');
+    expect(check.out).toContain('alpha');
+    expect(check.out).toContain('store-b');
+    expect(check.out).not.toContain('passed_ac_missing_evidence'); // never got far enough to validate anything
+  });
+
+  test('17. repeated occurrences where ONE occurrence matches nothing still fail loud (not just comma-parts)', () => {
+    const bad = ztIn(root, 'check', '--source', 'alpha', '--source', 'typo');
+    expect(bad.code).not.toBe(0);
+    expect(bad.out).toContain('no declared source matches');
+    expect(bad.out).toContain('typo');
+  });
+
+  test('18. single-selector invocations stay byte-identical to 0.49.x output (back-compat canary)', () => {
+    // Same exact commands as tests 2 and 5 above (pre-ZTB-40 passing tests) — re-asserted here as an
+    // explicit canary so a future change to the grammar can't silently alter single-selector output.
+    const byName = ztIn(root, 'issue', 'list', '--source', 'alpha', '--json', 'identifier');
+    expect(byName.code).toBe(0);
+    expect(rows(byName.out).map((r) => r.identifier)).toEqual([idAlpha]);
+    const toAlpha = ztIn(root, 'check', '--source', 'alpha');
+    expect(toAlpha.code).toBe(0);
+    expect(toAlpha.out).not.toContain('passed_ac_missing_evidence');
+  });
 });

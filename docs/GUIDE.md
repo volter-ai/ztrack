@@ -85,10 +85,12 @@ Two flags compose on top of the target: `--fail-on-warning` makes warning-severi
 (exit 1) for a stricter lane — acknowledged (waived) findings never count toward it, only real
 warnings do, and the exit code, the pass/fail banner, and `--json` all agree on the same verdict —
 and — once you've declared 2+ `sources:` — `--source <name>`
-(repeatable) scopes the check to just the named source(s), matching by config `name`, path, or path
-basename ([Sources → scoping](SOURCES.md#scoping-to-one-source---source)). `--source` is refused
-loudly where there is nothing to scope: `check --input`, a loose `<file.md>` check, and the
-`--actionable/--blocked` frontier.
+(repeatable, and each occurrence may also be comma-separated — occurrences and comma-parts union)
+scopes the check to just the named source(s), matching by config `name`, path, or path basename
+([Sources → scoping](SOURCES.md#scoping-to-one-source---source)); any selector matching zero
+sources fails the whole check loud, naming it and the available names, even when other selectors
+matched. `--source` is refused loudly where there is nothing to scope: `check --input`, a loose
+`<file.md>` check, and the `--actionable/--blocked` frontier.
 
 ### Gate it in CI
 
