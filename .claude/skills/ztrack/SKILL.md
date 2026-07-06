@@ -34,7 +34,7 @@ Verbs:
 The cited commit must EXIST in git (`ztrack check` enforces this by default) — so implement and commit the real work first, then cite that SHA. If a needed commit, PR, screenshot, or evidence source does not exist, **leave the AC unchecked and report the blocker** — do not invent it.
 
 ## Targets
-`check` and `loop` take one target: nothing (whole tracker), `<issue-id>`, `<file.md>`, or — inside a worktree named for an issue — that issue automatically. `ztrack loop start <issue>` arms a Stop-hook gate that holds your turn until that issue is green. With 2+ declared sources, `issue list --source <name>` / `check --source <name>` scope to one source (refused on the `--actionable/--blocked` frontier and on source-less check paths — see docs/SOURCES.md).
+`check` and `loop` take one target: nothing (whole tracker), `<issue-id>`, `<file.md>`, or — inside a worktree named for an issue — that issue automatically. `ztrack loop start <issue>` arms a Stop-hook gate that holds your turn until that issue is green. With 2+ declared sources, `issue list --source <name>` / `check --source <name>` scope to one or more sources (repeatable, comma-separated, union — refused on the `--actionable/--blocked` frontier and on source-less check paths — see docs/SOURCES.md).
 
 ## Sync (linked repos)
 If the project was `init --sync github`, the tracker IS the GitHub issues. `ztrack sync github` reconciles both ways; a same-field conflict surfaces as a `sync_conflict` finding that gates `check` until you resolve it — edit and re-sync, or pick a policy (`--policy merge|hub-wins|twin-wins`, default `merge`).

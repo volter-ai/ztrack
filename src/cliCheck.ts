@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
 import { checkFile, checkTracker, checkTrackerRoot, type TrackerCheckResult } from './check.ts';
 import { exportTrackerRoot } from './export.ts';
-import { optionValue } from './cliArgs.ts';
+import { optionValue, optionValues, splitSelectors } from './cliArgs.ts';
 import { projectRootFrom } from './config.ts';
 import { renderCheckReport, renderScopedReport, summarizeResult } from './cliStyle.ts';
 import { git } from './core/gitWorld.ts';
@@ -61,22 +61,30 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs.some((a) => a === '--help' || a === '-h' || a === 'help')) {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,...] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud). --case is an accepted alias of --issues.\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,... (repeatable)] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud). --case is an accepted alias of --issues.\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources. Repeatable AND comma-separated (ZTB-40): occurrences and comma-parts union, order-preserving, deduped; any selector matching zero sources fails the whole invocation loud, naming it and the available names, even when other selectors matched.\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits; --verify-commits is an accepted no-op alias.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
-  const unknown = flagArgs.filter((t) => t.startsWith('--') && !allowed.has(t));
+  // ZTB-40: strip a `--flag=value` token down to `--flag` before checking it against the allow-list
+  // — mirrors cliImport.ts's own KNOWN_FLAGS scan, which already does this. Without it, a valid
+  // value flag given in `=` form (e.g. `--source=alpha,beta`) was misreported as unknown, which
+  // would have made the spec's "`--source=alpha,beta` behaves like the space form" contract false
+  // for `check`/`export` — the bug was generic to every value flag here, not just --source.
+  const unknown = flagArgs.filter((t) => t.startsWith('--') && !allowed.has(t.includes('=') ? t.slice(0, t.indexOf('=')) : t));
   if (unknown.length) throw new Error(`ztrack ${action}: unknown flag(s) ${unknown.join(', ')}. Valid flags: ${[...allowed].join(' ')}`);
 
   const projectRoot = projectRootFrom();
   const issuesFilter = optionValue(flagArgs, '--issues') || optionValue(flagArgs, '--case');
   const issuesFromFlag = issuesFilter ? issuesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-  // ZTB-33: `--source a,b` scopes the check to the named declared source(s) (comma-separated, like
-  // `--issues`). Threaded into commonOpts → checkTracker → loader → backend; an unknown name errors
-  // in the backend's `selectSources`. Meaningless with `--input` (a materialized root, no backend
-  // read) — silently ignored there, as scoping can only happen at the live read.
-  const sourcesFilter = optionValue(flagArgs, '--source');
-  const sourcesFromFlag = sourcesFilter ? sourcesFilter.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  // ZTB-40: `--source` is repeatable AND each occurrence may be comma-separated (the one grammar
+  // shared with `issue list` — see cliArgs.ts's `splitSelectors`/`optionValues`); occurrences and
+  // comma-parts union, order-preserving, deduped. Threaded into commonOpts → checkTracker → loader
+  // → backend; a selector matching zero sources errors in the backend's `selectSources` (loud even
+  // when OTHER selectors in the same invocation matched — ZTB-40). Meaningless with `--input` (a
+  // materialized root, no backend read) — silently ignored there, as scoping can only happen at the
+  // live read.
+  const sourceSelectors = splitSelectors(optionValues(flagArgs, '--source'));
+  const sourcesFromFlag = sourceSelectors.length ? sourceSelectors : undefined;
 
   if (action === 'export') {
     const root = await exportTrackerRoot({ projectRoot, ...(issuesFromFlag ? { issues: issuesFromFlag } : {}) });

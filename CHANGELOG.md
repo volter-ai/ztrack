@@ -2,6 +2,23 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.50.0
+
+- **One `--source` grammar everywhere — repeatable AND comma-separated, union, per-selector
+  loud failure.** `check` used to read only the FIRST `--source` occurrence (a second was
+  silently ignored) while `issue list` was repeatable-only (a comma-separated occurrence
+  became one unknown selector) — two different grammars for the same flag. Both commands now
+  share `splitSelectors`: every occurrence may be comma-separated, occurrences and parts
+  union, order-preserving, deduped, on `check`/`export` and `issue list` alike. And the
+  matcher now validates each selector individually: `--source real,typo` used to silently
+  drop `typo` as long as `real` matched — a scoping tool narrowing to less than you asked
+  for. It now fails loud naming every selector that matched nothing plus the available
+  names, even when other selectors matched. The `--source=name,...` `=` form now works on
+  `check`/`export` (its allow-list scan strips `=value` before checking, as `import`'s
+  always did). Frontier (`--actionable`/`--blocked`) and source-less check paths still
+  refuse `--source` unchanged; single-selector invocations are pinned byte-identical.
+  21 new tests (924 → 945), including a partial-miss pin proven to fail on 0.49.x.
+
 ## 0.49.1
 
 - **`evidence add` can no longer ingest a flag's value as the file.** The positional-file

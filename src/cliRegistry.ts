@@ -45,7 +45,7 @@ function bool(name: string, opts: Partial<Pick<FlagSpec, 'aliases' | 'repeatable
 export const REGISTRY: CommandSpec[] = [
   { path: ['check'], flags: [
     val('--issues', { aliases: ['--case'] }),
-    val('--source'),
+    val('--source', { repeatable: true }),
     val('--categories'),
     val('--phase'),
     bool('--fail-on-warning'),
