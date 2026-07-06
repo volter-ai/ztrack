@@ -90,14 +90,6 @@ function staleFileError(filePath: string): Error {
   return new Error(`the source '${filePath}' changed on disk since it was read; re-run the command against its current contents (write-back refuses to splice into stale content).`);
 }
 
-function crlfError(filePath: string): Error {
-  return new Error(
-    `the source '${filePath}' contains CRLF line endings; document-source write-back only supports LF files (the ` +
-    'read path normalizes CRLF, so a recorded span would no longer map onto the real on-disk bytes) — convert the ' +
-    'file to LF line endings and retry.',
-  );
-}
-
 function spliceFailedError(filePath: string, id: string, detail: string): Error {
   return new Error(`the source '${filePath}': could not splice issue ${id}'s edit (${detail}) — nothing was written. Edit '${filePath}' directly.`);
 }
@@ -300,8 +292,12 @@ export class DocumentSource implements IssueSource {
     if (JSON.stringify(c.comments) !== JSON.stringify(stored.issue.comments)) throw fieldNotStoredError(this.location, c.identifier, 'comments');
 
     // (b) STALENESS GUARD: re-read + re-parse fresh, require the exact bytes/span last parsed.
-    const freshText = existsSync(this.location) ? readFileSync(this.location, 'utf8') : '';
-    if (freshText.includes('\r')) throw crlfError(this.location);
+    // CRLF (a Windows/autocrlf checkout) is a file-boundary concern only: every recorded span and
+    // splice below runs in LF space (the read path normalizes identically), and the final write
+    // restores the file's own EOL — so spans always map onto the text actually being spliced.
+    const diskText = existsSync(this.location) ? readFileSync(this.location, 'utf8') : '';
+    const hadCrlf = diskText.includes('\r\n');
+    const freshText = diskText.replace(/\r\n?/g, '\n');
     const freshIssues = parseMarkdownDocumentSource(freshText, this.location);
     const freshParsed = freshIssues.find((i) => i.id === c.identifier);
     if (!freshParsed || freshParsed.raw !== stored.raw || freshParsed.lineStart !== stored.lineStart || freshParsed.lineEnd !== stored.lineEnd) {
@@ -383,10 +379,10 @@ export class DocumentSource implements IssueSource {
       throw integrityFailedError(this.location, `re-presenting issue ${c.identifier} after the splice did not reproduce the new body/status exactly (the heading shift or status splice did not invert cleanly)`);
     }
 
-    // (e) write, then refresh the in-memory view so subsequent same-process reads (ac patch's
-    // post-edit view, reparentChildren sequences, etc.) see the new state — including every
-    // issue's updated spans.
-    writeFileSync(this.location, candidateText);
+    // (e) write (restoring the file's own EOL — see the boundary note in (b)), then refresh the
+    // in-memory view so subsequent same-process reads (ac patch's post-edit view,
+    // reparentChildren sequences, etc.) see the new state — including every issue's updated spans.
+    writeFileSync(this.location, hadCrlf ? candidateText.replace(/\n/g, '\r\n') : candidateText);
     this.byId = loadedIssuesFrom(candidateIssues);
   }
 

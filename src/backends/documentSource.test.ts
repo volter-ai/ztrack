@@ -216,12 +216,30 @@ describe('DocumentSource.write guards (ZTB-4 dev/09)', () => {
     expect(() => src.write(edited(doc9, { body: `${doc9.body}Extra.\n` }))).toThrow(/excised|child issues/i);
   });
 
-  test('a CRLF file throws on write (write-back only supports LF)', () => {
+  test('a CRLF file (Windows/autocrlf checkout) splices in LF space and writes back its own EOL', () => {
+    // The old behavior threw, which bricked ac patch/issue edit for entire Windows checkouts.
+    // Spans are recorded in LF space (the read path normalizes), so the write normalizes the
+    // fresh disk read identically and restores CRLF only at the writeFileSync boundary.
+    const { path, resolved } = docFile(CANON.replace(/\n/g, '\r\n'));
+    const src = new DocumentSource(resolved);
+    const doc1 = src.load('DOC-1')!;
+    src.write(edited(doc1, { body: `${doc1.body}Extra.\n` }));
+    const after = readFileSync(path, 'utf8');
+    expect(after).toContain('Extra.');
+    expect(after).toContain('\r\n');
+    expect(after).not.toMatch(/[^\r]\n/); // uniformly CRLF — the splice introduced no mixed EOLs
+    expect(src.load('DOC-1')!.body).toContain('Extra.'); // in-memory view refreshed
+  });
+
+  test('a file that turns CRLF on disk AFTER the read (autocrlf re-checkout) still splices, preserving CRLF', () => {
     const { path, resolved } = docFile(CANON);
     const src = new DocumentSource(resolved);
     const doc1 = src.load('DOC-1')!;
-    writeFileSync(path, CANON.replace(/\n/g, '\r\n'));
-    expect(() => src.write(edited(doc1, { body: `${doc1.body}Extra.\n` }))).toThrow(/CRLF/);
+    writeFileSync(path, CANON.replace(/\n/g, '\r\n')); // same content, EOL flipped — NOT stale
+    src.write(edited(doc1, { body: `${doc1.body}Extra.\n` }));
+    const after = readFileSync(path, 'utf8');
+    expect(after).toContain('Extra.');
+    expect(after).toContain('\r\n');
   });
 
   test('delete always fails closed', () => {

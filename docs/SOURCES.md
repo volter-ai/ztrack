@@ -330,8 +330,9 @@ afterward, same as any other AC.
   (the one exception is documented above — a headingless top-level checkbox line is converted into
   its own heading, and checkboxes/`TODO:` lines outside an AC section relocate INTO one, since that
   relocation is the whole point of materializing a freeform backlog; every other byte survives).
-- CRLF input is rejected with a clear error (same LF-only constraint as document-source
-  write-back) rather than silently mis-positioning an edit.
+- **CRLF (Windows/autocrlf) files work**: the plan/edit math runs in LF space and the
+  materialized output is restored to the file's own EOL, so a CRLF backlog imports and
+  round-trips byte-identically (same boundary rule as document-source write-back).
 
 ### `--register`
 

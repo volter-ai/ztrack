@@ -24,9 +24,15 @@ export async function handleFmtCommand(args: string[]): Promise<boolean> {
   const preset = await resolveTrackerValidation(loadTrackerConfig(projRoot), projRoot);
   const fmtClient = (issueId !== '') ? createTrackerClient() : null;
   let record: IssueRecord;
+  // A standalone --input file's EOL is a file-boundary concern: canonicalize in LF space and
+  // restore the file's own EOL on write, so a CRLF (Windows/autocrlf) file that is canonical
+  // modulo line endings reads as canonical instead of failing --check forever.
+  let inputHadCrlf = false;
   if (inputPath) {
     // a standalone file carries no columns; canonicalize the body content with a placeholder
-    record = { id: 'fmt', title: 'fmt', status: 'draft', body: readFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), 'utf8') };
+    const rawBody = readFileSync(isAbsolute(inputPath) ? inputPath : resolve(process.cwd(), inputPath), 'utf8');
+    inputHadCrlf = rawBody.includes('\r\n');
+    record = { id: 'fmt', title: 'fmt', status: 'draft', body: rawBody.replace(/\r\n?/g, '\n') };
   } else if (issueId) {
     const issue = await fmtClient!.issue.view(issueId, { json: 'identifier,title,state,stateType,assignee,labels,children,body' });
     record = viewToRecord(issue as Record<string, unknown>, issueId);
@@ -46,7 +52,8 @@ export async function handleFmtCommand(args: string[]): Promise<boolean> {
       await fmtClient!.issue.edit(issueId, columnsToEdit(result.body, result.columns, record));
       process.stdout.write(`formatted ${issueId}\n`);
     } else {
-      writeFileSync(isAbsolute(inputPath!) ? inputPath! : resolve(process.cwd(), inputPath!), result.body);
+      const out = inputHadCrlf ? result.body.replace(/\n/g, '\r\n') : result.body;
+      writeFileSync(isAbsolute(inputPath!) ? inputPath! : resolve(process.cwd(), inputPath!), out);
       process.stdout.write(`formatted ${inputPath}\n`);
     }
     return true;

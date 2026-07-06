@@ -183,8 +183,8 @@ export interface ImportResult {
  *  colliding with a LATER file's pre-existing id; scanning every file's existing ids up front,
  *  before any file mints anything, is what actually makes the batch collision-safe. */
 export function existingIdsInFile(text: string): string[] {
-  if (text.includes('\r')) return []; // let the real pass throw the CRLF error; this is a scan only
-  const doc = parseMarkdownDocument(text);
+  const doc = parseMarkdownDocument(text); // normalizes CRLF internally — a scan needs no EOL handling
+
   const ids: string[] = [];
   for (const section of doc.sections) {
     if (isReservedHeadingTitle(section.title)) continue;
@@ -192,16 +192,6 @@ export function existingIdsInFile(text: string): string[] {
     if (m) ids.push(m[1]!);
   }
   return ids;
-}
-
-export function assertNoCrlf(text: string, filePath: string): void {
-  if (text.includes('\r')) {
-    throw new Error(
-      `ztrack import: '${filePath}' contains CRLF line endings; the importer (like document-source ` +
-      'write-back) only supports LF files, since inserted id tokens/AC scaffolding are positioned by ' +
-      'line — convert the file to LF line endings and retry.',
-    );
-  }
 }
 
 type Edit =
@@ -437,11 +427,17 @@ function scanAcCandidates(
   return out;
 }
 
-/** Plan (and materialize) ONE file's import. Throws on CRLF input. `opts.prefix` is the resolved
+/** Plan (and materialize) ONE file's import. `opts.prefix` is the resolved
  *  issue-id prefix (see importDriver.ts for how it's inferred); `opts.allocator` is shared across
  *  a whole import batch for collision-safe, single-pass numbering. */
-export function planAndMaterialize(text: string, filePath: string, opts: { prefix: string; allocator: IdAllocator }): ImportResult {
-  assertNoCrlf(text, filePath);
+export function planAndMaterialize(rawText: string, filePath: string, opts: { prefix: string; allocator: IdAllocator }): ImportResult {
+  // CRLF (a Windows/autocrlf checkout) is handled at the file boundary only: every line-positioned
+  // edit below runs in LF space, and `materialized` (plus the isNoop byte comparison) is restored
+  // to the file's own EOL at the end — so a CRLF backlog round-trips byte-identically instead of
+  // being refused (the old behavior bricked import/write-back for entire Windows checkouts, and
+  // "convert to LF" advice just fought git's autocrlf on the next checkout).
+  const hadCrlf = rawText.includes('\r\n');
+  const text = rawText.replace(/\r\n?/g, '\n');
   const { prefix, allocator } = opts;
   const doc = parseMarkdownDocument(text);
   const lines = text.split('\n');
@@ -685,11 +681,14 @@ export function planAndMaterialize(text: string, filePath: string, opts: { prefi
   }
 
   const materializedLines = applyEdits(lines, edits);
-  const materialized = materializedLines.join('\n');
+  const materializedLf = materializedLines.join('\n');
+  // Restore the file's own EOL (see the boundary note at the top) so the write and the no-op
+  // comparison both happen in the file's real byte space.
+  const materialized = hadCrlf ? materializedLf.replace(/\n/g, '\r\n') : materializedLf;
 
   const plan: ImportPlan = {
     filePath, prefixUsed: prefix, issues, unmapped, preChecked,
-    isNoop: materialized === text,
+    isNoop: materialized === rawText,
   };
   return { plan, materialized };
 }

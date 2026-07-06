@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'bun:test';
 import { parseMarkdownDocumentSource } from './documentParser.ts';
-import { assertNoCrlf, existingIdsInFile, IdAllocator, planAndMaterialize, type ImportPlan } from './importBacklog.ts';
+import { existingIdsInFile, IdAllocator, planAndMaterialize, type ImportPlan } from './importBacklog.ts';
 
 const FIXTURES = join(import.meta.dirname, 'importBacklog.fixtures');
 
@@ -291,11 +291,27 @@ describe('planAndMaterialize — writer idempotence + insert-only contract (dev/
     expect(plan.issues.find((i) => i.status === 'existing')!.id).toBe('APP-1');
   });
 
-  test('CRLF input throws a clear, actionable error naming the file (never silently mis-splices)', () => {
-    const allocator = new IdAllocator();
-    expect(() => planAndMaterialize('# X\r\n\r\nbody\r\n', '/tmp/crlf.md', { prefix: 'APP', allocator }))
-      .toThrow(/CRLF/);
-    expect(() => assertNoCrlf('a\r\nb', '/tmp/crlf.md')).toThrow(/crlf\.md/);
+  test('CRLF input (Windows/autocrlf checkout) imports like LF and round-trips its own EOL', () => {
+    // The old behavior refused CRLF outright, which bricked import for entire Windows checkouts.
+    // EOL is a file-boundary concern: the plan must equal the LF plan exactly, the materialized
+    // bytes must stay uniformly CRLF, and a second pass must be a byte-identical no-op.
+    const { input } = load('mixed-prose-checkboxes');
+    const lf = planAndMaterialize(input, '/tmp/lf.md', { prefix: 'APP', allocator: new IdAllocator() });
+    const crlf = planAndMaterialize(input.replace(/\n/g, '\r\n'), '/tmp/crlf.md', { prefix: 'APP', allocator: new IdAllocator() });
+    expect(crlf.plan.issues).toEqual(lf.plan.issues);
+    expect(crlf.materialized).toBe(lf.materialized.replace(/\n/g, '\r\n'));
+    expect(crlf.materialized).not.toMatch(/[^\r]\n/); // no stray LF-only line endings
+    const second = planAndMaterialize(crlf.materialized, '/tmp/crlf.md', { prefix: 'APP', allocator: new IdAllocator() });
+    expect(second.plan.isNoop).toBe(true);
+    expect(second.materialized).toBe(crlf.materialized);
+  });
+
+  test('an already-canonical CRLF file is a no-op, not a rewrite', () => {
+    const { input } = load('already-canonical');
+    const crlfInput = input.replace(/\n/g, '\r\n');
+    const { plan, materialized } = planAndMaterialize(crlfInput, '/tmp/canon-crlf.md', { prefix: 'APP', allocator: new IdAllocator() });
+    expect(plan.isNoop).toBe(true);
+    expect(materialized).toBe(crlfInput);
   });
 
   test('never mints a checked AC line and never mints an evidence line', () => {
