@@ -237,6 +237,7 @@ Parsing failure modes that used to vanish silently now surface as findings on `z
 | `ac_outside_section` | warning | a checkbox item sits outside any recognized Acceptance Criteria section — it would otherwise vanish from the model with no trace |
 | `ac_id_malformed` | warning | an AC line matches neither `<id> v<version> <text>` nor `<id> <text>`; the whole line becomes the id, unaddressable by `ac patch` |
 | `loose_header_ignored` | warning | (loose single-file `ztrack check <file.md>` mode) a `Title:`/`Status:`/`Assignee:` header block was aborted by a non-header line, or a header-shaped line survives in the body |
+| `unregistered_document_sibling` | warning | (un-scoped `ztrack check` only) an `.md` file sits in the same directory as a registered `document` source and holds document-grammar issues (id-bearing headings) but is not itself registered — the tracker cannot see its issues; the fix offers `ztrack import <file> --register` (never run automatically) |
 
 `ac_sections_multiple`, `ac_outside_section`, and `ac_id_malformed` come from the installed
 preset's own grammar (`simple-sdlc`/`simple-gh-sdlc`) — they fire identically whether the issue

@@ -12,6 +12,11 @@ All notable ztrack release changes are recorded here.
   closing the silent gap where a hand-authored backlog file checked "green" while its issues
   never loaded into the tracker. Genuinely loose files (no id-bearing headings) are checked
   exactly as before.
+- **Full `ztrack check` warns about "dark siblings"** (`unregistered_document_sibling`,
+  warning — never gates by default): an `.md` file sitting beside a registered `document` source,
+  holding document-grammar issues, but not itself registered. The finding names the file and its
+  issue ids and offers `ztrack import <file> --register` — the sweep never mutates config. Fires
+  only on un-scoped checks; `check <issue-id>`/`--source` stay quiet.
 - **The Claude Code plugin is renamed `ztrack-gate` → `ztrack`** (plugin 0.3.0): it now ships
   the `ztrack` skill alongside the gate hooks, so the old name undersold it — install is
   `/plugin install ztrack@ztrack`. Existing installs keep working: their hooks still fire from

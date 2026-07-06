@@ -128,3 +128,52 @@ describe('check on a document-grammar file', () => {
     expect(r.stderr).not.toMatch(/--register/);
   });
 });
+
+// The "dark sibling" sweep (unregisteredSiblingFindings): a full `ztrack check` warns about an
+// .md file that sits beside a registered document source, holds document-grammar issues, and is
+// not itself registered — the exact shape of the motivating incident (nine workstream files
+// registered, a tenth authored beside them, silently invisible). A separate tracker root so the
+// declared `sources` config never leaks into the file-target tests above.
+describe('unregistered document sibling warning', () => {
+  let sibRoot = '';
+  const sib = (args: string[]) => {
+    const r = spawnSync('bun', ['run', CLI, ...args], { cwd: sibRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    return { code: r.status ?? 1, stdout: r.stdout ?? '', stderr: r.stderr ?? '', out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+  };
+
+  beforeAll(() => {
+    sibRoot = mkdtempSync(join(tmpdir(), 'ztrk-sib-'));
+    mkdirSync(join(sibRoot, 'node_modules'), { recursive: true });
+    symlinkSync(REPO, join(sibRoot, 'node_modules', 'ztrack'));
+    sib(['init', '--team', 'ZT']);
+    mkdirSync(join(sibRoot, 'backlog'));
+    writeFileSync(join(sibRoot, 'backlog', 'workstream-a.md'), GREEN_ITEM);
+    const configPath = join(sibRoot, '.volter', 'tracker-config.json');
+    const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    config.sources = [{ format: 'document', path: 'backlog/workstream-a.md' }];
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+  });
+  afterAll(() => { if (sibRoot) rmSync(sibRoot, { recursive: true, force: true }); });
+
+  test('a document-grammar sibling of a registered source warns (never gates) and offers registration', () => {
+    writeFileSync(join(sibRoot, 'backlog', 'workstream-b.md'), '## SIB-1 — Dark\n\nstatus: draft\nassignee: me\n\nnobody can see me\n');
+    const r = sib(['check']);
+    expect(r.code).toBe(0);                                          // warning, not an error
+    expect(r.stdout).toMatch(/unregistered_document_sibling/);
+    expect(r.stdout).toMatch(/workstream-b\.md/);
+    expect(r.stdout).toMatch(/SIB-1/);
+    expect(r.stdout).toMatch(/ztrack import backlog\/workstream-b\.md --register/);
+  });
+
+  test('a plain .md sibling with no id-bearing headings does not warn; the registered source never warns about itself', () => {
+    writeFileSync(join(sibRoot, 'backlog', 'README.md'), '# Backlog\n\n## How this works\n\nprose only\n');
+    const r = sib(['check']);
+    expect(r.stdout).not.toMatch(/README\.md/);
+    expect(r.stdout).not.toMatch(/workstream-a\.md.*NOT a registered source/);
+  });
+
+  test('a scoped check (issue id or --source) stays quiet about siblings', () => {
+    expect(sib(['check', 'DOC-1']).out).not.toMatch(/unregistered_document_sibling/);
+    expect(sib(['check', '--source', 'backlog/workstream-a.md']).out).not.toMatch(/unregistered_document_sibling/);
+  });
+});

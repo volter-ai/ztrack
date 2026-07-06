@@ -8,7 +8,7 @@ import { resolveTrackerValidation } from './presetRegistry.ts';
 import { buildContext, loadValidationInput } from './core/loader.ts';
 import { check, checkRoot, type CheckResult, type Context, type CoreRoot, type Finding, type IssueRecord } from './core/engine.ts';
 import { conflictFindings } from './sync/conflicts.ts';
-import { documentHeaderFindings, documentSourceHeaderFindings } from './documentDiagnostics.ts';
+import { documentHeaderFindings, documentSourceHeaderFindings, unregisteredSiblingFindings } from './documentDiagnostics.ts';
 import { DocumentSource } from './backends/documentSource.ts';
 import { parseMarkdownDocumentSource } from './documentParser.ts';
 import { resolveSources } from './sources.ts';
@@ -77,7 +77,13 @@ export async function checkTracker(options: TrackerCheckOptions = {}): Promise<T
   // Cross-cutting document-source header diagnostics (ZTB-23 dev/04): warnings, never gate —
   // same "read directly off disk, merged in" shape as conflicts above.
   const headerFindings = documentHeaderFindings(projectRoot, config);
-  const extra = [...conflicts, ...headerFindings];
+  // The "dark sibling" sweep (see documentDiagnostics.ts) — un-scoped reads only: inventory-level
+  // advice belongs on the full-tracker view, never on `check <issue-id>`/`--source`. The
+  // `--auto-scope` gate reads un-scoped too, so a loop-armed agent DOES see the warning (carrying
+  // no issueId it partitions as blocking — but warnings never fail the gate, only errors do), and
+  // that's deliberate: an agent mid-burn-down is exactly who authors the next dark sibling.
+  const siblingFindings = options.issues || options.sources?.length ? [] : unregisteredSiblingFindings(projectRoot, config);
+  const extra = [...conflicts, ...headerFindings, ...siblingFindings];
   if (!extra.length) return { ...result, loadedIssueIds };
   const findings = [...result.findings, ...extra];
   return { ...result, ok: !findings.some((f) => f.severity === 'error'), findings, loadedIssueIds };
