@@ -2,6 +2,37 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.49.0
+
+The flag surface becomes a grammar: a typo'd flag on ANY command now errors loud with a
+did-you-mean, and the help text can no longer drift from what the parser actually reads.
+
+- **Unknown flags reject at dispatch, everywhere.** `src/cliRegistry.ts` declares every real
+  command path and the flags its parser actually accepts (42 paths, 115 flags); `main()`
+  validates against it before any handler runs. `issue list --stat open` — a typo of
+  `--state` — used to silently return the whole unfiltered list at exit 0; it now exits 1
+  with `unknown flag(s) --stat (did you mean --state?)`. Previously only `check`/`export`/
+  `import` had allow-lists (now derived from the same registry instead of hand-kept copies).
+  A recognized value-taking flag still consumes its following token exactly as the parsers
+  do, so every invocation that worked before keeps working byte-identically.
+- **Help is now truthful.** Six documented `issue` verbs that never existed (`relate`,
+  `relations`, `unrelate`, `history`, `comments`, plus a prose-only `get`) and dead flags
+  (`--jq`, `--comments`) are gone from help; the three trivially-true ones are now REAL:
+  `issue get` is a full alias of `view`, and `issue comment --body-file` / `issue close
+  --comment-file` actually read the file. `issue edit`'s `--body` and the optimistic-
+  concurrency preconditions `--expect-state`/`--expect-body-sha` are documented; `issue
+  patch`/`delete` gained help entries whose flags render straight from the registry.
+- **`ztrack help <x>` routes for real.** `help issue`, `help issue patch`, `help check` all
+  land on the focused help (not the generic top-level dump); an unknown resource errors
+  config-free with the resource list instead of printing generic help. `check <target>
+  --help` prints usage instead of erroring on `--help` as an unknown flag.
+- **`--flag=value` works in the backend.** `issue list --state=open` used to be silently
+  ignored (full list back); `flagVal`/`flagAll` now accept the `=` form alongside the space
+  form, mirroring `optionValue`.
+- **Drift is pinned impossible.** A bidirectional registry↔help test per command group plus
+  a source meta-scan (every parse-site flag literal in `src/` must be registered) mean a
+  future flag can't be parsed undocumented or documented unparsed. 88 new tests (824 → 912).
+
 ## 0.48.3
 
 `check --input` never crashes on malformed roots — it reports honest shape findings.
