@@ -8,6 +8,12 @@
 // different concern; this predicate must not be used for that.
 const ISSUE_ID = /^[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+$/;
 
+// A dialect LENS (docs/DIALECTS.md) serves a file's NATIVE ids, which may be hyphenless
+// ("KQ1", "WS3") — the ids belong to the repo, so `ztrack check KQ1` must resolve them. Same
+// digit rule the built-in dialects enforce (a letter run must carry a digit), so a bare word
+// ("build", "Follow-up" without a digit-bearing tail) still reads as a typo, not an id.
+const DIALECT_NATIVE_ID = /^[A-Za-z][A-Za-z0-9]*\d[A-Za-z0-9]*$/;
+
 export function isIssueId(token: string): boolean {
-  return ISSUE_ID.test(token);
+  return ISSUE_ID.test(token) || DIALECT_NATIVE_ID.test(token);
 }

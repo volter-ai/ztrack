@@ -13,6 +13,7 @@ import { boardIndexDir, mainWorktreeMarkdownDir, markdownStoreDir } from '../con
 import { git } from '../core/gitWorld.ts';
 import { IdAllocator } from '../idAllocator.ts';
 import { resolveSources, type ResolvedSource } from '../sources.ts';
+import { DialectSource } from './dialectSource.ts';
 import { DocumentSource } from './documentSource.ts';
 import type { IssueSource, SourceOrigin } from './issueSource.ts';
 import { activeStatusEnum } from '../presetRegistry.ts';
@@ -206,10 +207,12 @@ export class MarkdownBackend implements TrackerBackend {
     this.teamKey = teamKey;
     const resolved = sources && sources.length ? sources : resolveSources(projectRoot, {});
     // A `document` source (ZTB-4) is a single FILE, parsed into many issues — a wholly different
-    // class (DocumentSource) from `issue-per-file`'s directory-shaped MarkdownSource. Both
-    // conform to `IssueSource`, so everything below this constructor is format-agnostic.
+    // class (DocumentSource) from `issue-per-file`'s directory-shaped MarkdownSource. A document
+    // source carrying a `dialect` (docs/DIALECTS.md) is the read-only lens variant
+    // (DialectSource). All conform to `IssueSource`, so everything below this constructor is
+    // format-agnostic.
     this.sources = resolved.map((s): IssueSource => (s.format === 'document'
-      ? new DocumentSource(s)
+      ? (s.dialect ? new DialectSource(s as ResolvedSource & { dialect: NonNullable<ResolvedSource['dialect']> }) : new DocumentSource(s))
       : new MarkdownSource(s, s.isDefault ? { indexDir: boardIndexDir(projectRoot), mainDir: mainWorktreeMarkdownDir(projectRoot) } : {})
     ));
   }
@@ -257,9 +260,13 @@ export class MarkdownBackend implements TrackerBackend {
   // the `readonly: true` config check, which now ALSO protects a `readonly: true` document source
   // (a document source can be declared readonly the same way an issue-per-file one can).
   private requireSourceWritable(source: IssueSource): void {
-    if (source.readonlySource) {
-      throw new Error(`the source '${source.location}' is read-only (declared readonly: true in tracker-config.json); its issues cannot be written through ztrack — edit the source it reads instead.`);
+    if (!source.readonlySource) return;
+    // A dialect lens (docs/DIALECTS.md) is readonly by CONSTRUCTION, not by a `readonly: true` the
+    // user wrote — its message names the actual remedy (materialize), not a config line to remove.
+    if (source instanceof DialectSource) {
+      throw new Error(`the source '${source.location}' is a read-only dialect lens ('${source.dialectName}') — edit the file directly, or materialize it with \`ztrack import ${source.location}\` to manage it through ztrack.`);
     }
+    throw new Error(`the source '${source.location}' is read-only (declared readonly: true in tracker-config.json); its issues cannot be written through ztrack — edit the source it reads instead.`);
   }
   // `parent` is a pointer; `children` is a DENORMALIZED VIEW of it (markdown.ts:19-20) that nothing
   // else maintains — so a reparent via `issue edit` must update both endpoints of the edge itself, or
