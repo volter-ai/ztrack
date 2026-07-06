@@ -9,7 +9,7 @@ keeps the core local-first and deterministic.
   [Guide](docs/GUIDE.md#3-usage-drive-an-agent-to-green) documents the loop / Stop-hook wiring and
   the MCP tool surface; the [agent playbook](docs/AGENT-PLAYBOOK.md) carries the one-shot adoption
   prompt.
-- ~~Public CI examples for committed validated-root gates.~~ **Shipped:** the `volter-ai/ztrack@v0`
+- ~~Public CI examples for committed validated-root gates.~~ **Shipped:** the `volter-ai/ztrack@v1`
   Action recipe in the [Guide](docs/GUIDE.md#gate-it-in-ci), plus the linked-mode CI variant.
 - ~~Presets for Spec Kit style repos.~~ **Shipped:** the `speckit` install preset (with `spec` as
   the lighter cousin).
