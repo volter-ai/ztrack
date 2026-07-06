@@ -104,7 +104,7 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['waiver', 'clear'], flags: [ val('--code') ] },
   { path: ['waiver', 'status'], flags: [] },
   { path: ['waiver', 'migrate'], flags: [ bool('--all') ] },
-  { path: ['import'], flags: [ val('--prefix'), bool('--dry-run'), bool('--register') ] },
+  { path: ['import'], flags: [ val('--prefix'), bool('--dry-run'), bool('--register'), val('--dialect') ] },
   { path: ['fmt'], flags: [ val('--input'), val('--issue'), bool('--write'), bool('--check') ] },
   { path: ['lint'], flags: [ val('--issues'), bool('--json'), bool('--fail-on-warn') ] },
   { path: ['tx', 'plan'], flags: [ val('--file') ] },

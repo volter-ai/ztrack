@@ -3,21 +3,23 @@
 // materializing/multi-input logic lives in src/importBacklog.ts and src/importDriver.ts; this
 // module is flag parsing + terminal rendering only, following the existing verb-module pattern
 // (cliCheck.ts / cliWaiver.ts / cliLoop.ts).
+import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 import { optionValue } from './cliArgs.ts';
 import { positionalArgs } from './cliTarget.ts';
 import { loadTrackerConfig, projectRootFrom, trackerConfigPath } from './config.ts';
+import { detectDialect, parseWithDialect, resolveDialect } from './dialects.ts';
 import type { ImportPlan } from './importBacklog.ts';
 import { IdAllocator } from './importBacklog.ts';
 import {
-  applyRegister, collectConfiguredIds, expandInputs, issuePerFileSourceDirs, planRegister, runImportBatch,
+  applyRegister, collectConfiguredIds, expandInputs, issuePerFileSourceDirs, planDialectRegister, planRegister, runImportBatch,
   type FileOutcome,
 } from './importDriver.ts';
 import { statusMark, ui } from './cliStyle.ts';
 import type { TrackerConfig } from './types.ts';
 import { flagSetFor } from './cliRegistry.ts';
 
-const VALUE_FLAGS = new Set(['--prefix']);
+const VALUE_FLAGS = new Set(['--dialect', '--prefix']);
 // ZTB-24: derives from src/cliRegistry.ts — one source of truth shared with the new dispatch-time
 // validator — instead of a hand-maintained second copy of the same flag set.
 const KNOWN_FLAGS = flagSetFor(['import']);
@@ -34,6 +36,10 @@ const USAGE = 'Usage: ztrack import <path-or-glob>... [--dry-run] [--prefix <ID-
   '  --register         append the resulting sources entries to tracker-config.json (only\n' +
   '                     appends; never mutates config without this flag — the exact snippet is\n' +
   '                     printed either way).\n' +
+  '  --dialect <NAME>   register-only LENS mode (docs/DIALECTS.md): declare each file as a\n' +
+  '                     read-only dialect source instead of materializing it — the file itself\n' +
+  '                     is NEVER modified. `ztrack check <file>` detects the dialect and prints\n' +
+  '                     this exact command, name filled in. Requires --register (or --dry-run).\n' +
   'Pre-checked `- [x]` items import as UNCHECKED, with a preserved-claim marker and a report\n' +
   '(ztrack check rejects a checked AC with no evidence — a materialized file must check green).\n' +
   'See docs/SOURCES.md -> "Importing a freeform backlog".\n';
@@ -110,6 +116,7 @@ export async function handleImportCommand(args: string[]): Promise<boolean> {
   const dryRun = flagArgs.includes('--dry-run');
   const register = flagArgs.includes('--register');
   const prefix = optionValue(flagArgs, '--prefix') || undefined;
+  const dialectFlag = optionValue(flagArgs, '--dialect') || undefined;
 
   const cwd = process.cwd();
   const projectRoot = projectRootFrom(cwd);
@@ -124,6 +131,36 @@ export async function handleImportCommand(args: string[]): Promise<boolean> {
   const excludeDirs = config ? issuePerFileSourceDirs(projectRoot, config) : [];
   const files = expandInputs(positionals, cwd, excludeDirs);
   if (files.length === 0) throw new Error(`ztrack import: no .md file(s) found for ${positionals.join(', ')}.`);
+
+  // Register-only LENS mode (docs/DIALECTS.md): `--dialect <name>` declares each file as a
+  // read-only dialect source in tracker-config.json and stops — the materialize pipeline is
+  // never entered, the files are NEVER modified. That zero-mutation property is the lens's whole
+  // trust proposition, so this mode shares nothing with the rewrite path below.
+  if (dialectFlag) {
+    if (!config) throw new Error(`ztrack import: --dialect needs a tracker config (none found at ${configPath}) — run \`ztrack init\` first.`);
+    if (prefix) throw new Error('ztrack import: --prefix has no meaning with --dialect — a lens never mints ids (the file keeps its own). Drop one of the two flags.');
+    if (!register && !dryRun) throw new Error('ztrack import: --dialect only registers a lens (it never modifies the file), so it needs --register to write the config entry — or --dry-run to preview it.');
+    const { dialect, name: dialectName } = resolveDialect(dialectFlag);
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8').replace(/\r\n?/g, '\n');
+      const { issues } = parseWithDialect(text, dialect);
+      const path = relative(cwd, file) || file;
+      const shownIds = issues.length > 4 ? `${issues.slice(0, 4).map((i) => i.id).join(', ')}, …` : issues.map((i) => i.id).join(', ');
+      process.stdout.write(issues.length
+        ? `${statusMark('pass')} ${path} ${ui.green(`'${dialectName}' lens sees ${issues.length} issue${issues.length === 1 ? '' : 's'}`)} ${ui.dim(`(${shownIds})`)}\n`
+        : `${statusMark('warn')} ${path} ${ui.yellow(`'${dialectName}' lens sees NO issues`)} ${ui.dim('— registering it would add an empty source; check the dialect name against the file')}\n`);
+    }
+    const toAdd = planDialectRegister(projectRoot, config, files, dialectName);
+    if (!toAdd.length) {
+      process.stdout.write(`\n${ui.dim('all given file(s) are already declared sources — nothing to register.')}\n`);
+    } else if (register && !dryRun) {
+      applyRegister(configPath, toAdd);
+      process.stdout.write(`\n${statusMark('pass')} ${ui.green(`registered ${toAdd.length} source${toAdd.length === 1 ? '' : 's'}`)} ${ui.dim(`in ${configPath} — the file(s) themselves were not touched`)}\n`);
+    } else {
+      process.stdout.write(`\n${ui.dim('--dry-run: would register these sources (nothing written, files untouched):')}\n${registerSnippet(toAdd)}\n`);
+    }
+    return true;
+  }
 
   const allocator = new IdAllocator();
   if (config) for (const id of collectConfiguredIds(projectRoot, config)) allocator.note(id);
@@ -141,6 +178,13 @@ export async function handleImportCommand(args: string[]): Promise<boolean> {
       if (o.kind === 'materialized') {
         for (const line of planTreeLines(o.plan)) process.stdout.write(`  ${line}\n`);
         for (const line of unifiedDiffLines(o.before, o.after)) process.stdout.write(`  ${line}\n`);
+        // WP5 (docs/DIALECTS.md): a file about to be REWRITTEN that already reads cleanly through
+        // a dialect gets the gentler alternative named — the lens tracks it with zero mutations.
+        const detected = detectDialect(o.before.replace(/\r\n?/g, '\n'));
+        if (detected) {
+          const rel = relative(cwd, o.path) || o.path;
+          process.stdout.write(`  ${ui.dim(`note: this file matches the '${detected.name}' dialect — to track it WITHOUT rewriting it, register a read-only lens instead: ztrack import ${rel} --register --dialect ${detected.name}`)}\n`);
+        }
         process.stdout.write('\n');
       }
     }

@@ -242,6 +242,18 @@ export interface RegisterPlan {
  *  printed/appended list `--register` (or the without-`--register` hint) shows, never a hidden
  *  mutation. */
 export function planRegister(projectRoot: string, config: { sources?: TrackerSourceConfig[] }, filePaths: readonly string[]): TrackerSourceConfig[] {
+  return planEntries(projectRoot, config, filePaths, (relPath) => ({ path: relPath, format: 'document' }));
+}
+
+/** Plan `--register --dialect <name>` (docs/DIALECTS.md): one `{dialect, path}` entry per file —
+ *  a read-only LENS declaration, config-only by definition (the file itself is never rewritten
+ *  on this path; `resolveSources` forces the lens readonly). Same default-store preservation and
+ *  duplicate-path de-dupe as `planRegister` above. */
+export function planDialectRegister(projectRoot: string, config: { sources?: TrackerSourceConfig[] }, filePaths: readonly string[], dialectName: string): TrackerSourceConfig[] {
+  return planEntries(projectRoot, config, filePaths, (relPath) => ({ dialect: dialectName, path: relPath }));
+}
+
+function planEntries(projectRoot: string, config: { sources?: TrackerSourceConfig[] }, filePaths: readonly string[], entryFor: (relPath: string) => TrackerSourceConfig): TrackerSourceConfig[] {
   const existingResolved = new Set((config.sources ?? []).map((s) => resolve(projectRoot, s.path)));
   const toAdd: TrackerSourceConfig[] = [];
   if (!config.sources || config.sources.length === 0) {
@@ -252,7 +264,7 @@ export function planRegister(projectRoot: string, config: { sources?: TrackerSou
   for (const path of filePaths) {
     if (existingResolved.has(path)) continue;
     existingResolved.add(path); // de-dupe within this same batch too
-    toAdd.push({ path: relative(projectRoot, path).split(sep).join('/'), format: 'document' });
+    toAdd.push(entryFor(relative(projectRoot, path).split(sep).join('/')));
   }
   return toAdd;
 }
