@@ -2,6 +2,24 @@
 
 All notable ztrack release changes are recorded here.
 
+## 0.48.3
+
+`check --input` never crashes on malformed roots — it reports honest shape findings.
+
+- **A malformed `--input` root under default flags reports `root_shape_invalid`, not a raw
+  TypeError.** Feeding `check --input` a shape-broken root (say `{"issues": 42}`, or entries
+  missing `acceptanceCriteria`) with commit verification on — the default — crashed with the
+  preset's internal error (`input.root.issues.flatMap is not a function`) before shape
+  validation ever ran, because the raw unvalidated root reached the preset's `loadContext`
+  first. Now two layers guard the surface: `checkTrackerRoot` skips `loadContext` entirely
+  when the root is too top-level-broken to have a usable `issues` array (validation is
+  guaranteed to fail on shape, so no observed facts are needed — this also protects projects
+  whose installed preset copies predate this release), and the two bundled presets that read
+  `input.root` (`simple-sdlc`, `simple-gh-sdlc`) extract facts best-effort over garbage so
+  deeper malformations (non-object entries, missing arrays) can't throw either. Well-formed
+  roots behave byte-identically; the live `ztrack check` path was never affected. Run
+  `ztrack preset upgrade` to pick up the hardened preset copies.
+
 ## 0.48.2
 
 `check --issues` now actually works with `--input` — it used to be silently ignored.
