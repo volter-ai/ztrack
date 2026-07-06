@@ -74,12 +74,16 @@ CI gating. It takes the **same target grammar** the loop does:
 ```bash
 ztrack check                 # (nothing)     the whole tracker
 ztrack check LOCAL-1         # <issue-id>    one issue
-ztrack check ./body.md       # <file.md>     a loose markdown file, treated as an issue
+ztrack check ./body.md       # <file.md>     a markdown file (document grammar checks every issue in it)
 ztrack check                 # (in a worktree named for an issue) → that issue, automatically
 ```
 
-A loose `./body.md` is checked for **structure + evidence**; lifecycle/PR gates (ready/in-review/done)
-apply only to **stored** issues, so a loose file is treated as a draft.
+A `<file.md>` in **document grammar** (id-bearing headings like `## APP-1 — title`) is checked as
+the multi-issue document it is, and a stderr note says whether the file is a registered source —
+offering `ztrack import <file> --register` when it is not (an unregistered file's issues are
+invisible to `issue list`/`check`/`loop`). Anything else is one loose issue, checked for
+**structure + evidence**; lifecycle/PR gates (ready/in-review/done) apply only to **stored**
+issues, so a loose file is treated as a draft.
 
 Two flags compose on top of the target: `--fail-on-warning` makes warning-severity findings gate too
 (exit 1) for a stricter lane — acknowledged (waived) findings never count toward it, only real

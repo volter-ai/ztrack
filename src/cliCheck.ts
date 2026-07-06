@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, isAbsolute, resolve } from 'node:path';
+import { basename, isAbsolute, relative, resolve } from 'node:path';
 import { checkFile, checkTracker, checkTrackerRoot, type TrackerCheckResult } from './check.ts';
 import { exportTrackerRoot } from './export.ts';
 import { optionValue, optionValues, splitSelectors } from './cliArgs.ts';
@@ -61,7 +61,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (flagArgs.some((a) => a === '--help' || a === '-h' || a === 'help')) {
     process.stdout.write(action === 'export'
       ? 'Usage: ztrack export [--out file] [--issues a,b]\n\nWrites the validated root ({ issues: [...] }) — the same model rules and the visualizer read.\n'
-      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,... (repeatable)] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a loose markdown file treated as one issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud).\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources. Repeatable AND comma-separated (ZTB-40): occurrences and comma-parts union, order-preserving, deduped; any selector matching zero sources fails the whole invocation loud, naming it and the available names, even when other selectors matched.\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
+      : 'Usage: ztrack check [<issue-id> | <file.md>] [--issues a,b] [--source name,... (repeatable)] [--input root.json] [--categories name=N,...] [--phase all|gate] [--auto-scope] [--no-verify-commits] [--fail-on-warning] [--errors-only] [--json] [--output file] [--max-findings N] [--preset path]\n\nChecks against the installed preset (run `ztrack init` first) — that preset is Node code and this command EXECUTES it; only run against a repo whose preset.mts you trust (see SECURITY.md). TARGET:\n  (none)            the whole tracker — or, in a worktree named for an issue, just that issue\n  <issue-id>        one tracker issue, e.g. `ztrack check ZT-1`\n  <file.md>         a markdown file: DOCUMENT grammar (id-bearing headings like `## APP-1 — title`) checks every issue the file holds — and says (stderr) whether the file is a registered source, offering `ztrack import <file> --register` when it is not; anything else is treated as one loose issue, e.g. `ztrack check ./body.md`\n  --issues a,b      several tracker issues (also scopes an --input root to those ids; a requested id absent from the root errors loud).\n  --source name,... scope to the named declared source(s) (ZTB-33; a source\'s config `name`, else its `path`, else its path basename) — validates only issues from those sources. Repeatable AND comma-separated (ZTB-40): occurrences and comma-parts union, order-preserving, deduped; any selector matching zero sources fails the whole invocation loud, naming it and the available names, even when other selectors matched.\nCommit existence is verified by default (the core guarantee). --no-verify-commits skips it for shallow/CI checkouts that lack the cited commits.\n--phase gate runs only the ongoing-gate rules; default all runs every rule.\n--fail-on-warning also gates on real warning-severity findings (never acknowledged/waived ones); the exit code, the pass/fail banner, and --json all agree on that same verdict.\n--auto-scope checks the whole tracker for context but only EXITS NONZERO on the active issue — an armed loop target (`ztrack loop start`), else ZTRACK_ACTIVE_ISSUE, else the git branch/worktree. Unresolved fails closed (gates everything). Built for per-worktree Stop-hook gates.\n--preset path     load this validation preset module instead of the repo\'s configured entrypoint — an operator trust decision (like `eslint -c`), unconfined to the project, still required to export a core preset. Works with --input, a live-tracker check, and a loose-file check. Use for fork-PR CI: point it at a TRUSTED (base-ref) preset copy so the untrusted checkout\'s preset.mts never runs — see SECURITY.md.\n');
     return true;
   }
   const allowed = KNOWN_FLAGS[action]!;
@@ -137,10 +137,12 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   // an unknown selector would go uncaught. Refuse rather than silently ignore, same as `--input`.
   const looseFileError = () => new Error(`ztrack check: --source cannot be combined with a loose <file.md> check — a single markdown file is not one of the tracker's declared sources, so there is nothing to scope. Drop --source to check the file, or run a live 'ztrack check --source ${sourcesFromFlag!.join(',')}'. Nothing was read.`);
 
-  // FILE target: validate a loose markdown file as one issue (plain report; not scoped).
+  // FILE target: validate a markdown file — DOCUMENT grammar checks every issue the file holds
+  // (checkFile decides; see check.ts), anything else is one loose issue (plain report; not scoped).
   if (target?.kind === 'file') {
     if (sourcesFromFlag) throw looseFileError();
     const result = await checkFile(target.path, { ...commonOpts, failOnWarning });
+    noteDocumentFile(result);
     return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
   }
 
@@ -150,6 +152,7 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   if (loop?.target.kind === 'file') {
     if (sourcesFromFlag) throw looseFileError();
     const result = await checkFile(loop.target.path, { ...commonOpts, failOnWarning });
+    noteDocumentFile(result);
     return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
   }
 
@@ -287,6 +290,34 @@ export async function handleCheckCommand(args: string[]): Promise<boolean> {
   }
 
   return emitPlain(result, { failOnWarning, outputPath, projectRoot, wantsJson, errorsOnly, maxFindings });
+}
+
+// A `<file.md>` target that parsed as DOCUMENT grammar was checked as the multi-issue document it
+// is (checkFile, src/check.ts) — but the verdict alone would still leave the user believing the
+// TRACKER sees these issues when the file isn't a registered source (it does not: `issue list`/
+// `check`/`loop` read only registered sources; this exact silent gap shipped a six-issue backlog
+// file that never loaded). Say which case this is, on stderr (stdout stays the report/JSON), and
+// when unregistered OFFER the registration command — never run it: mutating tracker-config.json
+// is the user's call (`import --register` appends the sources entry; on an already-strict file it
+// changes nothing else).
+function noteDocumentFile(result: TrackerCheckResult): void {
+  const doc = result.documentFile;
+  if (!doc) return;
+  const rel = relative(process.cwd(), doc.path);
+  const shown = rel && !rel.startsWith('..') ? rel : doc.path;
+  const ids = doc.issueIds.length > 4 ? `${doc.issueIds.slice(0, 4).join(', ')}, …` : doc.issueIds.join(', ');
+  if (doc.registeredName === null) {
+    process.stderr.write(
+      `note: ${shown} parses as a document source holding ${doc.issueIds.length} issue(s) (${ids}) — all were checked. `
+      + 'The file is NOT registered in tracker-config.json, so the tracker itself (issue list / check / loop) cannot see these issues.\n'
+      + `      To register it: ztrack import ${shown} --register\n`,
+    );
+  } else {
+    process.stderr.write(
+      `note: ${shown} is the registered document source '${doc.registeredName}' — checked standalone here, so relations to issues in OTHER sources are not visible. `
+      + `Tracker-wide view: ztrack check --source ${doc.registeredName}\n`,
+    );
+  }
 }
 
 // Plain (un-scoped) check report: the whole result is the gate. Shared by the all/issues/file

@@ -14,6 +14,17 @@ import type { TrackerConfig } from './types.ts';
 import { resolveSources } from './sources.ts';
 import { DocumentSource } from './backends/documentSource.ts';
 
+/** One already-constructed DocumentSource's header diagnostics as findings — shared by the
+ *  tracker-wide sweep below and by `checkFile`'s document mode (src/check.ts), so both surfaces
+ *  report the identical `loose_header_ignored` shape for the identical silent-discard. */
+export function documentSourceHeaderFindings(source: DocumentSource, path: string): Finding[] {
+  return source.headerDiagnostics().map((d) => ({
+    code: 'loose_header_ignored', severity: 'warning' as const, issueId: d.issueId,
+    message: `${path}: ${d.message}`,
+    origin: { path },
+  }));
+}
+
 export function documentHeaderFindings(projectRoot: string, config: Pick<TrackerConfig, 'sources'>): Finding[] {
   const sources = resolveSources(projectRoot, config).filter((s) => s.format === 'document');
   const findings: Finding[] = [];
@@ -27,13 +38,7 @@ export function documentHeaderFindings(projectRoot: string, config: Pick<Tracker
     } catch {
       continue; // the backend's own read path surfaces a real parse failure; this is best-effort
     }
-    for (const d of source.headerDiagnostics()) {
-      findings.push({
-        code: 'loose_header_ignored', severity: 'warning', issueId: d.issueId,
-        message: `${resolved.dir}: ${d.message}`,
-        origin: { path: resolved.dir },
-      });
-    }
+    findings.push(...documentSourceHeaderFindings(source, resolved.dir));
   }
   return findings;
 }

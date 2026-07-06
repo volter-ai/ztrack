@@ -1,14 +1,17 @@
 // `ztrack check` over the single pipeline: loader (backend + git world) -> the
 // active preset's mdast parse -> strict ValidationInputSchema -> pure rules. The
 // validated root IS the export; there is no separate snapshot model.
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
 import { loadTrackerConfig, projectRootFrom } from './config.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
 import { buildContext, loadValidationInput } from './core/loader.ts';
 import { check, checkRoot, type CheckResult, type Context, type CoreRoot, type Finding, type IssueRecord } from './core/engine.ts';
 import { conflictFindings } from './sync/conflicts.ts';
-import { documentHeaderFindings } from './documentDiagnostics.ts';
+import { documentHeaderFindings, documentSourceHeaderFindings } from './documentDiagnostics.ts';
+import { DocumentSource } from './backends/documentSource.ts';
+import { parseMarkdownDocumentSource } from './documentParser.ts';
+import { resolveSources } from './sources.ts';
 import type { RuleCategory } from './checkRules.ts';
 
 export type TrackerCheckOptions = {
@@ -38,7 +41,16 @@ export type TrackerCheckOptions = {
 // exist" from `export.issues` alone sees an empty set and wrongly reports it as missing. This
 // field lets callers distinguish "not in the backend at all" from "loaded but dropped by
 // validation" without guessing from `export`.
-export type TrackerCheckResult = CheckResult<CoreRoot> & { loadedIssueIds?: string[] };
+export type TrackerCheckResult = CheckResult<CoreRoot> & {
+  loadedIssueIds?: string[];
+  /** Set only by `checkFile` when the target file parsed as DOCUMENT grammar (many issues, one
+   *  file — the same grammar a registered `format: "document"` source uses) and was validated as
+   *  such, instead of as one loose issue. `registeredName` is the declared source's `--source`
+   *  selector when the file IS one of the tracker's registered sources, else null — the CLI uses
+   *  null to OFFER `ztrack import <file> --register` (never to run it: mutating
+   *  tracker-config.json is the user's call). */
+  documentFile?: { path: string; issueIds: string[]; registeredName: string | null };
+};
 
 function loadOpts(projectRoot: string, options: TrackerCheckOptions) {
   return {
@@ -153,16 +165,73 @@ export function fileToRecord(absPath: string, content: string, diagnostics?: Fin
   };
 }
 
-/** Validate a single markdown file as if it were one tracker issue, against the installed
- *  preset. The file need not be in the tracker — `ztrack check ./some-issue.md`. */
+// A `<file.md>` check target is DOCUMENT grammar (one file holding many issues — exactly what a
+// registered `format: "document"` source parses, src/documentParser.ts) when at least one section
+// heading bears an id token. For MODE DETECTION ONLY the token must contain a digit ("TF-1001",
+// "ZL-A5"): ID_HEADING_RE alone also matches ordinary hyphenated words ("## Follow-up items"),
+// and flipping a genuinely loose file into multi-issue mode over one such heading would be a
+// worse surprise than requiring the digit real-world ids virtually always carry. Once the mode IS
+// detected, validation uses the full grammar unmodified — identical to what registering the file
+// would produce. Before this, a document-grammar file was silently lumped into ONE loose issue
+// keyed by its filename — the check answered the wrong question in both directions (nonsense
+// findings on the lump, and no hint that the file's real issues weren't being validated).
+function isDocumentGrammarFile(content: string, absPath: string): boolean {
+  return parseMarkdownDocumentSource(content, absPath).some((p) => p.lineStart !== undefined && /\d/.test(p.id));
+}
+
+function safeRealpath(path: string): string {
+  try { return realpathSync(path); } catch { return path; }
+}
+
+/** Validate a document-grammar file: every issue the document parse yields, presented exactly as
+ *  a registered document source would present them (DocumentSource's decompose/heading-shift),
+ *  checked in one batch so intra-file relations resolve. */
+async function checkDocumentFile(abs: string, config: ReturnType<typeof loadTrackerConfig>, projectRoot: string, options: TrackerCheckOptions): Promise<TrackerCheckResult> {
+  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
+  const source = new DocumentSource({ dir: abs, format: 'document', readonly: true, isDefault: false, name: basename(abs) });
+  const records: IssueRecord[] = source.ids().map((id) => {
+    const issue = source.load(id)!;
+    return {
+      id, title: issue.title, status: issue.state,
+      ...(issue.assignees[0] ? { assignee: issue.assignees[0] } : {}),
+      ...(issue.labels.length ? { labels: issue.labels } : {}),
+      ...(issue.children.length ? { children: issue.children } : {}),
+      body: issue.body,
+      origin: source.origin(id),
+    };
+  });
+  const context = await buildContext(preset, records, loadOpts(projectRoot, options));
+  const result = check(preset, records, context);
+  // Registered = the file is one of the tracker's declared document sources (realpath-tolerant:
+  // the target path arrives via cwd, the declared path via projectRoot — symlinked tmp dirs etc.
+  // must not make a registered file look unregistered).
+  const realAbs = safeRealpath(abs);
+  const registered = resolveSources(projectRoot, config).find((s) => s.format === 'document' && (s.dir === abs || safeRealpath(s.dir) === realAbs));
+  const headerFindings = documentSourceHeaderFindings(source, abs);
+  const findings = [...headerFindings, ...result.findings];
+  return {
+    ...result,
+    ok: !findings.some((f) => f.severity === 'error'),
+    findings,
+    loadedIssueIds: records.map((r) => r.id),
+    documentFile: { path: abs, issueIds: records.map((r) => r.id), registeredName: registered?.name ?? null },
+  };
+}
+
+/** Validate a single markdown file against the installed preset. A file in DOCUMENT grammar
+ *  (id-bearing section headings) is checked as the multi-issue document it is — see
+ *  `checkDocumentFile` above; anything else is treated as ONE loose issue. The file need not be
+ *  in the tracker — `ztrack check ./some-issue.md`. */
 export async function checkFile(filePath: string, options: TrackerCheckOptions = {}): Promise<TrackerCheckResult> {
   const projectRoot = options.projectRoot ?? projectRootFrom();
   const config = options.config ?? loadTrackerConfig(projectRoot);
-  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const abs = isAbsolute(filePath) ? filePath : resolve(process.cwd(), filePath);
   if (!existsSync(abs)) throw new Error(`ztrack check: file not found: ${filePath}`);
+  const content = readFileSync(abs, 'utf8');
+  if (isDocumentGrammarFile(content, abs)) return checkDocumentFile(abs, config, projectRoot, options);
+  const preset = await resolveTrackerValidation(config, projectRoot, options.presetPath);
   const diagnostics: Finding[] = [];
-  const record = fileToRecord(abs, readFileSync(abs, 'utf8'), diagnostics);
+  const record = fileToRecord(abs, content, diagnostics);
   const context = await buildContext(preset, [record], loadOpts(projectRoot, options));
   const result = check(preset, [record], context);
   if (!diagnostics.length) return result;

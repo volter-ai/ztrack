@@ -124,14 +124,19 @@ Both take the same target — nothing, an id, a file, or the current branch's is
 ```bash
 ztrack check                 # (nothing)     the whole tracker
 ztrack check LOCAL-1         # <issue-id>    one issue
-ztrack check ./body.md       # <file.md>     a loose markdown file, treated as an issue
+ztrack check ./body.md       # <file.md>     a markdown file (document grammar checks every issue in it)
 ztrack check                 # (in a worktree named for an issue) → that issue, automatically
 
 ztrack loop start LOCAL-1    # loop takes the exact same target grammar
 ```
 
-A loose `./body.md` is checked for **structure + evidence** (the core promise); lifecycle/PR gates
-(ready/in-review/done) apply only to **stored** issues, so a loose file is treated as a draft.
+A `<file.md>` in **document grammar** (id-bearing headings like `## APP-1 — title`, the same
+grammar a registered `format: "document"` source uses) is checked as the multi-issue document it
+is — every issue in the file, intra-file relations included — and a stderr note says whether the
+file is a **registered source** (i.e. whether the tracker itself can see these issues), offering
+`ztrack import <file> --register` when it is not. Anything else is one loose issue, checked for
+**structure + evidence** (the core promise); lifecycle/PR gates (ready/in-review/done) apply only
+to **stored** issues, so a loose file is treated as a draft.
 
 ### Verify once — `ztrack check`
 

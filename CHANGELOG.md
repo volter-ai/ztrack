@@ -4,6 +4,14 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **`ztrack check <file.md>` now recognizes document grammar** instead of lumping the file into
+  one filename-keyed loose issue: a file with id-bearing headings (`## APP-1 — title`) is checked
+  as the multi-issue document it is — every issue, intra-file relations included, identical to
+  what registering it would validate. A stderr note says whether the file is a **registered
+  source**; when it is not, the note offers `ztrack import <file> --register` (never runs it) —
+  closing the silent gap where a hand-authored backlog file checked "green" while its issues
+  never loaded into the tracker. Genuinely loose files (no id-bearing headings) are checked
+  exactly as before.
 - **The Claude Code plugin is renamed `ztrack-gate` → `ztrack`** (plugin 0.3.0): it now ships
   the `ztrack` skill alongside the gate hooks, so the old name undersold it — install is
   `/plugin install ztrack@ztrack`. Existing installs keep working: their hooks still fire from

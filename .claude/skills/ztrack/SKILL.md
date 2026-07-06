@@ -50,6 +50,7 @@ When hand-writing new issues into a `format:"document"` file (a plan/backlog mar
 - **Pick the next free id in the file's numbering scheme** — grep the tracker first (`ztrack issue list --state all`); a duplicate id fails check loud.
 - **Bare headings**: on a freeform file (no ids anywhere yet), `import` materializes every heading — a top-level `#` becomes the umbrella issue. Once a file has id-bearing issues, a bare heading *above* them is kept as document structure (reported in the plan, never minted); a bare *leaf* heading still becomes a new issue. Put an id token in a heading yourself if it should BE an issue.
 - Line endings don't matter — LF and CRLF (Windows/autocrlf) files both work; ztrack splices in LF space and writes back the file's own EOL.
+- **A NEW document file must be registered, or the tracker cannot see it.** A file exists to `issue list`/`check`/`loop` only once it is listed under `sources` in tracker-config.json — `ztrack import <file> --register` appends that entry (idempotent on an already-strict file: nothing else changes). `ztrack check <file>` tells you which case you're in and prints the exact command when the file is unregistered.
 - Verify before you finish: `ztrack import <file> --dry-run` shows exactly what would materialize; `ztrack check --source <file>` validates just that source.
 
 ## Targets

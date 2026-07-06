@@ -43,7 +43,13 @@ type Group = {
   crossRef?: string[];
 };
 const GROUPS: Group[] = [
-  { paths: [['check']], text: () => capturedAsync(() => handleCheckCommand(['check', '--help'])) },
+  {
+    paths: [['check']],
+    text: () => capturedAsync(() => handleCheckCommand(['check', '--help'])),
+    // The `<file.md>` target's document-grammar note names `import --register` — the registration
+    // command check OFFERS (never runs) when the target file is not a registered source.
+    crossRef: ['--register'],
+  },
   { paths: [['export']], text: () => capturedAsync(() => handleCheckCommand(['export', '--help'])) },
   { paths: [['issue', 'scaffold']], text: () => captured(() => printIssueActionHelp('scaffold')) },
   { paths: [['issue', 'list']], text: () => captured(() => printIssueActionHelp('list')) },
