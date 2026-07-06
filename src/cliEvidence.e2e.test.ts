@@ -6,7 +6,7 @@
 // a stray `--blob` flag is inert (ignored), never crashes, and the command still stores by path.
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -46,6 +46,74 @@ describe('evidence add — blobStore removed, --blob is inert', () => {
       expect(r.code).toBe(0);
       expect(r.out).toMatch(/"path":/);
       expect(r.out).toMatch(/cite: image=/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+// ZTB-39: the positional fallback used to take the FIRST non-`--` token — which may be a
+// value-taking flag's VALUE, not the file. `real.png` and `custom.png` below have DISTINCT
+// contents, and `custom.png` is a real, pre-existing file on disk (a decoy) so that a regression
+// would silently "succeed" by ingesting the wrong bytes rather than tripping an ENOENT.
+describe('evidence add — positional fallback skips a value-taking flag\'s value (ZTB-39)', () => {
+  function freshRepo(): string {
+    const root = mkdtempSync(join(tmpdir(), 'ztrk-evid-pos-'));
+    mkdirSync(join(root, '.volter'), { recursive: true });
+    writeFileSync(join(root, '.volter', 'tracker-config.json'), JSON.stringify({ backend: 'markdown', local: { teamKey: 'PH' } }));
+    writeFileSync(join(root, 'real.png'), Buffer.from('REAL-PNG-CONTENT-should-be-the-one-stored'));
+    writeFileSync(join(root, 'custom.png'), Buffer.from('DECOY-CONTENT-must-never-be-what-gets-stored'));
+    return root;
+  }
+  const REAL_CONTENT = 'REAL-PNG-CONTENT-should-be-the-one-stored';
+
+  function storedBytes(root: string, name: string): string {
+    return readFileSync(join(root, '.volter', 'evidence', name), 'utf8');
+  }
+
+  const forms: { label: string; args: string[] }[] = [
+    { label: '--name custom.png real.png (wrong order — today: broken)', args: ['--name', 'custom.png', 'real.png'] },
+    { label: 'real.png --name custom.png (today: works — must not regress)', args: ['real.png', '--name', 'custom.png'] },
+    { label: '--file real.png --name custom.png', args: ['--file', 'real.png', '--name', 'custom.png'] },
+    { label: '--name=custom.png real.png (`=` form consumes nothing)', args: ['--name=custom.png', 'real.png'] },
+  ];
+  for (const { label, args } of forms) {
+    test(`${label} ingests real.png's bytes, stored as custom.png`, () => {
+      const root = freshRepo();
+      try {
+        const r = ztrackIn(root, ['evidence', 'add', ...args, '--commit']);
+        expect(r.code).toBe(0);
+        expect(r.out).toMatch(/"path":\s*".*custom\.png"/);
+        expect(storedBytes(root, 'custom.png')).toBe(REAL_CONTENT);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }, 30_000);
+  }
+
+  test('--name custom.png with NO file anywhere: the usage error, exit != 0, stores nothing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ztrk-evid-pos-nofile-'));
+    try {
+      mkdirSync(join(root, '.volter'), { recursive: true });
+      writeFileSync(join(root, '.volter', 'tracker-config.json'), JSON.stringify({ backend: 'markdown', local: { teamKey: 'PH' } }));
+      writeFileSync(join(root, 'custom.png'), Buffer.from('DECOY-CONTENT-must-never-be-what-gets-stored'));
+      const r = ztrackIn(root, ['evidence', 'add', '--name', 'custom.png', '--commit']);
+      expect(r.code).not.toBe(0);
+      expect(r.out).toMatch(/usage: ztrack evidence add <file>/);
+      const evidenceDir = join(root, '.volter', 'evidence');
+      expect(!existsSync(evidenceDir) || readdirSync(evidenceDir).length === 0).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('real.png (no --name): unchanged — stored under basename real.png', () => {
+    const root = freshRepo();
+    try {
+      const r = ztrackIn(root, ['evidence', 'add', 'real.png', '--commit']);
+      expect(r.code).toBe(0);
+      expect(r.out).toMatch(/"path":\s*".*real\.png"/);
+      expect(storedBytes(root, 'real.png')).toBe(REAL_CONTENT);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

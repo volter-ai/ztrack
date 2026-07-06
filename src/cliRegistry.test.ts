@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { REGISTRY, allRegisteredFlagTokens, flagTokensForTest } from './cliRegistry.ts';
+import { REGISTRY, allRegisteredFlagTokens, flagTokensForTest, positionalArgs } from './cliRegistry.ts';
 import { printIssueActionHelp, printResourceHelp } from './cliHelp.ts';
 import { handleCheckCommand } from './cliCheck.ts';
 import { handleImportCommand } from './cliImport.ts';
@@ -178,5 +178,34 @@ describe('cliRegistry hygiene (ZTB-24 dev/04)', () => {
       seen.add(key);
     }
     expect(dupes).toEqual([]);
+  });
+});
+
+// ZTB-39: `positionalArgs` reuses this same registry walk (`rejectUnknownFlags`'s, factored) so
+// `evidence add`'s positional-file fallback can never disagree with the flag validator about which
+// token is a value-taking flag's value vs. a genuine positional.
+describe('cliRegistry.positionalArgs (ZTB-39)', () => {
+  test('a value-taking flag in space form (before the file) does not swallow the file', () => {
+    expect(positionalArgs(['evidence', 'add', '--name', 'n.png', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('the file before the flag (today\'s working order) is unaffected', () => {
+    expect(positionalArgs(['evidence', 'add', 'real.png', '--name', 'n.png'])).toEqual(['real.png']);
+  });
+
+  test('`--name=n.png` (`=` form) consumes nothing, so the file is still found', () => {
+    expect(positionalArgs(['evidence', 'add', '--name=n.png', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('a value-taking flag with no positional after it: no positionals at all', () => {
+    expect(positionalArgs(['evidence', 'add', '--name', 'n.png'])).toEqual([]);
+  });
+
+  test('an unregistered command path: []', () => {
+    expect(positionalArgs(['not', 'a', 'real', 'command'])).toEqual([]);
+  });
+
+  test('a bool flag (--attach) consumes nothing — a positional right after it is still found', () => {
+    expect(positionalArgs(['evidence', 'add', '--attach', 'real.png'])).toEqual(['real.png']);
   });
 });
