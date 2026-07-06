@@ -19,6 +19,20 @@ Enabling the plugin registers the Stop **and** SubagentStop hooks automatically 
 `settings.json` editing) — see [Subagents](#subagents) for why both. It's **armed**, not
 always-on, so it leaves interactive work alone.
 
+## What's in the plugin
+
+- **The gate** (`hooks/`) — the Stop/SubagentStop hook above: enforcement.
+- **The `ztrack` skill** (`skills/ztrack/`) — knowledge: teaches the agent the tracker
+  workflow (findings → fix commands, the resolution verbs, evidence rules, document-source
+  editing and authoring, loop etiquette, and the honest escapes) the moment it encounters a
+  tracker or an armed gate. The gate holds a turn; the skill is why the held agent knows
+  what to do next instead of reverse-engineering `--help`.
+
+Deliberately **not** bundled: an MCP server config (ztrack has one — `ztrack mcp serve` — but
+the CLI-plus-skill path costs no context when idle; add MCP yourself via
+`claude mcp add ztrack -- npx ztrack mcp serve` if your host has no shell), and slash
+commands (`ztrack loop start` is already the human entry point).
+
 ## Use it
 
 ```

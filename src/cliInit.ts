@@ -111,6 +111,10 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   const teamKey = result.teamKey;
   // Next steps adapt to the scenario: a LINKED project already has its issues (pulled from
   // the tracker), so it goes straight to verify/loop/sync; a LOCAL project authors one first.
+  // Both end on the same step 4: wiring a coding agent is the recommended flow (README
+  // § Agent workflows) and was previously absent here — a user who stopped at init's output
+  // never learned the gate/skill/MCP existed.
+  const wireAgent = stackedCommand(4, 'Wire a coding agent (optional)', '/plugin marketplace add volter-ai/ztrack', `Then \`/plugin install ztrack-gate@ztrack\` (Claude Code): a Stop-hook gate that holds the agent's turn until \`${command} loop start <issue-id> --until done\` goes genuinely green, plus a skill teaching it the tracker workflow. MCP alternative: \`claude mcp add ztrack -- npx ztrack mcp serve\`.`);
   const nextSteps = sync
     ? [
         pulled
@@ -120,6 +124,8 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
         stackedCommand(2, 'Drive one to done in a loop', `${command} loop start <issue-id>`, 'The Stop-hook gate holds the turn until that issue passes check (a ralph loop).'),
         '',
         stackedCommand(3, 'Re-sync with GitHub', `${command} sync github`, 'Bidirectional + conflict-aware; no --repo needed (it uses the link).'),
+        '',
+        wireAgent,
       ]
     : [
         stackedCommand(1, 'Write a starter issue', `${command} issue scaffold --title "First case" > body.md`, 'Creates a markdown body with acceptance criteria and evidence sections.'),
@@ -127,6 +133,8 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
         stackedCommand(2, 'Create work in the local tracker', `${command} issue create --title "First case" --label type:case --state draft --assignee me --body-file body.md`, 'Stores the issue where ztrack can validate it.'),
         '',
         stackedCommand(3, 'Verify checked claims', `${command} check`, 'Fails if checked work lacks real evidence.'),
+        '',
+        wireAgent,
       ];
   process.stdout.write([
     `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey} • preset ${result.preset}${sync ? ` • linked ${sync.repo}` : ''}`)}`,
@@ -139,6 +147,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
     ui.dim('Edit the installed validation preset to encode your project rules.'),
     ui.dim('Declare more stores in .volter/tracker-config.json\'s `sources` array — a "document" source is one markdown file holding many issues.'),
+    ui.dim('Read next: the Guide (node_modules/ztrack/docs/GUIDE.md, or github.com/volter-ai/ztrack) — setup → verify → drive an agent to green; agents get docs/AGENT-PLAYBOOK.md.'),
     presetTrustNotice(),
     ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
     '',

@@ -9,7 +9,7 @@
     {
       "name": "ztrack-gate",
       "source": "./plugins/ztrack-gate",
-      "description": "A ralph-pattern autonomy loop whose completion oracle is `ztrack check`. Arm with `ztrack loop start <issue>`; while armed, the Stop hook holds the agent's turn until that issue is green (then disarms), or the iteration cap trips. Not armed → the turn ends normally, so it's safe to enable globally."
+      "description": "A ralph-pattern autonomy loop whose completion oracle is `ztrack check`, plus a `ztrack` skill that teaches the agent the tracker workflow (evidence, verbs, document sources, honest escapes). Arm with `ztrack loop start <issue>`; while armed, the Stop hook holds the agent's turn until that issue is green (then disarms), or the iteration cap trips. Not armed → the turn ends normally, so it's safe to enable globally."
     }
   ]
 }

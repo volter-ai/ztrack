@@ -140,11 +140,21 @@ describe('docs consistency', () => {
   // Same idea as the twin-dependency phrase pin above: semantic pins on load-bearing claims.
   test('no doc instructs the phantom `status: descoped` escape', () => {
     const hits: string[] = [];
-    for (const doc of DOCS.concat('plugins/ztrack-gate/README.md', '.claude/skills/ztrack/SKILL.md', 'TESTING.md', 'ROADMAP.md')) {
+    for (const doc of DOCS.concat('plugins/ztrack-gate/README.md', '.claude/skills/ztrack/SKILL.md', 'plugins/ztrack-gate/skills/ztrack/SKILL.md', 'TESTING.md', 'ROADMAP.md')) {
       const text = readFileSync(join(REPO, doc), 'utf8');
       if (text.includes('status: descoped')) hits.push(doc);
     }
     expect(hits).toEqual([]);
+  });
+
+  // The `ztrack` skill ships in the plugin (its canonical home — installed users receive it)
+  // AND at .claude/skills for agents working on this repo itself. Two copies invite drift;
+  // pin them byte-identical so an edit to one without the other fails here, not in a user's
+  // session months later.
+  test('the plugin skill and the repo-local skill are byte-identical (no drift)', () => {
+    const plugin = readFileSync(join(REPO, 'plugins/ztrack-gate/skills/ztrack/SKILL.md'), 'utf8');
+    const local = readFileSync(join(REPO, '.claude/skills/ztrack/SKILL.md'), 'utf8');
+    expect(local).toBe(plugin);
   });
 
   test('waiver teaching docs carry the 0.46 ref-pinning philosophy, not just the broad row', () => {
@@ -157,6 +167,7 @@ describe('docs consistency', () => {
       ['docs/GUIDE.md', ['--ref', 'waiver_overbroad']],
       ['README.md', ['--ref']],
       ['.claude/skills/ztrack/SKILL.md', ['--ref']],
+      ['plugins/ztrack-gate/skills/ztrack/SKILL.md', ['--ref']],
       ['plugins/ztrack-gate/README.md', ['--code']],
     ];
     const missing: string[] = [];
