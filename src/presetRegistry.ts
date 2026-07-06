@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { TrackerConfig } from './types.ts';
 import type { CoreRoot, Preset } from './core/engine.ts';
@@ -9,6 +9,64 @@ export function noTrackerValidation(value: string | undefined): never {
   throw new Error(value
     ? `Unsupported legacy organization.validationPreset '${value}'. Run 'ztrack init --preset default' to install repo-local validation.`
     : "No tracker validation entrypoint configured. Run 'ztrack init --preset default' to install .volter/tracker/validation/preset.mts.");
+}
+
+/** Can THIS runtime load a `.mts` module? Bun strips types natively; Node reports its built-in
+ *  type-stripping capability via `process.features.typescript` (absent on old Node, `false` on a
+ *  build compiled without it — some distro builds omit the feature even at a new-enough version). */
+function nativeTypeStrippingAvailable(): boolean {
+  if (process.versions.bun) return true;
+  return Boolean((process.features as { typescript?: string | false }).typescript);
+}
+
+/** The right fix for a runtime that can't type-strip, diagnosed precisely: an old Node needs an
+ *  upgrade, but a NEW-ENOUGH Node that still can't do it is a build compiled without the feature —
+ *  telling that user "upgrade Node" (the old message) misdiagnoses and strands them. */
+function typeStrippingFix(): string {
+  const [major = 0, minor = 0] = process.version.slice(1).split('.').map(Number);
+  const versionSupports = (major === 22 && minor >= 18) || (major === 23 && minor >= 6) || major >= 24;
+  return versionSupports
+    ? `this Node (${process.version}) is new enough, but this particular build was compiled without TypeScript support (process.features.typescript is off — some distro/custom builds omit it). Use an official Node build (nodejs.org or nvm), or run via Bun`
+    : `this Node (${process.version}) is too old — ztrack needs Node >= 22.18.0 (or >= 23.6, or >= 24). Upgrade Node`;
+}
+
+// Everything the loader needs from the project's node_modules — the same upward ESM-style walk
+// cliInit.ts warns with at init time (deliberately NOT require.resolve/createRequire: that CJS
+// resolver also consults Node's legacy global folders, which would mask exactly the bare-`npx`
+// case this exists to catch — the real failure is an ESM `import()` of a bare specifier, which
+// never looks there).
+export function ztrackResolvableFrom(root: string): boolean {
+  let dir = resolve(root);
+  for (;;) {
+    if (existsSync(join(dir, 'node_modules', 'ztrack'))) return true;
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
+
+/** Cheap, NON-EXECUTING health probe of the validation oracle: `null` when `check`/`loop` should
+ *  be able to run here (or when there is nothing to probe — no tracker, no configured
+ *  entrypoint), else one sentence naming what is broken and how to fix it. Deliberately never
+ *  imports the preset: read-only commands must not execute repo code (the preset runs as code —
+ *  SECURITY.md), so this checks only environment facts (file exists, runtime can type-strip,
+ *  ztrack resolvable as a dependency). Used to warn on commands that SUCCEED without the preset
+ *  (issue list/view, import, loop status …), which otherwise leave the tracker looking healthy
+ *  right up until the first `check`/`loop`/`--actionable` dies. */
+export function oracleUnavailableReason(projectRoot: string): string | null {
+  let config: TrackerConfig;
+  try { config = loadTrackerConfig(projectRoot); } catch { return null; }
+  const entrypoint = config.validation?.entrypoint?.trim();
+  if (!entrypoint) return null; // legacy/validation-less configs get their own error at check time
+  const absolutePath = resolve(projectRoot, entrypoint);
+  if (!existsSync(absolutePath)) return `the configured validation entrypoint is missing (${entrypoint})`;
+  if (/\.(mts|ts|cts)$/.test(absolutePath) && !nativeTypeStrippingAvailable()) {
+    return `the ${entrypoint.split('.').pop()} validation preset can't load: ${typeStrippingFix()}`;
+  }
+  if (!ztrackResolvableFrom(projectRoot)) {
+    return "the preset imports 'ztrack/preset-kit' but ztrack isn't installed as a project dependency — run `npm install -D ztrack`";
+  }
+  return null;
 }
 
 function assertCorePreset(value: unknown, source: string): Preset<CoreRoot> {
@@ -38,13 +96,15 @@ async function importPresetModule(absolutePath: string, describeSource: string):
     const msg = err instanceof Error ? err.message : String(err);
     const code = (err as { code?: string } | undefined)?.code;
     // The installed preset is a `.mts` loaded via Node's native type stripping (unflagged on Node
-    // >= 22.18 / >= 23.6 / >= 24). On older Node the import fails with ERR_UNKNOWN_FILE_EXTENSION —
-    // turn that cryptic error into a clear "upgrade Node" message.
-    if (code === 'ERR_UNKNOWN_FILE_EXTENSION' || /Unknown file extension "\.?mts"/.test(msg)) {
+    // >= 22.18 / >= 23.6 / >= 24). On older Node the import fails with ERR_UNKNOWN_FILE_EXTENSION;
+    // a new-enough Node BUILT without the feature fails with ERR_NO_TYPESCRIPT ("Node.js is not
+    // compiled with TypeScript support"). Diagnose which one it actually is — the old message
+    // told a user on a featureless 22.22 build to "upgrade Node", which misdiagnoses.
+    if (code === 'ERR_UNKNOWN_FILE_EXTENSION' || code === 'ERR_NO_TYPESCRIPT'
+      || /Unknown file extension "\.?mts"/.test(msg) || /not compiled with TypeScript support/.test(msg)) {
       throw new Error(
         `The validation preset (${describeSource}) is a .mts file, loaded via Node's native TypeScript type `
-        + `stripping — which this Node (${process.version}) does not support. ztrack needs Node >= 22.18.0 `
-        + `(or >= 23.6, or >= 24). Upgrade Node and re-run.`,
+        + `stripping — which failed here: ${typeStrippingFix()}, then re-run.`,
       );
     }
     if (/Cannot find package 'ztrack'|Cannot find module 'ztrack/.test(msg)) {

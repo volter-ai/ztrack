@@ -1,6 +1,6 @@
-import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { initTrackerPresets, initTrackerProject, presetManifest } from './presetCatalog.ts';
+import { ztrackResolvableFrom } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
 import { cacheRoot } from './config.ts';
@@ -11,24 +11,10 @@ import * as githubSync from './sync/github/index.ts';
 
 // The installed preset (.volter/tracker/validation/preset.mts) imports `ztrack/preset-kit` — a
 // bare specifier resolved (via ESM `import()`, in presetRegistry.ts) by walking up `node_modules`
-// directories from the project root, same as presetRegistry.ts's `Cannot find package 'ztrack'`
-// translation at check time. A one-off `npx ztrack init` never adds `ztrack` as a project
+// directories from the project root. A one-off `npx ztrack init` never adds `ztrack` as a project
 // dependency, so `check` fails later with no warning at init time that would have explained why.
-// Deliberately NOT `require.resolve`/`createRequire` here: that CJS resolver also falls back to
-// Node's legacy global folders (e.g. a homebrew/npm global `ztrack` install), which would silently
-// mask exactly the bare-npx case this warning exists to catch — the actual failure is an ESM
-// `import()` of a bare specifier, which never consults those global folders. Warn here, at the
-// point the project is created, instead of letting the user discover it cold on their first `check`.
-function ztrackResolvableFrom(root: string): boolean {
-  let dir = resolve(root);
-  for (;;) {
-    if (existsSync(join(dir, 'node_modules', 'ztrack'))) return true;
-    const parent = dirname(dir);
-    if (parent === dir) return false;
-    dir = parent;
-  }
-}
-
+// The walk itself (`ztrackResolvableFrom`) lives in presetRegistry.ts, shared with the
+// oracle-health probe that warns on preset-less commands after init.
 function unresolvableZtrackWarning(): string {
   return `${statusMark('warn')} ${ui.yellow("'ztrack' isn't resolvable as a project dependency here")} ${ui.dim('— the installed preset imports \'ztrack/preset-kit\', so `ztrack check` will fail until you run `npm install -D ztrack` (a one-off `npx` install is not enough; see README Setup).')}`;
 }

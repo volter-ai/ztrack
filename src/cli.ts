@@ -10,7 +10,7 @@ import * as githubSync from './sync/github/index.ts';
 import { loadTrackerConfig, projectRootFrom, trackerConfigPath } from './config.ts';
 import { upgradeTrackerPreset } from './presetCatalog.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
-import { resolveTrackerValidation } from './presetRegistry.ts';
+import { oracleUnavailableReason, resolveTrackerValidation } from './presetRegistry.ts';
 import { serveMcp } from './mcp.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
@@ -384,12 +384,30 @@ async function main(): Promise<void> {
   if (result.stderr && !result.stdout) process.exitCode = 1;
 }
 
+// Preset-less commands (issue list/view, import, loop status, …) succeed even when the validation
+// oracle can't run here at all — a tracker can look perfectly healthy right up until the first
+// `check`/`loop`/`--actionable` dies (a half-working state that reads as "it works"). After one of
+// those commands SUCCEEDS, probe the oracle cheaply (environment facts only — never executes the
+// preset; see oracleUnavailableReason) and say so on stderr. Commands that ALREADY exercise the
+// preset (check/export/lint/ac/tx/fmt) are excluded: they throw the full diagnosis themselves.
+const ORACLE_WARN_COMMANDS = new Set(['evidence', 'import', 'issue', 'loop', 'search', 'sync', 'view', 'waiver']);
+function maybeWarnBrokenOracle(args: string[]): void {
+  if (!ORACLE_WARN_COMMANDS.has(args[0] ?? '')) return;
+  try {
+    const reason = oracleUnavailableReason(projectRootFrom());
+    if (reason) {
+      process.stderr.write(`${statusMark('warn')} ${ui.yellow('the validation oracle cannot run here')} ${ui.dim(`— ${reason}. \`check\`/\`loop\`/\`issue list --actionable\` will fail until this is fixed.`)}\n`);
+    }
+  } catch { /* no tracker root — nothing to probe */ }
+}
+
 // After a mutating command SUCCEEDS, observe the tracker and append audit entries (ztrack #19 —
 // CLI writes now populate `.audit.jsonl`). Best-effort and post-hoc: it runs off the final on-disk
 // state, never gates the command, and preserves whatever exit code the command set. A command that
 // threw skips this (its `.catch` handles it) — we don't audit a failed write.
 main()
   .then(async () => {
+    maybeWarnBrokenOracle(process.argv.slice(2));
     if (isMutatingCommand(process.argv.slice(2))) await observeAfterMutation();
   })
   .catch((error) => {

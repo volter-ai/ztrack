@@ -13,15 +13,20 @@ const REPO = join(import.meta.dir, '..');
 const CLI = join(import.meta.dir, 'cli.ts');
 const runIn = (cwd: string, cmd: string, args: string[]) => spawnSync(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
 const gitIn = (cwd: string, ...a: string[]) => runIn(cwd, 'git', a);
-const ztIn = (cwd: string, ...a: string[]) => { const r = runIn(cwd, 'bun', ['run', CLI, ...a]); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };
+// JSON is parsed from STDOUT ONLY — the CLI's contract (stdout stays clean for piping;
+// confirmations and warnings ride stderr). The worktrees below have no node_modules
+// (gitignored — only trunk gets the symlink), so the broken-oracle stderr warning fires
+// on every issue command there, correctly: a `check` from such a worktree really would
+// fail to load the preset. `out` keeps the combined streams for diagnostics.
+const ztIn = (cwd: string, ...a: string[]) => { const r = runIn(cwd, 'bun', ['run', CLI, ...a]); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}`, stdout: r.stdout ?? '' }; };
 // issue ids present in a `ztrack issue list` (shared board), sorted
 const ids = (cwd: string): string[] => {
   const r = ztIn(cwd, 'issue', 'list', '--json', 'identifier');
-  try { return (JSON.parse(r.out) as Array<{ identifier: string }>).map((x) => x.identifier).sort(); } catch { return [`PARSE_FAIL: ${r.out}`]; }
+  try { return (JSON.parse(r.stdout) as Array<{ identifier: string }>).map((x) => x.identifier).sort(); } catch { return [`PARSE_FAIL: ${r.out}`]; }
 };
 const stateOf = (cwd: string, id: string): string => {
   const r = ztIn(cwd, 'issue', 'view', id, '--json', 'state');
-  try { return (JSON.parse(r.out) as { state: { name: string } }).state.name; } catch { return `PARSE_FAIL: ${r.out}`; }
+  try { return (JSON.parse(r.stdout) as { state: { name: string } }).state.name; } catch { return `PARSE_FAIL: ${r.out}`; }
 };
 const body = (title: string) => `Summary: ${title}\n\n## Acceptance Criteria\n\n- [ ] dev/01 v1 ${title} works.\n  - status: pending\n`;
 const createReady = (cwd: string, title: string) => {
