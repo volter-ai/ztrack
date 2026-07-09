@@ -6,6 +6,8 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { GlobalWindow } from 'happy-dom';
+import { stateDirName } from './config.ts';
 
 const REPO = join(import.meta.dir, '..');
 const CLI = join(import.meta.dir, 'cli.ts');
@@ -52,7 +54,7 @@ suite('visualizer — boots and serves', () => {
   // VIZ-6 — repo-local theme.css seam (`/assets/theme.css`). `root` is only assigned inside
   // beforeAll, so this path must be computed lazily (a function), not captured as a `const` at
   // describe-body eval time (which would freeze on the pre-beforeAll empty string).
-  const themeCssPath = () => join(root, '.volter', 'tracker', 'visualizer', 'theme.css');
+  const themeCssPath = () => join(root, stateDirName(), 'tracker', 'visualizer', 'theme.css');
 
   test('dev/01: /assets/theme.css is absent → empty 200 or 404, and the SHELL still renders', async () => {
     expect(existsSync(themeCssPath())).toBe(false); // nothing installed yet in this fixture repo
@@ -64,7 +66,7 @@ suite('visualizer — boots and serves', () => {
   });
 
   test('dev/01: with theme.css present, it is served with Content-Type text/css — read PER REQUEST (no memo), so it appears without a restart', async () => {
-    mkdirSync(join(root, '.volter', 'tracker', 'visualizer'), { recursive: true });
+    mkdirSync(join(root, stateDirName(), 'tracker', 'visualizer'), { recursive: true });
     writeFileSync(themeCssPath(), ':root { --accent: #123456; }');
     const res = await fetch(`http://localhost:${port}/assets/theme.css`);
     expect(res.status).toBe(200);
@@ -72,18 +74,36 @@ suite('visualizer — boots and serves', () => {
     expect(await res.text()).toBe(':root { --accent: #123456; }'); // same server process, no restart — proves per-request read
   });
 
-  test('dev/02 FLOOR: the SHELL links /assets/theme.css AFTER /assets/styles.css', async () => {
+  test('dev/02: the SHELL links /assets/theme.css AFTER /assets/styles.css (FLOOR), and the overridden --accent is the computed value (PREFERRED)', async () => {
     const shell = await (await fetch(`http://localhost:${port}/`)).text();
     const iStyles = shell.indexOf('/assets/styles.css');
     const iTheme = shell.indexOf('/assets/theme.css');
     expect(iStyles).toBeGreaterThan(-1);
-    expect(iTheme).toBeGreaterThan(iStyles);
-    // PREFERRED assertion (per the spec: an overridden --accent is the computed value) is not
-    // implemented here. This repo has no DOM test runtime at all yet (no happy-dom or similar
-    // dependency anywhere in package.json/bun.lock), and link-fetched stylesheets are exactly the
-    // fragile case such runtimes struggle with — adding one just for this would be a heavy new
-    // dependency for a single assertion. The floor stands; revisit this test once the project's
-    // DOM runtime (introduced for VIZ-4/VIZ-5's rendered assertions) supports link stylesheets.
+    expect(iTheme).toBeGreaterThan(iStyles); // FLOOR
+
+    // PREFERRED assertion (per the spec: an overridden --accent is the computed value). Verified
+    // empirically (a throwaway happy-dom experiment, since deleted) that happy-dom — added by
+    // VIZ-4 (package.json "happy-dom", already used by render.viz13.e2e.test.tsx et al.) — DOES
+    // genuinely fetch and apply LINK-fetched external stylesheets when the real served shell HTML
+    // is loaded via `document.write` + `window.happyDOM.waitUntilComplete()`: a fixture theme.css
+    // overriding --accent produced that exact value from `getComputedStyle`, while a control
+    // fixture with no theme.css produced styles.css's own shipped default (#5f55ee) — proving the
+    // computation is genuine, not a pass-through. The prior dev/01 test above already installed a
+    // theme.css overriding --accent to #123456 on this same running server; reuse that sentinel.
+    const win = new GlobalWindow({ url: `http://localhost:${port}/` }) as unknown as typeof globalThis & {
+      document: Document;
+      happyDOM: { waitUntilComplete(): Promise<void>; close(): Promise<void> };
+    };
+    try {
+      win.document.open();
+      win.document.write(shell);
+      win.document.close();
+      await win.happyDOM.waitUntilComplete();
+      const accent = win.document.defaultView!.getComputedStyle(win.document.documentElement).getPropertyValue('--accent').trim().toLowerCase();
+      expect(accent).toBe('#123456'); // dev/01's overridden token, genuinely computed via the link path
+    } finally {
+      await win.happyDOM.close();
+    }
   });
 
   test('dev/03: /assets/theme.css takes no request-path input — path traversal is impossible', async () => {
