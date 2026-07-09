@@ -370,6 +370,61 @@ export interface PresetContextInput {
   root?: CoreRoot;   // present when validating an already-exported root
 }
 
+// VIZ-1: the dashboard's vocabulary, as DATA. `visualizer/client/presets/default.tsx:5-40` (the
+// richest shipped view extension) is entirely field references and literal labels — statusOrder,
+// an AC-unit label, an optional status→css-class map, and which issue/AC fields hold the
+// assignee, the PR link, the AC's own id/text/version, its proof, and its evidence entries. This
+// block is that vocabulary expressed as plain, JSON-serializable data so it can live in the
+// user's own `preset.mts` (mechanically checkable against the schema's status enum, VIZ-7)
+// instead of a second, drift-prone code file. HARD BOUNDARY: every leaf below is a string, a
+// string array, or a flat record of strings — there is no `z.function()`/`z.any()` anywhere in
+// `VisualizerSpecSchema`, so a function- or markup-valued member fails validation structurally,
+// not by convention. Irreducible RENDER logic (e.g. speckit's issue panels) is layer 2's job —
+// the `VisualizerExtension` code seam (VIZ-13/VIZ-14) — which this contract deliberately cannot
+// express (no statusOrder/acUnitLabel/field-mapping members there, by construction).
+const VisualizerAcTextSchema = z.object({
+  id: z.string(),      // AC field holding its id, e.g. "id"
+  text: z.string(),    // AC field holding its prose text, e.g. "text"
+  version: z.string(), // AC field holding its version number, e.g. "version"
+}).strict();
+
+const VisualizerPrSchema = z.object({
+  field: z.string(),    // issue field holding the PR object, e.g. "pr"
+  urlField: z.string(), // field on THAT object holding the URL, e.g. "url" -> issue.pr.url
+}).strict();
+
+const VisualizerAcProofSchema = z.object({
+  field: z.string(),       // AC field holding the proof object, e.g. "proof"
+  explanation: z.string(), // field on the proof object holding the explanation string
+  evidenceRefs: z.string(), // field on the proof object holding the string[] of evidence refs
+}).strict();
+
+const VisualizerAcEvidenceSchema = z.object({
+  field: z.string(),     // AC field holding the evidence array, e.g. "evidence"
+  image: z.string(),     // field on each evidence entry holding the image path
+  commit: z.string(),    // field on each evidence entry holding the commit sha
+  acVersion: z.string(), // field on each evidence entry holding the AC version it backs
+}).strict();
+
+/** The zod validator for `Preset.visualizer` — see the block comment above for the design intent
+ *  and the hard boundary it enforces. Re-exported from `ztrack/preset-kit` (presetKit.ts) so an
+ *  installed `preset.mts` imports only the kit, never this module directly. */
+export const VisualizerSpecSchema = z.object({
+  statusOrder: z.array(z.string()),           // column / group / view order (VIZ-7: must equal the issue-status enum)
+  acUnitLabel: z.string(),                    // what an AC is called, e.g. "Dev ACs", "User Stories"
+  statusClass: z.record(z.string(), z.string()).optional(), // status -> css class; omitted = identity
+  assignee: z.string().optional(),            // issue field holding the assignee string, e.g. "assignee"
+  pr: VisualizerPrSchema.optional(),          // issue field(s) holding the PR link
+  acText: VisualizerAcTextSchema,             // AC fields for the label (id + text + version)
+  acProof: VisualizerAcProofSchema.optional(),       // AC's proof sub-object field names
+  acEvidence: VisualizerAcEvidenceSchema.optional(), // AC's evidence-array field names
+}).strict();
+
+/** Inferred from `VisualizerSpecSchema` — the ONE authored copy of the shape (no hand-written
+ *  interface to drift from the schema, matching this repo's schema-is-the-type convention,
+ *  configSchema.ts). Re-exported from `ztrack/preset-kit`. */
+export type VisualizerSpec = z.infer<typeof VisualizerSpecSchema>;
+
 // A preset: a hard schema (core + its own strict fields), an mdast parse that
 // fills it, and rules over it. `R extends CoreRoot` is what guarantees the CLI's
 // core affordances work against any preset.
@@ -422,6 +477,12 @@ export interface Preset<R extends CoreRoot> {
   // `ztrack ac patch …` to run). The engine attaches it as `finding.fix`. Preset-owned
   // because the fix is the preset's own mutation grammar.
   fixHint?: (finding: Finding) => string | undefined;
+  // The dashboard's vocabulary, as pure data (VIZ-1): status order, AC unit label, and field
+  // mappings the visualizer client renders from — see `VisualizerSpecSchema` above. Optional:
+  // an absent block means the dashboard falls back to an observed status grouping (VIZ-4).
+  // Validated separately (not by this interface) at board-build time, VIZ-3 — a malformed block
+  // must not reach the renderer unchecked.
+  visualizer?: VisualizerSpec;
 }
 
 export interface CheckResult<R extends CoreRoot> {

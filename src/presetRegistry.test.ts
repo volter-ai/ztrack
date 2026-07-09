@@ -168,3 +168,47 @@ describe('activeStatusEnum — the write-time status vocabulary (ZTB-23 dev/01)'
     }
   });
 });
+
+// VIZ-1 dev/02: `Preset.visualizer` is an OPTIONAL, additional field — assertCorePreset
+// (presetRegistry.ts:72-81) checks only name/schema/parse/rules, so a preset that also declares
+// a `visualizer` block must load exactly like any other core preset (no new required shape, no
+// throw), and the block must survive onto the returned Preset object unmodified for later stages
+// (board-time validation against VisualizerSpecSchema is VIZ-3's job, not this loader's).
+const FIXTURE_PRESET_WITH_VISUALIZER = `
+export default {
+  name: 'fixture-with-visualizer',
+  schema: { parse: (x) => x },
+  parse: (records) => ({ issues: records }),
+  rules: [],
+  visualizer: {
+    statusOrder: ['draft', 'ready', 'in-progress', 'in-review', 'done'],
+    acUnitLabel: 'Dev ACs',
+    statusClass: { draft: 'draft', done: 'done' },
+    assignee: 'assignee',
+    pr: { field: 'pr', urlField: 'url' },
+    acText: { id: 'id', text: 'text', version: 'version' },
+    acProof: { field: 'proof', explanation: 'explanation', evidenceRefs: 'evidenceRefs' },
+    acEvidence: { field: 'evidence', image: 'image', commit: 'commit', acVersion: 'acVersion' },
+  },
+};
+`;
+
+describe('Preset.visualizer — an optional field assertCorePreset tolerates (VIZ-1 dev/02)', () => {
+  test('a fixture preset.mts declaring a visualizer block still loads as a valid core preset', async () => {
+    const outside = mkdtempSync(join(tmpdir(), 'ztrk-preset-visualizer-'));
+    try {
+      const presetPath = join(outside, 'fixture-visualizer.mts');
+      writeFileSync(presetPath, FIXTURE_PRESET_WITH_VISUALIZER);
+      const preset = await resolveTrackerValidation(NO_ENTRYPOINT_CONFIG, '/nonexistent/project/root', presetPath);
+      expect(preset.name).toBe('fixture-with-visualizer');
+      expect(typeof preset.parse).toBe('function');
+      expect(preset.rules).toEqual([]);
+      // the block survives the load path unmodified, ready for VIZ-3's board-time validation.
+      expect(preset.visualizer?.statusOrder).toEqual(['draft', 'ready', 'in-progress', 'in-review', 'done']);
+      expect(preset.visualizer?.acUnitLabel).toBe('Dev ACs');
+      expect(preset.visualizer?.acProof?.evidenceRefs).toBe('evidenceRefs');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+});
