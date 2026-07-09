@@ -102,6 +102,7 @@
     "@types/react": "^18.3.0",
     "@volter-ai-dev/twin": "^0.1.0",
     "@volter-ai-dev/twin-github": "^0.1.0",
+    "happy-dom": "^20.10.6",
     "typescript": "^5.9.0"
   },
   "publishConfig": {
