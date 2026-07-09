@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { buildSpeckitBundle, checkSpeckit, parseSpeckit, SpeckitPreset, SpeckitRootSchema } from './speckit.ts';
 import { checkRoot, type CoreRoot, type IssueRecord, type Preset } from 'ztrack/preset-kit';
-import { assertReadOnlyRoundTripExemption } from '../../src/testkit/presetConformance.ts';
+import { assertReadOnlyRoundTripExemption, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 
 const HEAD = 'cafe1234beef';
 const SPEC = `# Feature Specification: Appointment Search
@@ -136,6 +136,7 @@ describe('speckit core preset (full process capture)', () => {
   // applies only to WRITABLE presets, and is satisfied here vacuously via the existing
   // `requireWritable` mechanism (src/modelEdit.ts), not by anything new.
   assertReadOnlyRoundTripExemption({ preset: SpeckitPreset as unknown as Preset<CoreRoot>, record: rec() });
+  assertVisualizerSpecConformance(SpeckitPreset as unknown as Preset<CoreRoot>);
 
   test('captures spec metadata', () => {
     const i = SpeckitRootSchema.parse(parseSpeckit(records())).issues[0]!;

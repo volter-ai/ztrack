@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
-import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance } from '../../src/testkit/presetConformance.ts';
+import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkDefault, DefaultPreset, type DefaultRoot, DefaultRootSchema, parseDefault, serializeIssue } from './simple-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
@@ -125,6 +125,7 @@ describe('simple-sdlc preset', () => {
     edit: { record: EDIT_REC, acId: 'AC-1', patch: { checked: true, status: 'passed', evidence: [{ id: 'ev1', commit: HEAD, acVersion: 1 }], proof: { explanation: 'ev1 shows it', evidenceRefs: ['ev1'] } } },
   });
   assertNotePositionFidelity({ preset: rtPreset, record: NOTE_BETWEEN_REC });
+  assertVisualizerSpecConformance(rtPreset);
   test('rule: checkbox disagreeing with explicit status fails', () => {
     const rec: IssueRecord = { id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',
       body: `## Acceptance Criteria\n\n- [ ] AC-1 v1 a\n  - status: passed\n` };

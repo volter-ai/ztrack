@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
-import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance } from '../../src/testkit/presetConformance.ts';
+import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkDefault, DefaultPreset, type DefaultRoot, DefaultRootSchema, parseDefault, serializeIssue } from './simple-gh-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
@@ -133,6 +133,7 @@ describe('simple-gh-sdlc preset', () => {
     edit: { record: EDIT_REC, acId: 'AC-1', patch: { checked: true, status: 'passed', evidence: [{ id: 'ev1', commit: HEAD, acVersion: 1 }], proof: { explanation: 'ev1 shows it', evidenceRefs: ['ev1'] } } },
   });
   assertNotePositionFidelity({ preset: rtPreset, record: NOTE_BETWEEN_REC });
+  assertVisualizerSpecConformance(rtPreset);
 
   test('rule: PR head unknown when git world has no head', () => {
     const r = checkDefault([REC], { git: { existingCommits: [HEAD], prs: {} } });
