@@ -23,6 +23,7 @@ import {
   normalizeBlockRefs, parseBlockToken,
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type ParseDiagnostic, type Preset, type PresetContextInput, type RawBlockRef,
+  type VisualizerSpec,
 } from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
@@ -708,10 +709,29 @@ function defaultFixHint(f: Finding): string | undefined {
   }
 }
 
+// ── the dashboard's vocabulary (VIZ-2), as plain data ────────────────────────────────────────
+// This block is what the visualizer board renders FROM — status columns, what an AC is called,
+// and which fields (above, on DefaultIssueSchema/DefaultAcSchema) hold the assignee, the AC's
+// own id/text/version, its proof, and its evidence entries. Field references and literal labels
+// ONLY (see `VisualizerSpec`, `ztrack/preset-kit`) — no functions, no markup. It is installed
+// into your repo verbatim, same as the rest of this file: edit it freely to match a schema
+// change (e.g. renaming a status here AND above keeps them in sync; `ztrack test`/CI catches a
+// drift between the two — see `boilerplates/presets/visualizerVocabulary.test.ts`).
+const DEFAULT_VISUALIZER: VisualizerSpec = {
+  statusOrder: ['draft', 'ready', 'in-progress', 'in-review', 'done'], // must equal DefaultIssueStatusSchema above
+  acUnitLabel: 'Dev ACs',
+  assignee: 'assignee',                                                // DefaultIssueSchema.assignee
+  acText: { id: 'id', text: 'text', version: 'version' },              // DefaultAcSchema.{id,text,version}
+  acProof: { field: 'proof', explanation: 'explanation', evidenceRefs: 'evidenceRefs' }, // DefaultAcSchema.proof
+  acEvidence: { field: 'evidence', image: 'image', commit: 'commit', acVersion: 'acVersion' }, // DefaultAcSchema.evidence[]
+  // no `pr`: this preset is PR-free by design (see the header note) — DefaultIssueSchema has no `pr` field.
+};
+
 export const DefaultPreset: Preset<DefaultRoot> = {
   name: 'simple-sdlc',
   fixHint: defaultFixHint,
   schema: DefaultRootSchema,
+  visualizer: DEFAULT_VISUALIZER,
   // this preset's observed facts: the git world (commits). No PR branches — simple-sdlc is PR-free.
   loadContext: (input) => {
     const ctx = gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits });

@@ -29,7 +29,7 @@
 // A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
 import {
   z, toMdast, check as runCheck, rule, gitWorld,
-  type Context, type DerivedModel, type IssueRecord, type Preset, type Rule,
+  type Context, type DerivedModel, type IssueRecord, type Preset, type Rule, type VisualizerSpec,
 } from 'ztrack/preset-kit';
 
 // ── hard schema (core + speckit-specific, all strict) ───────────────────────
@@ -444,9 +444,25 @@ const SPECKIT_RULES: Rule<SpeckitRoot>[] = [
   }),
 ];
 
+// ── the dashboard's vocabulary (VIZ-2), as plain data ────────────────────────────────────────
+// Minimal by design: speckit's issue panels (stories, requirements, phases/tasks, plan gates,
+// artifacts — everything SpeckitIssueSchema carries beyond the AC unit) are irreducible RENDER
+// logic, not field references, so they stay CODE on the shared code-extension contract
+// (VIZ-4/VIZ-13), not this data contract. This block supplies only what the vocabulary CAN
+// express: the status column order and what an AC unit is called here (a user story, not a "dev
+// AC"). Installed into your repo verbatim: keep statusOrder in sync with SpeckitIssueStatusSchema
+// above (`boilerplates/presets/visualizerVocabulary.test.ts` checks that).
+const SPECKIT_VISUALIZER: VisualizerSpec = {
+  statusOrder: ['specifying', 'planning', 'tasking', 'in-progress', 'done'], // must equal SpeckitIssueStatusSchema above
+  acUnitLabel: 'User Stories',
+  // no assignee/pr/acText/acProof/acEvidence: this preset's richer shape (stories, tasks,
+  // FR/SC, plan gates) is rendered by the code seam (VIZ-4/VIZ-13), not this data mapping.
+};
+
 export const SpeckitPreset: Preset<SpeckitRoot> = {
   name: 'speckit',
   schema: SpeckitRootSchema,
+  visualizer: SPECKIT_VISUALIZER,
   // observed facts: commit existence for task verification (no PR model).
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   // `ztrack issue scaffold` starter — a minimal Spec-Kit feature shape (real features usually
