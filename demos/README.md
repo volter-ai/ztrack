@@ -15,6 +15,7 @@ bash demos/check-e2e.sh
 bash demos/missing-peer-gate.sh
 bash demos/loop-gate-ci.sh
 bash demos/pm-matrix.sh
+bash demos/visualizer-mod.sh
 bash demos/loop-e2e.sh
 bash demos/real-project-marathon.sh
 ```
@@ -67,6 +68,15 @@ exercise — pnpm (strict isolated store), yarn classic, yarn Berry/PnP, and bun
 — and runs `init` + a green `check` under each. Catches resolution regressions
 (phantom deps, the `require`/`exports` conditions, PnP) that the npm-based
 fresh-project dry run can't; a CI gate.
+
+`visualizer-mod.sh` is the dashboard analog of `real-project-cycle.sh`'s custom-rule demo: it mods
+a board — a new issue status added to the installed preset's schema enum AND its visualizer
+`statusOrder`, a changed `acUnitLabel`, a repo-local `theme.css` token override (the VIZ-6 seam),
+and the shipped VIZ-16 boilerplate example code panel installed verbatim (the VIZ-13 seam) — then
+boots the real visualizer and asserts the RENDERED difference (the new status column, the modded
+AC-unit label, and the custom panel's own heading/content) by actually running the served
+`/assets/app.js` bundle in a DOM runtime (`demos/visualizer-mod/dom-check.mjs`), not just curling
+the static shell. Deterministic, no live agent; a CI/publish gate.
 
 `loop-e2e.sh` is a REAL end-to-end test of the ztrack loop: a live headless
 Claude Code agent driven by the armed-loop Stop hook plus a real `ztrack

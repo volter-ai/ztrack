@@ -70,6 +70,14 @@ jobs:
         # Gate the release on the resolution layouts npm doesn't exercise — this is how the
         # require(esm) break (Node 20 / PnP) and the unexported package.json would be caught.
         run: bash demos/pm-matrix.sh
+      - name: Visualizer mod (DOM-rendered custom board: status column + AC-unit label + theme + code panel)
+        # Gate the release on the dashboard analog of the custom-rule demo above: a modded
+        # installed preset (new status + AC-unit label), a theme.css override, and the shipped
+        # VIZ-16 boilerplate code panel — asserted RENDERED (not just present on disk) by actually
+        # running the served client bundle in a DOM runtime (demos/visualizer-mod/dom-check.mjs).
+        run: |
+          (cd visualizer && bun install --silent)
+          bash demos/visualizer-mod.sh
       - name: Publish to npm
         # --provenance uses the id-token permission above; without the flag the
         # OIDC grant is dead weight and npm ships no attestation (ZL-E10).

@@ -548,6 +548,7 @@ Every flow above is exercised by a script in [`demos/`](../demos/):
 | `demos/fresh-project-dry-run.sh` | packs + installs the tarball; every preset's red/green, CI gate, MCP, SDK |
 | `demos/full-dev-cycle.sh` | a realistic library: planning → implementation → review gate → rework → CI/MCP/SDK/clone |
 | `demos/real-project-cycle.sh` | a multi-package workspace with a project-specific custom rule |
+| `demos/visualizer-mod.sh` | a modded board: new status + AC-unit label + theme override + a custom code panel, DOM-rendered |
 | `demos/sdk-api/run.mjs` | programmatic use via `createTrackerClient` (see [API](API.md)) |
 
 ## Adoption checklist
