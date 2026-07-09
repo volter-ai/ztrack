@@ -217,4 +217,67 @@ describe('docs consistency', () => {
     }
     expect(missing).toEqual([]);
   });
+
+  // VIZ-8 dev/01: every backtick-cited `path:line` / `path:line-range` in the docs must resolve —
+  // both the FILE must exist and, when a line spec is given, every cited line must be within the
+  // file's own current line count. Anchored to repo-root-relative paths only (starting with
+  // src/, visualizer/, boilerplates/, or one of a few named root files) so a citation of an
+  // INSTALLED-repo path (e.g. `.volter/tracker/visualizer/extension.tsx`, which does not exist in
+  // THIS repo at all) is never mistaken for a stale citation — those simply don't match and are
+  // skipped, same "don't flag what isn't a claim" posture as the preset-name/command guards above.
+  // Line count uses `split('\n').length` (not `wc -l`) so a file with no trailing newline still
+  // counts its last line — matching what an editor / the Read tool shows a human, not what a
+  // newline-counting tool would.
+  const CITE_ANCHOR = /^(?:src|visualizer|boilerplates|docs)\/[A-Za-z0-9_.\/-]+\.(ts|tsx|css|md|json)$|^(?:SECURITY|README|ARCHITECTURE)\.md$|^package\.json$/;
+  test('every cited `path:line` / `path:line-range` resolves (file exists, line(s) in range)', () => {
+    const problems: string[] = [];
+    const lineCountCache = new Map<string, number>();
+    const lineCountOf = (rel: string): number => {
+      let n = lineCountCache.get(rel);
+      if (n === undefined) {
+        n = readFileSync(join(REPO, rel), 'utf8').split('\n').length;
+        lineCountCache.set(rel, n);
+      }
+      return n;
+    };
+    for (const doc of DOCS) {
+      const text = readFileSync(join(REPO, doc), 'utf8');
+      for (const m of text.matchAll(/`([^`\n]+)`/g)) {
+        const inner = m[1]!;
+        const citeMatch = /^([A-Za-z0-9_.\/-]+)(?::(\d+)(?:-(\d+))?)?$/.exec(inner);
+        if (!citeMatch) continue;
+        const [, path, l1, l2] = citeMatch;
+        if (!CITE_ANCHOR.test(path!)) continue; // not an anchored repo-relative path — not a claim this guards
+        if (!existsSync(join(REPO, path!))) { problems.push(`${doc} -> \`${inner}\`: ${path} does not exist`); continue; }
+        if (l1 === undefined) continue; // bare path citation — existence is the whole claim
+        const total = lineCountOf(path!);
+        const start = Number(l1);
+        const end = l2 !== undefined ? Number(l2) : start;
+        if (start < 1 || end > total || start > end) {
+          problems.push(`${doc} -> \`${inner}\`: line(s) ${start}-${end} out of range (${path} has ${total} lines)`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  // VIZ-8 dev/04: token-contract sync. Every `--token` docs/VISUALIZER.md's theming table names
+  // must exist as a `:root` custom property in visualizer/client/styles.css, AND every custom
+  // property styles.css's `:root` block declares must appear in the doc's table — both
+  // directions, so a token renamed on EITHER side (in the CSS, or only updated in the doc) fails
+  // here instead of silently drifting (the exact class of bug PRESETS.md's own visualizer-block
+  // enum-equality guard, VIZ-7, exists to catch on the preset side).
+  test('docs/VISUALIZER.md\'s token table matches styles.css\'s `:root` custom properties exactly', () => {
+    const doc = readFileSync(join(REPO, 'docs/VISUALIZER.md'), 'utf8');
+    const docTokens = new Set([...doc.matchAll(/`(--[a-z-]+)`/g)].map((m) => m[1]!));
+
+    const css = readFileSync(join(REPO, 'visualizer/client/styles.css'), 'utf8');
+    const rootBlock = /:root\s*\{([^}]*)\}/.exec(css);
+    expect(rootBlock).not.toBeNull(); // sanity: styles.css still declares a :root block
+    const cssTokens = new Set([...rootBlock![1]!.matchAll(/(--[a-z-]+)\s*:/g)].map((m) => m[1]!));
+
+    const missingFromDoc = [...cssTokens].filter((t) => !docTokens.has(t));
+    const missingFromCss = [...docTokens].filter((t) => !cssTokens.has(t));
+    expect({ missingFromDoc, missingFromCss }).toEqual({ missingFromDoc: [], missingFromCss: [] });
+  });
 });
