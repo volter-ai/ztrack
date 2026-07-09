@@ -1307,6 +1307,10 @@ button { cursor: pointer; }
   color: var(--amber);
   background: #fff8e5;
 }
+/* VIZ-13: the repo extension.tsx failed to compile (or its own `ztrack/visualizer-kit` import
+   didn't resolve) — the board still renders (failure isolation), this just names the error. The
+   translated message can be multi-line (the `npm install -D ztrack` fix block), so preserve it. */
+.visualizer-notice.extension-error { white-space: pre-wrap; font-family: ui-monospace, monospace; }
 /* acknowledged: a real error a fresh waiver has accepted — visible but non-gating. */
 .finding.acknowledged { color: #0e7490; background: #ecfeff; border-color: rgba(14, 116, 144, 0.3); }
 .finding-summary {

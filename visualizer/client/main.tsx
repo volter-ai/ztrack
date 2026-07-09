@@ -514,6 +514,7 @@ function App() {
         </header>
         {error && <pre className="error">{error}</pre>}
         {payload && notice && <div className="visualizer-notice" role="status">{notice}</div>}
+        {payload?.extensionError && <div className="visualizer-notice extension-error" role="status">{payload.extensionError}</div>}
         {payload && (
           <div className={`tracker-layout${selected ? ' has-detail' : ''}`} style={selected ? ({ '--detail-width': `${detailWidth}px` } as React.CSSProperties) : undefined}>
             <div className="view-summary">

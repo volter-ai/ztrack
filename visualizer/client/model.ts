@@ -85,6 +85,11 @@ export interface Payload {
   // case `visualizerError` names the offending zod issue path; the raw invalid data never ships).
   visualizer: VisualizerSpec | null;
   visualizerError?: string;
+  // VIZ-13: set when the repo-owned `extension.tsx` failed to compile (a syntax error, or an
+  // unresolvable 'ztrack/visualizer-kit' import) — the server rebuilds the served bundle WITHOUT
+  // the repo extension (failure isolation: the board keeps working) and ships this field so the
+  // client can render a notice with the compile-error text instead of failing silently.
+  extensionError?: string;
   issues: CoreIssue[]; findings: Finding[];
   audit: Record<string, AuditEntry[]>;
   timestamps: Record<string, Timestamps>;
