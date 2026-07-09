@@ -137,9 +137,9 @@ into `check-e2e.sh`. (`scopeIntegration.test.ts` stays — it asserts the scope-
 integration precisely against the `default` preset, which the generic-preset E2E doesn't
 isolate.)
 
-## Visualizer parity (in progress)
+## Visualizer parity (shipped)
 
-- [ ] **R7 — Visualizer moddability at preset parity.** The dashboard (`ztrack/visualizer/`)
+- [x] **R7 — Visualizer moddability at preset parity.** The dashboard (`ztrack/visualizer/`)
   becomes moddable just like the installed presets: a repo-owned vocabulary block in
   `preset.mts`, a repo-owned `extension.tsx` for custom code panels, and a repo-owned
   `theme.css` — demonstrated end-to-end and documented at the same depth as `docs/PRESETS.md`.
