@@ -36,15 +36,30 @@ function presetPath(root: string): string {
   return join(root, '.volter', 'tracker', 'validation', 'preset.mts');
 }
 
-// Splice a `visualizer:` field into the installed preset object, right after its `name:` field,
-// bracketed with markers so a later live-edit (dev/05) can replace just that block in place.
+// Replace the shipped `visualizer: DEFAULT_VISUALIZER,` field (VIZ-2: every boilerplate preset
+// ships one) IN PLACE with the fixture's own literal, bracketed with markers so a later live-edit
+// (dev/05) can replace just that block. Replacing in place — rather than splicing a second
+// `visualizer:` key in earlier — avoids JS object-literal duplicate-key shadowing: two `visualizer:`
+// entries on the same object silently collapse to whichever comes LAST, which would make the
+// fixture's injected literal dead and the shipped default the one actually served.
 function injectVisualizer(root: string, literal: string): string {
   const p = presetPath(root);
   const src = readFileSync(p, 'utf8');
-  const marker = "name: 'simple-sdlc',";
-  if (!src.includes(marker)) throw new Error('fixture: preset.mts marker not found — installed boilerplate shape changed');
-  writeFileSync(p, src.replace(marker, `${marker}\n  // VIZ3-FIXTURE-VISUALIZER-START\n  visualizer: ${literal},\n  // VIZ3-FIXTURE-VISUALIZER-END\n`));
+  const marker = 'visualizer: DEFAULT_VISUALIZER,';
+  if (!src.includes(marker)) throw new Error('fixture: preset.mts shipped `visualizer: DEFAULT_VISUALIZER,` field not found — installed boilerplate shape changed');
+  writeFileSync(p, src.replace(marker, `// VIZ3-FIXTURE-VISUALIZER-START\n  visualizer: ${literal},\n  // VIZ3-FIXTURE-VISUALIZER-END`));
   return p;
+}
+
+// Strip the shipped `visualizer:` field entirely, so the preset genuinely has none — exercising
+// the pre-VIZ-2 (or hand-edited-away) shape rather than relying on the shipped boilerplate to
+// happen to lack one (it no longer does: VIZ-2 put a `visualizer` block in every boilerplate).
+function stripVisualizer(root: string): void {
+  const p = presetPath(root);
+  const src = readFileSync(p, 'utf8');
+  const marker = /\n\s*visualizer: DEFAULT_VISUALIZER,/;
+  if (!marker.test(src)) throw new Error('fixture: preset.mts shipped `visualizer: DEFAULT_VISUALIZER,` field not found — installed boilerplate shape changed');
+  writeFileSync(p, src.replace(marker, ''));
 }
 
 // dev/05's live edit: replace a previously-injected block's literal, and force the mtime forward
@@ -122,7 +137,8 @@ suite('VIZ-3 — /api/board ships the visualizer vocabulary, validated, live', (
     let proc: ChildProcess | undefined;
 
     beforeAll(async () => {
-      root = initFixture(); // no injection — the shipped boilerplate has no `visualizer` field yet (VIZ-2 lands separately)
+      root = initFixture();
+      stripVisualizer(root); // VIZ-2 shipped a `visualizer` block in every boilerplate — strip it so this case genuinely has none
       proc = startServer(root, port);
       await waitUp(port);
     }, 30_000);
