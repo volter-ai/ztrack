@@ -156,6 +156,11 @@ validated pool of observed facts (`now`, `phase`, `git`, `world`, `categories`).
 Rules are pure `(input) => Finding[]`: they read only `input.root` /
 `input.context` — no file/git/network/time access, no mutation, no throw.
 
+The visualizer reads this same validated export to render the board, and it is just as editable as
+the preset — its vocabulary, theme, and panels live in your repo as ordinary code and data. See
+[docs/VISUALIZER.md](VISUALIZER.md) and the boilerplate extension at
+`boilerplates/visualizer/extension.tsx` for where to make those edits alongside this preset.
+
 ## The Bidirectional Grammar — Parse, Serialize, Patch
 
 Every owning preset (`simple-sdlc`, `spec`) defines `parse` AND `serialize` on the
