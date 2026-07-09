@@ -3,9 +3,14 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
+import { VisualizerSpecSchema } from 'ztrack/preset-kit';
 import { applyModelPatch, canonicalizeBody } from '../modelEdit.ts';
 import { createMarkdownBackend } from '../backends/markdownBackend.ts';
 import { viewToRecord } from '../core/loader.ts';
+// NOT re-exported via `ztrack/preset-kit` (it's a write-time-validation internal, not preset-authoring
+// mechanism) — this file lives IN the repo (src/testkit/), so it rents it the same way every other
+// src/* module does, via a relative import (see the VIZ-2 export note on issueStatusEnumOf itself).
+import { issueStatusEnumOf } from '../presetRegistry.ts';
 
 // Shared "SDLC-grammar" conformance: the parse / evidence-integrity / relevance / anti-tamper
 // properties that `simple-sdlc` and `simple-gh-sdlc` share BY CONSTRUCTION (same default-family
@@ -253,5 +258,139 @@ export function assertReadOnlyRoundTripExemption(p: { preset: Preset<CoreRoot>; 
     expect(p.preset.serialize).toBeUndefined();
     expect(() => applyModelPatch(p.preset, p.record, { patch: {} })).toThrow(/read-only/);
     expect(() => canonicalizeBody(p.preset, p.record)).toThrow(/read-only/);
+  });
+}
+
+// ── VIZ-7: visualizer-vocabulary conformance (the testkit's OWN assertion — never a shared
+// runtime model, per this file's own header) ────────────────────────────────────────────────
+// A user's edited `preset.mts` gets the same "your preset is testable" story the four shipped
+// presets already have (docs/PRESETS.md's Round-Trip Fidelity section is the round-trip analogue).
+// Three checks, all duck-typed off the preset's OWN schema/visualizer block — never a second,
+// drift-prone copy of the vocabulary:
+//   1. `preset.visualizer` validates against `VisualizerSpecSchema` (VIZ-1's hard boundary,
+//      `src/core/engine.ts`) — a function-/markup-valued member, or a stray field, fails
+//      structurally, not by convention.
+//   2. `visualizer.statusOrder` equals the schema's OWN issue-status enum, via `issueStatusEnumOf`
+//      (src/presetRegistry.ts, exported by VIZ-2 for exactly this) — NEVER forked/reimplemented.
+//   3. Every field name a mapping carries (assignee, pr.field/urlField, acText.id/text/version,
+//      acProof.field/explanation/evidenceRefs, acEvidence.field/image/commit/acVersion) actually
+//      exists on the preset's own issue/AC zod schema — WHERE introspectable: a shape this
+//      duck-typing can't read is skipped, not failed, matching `issueStatusEnumOf`'s own
+//      "null means uninspectable" convention (it never fails a preset it can't read).
+//
+// `visualizerSpecConformanceProblems` is the pure, non-throwing computation (a list of
+// human-readable problems; empty = conformant). `assertVisualizerSpecConformance` is the
+// bun:test-registering wrapper every shipped preset's own test file calls (dev/01). Kept separate
+// so a NEGATIVE fixture (dev/02) can call the pure function directly and inspect what it reports,
+// rather than needing an actually-red test sitting in this suite to prove the mechanism catches drift.
+
+// zod v4: `ZodOptional`/`ZodNullable`/`ZodDefault` (etc.) all expose the SAME public `.unwrap()`
+// method that `ZodArray` does (`.unwrap()` there returns the ELEMENT type, not "itself, one layer
+// down") — so unwrapping must be gated on `.def.type` (zod v4's public schema-kind tag) naming an
+// actual modifier, or an array's `.unwrap()` would be mistaken for a modifier's and skip straight
+// past the array to its element, losing the array itself.
+const ZOD_MODIFIER_TYPES = new Set(['optional', 'nullable', 'default', 'prefault', 'readonly', 'nonoptional']);
+function unwrapZod(schema: unknown): unknown {
+  let s = schema;
+  while (s && ZOD_MODIFIER_TYPES.has((s as { def?: { type?: string } }).def?.type ?? '') && typeof (s as { unwrap?: unknown }).unwrap === 'function') {
+    s = (s as { unwrap: () => unknown }).unwrap();
+  }
+  return s;
+}
+function zodShape(schema: unknown): Record<string, unknown> | null {
+  try {
+    const s = unwrapZod(schema) as { shape?: Record<string, unknown> } | null;
+    return s?.shape ?? null;
+  } catch { return null; }
+}
+function zodElement(schema: unknown): unknown | null {
+  try {
+    const s = unwrapZod(schema) as { element?: unknown } | null;
+    return s?.element ?? null;
+  } catch { return null; }
+}
+// The preset's own AC array element shape — every shipped preset (and every preset this targets)
+// names its AC-unit array `acceptanceCriteria` on the issue shape (see e.g. simple-sdlc.ts,
+// spec.ts, speckit.ts); `null` when unreadable, exactly like `issueStatusEnumOf`.
+function issueShapeOf(preset: Preset<CoreRoot>): Record<string, unknown> | null {
+  const rootShape = zodShape(preset.schema);
+  return rootShape ? zodShape(zodElement(rootShape.issues)) : null;
+}
+function acShapeOf(preset: Preset<CoreRoot>): Record<string, unknown> | null {
+  const issueShape = issueShapeOf(preset);
+  return issueShape ? zodShape(zodElement(issueShape.acceptanceCriteria)) : null;
+}
+
+/** Pure: the list of VIZ-7 conformance problems for `preset` (empty = conformant). Never throws —
+ *  an uninspectable schema shape is silently skipped (see the module note above), not reported. */
+export function visualizerSpecConformanceProblems(preset: Preset<CoreRoot>): string[] {
+  const problems: string[] = [];
+  const v = preset.visualizer;
+  if (!v) return [`${preset.name} declares no \`visualizer\` block (VIZ-1/VIZ-2).`];
+
+  const parsed = VisualizerSpecSchema.safeParse(v);
+  if (!parsed.success) {
+    const detail = parsed.error.issues.map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`).join('; ');
+    problems.push(`${preset.name}'s visualizer block fails VisualizerSpecSchema: ${detail}`);
+  }
+
+  const schemaEnum = issueStatusEnumOf(preset);
+  // `Array.isArray` guard: a `visualizer.statusOrder` that already failed VisualizerSpecSchema
+  // above (e.g. not an array at all) has nothing sensible to diff against the enum — the schema
+  // violation reported above already covers it.
+  if (schemaEnum && Array.isArray(v.statusOrder)) {
+    // Name the SPECIFIC offending status(es) when there is one — a status the block declares that
+    // the schema's enum simply does not have (dev/02's exact failure shape: a renamed/typo'd
+    // status). Any OTHER kind of drift (a real status missing from the block, a reorder, a
+    // duplicate) is still reported, just without a bogus status to name.
+    const unknown = v.statusOrder.filter((s) => !schemaEnum.includes(s));
+    if (unknown.length) {
+      problems.push(`${preset.name}'s visualizer.statusOrder lists status(es) ${unknown.map((s) => `"${s}"`).join(', ')} absent from its issue-status enum (${schemaEnum.join(', ')}).`);
+    } else if (schemaEnum.length !== v.statusOrder.length || schemaEnum.some((s, i) => s !== v.statusOrder[i])) {
+      problems.push(`${preset.name}'s visualizer.statusOrder (${v.statusOrder.join(', ')}) does not equal its issue-status enum (${schemaEnum.join(', ')}).`);
+    }
+  }
+
+  const issueShape = issueShapeOf(preset);
+  const acShape = acShapeOf(preset);
+  const checkField = (shape: Record<string, unknown> | null, key: string | undefined, mapping: string, schemaName: string) => {
+    if (!key || !shape) return; // not mapped, or this schema shape isn't introspectable — skip
+    if (!(key in shape)) problems.push(`${preset.name}'s visualizer.${mapping} names field "${key}", which does not exist on its ${schemaName} schema.`);
+  };
+
+  checkField(issueShape, v.assignee, 'assignee', 'issue');
+  if (v.pr) {
+    checkField(issueShape, v.pr.field, 'pr.field', 'issue');
+    checkField(issueShape ? zodShape(issueShape[v.pr.field]) : null, v.pr.urlField, 'pr.urlField', 'pr');
+  }
+  if (v.acText) {
+    checkField(acShape, v.acText.id, 'acText.id', 'AC');
+    checkField(acShape, v.acText.text, 'acText.text', 'AC');
+    checkField(acShape, v.acText.version, 'acText.version', 'AC');
+  }
+  if (v.acProof) {
+    checkField(acShape, v.acProof.field, 'acProof.field', 'AC');
+    const proofShape = acShape ? zodShape(acShape[v.acProof.field]) : null;
+    checkField(proofShape, v.acProof.explanation, 'acProof.explanation', 'proof');
+    checkField(proofShape, v.acProof.evidenceRefs, 'acProof.evidenceRefs', 'proof');
+  }
+  if (v.acEvidence) {
+    checkField(acShape, v.acEvidence.field, 'acEvidence.field', 'AC');
+    const evidenceElementShape = acShape ? zodShape(zodElement(acShape[v.acEvidence.field])) : null;
+    checkField(evidenceElementShape, v.acEvidence.image, 'acEvidence.image', 'evidence');
+    checkField(evidenceElementShape, v.acEvidence.commit, 'acEvidence.commit', 'evidence');
+    checkField(evidenceElementShape, v.acEvidence.acVersion, 'acEvidence.acVersion', 'evidence');
+  }
+
+  return problems;
+}
+
+/** bun:test-registering wrapper (dev/01): every shipped preset's own test file calls this with
+ *  ITS preset, exactly like `assertSdlcGrammarConformance`/`assertRoundTripFidelity` above — the
+ *  no-shared-model invariant holds (only the TEST is shared; each preset owns its own visualizer
+ *  block and schema). A preset with a real conformance problem shows it here, named. */
+export function assertVisualizerSpecConformance(preset: Preset<CoreRoot>): void {
+  test(`${preset.name}: visualizer block conforms (VisualizerSpecSchema + issueStatusEnumOf + its own field mappings — VIZ-7)`, () => {
+    expect(visualizerSpecConformanceProblems(preset)).toEqual([]);
   });
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
-import { assertRoundTripFidelity } from '../../src/testkit/presetConformance.ts';
+import { assertRoundTripFidelity, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkSpec, parseSpec, serializeSpecIssue, SpecPreset, SpecRootSchema } from './spec.ts';
 
 const REAL = 'cafe1234beef';
@@ -55,6 +55,7 @@ describe('greenfield spec preset', () => {
     canonical: { title: REC.title, status: REC.status, body: REC.body },
     edit: { record: REC, acId: 'AC-2', patch: { status: 'passed', evidence: [{ id: 'AC-2/ev1', commit: REAL }] } },
   });
+  assertVisualizerSpecConformance(rtPreset);
 
   test('rule: passed AC with no evidence fails', () => {
     const rec: IssueRecord = { id: 'S-1', title: 'x', status: 'draft', body: `## Acceptance Criteria\n\n- [x] AC-1 done it\n` };
