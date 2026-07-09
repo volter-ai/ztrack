@@ -1,7 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AuditEntry, CoreIssue, Finding, Payload, Timestamps } from './model';
-import { extensionFor, type PresetExtension } from './extensions';
+import { buildEffectiveExtension, type EffectiveExtension } from './extensions';
+
+// The shared `/project/` URL mapper — passed to `acEvidence` and `issuePanels` so an extension
+// (data-derived or code) can link evidence/design-artifact files under the project root.
+const projectUrl = (p: string) => '/project/' + p.replace(/^\/+/, '');
 
 // ── time helpers (ported subset of the original time.ts) ─────────────────────
 const parseTs = (iso?: string) => { const t = iso ? Date.parse(iso) : NaN; return Number.isFinite(t) ? t : null; };
@@ -76,7 +80,7 @@ function sortValue(i: CoreIssue, orderBy: OrderBy, f: Finding[]): string | numbe
   if (orderBy === 'progress') return acProgress(i).percent;
   return issueWeight(i, f);
 }
-function filterAndSort(issues: CoreIssue[], query: string, label: string, issueFilter: IssueFilter, orderBy: OrderBy, ext: PresetExtension, findings: Finding[]) {
+function filterAndSort(issues: CoreIssue[], query: string, label: string, issueFilter: IssueFilter, orderBy: OrderBy, ext: EffectiveExtension, findings: Finding[]) {
   const q = query.trim().toLowerCase();
   const out = issues.filter((i) => {
     const hay = [i.id, i.title, i.summary, i.status, ...labelsOf(i)].join(' ').toLowerCase();
@@ -95,7 +99,7 @@ function filterAndSort(issues: CoreIssue[], query: string, label: string, issueF
     return String(av).localeCompare(String(bv)) || a.id.localeCompare(b.id);
   });
 }
-function groupedItems(items: CoreIssue[], groupBy: GroupBy, ext: PresetExtension) {
+function groupedItems(items: CoreIssue[], groupBy: GroupBy, ext: EffectiveExtension) {
   if (groupBy === 'none') return [{ title: 'Issues', items }];
   const map = new Map<string, CoreIssue[]>();
   for (const i of items) { const t = groupBy === 'label' ? primaryLabel(i) : i.status; map.set(t, [...(map.get(t) ?? []), i]); }
@@ -106,10 +110,10 @@ function groupedItems(items: CoreIssue[], groupBy: GroupBy, ext: PresetExtension
 }
 
 // ── shared bits ──────────────────────────────────────────────────────────────
-function StatePill({ status, ext }: { status: string; ext: PresetExtension }) {
+function StatePill({ status, ext }: { status: string; ext: EffectiveExtension }) {
   return <span className={`state-pill state-${ext.statusClass ? ext.statusClass(status) : status}`}>{status}</span>;
 }
-function AcMiniRing({ issue, ext }: { issue: CoreIssue; ext: PresetExtension }) {
+function AcMiniRing({ issue, ext }: { issue: CoreIssue; ext: EffectiveExtension }) {
   const { done, total, percent } = acProgress(issue);
   if (total === 0) return null;
   const label = ext.acUnitLabel ?? 'ACs';
@@ -121,7 +125,7 @@ function AcMiniRing({ issue, ext }: { issue: CoreIssue; ext: PresetExtension }) 
     </span>
   );
 }
-function AcWheelStrip({ issue, ext }: { issue: CoreIssue; ext: PresetExtension }) {
+function AcWheelStrip({ issue, ext }: { issue: CoreIssue; ext: EffectiveExtension }) {
   const { done, total, percent } = acProgress(issue);
   if (total === 0) return null;
   const label = ext.acUnitLabel ?? 'ACs';
@@ -146,7 +150,7 @@ function FindingBadges({ findings, id }: { findings: Finding[]; id: string }) {
 // ── list view (the original 7-col grid) ──────────────────────────────────────
 function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, onSelect, onToggleGroup }: {
   groups: Array<{ title: string; items: CoreIssue[] }>; groupBy: GroupBy; collapsed: Set<string>; selectedId: string;
-  findings: Finding[]; ext: PresetExtension; ts: Record<string, Timestamps>; onSelect: (i: CoreIssue) => void; onToggleGroup: (t: string) => void;
+  findings: Finding[]; ext: EffectiveExtension; ts: Record<string, Timestamps>; onSelect: (i: CoreIssue) => void; onToggleGroup: (t: string) => void;
 }) {
   if (groups.length === 0) return <div className="empty large">No matching work.</div>;
   const grouped = groupBy === 'status';
@@ -204,7 +208,7 @@ function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, o
 // ── board ────────────────────────────────────────────────────────────────────
 function Board({ groups, collapsed, selectedId, findings, ext, onSelect, onToggleGroup }: {
   groups: Array<{ title: string; items: CoreIssue[] }>; collapsed: Set<string>; selectedId: string;
-  findings: Finding[]; ext: PresetExtension; onSelect: (i: CoreIssue) => void; onToggleGroup: (t: string) => void;
+  findings: Finding[]; ext: EffectiveExtension; onSelect: (i: CoreIssue) => void; onToggleGroup: (t: string) => void;
 }) {
   if (groups.length === 0) return <div className="empty large">No matching work.</div>;
   return (
@@ -275,7 +279,7 @@ function PrimitivesPanel({ issue }: { issue: CoreIssue }) {
   );
 }
 function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
-  issue: CoreIssue; ext: PresetExtension; findings: Finding[]; audit: AuditEntry[]; timestamps: Timestamps; width: number; onClose: () => void;
+  issue: CoreIssue; ext: EffectiveExtension; findings: Finding[]; audit: AuditEntry[]; timestamps: Timestamps; width: number; onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('overview');
   const fs = findings.filter((f) => f.issueId === issue.id);
@@ -333,13 +337,13 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
                         <div>{ext.acText ? ext.acText(ac) : <strong>{ac.id}</strong>}</div>
                         {ac.status === 'descoped' && (ac as { descopeReason?: string }).descopeReason && <div className="ac-descope-reason">descoped: {(ac as { descopeReason?: string }).descopeReason}</div>}
                         {ext.acProof?.(ac)}
-                        {ext.acEvidence && <div className="ac-evidence">{ext.acEvidence(ac, (p) => '/project/' + p.replace(/^\/+/, ''))}</div>}
+                        {ext.acEvidence && <div className="ac-evidence">{ext.acEvidence(ac, projectUrl)}</div>}
                       </div>
                     </div>
                   ))}
                 </div>
               </section>
-              {ext.issuePanels?.(issue)}
+              {ext.issuePanels?.(issue, projectUrl)}
             </div>
           )}
           {tab === 'activity' && (
@@ -442,7 +446,10 @@ function App() {
   useEffect(() => { void refresh(); const t = window.setInterval(() => void refresh(), 4000); return () => window.clearInterval(t); }, []);
   useEffect(() => { const onPop = () => { const r = readRoute(); setView(r.view); setSelectedId(r.issueId); }; window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
 
-  const ext = useMemo(() => extensionFor(payload?.preset ?? ''), [payload?.preset]);
+  // VIZ-4: build the effective (data + code) extension from the wire payload itself — no
+  // preset-name lookup against a hardcoded map. `notice` is the one-line vocabulary-missing/
+  // -invalid message (VIZ-4 dev/04); null once a valid `visualizer` block is present.
+  const { ext, notice } = useMemo(() => buildEffectiveExtension(payload), [payload]);
   const findings = payload?.findings ?? [];
   const all = payload?.issues ?? [];
   const labelSet = useMemo(() => [...new Set(all.flatMap(labelsOf))].sort((a, b) => a.localeCompare(b)), [all]);
@@ -506,6 +513,7 @@ function App() {
           </div>
         </header>
         {error && <pre className="error">{error}</pre>}
+        {payload && notice && <div className="visualizer-notice" role="status">{notice}</div>}
         {payload && (
           <div className={`tracker-layout${selected ? ' has-detail' : ''}`} style={selected ? ({ '--detail-width': `${detailWidth}px` } as React.CSSProperties) : undefined}>
             <div className="view-summary">

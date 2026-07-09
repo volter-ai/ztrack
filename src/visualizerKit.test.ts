@@ -12,7 +12,7 @@
 // guard is the drift backstop for that choice.
 import { describe, expect, test } from 'bun:test';
 import { defineVisualizerExtension, type VisualizerExtension, type Payload as KitPayload } from './visualizerKit.ts';
-import type { Payload as ClientPayload } from '../visualizer/client/model.ts';
+import type { Payload as ClientPayload, VisualizerExtension as ClientVisualizerExtension } from '../visualizer/client/model.ts';
 
 // Standard two-way conditional-type equality check (the common `Equals<A, B>` idiom): distinct
 // only when A and B are NOT mutually assignable in both the "extends" and "not extends" sense
@@ -24,6 +24,16 @@ type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B
 // assignable to `true`) and `npm run typecheck` fails.
 const payloadShapesMatch: Equals<KitPayload, ClientPayload> = true;
 void payloadShapesMatch;
+
+// VIZ-4's client-side `VisualizerExtension` mirror (`visualizer/client/model.ts`) gets the SAME
+// executable guard as `Payload` above — the client tree cannot type-import the kit's copy (its
+// tsconfig has no "node" ambient types; visualizerKit.ts transitively imports `node:crypto` via
+// src/core/engine.ts), so it hand-mirrors, and this line is what keeps the two copies from
+// silently diverging: any member added/removed/re-signatured on one side but not the other makes
+// `Equals<...>` become `false` and `npm run typecheck` fails. (This guard must live HERE, not in
+// visualizer/client test files — those are excluded from every tsconfig and would be inert.)
+const extensionShapesMatch: Equals<VisualizerExtension, ClientVisualizerExtension> = true;
+void extensionShapesMatch;
 
 describe('VisualizerExtension — render-only surface (VIZ-14 dev/03)', () => {
   test('defineVisualizerExtension is the identity helper', () => {

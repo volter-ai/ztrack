@@ -1295,6 +1295,18 @@ button { cursor: pointer; }
 }
 .finding.error, .error { color: var(--red); background: #fff5f5; border-color: rgba(199, 52, 52, 0.35); }
 .finding.warning { color: var(--amber); background: #fff8e5; border-color: rgba(153, 111, 0, 0.32); }
+/* VIZ-4: shown when the preset declares no `visualizer` block, or a declared one failed
+   validation (the notice text is the shipped `visualizerError` in that case). */
+.visualizer-notice {
+  border: 1px solid rgba(153, 111, 0, 0.32);
+  border-radius: 7px;
+  padding: 8px 10px;
+  margin: 0 16px 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--amber);
+  background: #fff8e5;
+}
 /* acknowledged: a real error a fresh waiver has accepted — visible but non-gating. */
 .finding.acknowledged { color: #0e7490; background: #ecfeff; border-color: rgba(14, 116, 144, 0.3); }
 .finding-summary {

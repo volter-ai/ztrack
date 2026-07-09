@@ -1,10 +1,18 @@
-// The speckit SDLC's view extension. AC = user story (priority + MVP + scenarios
-// + tasks, with verification-layer commits). Issue-level panels render the rest
-// of the captured Spec Kit process: metadata, FR/SC, key entities/edge cases/
-// assumptions/clarifications, the plan (technical context + Constitution Check),
-// constitution principles, non-story task phases, and design-artifact presence.
+// The speckit SDLC's FIRST-PARTY code extension (VIZ-4/VIZ-14). AC = user story (priority + MVP
+// + scenarios + tasks, with verification-layer commits). Issue-level panels render the rest of
+// the captured Spec Kit process: metadata, FR/SC, key entities/edge cases/assumptions/
+// clarifications, the plan (technical context + Constitution Check), constitution principles,
+// non-story task phases, and design-artifact presence.
+//
+// Vocabulary (statusOrder/acUnitLabel) is NOT here — it moved to DATA, the `visualizer` block in
+// `boilerplates/presets/speckit.ts` (VIZ-2), because this file conforms to the render-only
+// `VisualizerExtension` contract (`client/extensions.tsx`), which deliberately excludes
+// vocabulary members (VIZ-14's drift guard). This module is discovered by filename at
+// bundle-build time (server.ts's generated entry scans `client/presets/*.tsx`, imports this
+// file's default export, and calls `registerExtension('speckit', ...)`) — no hardcoded
+// name->extension map anywhere.
 import React from 'react';
-import type { PresetExtension } from '../extensions';
+import type { VisualizerExtension } from '../extensions';
 
 type Task = { id: string; title: string; status: string; parallel?: boolean; commit?: string; dependsOn?: string[] };
 
@@ -28,10 +36,7 @@ function Panel({ title, count, children }: { title: string; count?: number; chil
   return <section className="panel"><div className="panel-title"><h3>{title}</h3>{count !== undefined && <span>{count}</span>}</div>{children}</section>;
 }
 
-export const speckitExtension: PresetExtension = {
-  statusOrder: ['specifying', 'planning', 'tasking', 'in-progress', 'done'],
-  acUnitLabel: 'User Stories',
-  statusClass: (s) => s,
+const speckitExtension: VisualizerExtension = {
   acText: (ac) => {
     const a = ac as { id: string; text?: string; priority?: string; mvp?: boolean; needsClarification?: boolean };
     return (
@@ -51,7 +56,12 @@ export const speckitExtension: PresetExtension = {
       </>
     );
   },
-  issuePanels: (issue) => {
+  // The kit's issuePanels receives (issue, projectUrl) — the same `/project/` URL mapper
+  // acEvidence already gets — so a panel can link evidence/design-artifact files under the
+  // project root. This preset's captured process is all inline text/structure today, so
+  // projectUrl is unused here, but the parameter is wired through at the call site (main.tsx)
+  // for any first-party or repo-local extension (VIZ-13) that needs it.
+  issuePanels: (issue, _projectUrl) => {
     const i = issue as {
       metadata?: { featureBranch?: string; status?: string; created?: string; input?: string };
       requirements?: Array<{ id: string; text: string; needsClarification: boolean }>;
@@ -114,3 +124,10 @@ export const speckitExtension: PresetExtension = {
     );
   },
 };
+
+// Default export ONLY — registration itself happens in the generated bundle entry (server.ts),
+// which scans this directory, imports each file's default export, and calls
+// `registerExtension(<filename>, <default export>)`. Filename = canonical preset name (mirroring
+// the boilerplates/presets two-file convention) is the ONE place that name is decided, so this
+// file itself never hardcodes it.
+export default speckitExtension;
