@@ -174,6 +174,23 @@ async function main(): Promise<void> {
         process.stdout.write(`${statusMark('warn')} ${ui.yellow(`Merged with ${result.conflicts} conflict(s)`)} ${ui.dim(`in ${result.entrypoint}`)}\n  ${ui.dim(`Resolve the <<<<<<< markers, then run '${command} check'.`)}\n`);
         process.exitCode = 1;
       }
+      // VIZ-15: the repo-owned dashboard extension.tsx upgrades independently — same command,
+      // its own status, never silent (even the one-of-file cases surface a line).
+      const ext = result.extension;
+      if (ext.status === 'seeded') {
+        process.stdout.write(`${statusMark('pass')} ${ui.green('Seeded the starter dashboard extension')} ${ui.dim(`at ${ext.path} (this repo predates dashboard-extension upgrade support)`)}\n`);
+      } else if (ext.status === 'up-to-date') {
+        process.stdout.write(`${statusMark('pass')} ${ui.green('Dashboard extension is up to date')} ${ui.dim(`(${ext.path})`)}\n`);
+      } else if (ext.status === 'no-base') {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow('No pristine base recorded for the dashboard extension')} ${ui.dim(`— delete ${ext.path} and re-run '${command} preset upgrade' to re-seed both files, or hand-create ${ext.basePath} from the ztrack version you installed.`)}\n`);
+      } else if (ext.status === 'skipped') {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow('Dashboard extension was deleted')} ${ui.dim(`— its pristine base still exists at ${ext.basePath}; nothing to merge, skipped.`)}\n`);
+      } else if (ext.status === 'updated') {
+        process.stdout.write(`${statusMark('pass')} ${ui.green('Merged new upstream starter')} ${ui.dim(`into ${ext.path} (no conflicts)`)}\n`);
+      } else {
+        process.stdout.write(`${statusMark('warn')} ${ui.yellow(`Dashboard extension merged with ${ext.conflicts} conflict(s)`)} ${ui.dim(`in ${ext.path} — resolve the <<<<<<< markers.`)}\n`);
+        process.exitCode = 1;
+      }
       return;
     }
     throw new Error(`ztrack preset: unknown action '${action}'. Try '${command} preset upgrade'.`);

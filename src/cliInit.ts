@@ -126,6 +126,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     `${statusMark('pass')} ${heading('Initialized ztrack', `team ${teamKey} • preset ${result.preset}${sync ? ` • linked ${sync.repo}` : ''}`)}`,
     `  ${ui.dim(configPath)}`,
     ...(result.validationEntrypoint ? [`  ${ui.dim(`validation ${result.validationEntrypoint}`)}`] : []),
+    ...(result.visualizerExtensionPath ? [`  ${ui.dim(`dashboard extension ${result.visualizerExtensionPath}`)}`] : []),
     '',
     ui.bold('Next steps'),
     ...nextSteps,
