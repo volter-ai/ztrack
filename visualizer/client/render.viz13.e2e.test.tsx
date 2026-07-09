@@ -260,10 +260,15 @@ export default defineVisualizerExtension({
 
     beforeAll(async () => {
       rootA = initFixture();
+      // VIZ-15: a fresh init now scaffolds a starter extension.tsx + .extension.base.tsx by
+      // default (see the "VIZ-15 dev/01" suite below for THAT case) — this suite tests the
+      // genuine absence case, so delete the scaffolded seam entirely.
+      rmSync(extensionDir(rootA), { recursive: true, force: true });
       createIssue(rootA, { title: 'No extension A', state: 'draft', body: scaffoldBody(rootA, 'No extension A') });
       procA = startServer(rootA, portA);
 
       rootB = initFixture(); // a second, independent fixture — also with no extension.tsx
+      rmSync(extensionDir(rootB), { recursive: true, force: true });
       procB = startServer(rootB, portB);
 
       await Promise.all([waitUp(portA), waitUp(portB)]);
@@ -297,6 +302,75 @@ export default defineVisualizerExtension({
       const entryB = readFileSync(join(cacheRoot(rootB), 'visualizer', 'generated-entry.ts'), 'utf8');
       expect(entryA).toBe(entryB); // deterministic, sorted scan (VIZ-4) — no repo-extension lines in either
       expect(entryA).not.toContain('repoExt'); // the repo-extension import/register lines are absent entirely
+    }, 20_000);
+  });
+
+  describe('VIZ-15 dev/01 — the starter extension.tsx (installed by a fresh init) is a genuine no-op', () => {
+    const portStarter = BASE_PORT + 9;
+    const portAbsent = BASE_PORT + 10;
+    let rootStarter = '', rootAbsent = '';
+    let procStarter: ChildProcess | undefined, procAbsent: ChildProcess | undefined;
+    let issueIdStarter = '', issueIdAbsent = '';
+
+    beforeAll(async () => {
+      rootStarter = initFixture(); // the scaffolded starter is left AS-IS — the point of this suite
+      createIssue(rootStarter, { title: 'Starter fixture', state: 'draft', body: scaffoldBody(rootStarter, 'Starter fixture') });
+      procStarter = startServer(rootStarter, portStarter);
+
+      rootAbsent = initFixture();
+      rmSync(extensionDir(rootAbsent), { recursive: true, force: true }); // the true-absence control
+      createIssue(rootAbsent, { title: 'Absent fixture', state: 'draft', body: scaffoldBody(rootAbsent, 'Absent fixture') });
+      procAbsent = startServer(rootAbsent, portAbsent);
+
+      await Promise.all([waitUp(portStarter), waitUp(portAbsent)]);
+      issueIdStarter = ((await fetchBoard(portStarter)).issues as Array<{ id: string }>)[0]!.id;
+      issueIdAbsent = ((await fetchBoard(portAbsent)).issues as Array<{ id: string }>)[0]!.id;
+    }, 30_000);
+
+    afterAll(() => {
+      try { procStarter?.kill(); } catch { /* */ }
+      try { procAbsent?.kill(); } catch { /* */ }
+      if (rootStarter) rmSync(rootStarter, { recursive: true, force: true });
+      if (rootAbsent) rmSync(rootAbsent, { recursive: true, force: true });
+    });
+
+    test('a fresh init genuinely scaffolds extension.tsx + .extension.base.tsx', () => {
+      expect(existsSync(extensionPath(rootStarter))).toBe(true);
+      expect(existsSync(join(extensionDir(rootStarter), '.extension.base.tsx'))).toBe(true);
+    });
+
+    test('the board carries no extensionError — the starter compiles cleanly, same as true absence', async () => {
+      const boardStarter = await fetchBoard(portStarter);
+      const boardAbsent = await fetchBoard(portAbsent);
+      expect(boardStarter.extensionError).toBeUndefined();
+      expect(boardAbsent.extensionError).toBeUndefined();
+    }, 20_000);
+
+    test('the generated entry for the starter DOES register it (genuinely exercises the compile path, not skipped)', async () => {
+      await fetch(`http://localhost:${portStarter}/assets/app.js`);
+      const entry = readFileSync(join(cacheRoot(rootStarter), 'visualizer', 'generated-entry.ts'), 'utf8');
+      expect(entry).toContain('repoExt'); // unlike the true-absence case above, the starter IS compiled in
+    }, 20_000);
+
+    test('the DOM renders IDENTICALLY to the no-extension board — no notice, no custom panel/override text', async () => {
+      await bootBundle(portStarter, `/?issue=${issueIdStarter}`);
+      await waitFor(() => !!document.querySelector('.detail-drawer'));
+      expect(document.querySelector('.visualizer-notice.extension-error')).toBeNull();
+      const starterDrawerText = document.body.textContent ?? '';
+      await unmountDom();
+
+      await bootBundle(portAbsent, `/?issue=${issueIdAbsent}`);
+      await waitFor(() => !!document.querySelector('.detail-drawer'));
+      expect(document.querySelector('.visualizer-notice.extension-error')).toBeNull();
+      const absentDrawerText = document.body.textContent ?? '';
+
+      // Neither drawer carries any sign of a custom member (dev/01a/dev/01b's own fixtures prove
+      // those DO show up when an extension declares them) — the no-op starter contributes NOTHING
+      // observable, exactly like true absence.
+      expect(starterDrawerText).not.toContain('Repo Custom Panel');
+      expect(starterDrawerText).not.toContain('REPO-OVERRIDE');
+      expect(absentDrawerText).not.toContain('Repo Custom Panel');
+      expect(absentDrawerText).not.toContain('REPO-OVERRIDE');
     }, 20_000);
   });
 
