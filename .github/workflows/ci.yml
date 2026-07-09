@@ -41,6 +41,10 @@ jobs:
         run: bash demos/loop-gate-ci.sh
       - name: Import backlog (freeform -> native document source e2e)
         run: bash demos/import-backlog-demo.sh
+      - name: Visualizer mod (DOM-rendered custom board: status column + AC-unit label + theme + code panel)
+        run: |
+          (cd visualizer && bun install --silent)
+          bash demos/visualizer-mod.sh
       - name: Export smoke (the public surface resolves)
         run: |
           node --input-type=module -e "const paths=['ztrack','ztrack/sdk','ztrack/check','ztrack/preset-kit','ztrack/world-annotations','ztrack/world-source-books']; for (const p of paths) await import(p);"
