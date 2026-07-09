@@ -10,13 +10,14 @@ import { gfm } from 'micromark-extension-gfm';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
 
 // ── engine + authoring API ───────────────────────────────────────────────────
-export { rule, definePreset, check, checkRoot, deriveCoreModel } from './core/engine.ts';
+export { rule, definePreset, check, checkRoot, deriveCoreModel, VisualizerSpecSchema } from './core/engine.ts';
 // Re-exported so an installed preset imports ONLY `ztrack/preset-kit` — `zod` and the
 // `mdast-*` parsers are the kit's deps, not something a consuming repo must install.
 export { z } from 'zod';
 export type {
   Preset, Rule, RuleRecord, DerivedModel, Located, Finding, Severity, Context, PresetContextInput,
   BlockRef, BlockerFact, CycleFact, CompletionFact, CoreRoot, IssueRecord, IssueColumns, ParseDiagnostic,
+  VisualizerSpec,
 } from './core/engine.ts';
 export { gitWorld, gitFileExistsAtCommit, gitCommitFiles } from './core/gitWorld.ts';
 // Resolves `config.relevance` from disk so a preset's loadContext can set ctx.relevance.
