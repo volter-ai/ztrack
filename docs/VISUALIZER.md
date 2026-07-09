@@ -17,6 +17,27 @@ level deeper each time. **Skim to the depth you need; deeper is rarer and reache
 | (iii) Mod the board with code | A repo-owned `extension.tsx` (render-only panels) | dashboard authors |
 | (iv) Build your own dashboard | The raw `/api/board` payload / GraphQL API | integrators, a whole new client |
 
+## See it: stock vs. modded (VIZ-11)
+
+Real, DOM-rendered screenshots of the SAME repo, before and after applying the exact mod recipe
+`demos/visualizer-mod.sh` (VIZ-10) proves out end to end — the new status enum/column, the
+depth-(ii) vocabulary change, the depth-(i) theme override, and the depth-(iii) custom code panel,
+together, with an issue's detail drawer open (panels only render there,
+`visualizer/client/main.tsx:346`):
+
+| Stock | Modded |
+|---|---|
+| ![Stock board: default `in-progress` column, "Dev ACs" AC-unit label, default purple accent theme, no custom panel — only the core "Acceptance Criteria" panel in the open detail drawer.](assets/visualizer-stock.png) | ![Modded board: an extra "mod-review" board column, "Mod ACs" AC-unit label, an orange `--accent` theme override on the new column/badge/selection highlight, and the VIZ-16 boilerplate's custom "Proof coverage" panel rendered below Acceptance Criteria in the open detail drawer.](assets/visualizer-modded.png) |
+
+The modded shot carries all four mod-stack elements at once: a **new `mod-review` board column**
+(depth ii, schema enum + `statusOrder`), the **`Mod ACs` AC-unit label** (depth ii,
+`acUnitLabel`), a **theme override** (depth i, `--accent: #ff6600` — visible on the new column
+header, the `mod-review` status badge, and the selected-card highlight, versus the stock default
+purple/blue), and the **"Proof coverage" custom panel** (depth iii, the VIZ-16 boilerplate's
+`issuePanels`) — the artifact that proves the unbounded code seam, not just vocabulary. Both PNGs
+live at `docs/assets/visualizer-stock.png` and `docs/assets/visualizer-modded.png`, captured at a
+fixed 1400x900 viewport with the same issue (`MOD-1`) open in both.
+
 ## (i) Theme the board
 
 The board's entire palette is a small set of CSS custom properties declared once, on `:root`
