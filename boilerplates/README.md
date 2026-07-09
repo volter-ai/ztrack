@@ -62,3 +62,35 @@ stale `visualizer` block installs silently.)
 
 There is intentionally **no central list** of presets anywhere in the codebase — do
 not reintroduce one (a hardcoded enum/array/map is the bug this design removes).
+
+## Dashboard extension starter (visualizer)
+
+Presets (above) are the dashboard's DATA extension point — status order, AC vocabulary,
+and which fields hold what. `boilerplates/visualizer/extension.tsx` is the matching CODE
+extension point: a complete, heavily-commented, worked example of a repo-owned dashboard
+extension, importing only `ztrack/visualizer-kit` (the render-only `VisualizerExtension`
+contract — `issuePanels`/`acText`/`acProof`/`acEvidence`/`statusClass`; see
+[docs/API.md](../docs/API.md) and `src/visualizerKit.ts`).
+
+It demonstrates, over the `simple-sdlc` preset's own acceptance-criteria fields:
+
+- **`issuePanels`** — one custom issue-level panel, "Proof coverage": for every acceptance
+  criterion on the open issue, whether it has both a proof and evidence that actually backs
+  it, rendered inside the issue detail drawer beside the core "Acceptance Criteria" panel.
+- **`acEvidence`** — one custom renderer for an AC's evidence list (short commit sha, AC
+  version, and a real project-relative link when a screenshot/artifact is attached).
+
+To use it in a real repo, copy the file verbatim to
+`<stateDir>/tracker/visualizer/extension.tsx` (e.g. `.volter/tracker/visualizer/extension.tsx`
+for the default state dir):
+
+```bash
+mkdir -p .volter/tracker/visualizer
+cp node_modules/ztrack/boilerplates/visualizer/extension.tsx .volter/tracker/visualizer/extension.tsx
+```
+
+The running visualizer board picks it up on the very next `/assets/app.js` fetch — no
+server restart needed. From there it's yours: edit it to add your own panels or AC
+renderers, same as a copied preset. `boilerplates/visualizer/extension.e2e.test.tsx`
+copies this exact file into a fixture repo and DOM-renders the board to prove the shipped
+example itself works, not a re-typed stand-in.
