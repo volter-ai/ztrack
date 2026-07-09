@@ -403,6 +403,10 @@ ztrack viz --preset speckit --port 4000
 It validates the live tracker on each request through the same core as `check`, so the board never
 drifts from what CI enforces.
 
+The board is yours to mod — its vocabulary, theme, and panels are repo-owned code and data, like the
+preset. See [docs/VISUALIZER.md](docs/VISUALIZER.md) for theming it, teaching it a new status, and
+adding custom panels.
+
 ## Why believe it
 
 ztrack runs our own autonomous agent fleet in production — it's what we use to ship real code. Every
@@ -452,7 +456,7 @@ The README is the front door; these go deep:
 - **[Sources](docs/SOURCES.md)** — declare where issues live; the document format (one file, many issues); write-back and diagnostics.
 - **[Evidence](docs/EVIDENCE.md)** — cite, store, and verify proof; in-toto + DSSE attestation.
 - **[Agent playbook](docs/AGENT-PLAYBOOK.md)** — the copy-paste prompt for an agent adopting and driving ztrack.
-- **[Programmatic API](docs/API.md)** · **[Architecture](ARCHITECTURE.md)** · **[Visualizer](visualizer/README.md)**
+- **[Programmatic API](docs/API.md)** · **[Architecture](ARCHITECTURE.md)** · **[Visualizer](visualizer/README.md)** ([extending it](docs/VISUALIZER.md))
 - **[Roadmap](ROADMAP.md)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)**
 
 ## License

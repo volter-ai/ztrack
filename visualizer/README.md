@@ -15,7 +15,7 @@ package) and reads your tracker on each request. It is **not** part of the
 From the repo root, the easiest path is the CLI:
 
 ```bash
-ztrack visualizer                # default preset, port 3300
+ztrack visualizer                # the active preset, port 3300
 ztrack visualizer --preset speckit --port 4000
 ztrack viz --project /path/to/repo   # viz is the short alias
 ```
@@ -24,7 +24,7 @@ Or run the server directly:
 
 ```bash
 bun install                      # once, inside this directory (pulls react)
-PRESET=default PROJECT_DIR=/path/to/repo bun run visualizer/server.ts
+PRESET=simple-sdlc PROJECT_DIR=/path/to/repo bun run visualizer/server.ts
 ```
 
 ## Configuration
@@ -35,8 +35,10 @@ for you from its flags):
 | Var           | Default        | Meaning                                  |
 | ------------- | -------------- | ---------------------------------------- |
 | `PORT`        | `3300`         | HTTP port                                |
-| `PRESET`      | `default`      | which preset to resolve docs/context for |
+| `PRESET`      | `simple-sdlc`  | which preset to resolve docs/context for (`default` is an alias for it, kept for backward compatibility) |
 | `PROJECT_DIR` | `process.cwd()`| repo whose `tracker/` (or `specs/`) to read |
+
+See [docs/VISUALIZER.md](../docs/VISUALIZER.md) for theming the board, teaching it new vocabulary, and adding custom panels.
 
 ## Endpoints
 

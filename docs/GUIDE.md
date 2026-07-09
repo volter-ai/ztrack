@@ -536,7 +536,8 @@ ztrack viz --preset speckit --port 4000 --project /path/to/repo
 
 A read-only web view (requires [Bun](https://bun.sh); first run installs its client deps once). It
 runs the tracker through the same core as `check` on every request, so the board reflects exactly
-what CI enforces — it never writes. See [the visualizer README](../visualizer/README.md).
+what CI enforces — it never writes. See [the visualizer README](../visualizer/README.md); to theme
+it, teach it a new status, or add a custom panel, see [VISUALIZER.md](VISUALIZER.md).
 
 ## Runnable demos
 
