@@ -29,6 +29,7 @@ const {
   buildSpeckitBundle,
   loadTrackerConfig,
   cacheRoot,
+  stateDirName,
   resolveTrackerValidation,
   loadValidationInput,
 } = core;
@@ -39,6 +40,13 @@ const PRESET = process.env.PRESET ?? 'default';
 const TRACKER_DIR = join(PROJECT_DIR, 'tracker');
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
 let clientBundle: Promise<string> | null = null;
+
+// Optional repo-local theme override (VIZ-6) — fixed conventional path beside the preset
+// (`<stateDir>/tracker/visualizer/theme.css`), derived via stateDirName() (never hardcode
+// `.volter/`) so a non-default VOLTER_STATE_DIR still resolves correctly. No config key:
+// file-presence is the opt-in, exactly like preset.mts. This is a CONSTANT, not built from
+// any request field, so the /assets/theme.css route below has no request-path input to abuse.
+const THEME_CSS_PATH = join(PROJECT_DIR, stateDirName(), 'tracker', 'visualizer', 'theme.css');
 
 // Orphan guard. This server is a child of the `ztrack visualizer` wrapper, which
 // awaits it and is meant to bound its lifetime; the wrapper kills us on its own
@@ -210,7 +218,8 @@ const SHELL = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tracker · core</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324262d'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='11' font-weight='700' fill='white'%3E◆%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="/assets/styles.css"></head>
+<link rel="stylesheet" href="/assets/styles.css">
+<link rel="stylesheet" href="/assets/theme.css"></head>
 <body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>`;
 
 const server = Bun.serve({
@@ -225,6 +234,16 @@ const server = Bun.serve({
     }
     if (url.pathname === '/assets/styles.css') {
       return new Response(Bun.file(new URL('./client/styles.css', import.meta.url)), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+    }
+    if (url.pathname === '/assets/theme.css') {
+      // Read PER REQUEST (no memo) so an edit to the repo-local file shows on the next reload —
+      // unlike /assets/app.js this file is cheap to stat+read and has no build step. The
+      // /project/ route (below) can't serve this: it blocks dot-segments (see projectFile) and
+      // theme.css lives under the dotdir state root, so this dedicated route exists instead.
+      // THEME_CSS_PATH is a fixed constant, not derived from the request, so there is no
+      // request-path input for a traversal to act on.
+      if (!existsSync(THEME_CSS_PATH)) return new Response('', { status: 404 });
+      return new Response(Bun.file(THEME_CSS_PATH), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
     }
     if (url.pathname.startsWith('/project/')) {
       const p = projectFile(url.pathname);

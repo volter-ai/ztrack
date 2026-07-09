@@ -22,6 +22,6 @@ export async function resolvePreset(name) {
 // preset is resolved from the repo's tracker-config `validation.entrypoint` (so repo-local
 // presets load), and issues are read via the configured backend. Reuse — do not duplicate —
 // these so the visualizer can never drift from the check pipeline.
-export { loadTrackerConfig, cacheRoot } from '../src/config.ts';
+export { loadTrackerConfig, cacheRoot, stateDirName } from '../src/config.ts';
 export { resolveTrackerValidation } from '../src/presetRegistry.ts';
 export { loadValidationInput } from '../src/core/loader.ts';
