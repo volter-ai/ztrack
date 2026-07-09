@@ -41,7 +41,7 @@ const PROJECT_DIR = (process.env.PROJECT_DIR ?? process.cwd()).replace(/\/$/, ''
 const PRESET = process.env.PRESET ?? 'default';
 const TRACKER_DIR = join(PROJECT_DIR, 'tracker');
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
-let clientBundle: Promise<string> | null = null;
+let clientBundle: Promise<{ text: string; extensionError?: string }> | null = null;
 
 // Optional repo-local theme override (VIZ-6) — fixed conventional path beside the preset
 // (`<stateDir>/tracker/visualizer/theme.css`), derived via stateDirName() (never hardcode
@@ -104,6 +104,25 @@ function documents(preset: string): string[] {
 // pipeline the CLI runs. Returns null when there is no tracker-config to honor
 // (e.g. a bare markdown/speckit dir), so the caller falls back to per-document.
 async function configuredBoard(): Promise<{ preset: unknown; presetName: string; issues: unknown[]; findings: unknown[] } | null> {
+  const resolved = await resolveActivePreset();
+  if (!resolved) return null;
+  const { preset, presetName } = resolved;
+  const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
+  const r = check(preset, records, context);
+  return {
+    preset,
+    presetName,
+    issues: r.export ? [...r.export.issues] : [],
+    findings: [...r.findings],
+  };
+}
+
+// Preset resolution ONLY (no check/loadValidationInput) — shared by `configuredBoard` (which
+// goes on to check()) and the VIZ-13 bundle build (which only needs the RUNNING preset's name, to
+// register the repo extension under it, VIZ-4's per-member merge). Returns null exactly when
+// `configuredBoard` would: no tracker-config, so the caller falls back to the legacy per-document
+// preset/name (`resolvePreset(PRESET)`).
+async function resolveActivePreset(): Promise<{ preset: unknown; presetName: string } | null> {
   let config: { validation?: { entrypoint?: string } };
   try {
     config = loadTrackerConfig(PROJECT_DIR);
@@ -122,14 +141,18 @@ async function configuredBoard(): Promise<{ preset: unknown; presetName: string;
   const preset = entrypoint
     ? await resolveTrackerValidation(config, PROJECT_DIR) // async (dynamic-imports preset.mts) — MUST await, or `preset` is a Promise and check sees no parse()
     : await resolvePreset(PRESET);
-  const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
-  const r = check(preset, records, context);
-  return {
-    preset,
-    presetName: preset.name ?? PRESET,
-    issues: r.export ? [...r.export.issues] : [],
-    findings: [...r.findings],
-  };
+  return { preset, presetName: preset.name ?? PRESET };
+}
+
+// The RUNNING preset's canonical name, whichever load path produced it (configured entrypoint or
+// the legacy `--preset`/env fallback) — mirrors board()'s own preset-name derivation exactly, so
+// the repo extension (VIZ-13) always registers under the SAME name `buildEffectiveExtension`
+// (client/extensions.tsx) looks up per render.
+async function activePresetName(): Promise<string> {
+  const resolved = await resolveActivePreset();
+  if (resolved) return resolved.presetName;
+  const preset = await resolvePreset(PRESET);
+  return (preset as { name?: string }).name ?? PRESET;
 }
 
 // VIZ-3: the preset's optional `visualizer` block (VIZ-1's data vocabulary) rides the board
@@ -192,12 +215,21 @@ async function board() {
   // VIZ-3: validated pass-through of the preset's dashboard vocabulary (VIZ-1) — see
   // resolveVisualizerBlock above for the validate-or-null-plus-error contract.
   const { visualizer, visualizerError } = resolveVisualizerBlock(preset);
+  // VIZ-13: surface a repo extension.tsx build failure (failure-isolation retry, see
+  // getClientBundle) as a payload field the client renders as a notice — independent of whether
+  // /assets/app.js has actually been fetched yet (board() drives its own bundle-status check so
+  // `/api/board` reflects the current extension state even when hit before the SPA shell loads).
+  // A confinement refusal (resolveExtensionPath below) is NOT surfaced here — it is a hard 500 on
+  // /assets/app.js itself (dev/05), not a degrade-and-notify case.
+  let extensionError: string | undefined;
+  try { extensionError = (await getClientBundle()).extensionError; } catch { /* confinement or a build failure even without the extension — /assets/app.js itself reports it */ }
   return {
     title: 'tracker',
     preset: presetName,
     primitives: (preset as { primitives?: Record<string, unknown> }).primitives ?? {}, // which primitives this SDLC implements
     visualizer,
     visualizerError, // JSON.stringify drops this key entirely when undefined (the no-error case)
+    extensionError, // ditto — VIZ-13's repo-extension compile-error notice
     projectDir: PROJECT_DIR,
     fetchedAt: new Date().toISOString(),
     trackerChangedAt: mtime,
@@ -235,11 +267,47 @@ function contentType(p: string): string {
 // (`client/presets/*.tsx`, filename = canonical preset name, mirroring the boilerplates
 // two-file convention) are wired into ONE generated synthetic entry module that registers each
 // found extension and then imports main.tsx, passed as the SINGLE Bun.build entrypoint.
-// (VIZ-13 extends this same generated entry with the repo-local `extension.tsx` — clean seam,
-// not implemented here: it would scan the fixed `<stateDir>/tracker/visualizer/extension.tsx`
-// path here too and add one more import+register line, layered OVER the first-party ones below.)
+// VIZ-13 extends this same generated entry with the repo-local `extension.tsx`, registered under
+// the RUNNING preset's own name so it layers OVER (not replaces) a first-party entry — see
+// registerExtension's per-member merge, client/extensions.tsx.
 const CLIENT_DIR = new URL('./client/', import.meta.url).pathname;
 const PRESETS_DIR = join(CLIENT_DIR, 'presets');
+
+// VIZ-13: the repo-owned extension — fixed conventional path beside preset.mts/theme.css (no
+// config key; file-presence is the opt-in, exactly like theme.css/VIZ-6). Derived via
+// stateDirName() (src/config.ts) — never hardcode `.volter/`, mirroring THEME_CSS_PATH above.
+const EXTENSION_TSX_PATH = join(PROJECT_DIR, stateDirName(), 'tracker', 'visualizer', 'extension.tsx');
+
+// A confinement refusal (resolveExtensionPath, below) is a distinct error class from a build
+// failure — it must NOT be caught by the failure-isolation retry (a malformed extension rebuilds
+// WITHOUT it; an extension resolved from OUTSIDE the project is refused outright, same trust
+// posture as presetRegistry.ts's loadValidationEntrypoint confinement check).
+class ExtensionConfinementError extends Error {}
+
+// Realpath the resolved conventional path and require containment inside the project root,
+// mirroring presetRegistry.ts:127-130 (which guards a symlinked state dir the same way). Unlike
+// that check (guarding a user-configured `validation.entrypoint` string), this path is a fixed
+// constant — the only way it can escape is a symlink somewhere along `<stateDir>/tracker/
+// visualizer/` itself pointing outside the project, so a plain `resolve()`+`startsWith()` on the
+// UNRESOLVED path (which a symlink would sail through unchanged) isn't enough; realpath resolves
+// the symlink first. Returns null when the file is simply absent (the normal, opt-out case — not
+// an error).
+function resolveExtensionPath(): string | null {
+  if (!existsSync(EXTENSION_TSX_PATH)) return null;
+  let real: string;
+  try { real = realpathSync(EXTENSION_TSX_PATH); } catch { return null; } // vanished between the existsSync check and here
+  const root = realpathSync(PROJECT_DIR);
+  if (real !== root && !real.startsWith(root + sep)) {
+    throw new ExtensionConfinementError(
+      `ztrack visualizer: the repo extension must live inside the project — '${EXTENSION_TSX_PATH}' resolves to '${real}', outside '${root}'.`,
+    );
+  }
+  return real;
+}
+
+function extensionMtimeMs(): number | null {
+  try { return statSync(EXTENSION_TSX_PATH).mtimeMs; } catch { return null; } // absent, or a dangling symlink — treated as "no extension" here (resolveExtensionPath is the source of truth for confinement)
+}
 
 function scanFirstPartyExtensions(): Array<{ name: string; file: string }> {
   if (!existsSync(PRESETS_DIR)) return [];
@@ -249,40 +317,125 @@ function scanFirstPartyExtensions(): Array<{ name: string; file: string }> {
     .sort((a, b) => a.name.localeCompare(b.name)); // stable generated-file ordering
 }
 
+// react/jsx aliasing (VIZ-13): the repo extension lives OUTSIDE this visualizer's own directory
+// tree (under the REPO's state dir), so Bun's node-resolution walk-up would never reach
+// `visualizer/node_modules/react` for it the way it does for first-party `client/**` modules —
+// a repo extension author should not need to install react (src/cli.ts:231-236 already installed
+// it here, once, for the visualizer itself). Applied to EVERY build, not just when a repo
+// extension is present, so first-party presets/main.tsx resolve to the exact SAME react instance
+// (never two copies in one bundle).
+const VIZ_NODE_MODULES = join(here, 'node_modules');
+const REACT_ALIAS_TARGETS: Record<string, string> = {
+  react: join(VIZ_NODE_MODULES, 'react', 'index.js'),
+  'react-dom': join(VIZ_NODE_MODULES, 'react-dom', 'index.js'),
+  'react-dom/client': join(VIZ_NODE_MODULES, 'react-dom', 'client.js'),
+  'react/jsx-runtime': join(VIZ_NODE_MODULES, 'react', 'jsx-runtime.js'),
+  'react/jsx-dev-runtime': join(VIZ_NODE_MODULES, 'react', 'jsx-dev-runtime.js'),
+};
+const reactAliasPlugin = {
+  name: 'ztrack-react-alias',
+  setup(build) {
+    build.onResolve({ filter: /^react(-dom)?(\/(jsx-runtime|jsx-dev-runtime|client))?$/ }, (args) => {
+      const target = REACT_ALIAS_TARGETS[args.path];
+      return target ? { path: target } : undefined;
+    });
+  },
+};
+
 // Written to a WRITABLE scratch location (cacheRoot — for a linked tracker this resolves to
 // `<git-common-dir>/ztrack`, possibly outside this worktree, src/config.ts:76-82) rather than
 // anywhere under the client tree itself, since imports inside it must be absolute paths anyway
 // (the file may not live near what it imports). Regenerated on every fresh bundle build (i.e.
 // whenever the `clientBundle` memo is empty) — cheap, and keeps the registered set in sync with
-// whatever is on disk right now.
-function writeGeneratedEntry(): string {
+// whatever is on disk right now. `repoExt` is omitted entirely for the FAILURE-ISOLATION retry
+// build (getClientBundle) — the generated module is then byte-identical to the no-extension case
+// modulo the first-party set, which is exactly VIZ-13 dev/02's assertion.
+function writeGeneratedEntry(repoExt: { path: string; presetName: string } | null): string {
   const extensions = scanFirstPartyExtensions();
   const dir = join(cacheRoot(PROJECT_DIR), 'visualizer');
   mkdirSync(dir, { recursive: true });
   const entryPath = join(dir, 'generated-entry.ts');
   const lines: string[] = [
-    '// AUTO-GENERATED by visualizer/server.ts (VIZ-4) — regenerated on every client bundle build. Do not edit.',
+    '// AUTO-GENERATED by visualizer/server.ts (VIZ-4/VIZ-13) — regenerated on every client bundle build. Do not edit.',
     `import { registerExtension } from ${JSON.stringify(join(CLIENT_DIR, 'extensions.tsx'))};`,
   ];
   extensions.forEach((e, i) => lines.push(`import ext${i} from ${JSON.stringify(e.file)};`));
   extensions.forEach((e, i) => lines.push(`registerExtension(${JSON.stringify(e.name)}, ext${i});`));
+  if (repoExt) {
+    // Registered under the RUNNING preset's own canonical name — layers OVER a first-party entry
+    // of the same name via registerExtension's per-member merge (client/extensions.tsx): a repo
+    // member wins per member, precedence data < first-party < repo (spec §2 layer 2).
+    lines.push(`import repoExt from ${JSON.stringify(repoExt.path)};`);
+    lines.push(`registerExtension(${JSON.stringify(repoExt.presetName)}, repoExt);`);
+  }
   lines.push(`import ${JSON.stringify(join(CLIENT_DIR, 'main.tsx'))};`);
   writeFileSync(entryPath, lines.join('\n') + '\n');
   return entryPath;
 }
 
-async function getClientBundle(): Promise<string> {
+async function runBuild(repoExt: { path: string; presetName: string } | null): Promise<string> {
+  const result = await Bun.build({
+    entrypoints: [writeGeneratedEntry(repoExt)],
+    target: 'browser',
+    sourcemap: 'inline',
+    plugins: [reactAliasPlugin],
+  });
+  // On Bun 1.3 a failing build normally THROWS (an AggregateError of BuildMessage/ResolveMessage)
+  // rather than resolving `{ success: false }` — reviewer-reproduced, verified again here (see
+  // the `.catch` in getClientBundle, which is what actually observes that thrown form). This
+  // `{ success: false }` branch stays as a defensive fallback for whichever Bun releases DO
+  // resolve it that way, so both forms are handled by ONE translation path either way.
+  if (!result.success) throw new Error(result.logs.map((l) => l.message).join('\n') || 'client build failed');
+  return result.outputs[0]!.text();
+}
+
+// Turn a raw Bun.build failure (thrown AggregateError, or the defensive `{success:false}` Error
+// above) into the SAME `npm install -D ztrack` translation the preset loader gives
+// (presetRegistry.ts:110-115) when the failure is specifically an unresolvable
+// 'ztrack/visualizer-kit' — Bun's own resolver message is
+// `Could not resolve: "ztrack/visualizer-kit". Maybe you need to "bun install"?` (verified
+// empirically). Any other build failure (a syntax error, a bad JSX tag, …) is reported as-is,
+// prefixed with which file it came from.
+function translateExtensionBuildError(err: unknown, extPath: string): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const messages = (err && typeof err === 'object' && Array.isArray((err as { errors?: unknown }).errors))
+    ? (err as { errors: Array<{ message?: string }> }).errors.map((e) => e.message ?? '').join('\n')
+    : raw;
+  if (/Could not resolve:\s*"ztrack\/visualizer-kit"|Cannot find package ['"]ztrack['"]|Cannot find module ['"]ztrack/.test(messages)) {
+    return (
+      `The visualizer extension (${extPath}) imports 'ztrack/visualizer-kit', but the 'ztrack' package isn't resolvable from this project. `
+      + `Install it as a dependency so the extension can load it:\n\n    npm install -D ztrack\n\n`
+      + `(ztrack works like eslint — the extension is your dashboard mod and imports the mechanism from the installed package; a global or one-off 'npx' install is not enough.)`
+    );
+  }
+  return `The visualizer extension (${extPath}) failed to compile:\n\n${messages}`;
+}
+
+// mtime-keyed memo invalidation (VIZ-13): `Bun.build` re-reads source files fresh from disk on
+// every call, so a plain mtime check on the ONE file that can silently change between builds
+// (the repo extension — first-party `client/presets/*.tsx` changes only in dev-on-this-repo,
+// which restarts the process anyway) is sufficient to keep the memo honest; no restart needed.
+let lastExtensionMtime: number | null | undefined; // undefined = not checked yet (forces the first build)
+
+async function getClientBundle(): Promise<{ text: string; extensionError?: string }> {
+  const mtime = extensionMtimeMs();
+  if (mtime !== lastExtensionMtime) { clientBundle = null; lastExtensionMtime = mtime; }
   if (!clientBundle) {
-    clientBundle = Promise.resolve()
-      .then(() => Bun.build({
-        entrypoints: [writeGeneratedEntry()],
-        target: 'browser',
-        sourcemap: 'inline',
-      }))
-      .then((result) => {
-        if (!result.success) throw new Error(result.logs.map((l) => l.message).join('\n') || 'client build failed');
-        return result.outputs[0]!.text();
-      }).catch((error) => { clientBundle = null; throw error; });
+    clientBundle = (async () => {
+      const extPath = resolveExtensionPath(); // throws ExtensionConfinementError — NOT isolated, propagates as-is
+      if (!extPath) return { text: await runBuild(null) };
+      const presetName = await activePresetName();
+      try {
+        return { text: await runBuild({ path: extPath, presetName }) };
+      } catch (err) {
+        // FAILURE ISOLATION (VIZ-13): a malformed extension, or one whose own
+        // 'ztrack/visualizer-kit' import doesn't resolve, must not take the board down — rebuild
+        // WITHOUT it and surface the (translated) error as a payload/notice field instead.
+        const extensionError = translateExtensionBuildError(err, extPath);
+        const text = await runBuild(null); // truly broken even without the extension -> propagates, no further isolation
+        return { text, extensionError };
+      }
+    })().catch((error) => { clientBundle = null; throw error; });
   }
   return clientBundle;
 }
@@ -302,7 +455,7 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === '/assets/app.js') {
-      try { return new Response(await getClientBundle(), { headers: { 'Content-Type': 'text/javascript; charset=utf-8', ...NO_STORE } }); }
+      try { return new Response((await getClientBundle()).text, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', ...NO_STORE } }); }
       catch (e) { return new Response(String(e), { status: 500 }); }
     }
     if (url.pathname === '/assets/styles.css') {
