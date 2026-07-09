@@ -17,6 +17,25 @@ describe('VisualizerSpecSchema (VIZ-1 dev/03)', () => {
     expect(result.success).toBe(true);
   });
 
+  test('accepts a block omitting acText entirely — every field mapping is optional (spec/speckit need not fake one)', () => {
+    const good = {
+      statusOrder: ['draft', 'in-review', 'done'],
+      acUnitLabel: 'ACs',
+    };
+    const result = VisualizerSpecSchema.safeParse(good);
+    expect(result.success).toBe(true);
+  });
+
+  test("accepts an acText omitting version — only simple-sdlc's AC schema HAS a version field", () => {
+    const good = {
+      statusOrder: ['draft', 'in-review', 'done'],
+      acUnitLabel: 'User Stories',
+      acText: { id: 'id', text: 'text' },
+    };
+    const result = VisualizerSpecSchema.safeParse(good);
+    expect(result.success).toBe(true);
+  });
+
   test('rejects a block with a function-valued member (the hard boundary)', () => {
     const bad = {
       statusOrder: ['draft', 'done'],

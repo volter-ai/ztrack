@@ -383,9 +383,10 @@ export interface PresetContextInput {
 // the `VisualizerExtension` code seam (VIZ-13/VIZ-14) — which this contract deliberately cannot
 // express (no statusOrder/acUnitLabel/field-mapping members there, by construction).
 const VisualizerAcTextSchema = z.object({
-  id: z.string(),      // AC field holding its id, e.g. "id"
-  text: z.string(),    // AC field holding its prose text, e.g. "text"
-  version: z.string(), // AC field holding its version number, e.g. "version"
+  id: z.string(),                 // AC field holding its id, e.g. "id"
+  text: z.string(),               // AC field holding its prose text, e.g. "text"
+  version: z.string().optional(), // AC field holding its version number, e.g. "version" — optional:
+                                  // only simple-sdlc's AC schema HAS one (spec/speckit don't)
 }).strict();
 
 const VisualizerPrSchema = z.object({
@@ -415,7 +416,7 @@ export const VisualizerSpecSchema = z.object({
   statusClass: z.record(z.string(), z.string()).optional(), // status -> css class; omitted = identity
   assignee: z.string().optional(),            // issue field holding the assignee string, e.g. "assignee"
   pr: VisualizerPrSchema.optional(),          // issue field(s) holding the PR link
-  acText: VisualizerAcTextSchema,             // AC fields for the label (id + text + version)
+  acText: VisualizerAcTextSchema.optional(),  // AC fields for the label (id + text [+ version]); omitted = core default rendering
   acProof: VisualizerAcProofSchema.optional(),       // AC's proof sub-object field names
   acEvidence: VisualizerAcEvidenceSchema.optional(), // AC's evidence-array field names
 }).strict();
