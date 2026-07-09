@@ -10,7 +10,7 @@
 // extension.
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, join, normalize, sep } from 'node:path';
+import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Resolve the ztrack core. In a repo checkout (src/*.ts present) import the
@@ -32,6 +32,8 @@ const {
   stateDirName,
   resolveTrackerValidation,
   loadValidationInput,
+  VisualizerSpecSchema,
+  bustPresetCacheIfChanged,
 } = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
@@ -110,7 +112,14 @@ async function configuredBoard(): Promise<{ preset: unknown; presetName: string;
   }
   // Honor validation.entrypoint exactly as check does; fall back to the core
   // registry by the requested preset name only when no entrypoint is configured.
-  const preset = config.validation?.entrypoint?.trim()
+  const entrypoint = config.validation?.entrypoint?.trim();
+  // VIZ-3 live loop: bust the ESM import cache for the REPO's own preset.mts when its mtime has
+  // moved since the last resolution (resolveTrackerValidation/presetRegistry.ts:117 imports this
+  // exact `resolve(projectRoot, entrypoint)` path — recomputed here since the resolver keeps its
+  // absolute path private). Without this, board() re-resolves the preset every request but Bun's
+  // import cache silently serves the stale module (verified) — see bustPresetCacheIfChanged.
+  if (entrypoint) bustPresetCacheIfChanged(resolve(PROJECT_DIR, entrypoint));
+  const preset = entrypoint
     ? await resolveTrackerValidation(config, PROJECT_DIR) // async (dynamic-imports preset.mts) — MUST await, or `preset` is a Promise and check sees no parse()
     : await resolvePreset(PRESET);
   const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
@@ -121,6 +130,22 @@ async function configuredBoard(): Promise<{ preset: unknown; presetName: string;
     issues: r.export ? [...r.export.issues] : [],
     findings: [...r.findings],
   };
+}
+
+// VIZ-3: the preset's optional `visualizer` block (VIZ-1's data vocabulary) rides the board
+// payload, but ONLY validated — `assertCorePreset` (presetRegistry.ts) checks just
+// name/schema/parse/rules, so a typo'd user block would otherwise reach the renderer unchecked.
+// Pass-through ONLY: no synthesis, no fallback lookup, no list. Absent block -> `null`, no error.
+// A block that fails `VisualizerSpecSchema` -> `null` plus a `visualizerError` naming the zod
+// issue path; the raw invalid data never ships.
+function resolveVisualizerBlock(preset: unknown): { visualizer: unknown; visualizerError?: string } {
+  const raw = (preset as { visualizer?: unknown } | null)?.visualizer;
+  if (raw === undefined) return { visualizer: null };
+  const parsed = VisualizerSpecSchema.safeParse(raw);
+  if (parsed.success) return { visualizer: parsed.data };
+  const issue = parsed.error.issues[0];
+  const path = issue && issue.path.length ? issue.path.join('.') : '(root)';
+  return { visualizer: null, visualizerError: `visualizer.${path}: ${issue?.message ?? 'invalid visualizer block'}` };
 }
 
 async function board() {
@@ -164,10 +189,15 @@ async function board() {
     if (es.length) audit[i.id] = es;
     timestamps[i.id] = timestampsFor(auditAll, i.id);
   }
+  // VIZ-3: validated pass-through of the preset's dashboard vocabulary (VIZ-1) — see
+  // resolveVisualizerBlock above for the validate-or-null-plus-error contract.
+  const { visualizer, visualizerError } = resolveVisualizerBlock(preset);
   return {
     title: 'tracker',
     preset: presetName,
     primitives: (preset as { primitives?: Record<string, unknown> }).primitives ?? {}, // which primitives this SDLC implements
+    visualizer,
+    visualizerError, // JSON.stringify drops this key entirely when undefined (the no-error case)
     projectDir: PROJECT_DIR,
     fetchedAt: new Date().toISOString(),
     trackerChangedAt: mtime,
