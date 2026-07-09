@@ -173,7 +173,10 @@ export async function resolveTrackerValidation(config: TrackerConfig, projectRoo
 // required, and a preset that shapes `status` as something other than a plain `z.enum` (e.g. a
 // bare `z.string()`) simply has no enum to check here, which is intentionally indistinguishable
 // from "no validation entrypoint configured": both mean "this write path stays permissive".
-function issueStatusEnumOf(preset: Preset<CoreRoot>): string[] | null {
+// Exported (VIZ-2) so the visualizer-vocabulary guard test (boilerplates/presets/*) can assert a
+// preset's `visualizer.statusOrder` equals THIS SAME introspection rather than forking a second,
+// drift-prone copy of the zod duck-typing below.
+export function issueStatusEnumOf(preset: Preset<CoreRoot>): string[] | null {
   try {
     const shape = (preset.schema as unknown as { shape?: Record<string, unknown> }).shape;
     const issuesField = shape?.issues as { element?: { shape?: Record<string, unknown> } } | undefined;

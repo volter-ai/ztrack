@@ -16,13 +16,22 @@ customizes ztrack — see [docs/PRESETS.md § Building or extending a preset](..
 
 ## Adding a preset
 
-A preset is **two co-located files** in `boilerplates/presets/`. Drop both; nothing
-else needs editing — `ztrack init`, `--list`, `--preset` validation, and the
-visualizer all discover presets by scanning this directory.
+A preset is **two co-located files** in `boilerplates/presets/`, and the `.ts` file
+**exports a `visualizer` block**. Drop the two files; nothing else needs editing —
+`ztrack init`, `--list`, `--preset` validation, and the visualizer all discover
+presets by scanning this directory.
 
 1. **`<name>.ts`** — the standalone preset (schema/parser/serialize/rules), importing
    only `ztrack/preset-kit`. Its exported `name` field **must equal the filename**
    `<name>`. See [docs/PRESETS.md § Building or extending a preset](../docs/PRESETS.md#building-or-extending-a-preset-maintainers) and the existing presets as the bar to copy.
+
+   Its default export **must also carry a `visualizer` block** (typed `VisualizerSpec`,
+   `ztrack/preset-kit`) — the dashboard's vocabulary as plain data: status order, what an
+   AC is called, and which fields hold the assignee/PR/AC text/proof/evidence. Map only
+   the fields your schema actually has (see the shipped presets — `spec.ts`, `speckit.ts` —
+   for how a smaller schema maps a smaller subset). `statusOrder` must equal your schema's
+   own issue-status enum; `boilerplates/presets/visualizerVocabulary.test.ts` guards both
+   the block's presence and that equality.
 
 2. **`<name>.json`** — the manifest sidecar:
 
@@ -44,8 +53,12 @@ visualizer all discover presets by scanning this directory.
 `boilerplates/presets/presetManifest.test.ts` guards these invariants (every `.ts`
 has a `.json`, exactly one `recommended`, aliases unique/non-colliding, the
 preset's `name` matches its filename), so a missing or mismatched manifest fails CI.
-(Enforcement is at **CI/test time** — run the repo test suite. `ztrack init` does not
-re-validate a hand-edited boilerplate, so a `name` ≠ filename mismatch installs silently.)
+`boilerplates/presets/visualizerVocabulary.test.ts` guards the `visualizer` block
+described above (every preset has one; its `statusOrder` equals the schema's
+issue-status enum), so a missing block or a status renamed on one side only also
+fails CI. (Enforcement is at **CI/test time** — run the repo test suite. `ztrack init`
+does not re-validate a hand-edited boilerplate, so a `name` ≠ filename mismatch or a
+stale `visualizer` block installs silently.)
 
 There is intentionally **no central list** of presets anywhere in the codebase — do
 not reintroduce one (a hardcoded enum/array/map is the bug this design removes).

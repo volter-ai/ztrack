@@ -11,7 +11,7 @@
 import {
   z, toMdast, nodeText, type MdNode,
   check as runCheck, rule, gitWorld,
-  type Context, type IssueColumns, type IssueRecord, type Preset,
+  type Context, type IssueColumns, type IssueRecord, type Preset, type VisualizerSpec,
 } from 'ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
@@ -139,9 +139,27 @@ const SPEC_RULES = [
   }),
 ];
 
+// ── the dashboard's vocabulary (VIZ-2), as plain data ────────────────────────────────────────
+// spec's OWN vocabulary — NOT simple-sdlc's default.tsx vocabulary, which this preset's schema
+// doesn't share: a 3-state lifecycle (no ready/in-progress split), no assignee, no PR, and an AC
+// with just id/text (no version, no proof, no image/acVersion-bearing evidence — see
+// SpecAcSchema/SpecEvidenceSchema above). Only map fields this schema actually has; a mapping
+// this preset can't back with a real field (pr, acProof, acEvidence) is simply omitted. Field
+// references and literal labels ONLY (see `VisualizerSpec`, `ztrack/preset-kit`) — no functions,
+// no markup. Installed into your repo verbatim: edit freely, keeping statusOrder in sync with
+// SpecIssueStatusSchema above (`boilerplates/presets/visualizerVocabulary.test.ts` checks that).
+const SPEC_VISUALIZER: VisualizerSpec = {
+  statusOrder: ['draft', 'in-review', 'done'], // must equal SpecIssueStatusSchema above
+  acUnitLabel: 'Acceptance Criteria',
+  acText: { id: 'id', text: 'text' },          // SpecAcSchema.{id,text} — no `version` field to map
+  // no assignee/pr: SpecIssueSchema has neither. No acProof: SpecAcSchema has no proof field.
+  // No acEvidence: SpecEvidenceSchema is only {id, commit} — no image/acVersion fields to map.
+};
+
 export const SpecPreset: Preset<SpecRoot> = {
   name: 'spec',
   schema: SpecRootSchema,
+  visualizer: SPEC_VISUALIZER,
   // observed facts: commit existence (no PR model in this preset).
   loadContext: (input) => gitWorld(input.projectRoot, [], { verifyCommits: input.verifyCommits }),
   parse: parseSpec,

@@ -87,4 +87,41 @@ describe('ztrack preset upgrade (3-way merge)', () => {
       expect(upgradeTrackerPreset(root).status).toBe('no-base');
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+
+  // VIZ-2 dev/04 — upgrade parity: a user's edit to the INSTALLED visualizer block (they append
+  // a custom status their team uses) must survive `ztrack preset upgrade` exactly like any other
+  // local edit to the preset — same 3-way merge, no special-casing. Same simulate-an-older-base
+  // technique as the tests above (rewrite the base with the OLD form of an unrelated line so the
+  // CURRENT bundled template plays "new upstream" with no repo file mutated), but this time the
+  // LOCAL edit lands on the visualizer's statusOrder line specifically.
+  test("preserves a user's edit to the visualizer block (appended status) across an upstream change", () => {
+    const root = tempProject();
+    try {
+      const ep = trackerValidationEntrypointPath(root);
+      const bp = trackerValidationBasePath(root);
+      const current = readFileSync(ep, 'utf8');
+      expect(current).toContain(NEW); // sanity: current template has the new form (unrelated line)
+      const VIZ_LINE = "statusOrder: ['draft', 'ready', 'in-progress', 'in-review', 'done'],";
+      expect(current).toContain(VIZ_LINE); // sanity: the shipped visualizer block is what we think it is
+
+      // simulate having installed an OLDER version (unrelated rule renamed since): base + our
+      // file carried OLD on that line.
+      const old = current.replace(NEW, OLD);
+      writeFileSync(bp, old);
+      // the user's local edit: append a custom status to the INSTALLED visualizer block — a
+      // different line from the one the simulated upstream change touches, so this is a clean,
+      // non-overlapping 3-way merge (the same shape real teams hit: they add a `blocked` column).
+      const editedVizLine = "statusOrder: ['draft', 'ready', 'in-progress', 'in-review', 'blocked', 'done'],";
+      const ours = old.replace(VIZ_LINE, editedVizLine);
+      writeFileSync(ep, ours);
+
+      const r = upgradeTrackerPreset(root);
+      expect(['updated', 'conflicts']).toContain(r.status);
+
+      const merged = readFileSync(ep, 'utf8');
+      expect(merged).toContain(NEW);            // upstream change applied
+      expect(merged).toContain("'blocked'");    // the user's appended status survived the merge
+      expect(merged).toContain(editedVizLine);  // the whole edited line, verbatim, survived
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
 });
