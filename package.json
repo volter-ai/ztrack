@@ -43,6 +43,10 @@
       "require": "./dist/preset-kit.cjs",
       "default": "./dist/src/presetKit.js"
     },
+    "./visualizer-kit": {
+      "types": "./dist/src/visualizerKit.d.ts",
+      "default": "./dist/src/visualizerKit.js"
+    },
     "./check": {
       "types": "./dist/src/check.d.ts",
       "default": "./dist/src/check.js"
@@ -78,7 +82,8 @@
   },
   "peerDependencies": {
     "@volter-ai-dev/twin": "^0.1.0",
-    "@volter-ai-dev/twin-github": "^0.1.0"
+    "@volter-ai-dev/twin-github": "^0.1.0",
+    "react": "^18.3.1"
   },
   "peerDependenciesMeta": {
     "@volter-ai-dev/twin": {
@@ -86,11 +91,15 @@
     },
     "@volter-ai-dev/twin-github": {
       "optional": true
+    },
+    "react": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@types/bun": "^1.2.20",
     "@types/node": "^24.0.0",
+    "@types/react": "^18.3.0",
     "@volter-ai-dev/twin": "^0.1.0",
     "@volter-ai-dev/twin-github": "^0.1.0",
     "typescript": "^5.9.0"

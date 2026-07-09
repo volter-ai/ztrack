@@ -22,6 +22,20 @@ export interface Timestamps { created?: string; updated?: string; stateSince?: s
 // build and does not import src/ types directly). Field references + literal labels only — no
 // functions, no markup (the server validates this shape at board time, VIZ-3; a malformed block
 // never reaches here — it ships as `visualizer: null` + `visualizerError` instead).
+//
+// VIZ-14 tried making this a `import type { Payload } from '../../src/visualizerKit.ts'`
+// re-export instead (one authored copy). It does NOT work under this file's real typecheck (CI
+// runs `bunx tsc --noEmit -p visualizer/tsconfig.json` — this tree is real-checked, only
+// `server.ts`/`serverCore.ts` are `@ts-nocheck`): `visualizerKit.ts` re-exports `VisualizerSpec`
+// from `src/core/engine.ts`, which imports `node:crypto`; `visualizer/tsconfig.json` has no
+// `"node"` in its `types` array (by design — it's a DOM/react client program, not a Node one),
+// so the transitive type-check fails with "Cannot find module 'node:crypto'" even though the
+// import is type-only and erases at runtime. Widening `visualizer/tsconfig.json`'s ambient
+// types is out of scope here (VIZ-14's touch list is `src/visualizerKit.ts`, `package.json`,
+// `docs/API.md`, and this file ONLY if the type-only import works). So the mirror stays, and
+// `src/visualizerKit.test.ts`'s "Payload mutual-assignability" guard (VIZ-14 dev/03-adjacent)
+// keeps it honest: it fails `bun test`/`npm run typecheck` if this copy and the kit's
+// authoritative `Payload` ever diverge.
 export interface VisualizerAcText { id: string; text: string; version?: string }
 export interface VisualizerPr { field: string; urlField: string }
 export interface VisualizerAcProof { field: string; explanation: string; evidenceRefs: string }
