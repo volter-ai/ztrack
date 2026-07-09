@@ -14,21 +14,12 @@
 // Precedence: a code member wins where present (VIZ-14's contract), else the data-derived
 // member, else undefined (core renders its own fallback, e.g. bare AC id).
 import type { ReactNode } from 'react';
-import type { CoreAC, CoreIssue, Payload, VisualizerAcEvidence, VisualizerAcProof, VisualizerAcText, VisualizerPr, VisualizerSpec } from './model';
+import type { CoreAC, CoreIssue, Payload, VisualizerAcEvidence, VisualizerAcProof, VisualizerAcText, VisualizerExtension, VisualizerPr, VisualizerSpec } from './model';
 
-// Hand-mirrored render-only surface of `VisualizerExtension` (src/visualizerKit.ts). A type-only
-// import from there does not typecheck under this tree's REAL tsconfig (`visualizer/tsconfig.json`
-// has no "node" ambient types, and visualizerKit.ts transitively re-exports `VisualizerSpec` from
-// `src/core/engine.ts`, which imports `node:crypto`) — the exact issue `model.ts`'s `Payload`
-// mirror already documents. Kept in sync by hand, same convention as every other client-side
-// mirror in this file/`model.ts`.
-export interface VisualizerExtension {
-  statusClass?(status: string): string;
-  acText?(ac: CoreAC): ReactNode;
-  acEvidence?(ac: CoreAC, projectUrl: (path: string) => string): ReactNode;
-  acProof?(ac: CoreAC): ReactNode;
-  issuePanels?(issue: CoreIssue, projectUrl: (path: string) => string): ReactNode;
-}
+// The render-only extension contract lives in `model.ts` beside the other wire mirrors (where
+// `src/visualizerKit.test.ts`'s Equals guard can reach it) — re-exported here so extension
+// modules (`presets/*.tsx`) keep importing it from the seam they register into.
+export type { VisualizerExtension } from './model';
 
 // The one merged shape every render call site in main.tsx consumes — replaces the old
 // `PresetExtension`. `statusOrder`/`acUnitLabel`/`assignee`/`pr` are DATA-only (the code
@@ -52,9 +43,12 @@ const registry = new Map<string, VisualizerExtension>();
 /** Called by the generated bundle entry (server.ts, VIZ-4) once per discovered
  *  `client/presets/<name>.tsx` module — filename is the canonical preset name. VIZ-13 calls
  *  this again for the repo-local extension, registered under the running preset's own name so
- *  it layers over (not replaces) a first-party entry — see that task for the precedence rule. */
+ *  it layers over (not replaces) a first-party entry: repeat registration merges PER MEMBER
+ *  (registration order = precedence, later wins where present), so a repo extension defining
+ *  only `issuePanels` on a speckit repo keeps speckit's shipped `acText`/`acEvidence` — the
+ *  spec's pinned data < first-party < repo precedence is per member, not per object. */
 export function registerExtension(name: string, ext: VisualizerExtension): void {
-  registry.set(name, ext);
+  registry.set(name, { ...registry.get(name), ...ext });
 }
 
 function codeExtensionFor(presetName: string): VisualizerExtension | undefined {

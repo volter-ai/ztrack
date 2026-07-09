@@ -113,4 +113,17 @@ describe('buildEffectiveExtension', () => {
     const withCode = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-preset-panels', visualizer: { statusOrder: [], acUnitLabel: 'x' } })).ext;
     expect(renderToStaticMarkup(<>{withCode.issuePanels?.(issue(), (p) => p)}</>)).toBe('PANEL');
   });
+
+  test('repeat registration merges PER MEMBER — later wins where present, other members survive (VIZ-13 layering seam)', () => {
+    // The VIZ-13 scenario: a first-party extension (e.g. speckit) registers acText + issuePanels;
+    // a repo extension later registers ONLY issuePanels under the same name. Per the spec's
+    // pinned per-member precedence (data < first-party < repo), the repo's issuePanels must win
+    // AND the first-party acText must survive — a wholesale `registry.set` would drop it.
+    registerExtension('viz4-unit-test-preset-merge', { acText: () => 'FIRST-PARTY-ACTEXT', issuePanels: () => 'FIRST-PARTY-PANEL' });
+    registerExtension('viz4-unit-test-preset-merge', { issuePanels: () => 'REPO-PANEL' });
+
+    const { ext } = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-preset-merge', visualizer: { statusOrder: [], acUnitLabel: 'x' } }));
+    expect(renderToStaticMarkup(<>{ext.issuePanels?.(issue(), (p) => p)}</>)).toBe('REPO-PANEL'); // the later (repo) member wins
+    expect(renderToStaticMarkup(<>{ext.acText?.(ac())}</>)).toBe('FIRST-PARTY-ACTEXT'); // the earlier member SURVIVES the re-registration
+  });
 });

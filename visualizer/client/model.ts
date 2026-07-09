@@ -1,6 +1,8 @@
 // The client-side view of the CORE export. Core fields are known; preset-
 // specific fields ride along as extra keys and are rendered by the extension.
 
+import type { ReactNode } from 'react';
+
 export interface CoreEvidence { id: string; [k: string]: unknown }
 export interface CoreAC { id: string; status: string; evidence: CoreEvidence[]; [k: string]: unknown }
 export interface CoreIssue {
@@ -49,6 +51,29 @@ export interface VisualizerSpec {
   acText?: VisualizerAcText;
   acProof?: VisualizerAcProof;
   acEvidence?: VisualizerAcEvidence;
+}
+
+// VIZ-4: hand-mirrored render-only extension contract (mirrors `VisualizerExtension`,
+// src/visualizerKit.ts — the kit's authoritative, published copy). A type-only import from the
+// kit does not typecheck here for the exact reason documented on `VisualizerSpec` above
+// (visualizerKit.ts transitively re-exports from src/core/engine.ts, which imports
+// `node:crypto`; this tsconfig has no "node" ambient types by design). Same convention as every
+// other mirror in this file, and — like `Payload` — kept honest by an EXECUTABLE guard:
+// `src/visualizerKit.test.ts` carries an `Equals<KitVisualizerExtension, ClientVisualizerExtension>`
+// mutual-assignability assertion beside its Payload guard, so `npm run typecheck`/`bun test`
+// fail the moment this copy and the kit's diverge (the guard cannot live in the client test
+// files — they are excluded from every tsconfig and would be inert).
+export interface VisualizerExtension {
+  /** -> css `state-<x>` for the status pill. */
+  statusClass?(status: string): string;
+  /** The AC label, rendered in the detail AC list. */
+  acText?(ac: CoreAC): ReactNode;
+  /** AC evidence thumbnails/links, rendered in the detail AC list. */
+  acEvidence?(ac: CoreAC, projectUrl: (path: string) => string): ReactNode;
+  /** AC proof (explanation + refs), rendered in the detail AC list. */
+  acProof?(ac: CoreAC): ReactNode;
+  /** Preset-specific issue-level panels, rendered inside the issue detail drawer. */
+  issuePanels?(issue: CoreIssue, projectUrl: (path: string) => string): ReactNode;
 }
 
 export interface Payload {
