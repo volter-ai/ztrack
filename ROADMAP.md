@@ -100,13 +100,6 @@ each lands, with the proof that shows it.
 
 **All items complete (0.6.0).**
 
-- [ ] **R7 — Visualizer moddability at preset parity.** The dashboard (`ztrack/visualizer/`)
-  becomes moddable just like the installed presets: a repo-owned vocabulary block in
-  `preset.mts`, a repo-owned `extension.tsx` for custom code panels, and a repo-owned
-  `theme.css` — demonstrated end-to-end and documented at the same depth as `docs/PRESETS.md`.
-  *Proof:* `demos/visualizer-mod.sh` green in CI (custom panel included), `docs/VISUALIZER.md`,
-  and the before/after screenshot pair.
-
 ### Review follow-ups (post-0.6.0, multi-agent review)
 
 Fixed and shipped (0.6.1): a `reason:`/`blocked-by:` parser collision that silently dropped
@@ -143,6 +136,15 @@ viz-only presets. The generic-preset behavioral tests were migrated out of `pres
 into `check-e2e.sh`. (`scopeIntegration.test.ts` stays — it asserts the scope-routing
 integration precisely against the `default` preset, which the generic-preset E2E doesn't
 isolate.)
+
+## Visualizer parity (in progress)
+
+- [ ] **R7 — Visualizer moddability at preset parity.** The dashboard (`ztrack/visualizer/`)
+  becomes moddable just like the installed presets: a repo-owned vocabulary block in
+  `preset.mts`, a repo-owned `extension.tsx` for custom code panels, and a repo-owned
+  `theme.css` — demonstrated end-to-end and documented at the same depth as `docs/PRESETS.md`.
+  *Proof:* `demos/visualizer-mod.sh` green in CI (custom panel included), `docs/VISUALIZER.md`,
+  and the before/after screenshot pair.
 
 ## Non-Goals
 
