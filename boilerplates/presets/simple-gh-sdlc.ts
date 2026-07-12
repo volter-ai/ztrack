@@ -26,6 +26,11 @@ import {
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type ParseDiagnostic, type Preset, type PresetContextInput, type RawBlockRef,
   type VisualizerSpec,
 } from 'ztrack/preset-kit';
+// `execFileSync` for the ONE local git primitive this preset needs beyond the kit's public
+// mechanism (ancestor-reachability — see `isAncestorOfPrHead` below). Not re-exported by
+// `ztrack/preset-kit`, so this preset owns the (tiny, synchronous, stdio-suppressed) shellout
+// directly — same pattern as the kit's own internal `git()` helper (core/gitWorld.ts).
+import { execFileSync } from 'node:child_process';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
@@ -437,6 +442,36 @@ type Evidence = AC['evidence'][number];
 // shas may be short (7+) or full (40); a match is either being a prefix of the other
 const shaMatches = (a: string, b: string) => a.startsWith(b) || b.startsWith(a);
 
+// The repo root the git ancestry check below shells out against — set once per `check` run by
+// `loadContext` (which already receives `input.projectRoot`), read later by the
+// `evidence_sha_stale` rule's `when`. A rule record only sees the derived model (`m`), not the
+// raw `PresetContextInput`, so this is the narrow seam that carries `projectRoot` from
+// loadContext-time to rule-eval-time without widening the strict `Context.git` schema (adding an
+// arbitrary new key there would need a custom `contextSchema` merge of the core's `.strict()`
+// git shape — more surface than one derived boolean warrants). Module-scoped, not a closure
+// param, because `rule<...>()` records are plain data, not functions constructed per-call.
+let gitRepoRootForAncestryCheck: string | undefined;
+
+// Multi-commit evidence honesty check: is `commit` reachable from (an ancestor of, or equal to)
+// the PR head `prHeadSha`? Equality is the degenerate case of ancestry (a commit is its own
+// ancestor), so this SUBSUMES the old `shaMatches` equality check while additionally accepting
+// any earlier commit on the PR's own line of history — the honest shape of a multi-commit cycle
+// (an earlier baseline/dry-run commit, then a later implementation commit, each captured at ITS
+// OWN commit, then merged/landed as one PR) instead of forcing every evidence line to
+// fraudulently claim the final head sha. Fails closed (false) on any git error (short/invalid
+// sha, shallow clone missing the commit, etc.) — the same fail-closed posture as `shaMatches`
+// returning false on a mismatch.
+function isAncestorOfPrHead(commit: string, prHeadSha: string): boolean {
+  if (shaMatches(commit, prHeadSha)) return true; // exact match (either direction, short or full sha) — no shellout needed
+  if (!gitRepoRootForAncestryCheck) return false;
+  try {
+    execFileSync('git', ['-C', gitRepoRootForAncestryCheck, 'merge-base', '--is-ancestor', commit, prHeadSha], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false; // not an ancestor, OR either sha doesn't resolve (unreachable/fabricated commit) — both should fail the gate
+  }
+}
+
 interface RelationProblem { issueId: string; kind: 'missing' | 'reciprocal'; relType: string; target: string }
 interface ProofRefProblem { issueId: string; acId: string; ref: string }
 
@@ -563,9 +598,17 @@ const DEFAULT_RULES = [
     message: ({ issue }) => `Issue ${issue.id} has evidence but the PR head sha is unknown.`,
   }),
   rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; issue: Issue; ev: Evidence }>({
+    // ANCESTOR, not EQUALITY: an evidence commit must be reachable from the PR head (equal to it,
+    // or one of its ancestors on the merged line of history) — not necessarily equal to it. This
+    // lets honest multi-commit evidence (e.g. an earlier baseline/dry-run commit and a later
+    // implementation commit, each captured at the moment it happened) pass once the PR/issue
+    // carries a `PR:` line pointing at the eventual head, instead of forcing every earlier
+    // evidence line to lie about having been captured at the final head sha. Fabricated/
+    // unreachable shas (not an ancestor of the head, and not the head itself) still fail — see
+    // `isAncestorOfPrHead`.
     code: 'evidence_sha_stale', select: (m) => m.evidence,
-    when: ({ issue, ev }, m) => { const h = issue.pr && m.context.git?.prs?.[issue.pr.url]?.headSha; return !!h && !shaMatches(ev.commit, h); },
-    message: ({ issue, ev }, m) => `Evidence ${ev.id} was captured at ${ev.commit}, not the current head ${m.context.git!.prs![issue.pr!.url]!.headSha}.`,
+    when: ({ issue, ev }, m) => { const h = issue.pr && m.context.git?.prs?.[issue.pr.url]?.headSha; return !!h && !isAncestorOfPrHead(ev.commit, h); },
+    message: ({ issue, ev }, m) => `Evidence ${ev.id} was captured at ${ev.commit}, which is not the PR head ${m.context.git!.prs![issue.pr!.url]!.headSha} nor an ancestor of it.`,
   }),
   rule<DefaultRoot, { issueId: string; acId: string; evidenceId: string; ac: AC; ev: Evidence }>({
     code: 'evidence_ac_version_stale', select: (m) => m.evidence,
@@ -786,6 +829,9 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   visualizer: DEFAULT_VISUALIZER,
   // this preset's observed facts: the git world (commits + PR head/merged).
   loadContext: (input) => {
+    // Seam for `evidence_sha_stale`'s ancestor-reachability check (see `isAncestorOfPrHead`
+    // above) — `input.projectRoot` is available here but not inside a rule's `when`.
+    gitRepoRootForAncestryCheck = input.projectRoot;
     const ctx = gitWorld(input.projectRoot, defaultPrBranches(input), { verifyCommits: input.verifyCommits });
     // Resolve cited evidence FILES at their commits, so the gate can reject a screenshot/artifact
     // that isn't actually committed at the commit it claims. Skipped when commit verification is
