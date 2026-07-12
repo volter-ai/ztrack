@@ -53,7 +53,7 @@ gate.
 contract: packs the repo and installs it in two fresh consumer projects — peers
 absent (`sync github` fails closed with the install hint, everything else keeps
 working), and peers installed but run under plain node/npx (the bun-hint path,
-since `@volter-ai-dev/twin-github` ships TypeScript source only). Deterministic,
+since `@volter/twin-github` ships TypeScript source only). Deterministic,
 no gh auth, no live GitHub network call; a CI/publish gate.
 
 `loop-gate-ci.sh` is deterministic CI coverage for the ztrack loop — everything

@@ -3,7 +3,7 @@
 // behaviour is the kernel runner's job (proven separately); the live e2e covers the real wire.
 import { describe, expect, test } from 'bun:test';
 import { githubIssueConnector } from './connector.ts';
-import type { GithubExecute } from '@volter-ai-dev/twin-github';
+import type { GithubExecute } from '@volter/twin-github';
 
 function fakeExecute(pages: Record<number, unknown[]>, calls: Record<string, unknown>[] = []): GithubExecute {
   return {

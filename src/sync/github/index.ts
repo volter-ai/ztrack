@@ -1,6 +1,6 @@
 // The GitHub sync provider — a self-contained module over the twin substrate. ztrack has no
 // universal sync engine: each provider (github today; jira/linear later) is standalone, mirroring
-// the standalone-presets design. The twin (@volter-ai-dev/twin*) is the shared event-sourced
+// the standalone-presets design. The twin (@volter/twin*) is the shared event-sourced
 // engine that makes the sync incremental + idempotent; this module is the thin adapter that maps
 // ztrack issues onto it and orchestrates pull/push.
 //

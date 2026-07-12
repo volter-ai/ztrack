@@ -1,5 +1,5 @@
 // Runnable reconcile scenarios — executed in a SUBPROCESS by reconcile.e2e.test.ts so the real
-// twin loads with clean module state (another test's global `mock.module('@volter-ai-dev/twin')`
+// twin loads with clean module state (another test's global `mock.module('@volter/twin')`
 // would otherwise leak a stub into this in-process twin user). Drives the REAL twin (cursor
 // connector + egress) + a REAL markdown tracker; only GitHub's HTTP boundary is a stateful fake
 // (with `updated_at`, which the cursor needs). Prints a JSON result the test asserts on.

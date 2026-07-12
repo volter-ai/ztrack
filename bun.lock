@@ -15,19 +15,19 @@
         "@types/bun": "^1.2.20",
         "@types/node": "^24.0.0",
         "@types/react": "^18.3.0",
-        "@volter-ai-dev/twin": "^0.1.0",
-        "@volter-ai-dev/twin-github": "^0.1.0",
+        "@volter/twin": "^0.1.0",
+        "@volter/twin-github": "^0.1.0",
         "happy-dom": "^20.10.6",
         "typescript": "^5.9.0",
       },
       "peerDependencies": {
-        "@volter-ai-dev/twin": "^0.1.0",
-        "@volter-ai-dev/twin-github": "^0.1.0",
+        "@volter/twin": "^0.1.0",
+        "@volter/twin-github": "^0.1.0",
         "react": "^18.3.1",
       },
       "optionalPeers": [
-        "@volter-ai-dev/twin",
-        "@volter-ai-dev/twin-github",
+        "@volter/twin",
+        "@volter/twin-github",
         "react",
       ],
     },
@@ -53,9 +53,9 @@
 
     "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
-    "@volter-ai-dev/twin": ["@volter-ai-dev/twin@0.1.0", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-y2rSyQcqEGD0Er4hWr6Epni0ozodSMW0xVpVNeOMKn0l96aBExyOjzI8X4Mugl4pUUNUBjjwJmDQe8AN4OJVHA=="],
+    "@volter/twin": ["@volter/twin@0.1.0", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-YIvK7pXDStlGNxczlEnR9UwzzmShzIoLBslEnV0sSIOzQjhoTcZfVA5jL2zpYLUZqiroxU1jaGz8+yQPc0oILA=="],
 
-    "@volter-ai-dev/twin-github": ["@volter-ai-dev/twin-github@0.1.0", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter-ai-dev/twin": "0.1.0" }, "bin": { "world-github": "src/cli.ts" } }, "sha512-efBFefQXYZo5lJ1JtAUcEtbHGWnjndLSmFH2nJDUVOsHlJFmiLSPVS51+qZQHFhnfT+HzPC7J31U7Oen1MWPMw=="],
+    "@volter/twin-github": ["@volter/twin-github@0.1.0", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/twin": "0.1.0" }, "bin": { "world-github": "src/cli.ts" } }, "sha512-c6zrdSzG0XRx9JbrFxN8vqdVu5zEDpOAn4x1mRoOv3mlBz9I0DhzJ8eaxGKQJhwIlYktl2eoj2l/8h4rHPdXWw=="],
 
     "buffer-image-size": ["buffer-image-size@0.6.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ=="],
 
@@ -191,6 +191,6 @@
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
-    "@volter-ai-dev/twin/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "@volter/twin/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
   }
 }

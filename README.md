@@ -417,9 +417,9 @@ proper: the CLI flag surface, the package-root API, and the bundled preset contr
 a **major** version — minor and patch releases are safe to take. Still read the
 [CHANGELOG](CHANGELOG.md) before upgrading across a major. The deterministic **local** core
 (check, evidence, presets) depends only on the markdown store and git, and needs nothing beyond
-`ztrack` itself. **GitHub two-way sync** and **world-backed evidence** route through `@volter-ai-dev/twin` (same publisher) — since 0.38.0 that's an **optional
+`ztrack` itself. **GitHub two-way sync** and **world-backed evidence** route through `@volter/twin` (same publisher) — since 0.38.0 that's an **optional
 peer dependency**, not a regular one: adopt only local verification and nothing extra installs or
-runs; adopt sync and you must `npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github`
+runs; adopt sync and you must `npm install -D @volter/twin @volter/twin-github`
 yourself, and run the sync command under **bun** (not npx/node) — see the [canonical
 recipe](docs/GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun).
 

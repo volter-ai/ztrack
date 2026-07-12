@@ -1,8 +1,8 @@
-// The twin packages (`@volter-ai-dev/twin` + `@volter-ai-dev/twin-github`) are an OPTIONAL peer
+// The twin packages (`@volter/twin` + `@volter/twin-github`) are an OPTIONAL peer
 // dependency (see package.json `peerDependenciesMeta`) — a plain `npm i -D ztrack` must not pull
 // in their transitive tree (react/react-dom) or their stray `volter-twin`/`world-github` bins.
 // So sync.ts (the only runtime user of twin outside this file) must never statically import them:
-// a static `import … from '@volter-ai-dev/twin'` at the top of any module reachable from cli.ts
+// a static `import … from '@volter/twin'` at the top of any module reachable from cli.ts
 // would fail to RESOLVE — and crash the whole CLI, not just `sync github` — the moment the peers
 // are absent, because ESM resolves the entire static import graph before any code runs.
 //
@@ -11,17 +11,17 @@
 // `--external` for both packages (scripts/build-node-cli.mjs) so this import() stays a real,
 // unresolved-until-runtime module load in the published bundle instead of being inlined.
 export type TwinRuntime = {
-  currentResources: typeof import('@volter-ai-dev/twin').currentResources;
-  pendingActions: typeof import('@volter-ai-dev/twin').pendingActions;
-  reconcile: typeof import('@volter-ai-dev/twin').reconcile;
-  runConnectorPoll: typeof import('@volter-ai-dev/twin').runConnectorPoll;
-  applyGithubWrite: typeof import('@volter-ai-dev/twin-github').applyGithubWrite;
-  pushPendingGithubActions: typeof import('@volter-ai-dev/twin-github').pushPendingGithubActions;
+  currentResources: typeof import('@volter/twin').currentResources;
+  pendingActions: typeof import('@volter/twin').pendingActions;
+  reconcile: typeof import('@volter/twin').reconcile;
+  runConnectorPoll: typeof import('@volter/twin').runConnectorPoll;
+  applyGithubWrite: typeof import('@volter/twin-github').applyGithubWrite;
+  pushPendingGithubActions: typeof import('@volter/twin-github').pushPendingGithubActions;
 };
 
-export const MISSING_TWIN_MESSAGE = 'ztrack sync github requires the optional sync packages. Install them with: npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github';
+export const MISSING_TWIN_MESSAGE = 'ztrack sync github requires the optional sync packages. Install them with: npm install -D @volter/twin @volter/twin-github';
 
-// `@volter-ai-dev/twin-github` publishes ONLY TypeScript source (`"exports": {".": "./src/index.ts"}`,
+// `@volter/twin-github` publishes ONLY TypeScript source (`"exports": {".": "./src/index.ts"}`,
 // `engines.bun`) — it has no compiled JS entry point at all. Node (>=22.18, the "types" stripping
 // default) refuses to type-strip a `.ts` file that lives under node_modules — a hardcoded platform
 // restriction (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`), not something a flag lifts. So even
@@ -29,7 +29,7 @@ export const MISSING_TWIN_MESSAGE = 'ztrack sync github requires the optional sy
 // a bun-run of the CLI can (bun is TS-native). Re-telling the user to `npm install` again in that
 // case would be actively wrong (they already did, and it won't help), so this is surfaced as its
 // own actionable message instead of being folded into MISSING_TWIN_MESSAGE.
-export const NODE_CANNOT_LOAD_TWIN_GITHUB_MESSAGE = "ztrack sync github: @volter-ai-dev/twin-github ships TypeScript source with no Node-compatible build, and this Node runtime cannot load .ts files from node_modules (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Run the command under bun instead, e.g.: bunx ztrack sync github ...";
+export const NODE_CANNOT_LOAD_TWIN_GITHUB_MESSAGE = "ztrack sync github: @volter/twin-github ships TypeScript source with no Node-compatible build, and this Node runtime cannot load .ts files from node_modules (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING). Run the command under bun instead, e.g.: bunx ztrack sync github ...";
 
 function isNodeTypeStrippingError(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
@@ -41,8 +41,8 @@ function isNodeTypeStrippingError(err: unknown): boolean {
 /** Injectable for tests that simulate the peers being unresolvable without actually uninstalling
  *  them (see twinRuntime.test.ts). Production code never overrides this. */
 export let importTwinModules = () => Promise.all([
-  import('@volter-ai-dev/twin'),
-  import('@volter-ai-dev/twin-github'),
+  import('@volter/twin'),
+  import('@volter/twin-github'),
 ] as const);
 
 export function __setImportTwinModulesForTest(fn: typeof importTwinModules): void {
@@ -57,8 +57,8 @@ let cached: TwinRuntime | null = null;
  *  twin-github's TypeScript-only package (see above — install won't fix that one; bun will). */
 export async function loadTwinRuntime(): Promise<TwinRuntime> {
   if (cached) return cached;
-  let twin: typeof import('@volter-ai-dev/twin');
-  let twinGithub: typeof import('@volter-ai-dev/twin-github');
+  let twin: typeof import('@volter/twin');
+  let twinGithub: typeof import('@volter/twin-github');
   try {
     [twin, twinGithub] = await importTwinModules();
   } catch (err) {
