@@ -31,7 +31,7 @@ import { loadTwinRuntime, type TwinRuntime } from './twinRuntime.ts';
 
 export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
 export type PullResult = { created: string[]; updated: string[]; total: number; note?: string };
-export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; skipped: number; total: number };
+export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; skipped: number; total: number; conflicts: Array<{ issue: string; number: number; fields: string[] }> };
 export type ReconcileResult = { pulled: string[]; pushed: string[]; created: Array<{ ztrack: string; number: number }>; conflicts: Array<{ issue: string; number: number; fields: string[] }> };
 
 // PUSH-side egress timestamp — a STABLE constant keeps re-confirming the same content idempotent
@@ -161,38 +161,31 @@ export async function pull(o: SyncOpts, opts: { retryDelayMs?: number } = {}): P
   return { created: created.map((c) => c.ztrack), updated, total: resources.length, ...(note ? { note } : {}) };
 }
 
-/** PUSH: morph the twin for each changed/new tracker issue, then idempotent egress to GitHub. */
-export async function push(o: SyncOpts): Promise<PushResult> {
-  const twin = await loadTwinRuntime();
-  const repoKey = `${o.owner}/${o.repo}`;
-  const b = loadBindings(o.projectRoot, repoKey);
-  await twin.runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
-  const baseline = new Map(issueResources(o.projectRoot, twin).map((r) => [r.number, r]));
-  const rows = await o.client.issue.list({ state: 'all', limit: 5000, json: 'identifier,title,state,body' }) as Array<Record<string, unknown>>;
-  const list = Array.isArray(rows) ? rows : [];
-  const updated: string[] = [];
-  // ZTB-21 dev/04: `skipped` counts bound issues examined but left alone (unchanged since the
-  // last sync's base) — the third bucket every row in `list` falls into (created | updated |
-  // skipped), so `total` below can be COMPUTED from the same three numbers instead of read
-  // independently from `list.length` (every local issue, including ones untouched by this push),
-  // which is what silently produced a `total` that contradicted `created`/`updated`.
+/** PUSH: tracker → GitHub, one-sided at the CALLER's request — but NOT one-sided in mechanism.
+ *  Delegates to the same three-way `reconcileSync` merge used by the bidirectional default, with
+ *  `applyPull: false` so nothing is ever written back to the tracker; only `toPush` (the fields
+ *  the merge decided GitHub should take) is applied. This is the fix for the data-integrity bug
+ *  where a naive push diffed the tracker against a fresh pull baseline with NO base-state check:
+ *  if GitHub had independently changed a field (e.g. an issue closed on GitHub) after that
+ *  baseline was captured, ANY local diff on the same issue caused push to PATCH GitHub back to
+ *  the stale local value — silently reopening a closed issue instead of detecting the conflict.
+ *  Routing through `reconcileSync`'s base/fork/real comparison means a same-field collision
+ *  (closed remotely, edited locally) is now a surfaced conflict — recorded and gating `check` —
+ *  never a silent clobber; only genuinely non-conflicting local changes are pushed. */
+export async function push(o: SyncOpts, policy: ReconcilePolicy = 'merge'): Promise<PushResult> {
+  const before = loadBindings(o.projectRoot, `${o.owner}/${o.repo}`).byZtrack;
+  const boundBefore = new Set(Object.keys(before));
+  const r = await reconcileSync(o, policy, { applyPull: false });
+  const updated = r.pushed;
+  const createdIds = new Set(r.created.map((c) => c.ztrack));
+  // skipped: bound issues that existed before this push, weren't pushed, weren't (re)created, and
+  // aren't sitting in an unresolved conflict (a conflicted field is neither "pushed" nor "settled
+  // skip" — it's surfaced separately in `conflicts`, same as reconcileSync reports it).
+  const conflicted = new Set(r.conflicts.map((c) => c.issue));
+  const pushedSet = new Set(updated);
   let skipped = 0;
-  for (const row of list) {
-    const id = String(row.identifier ?? '');
-    const number = id ? b.byZtrack[id] : undefined;
-    if (!number) continue; // unbound — handled as a create, below; not a "skip"
-    const title = String(row.title ?? '');
-    const body = stripConflictSection(String(row.body ?? ''));
-    const ghState = statusToGithubState(stateName(row.state));
-    const base = baseline.get(number);
-    if (base && (base.title ?? '') === title && (base.body ?? '') === body && (base.state ?? 'open') === ghState) { skipped += 1; continue; }
-    await twin.applyGithubWrite({ method: 'PATCH', path: `/repos/${o.owner}/${o.repo}/issues/${number}`, body: JSON.stringify({ title, body, state: ghState }), root: o.projectRoot, occurredAt: OBSERVED_AT });
-    updated.push(id);
-  }
-  if (updated.length) await twin.pushPendingGithubActions(o.execute, { root: o.projectRoot, occurredAt: OBSERVED_AT });
-  const created = await createOnGithub(o, b, unboundForkRows(list, b), twin);
-  saveBindings(o.projectRoot, b);
-  return { created, updated, skipped, total: created.length + updated.length + skipped };
+  for (const id of boundBefore) if (!pushedSet.has(id) && !createdIds.has(id) && !conflicted.has(id)) skipped += 1;
+  return { created: r.created, updated, skipped, total: r.created.length + updated.length + skipped, conflicts: r.conflicts };
 }
 
 // project to a TwinResource carrying only the reconciled fields (state in GitHub vocabulary).
@@ -204,8 +197,12 @@ function res(id: string, f: BaseFields): TwinResource {
 }
 
 /** RECONCILE: bidirectional three-way merge. Non-overlapping concurrent edits merge; a same-field
- *  collision is surfaced as a conflict (under `merge`) instead of one side silently clobbering. */
-export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merge'): Promise<ReconcileResult> {
+ *  collision is surfaced as a conflict (under `merge`) instead of one side silently clobbering.
+ *  `applyPull: false` (used by `push()` above) computes the same base/fork/real plan and still
+ *  applies `toPush`/records conflicts exactly as the bidirectional default does, but never writes
+ *  `plan.toPull` back to the tracker — a push-only caller's whole point is "don't touch local". */
+export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merge', reconcileOpts: { applyPull?: boolean } = {}): Promise<ReconcileResult> {
+  const applyPull = reconcileOpts.applyPull ?? true;
   const twin = await loadTwinRuntime();
   const repoKey = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repoKey);
@@ -237,17 +234,21 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   const pulled: string[] = [];
   const pushed: string[] = [];
 
-  // toPull: real → tracker (only the fields the merge says the tracker should take)
-  for (const item of plan.toPull) {
-    const ztrackId = b.byNumber[String(numberOf(item.id))];
-    if (!ztrackId) continue;
-    const cur = await o.client.issue.view(ztrackId, { json: 'state' }) as Record<string, unknown> | null;
-    if (!cur) continue; // stale binding: the bound ztrack issue was deleted locally — skip, don't crash
-    const edit: Record<string, unknown> = {};
-    if (item.fields.title !== undefined) edit.title = String(item.fields.title);
-    if (item.fields.body !== undefined) edit.body = String(item.fields.body);
-    if (item.fields.state !== undefined) edit.state = githubStateToStatus(String(item.fields.state), stateName(cur.state));
-    if (Object.keys(edit).length) { await o.client.issue.edit(ztrackId, edit); pulled.push(ztrackId); }
+  // toPull: real → tracker (only the fields the merge says the tracker should take) — skipped
+  // entirely when applyPull is false (push-only caller): those fields are simply left as the
+  // merge computed them (unpushed, unpulled) rather than written back to the tracker.
+  if (applyPull) {
+    for (const item of plan.toPull) {
+      const ztrackId = b.byNumber[String(numberOf(item.id))];
+      if (!ztrackId) continue;
+      const cur = await o.client.issue.view(ztrackId, { json: 'state' }) as Record<string, unknown> | null;
+      if (!cur) continue; // stale binding: the bound ztrack issue was deleted locally — skip, don't crash
+      const edit: Record<string, unknown> = {};
+      if (item.fields.title !== undefined) edit.title = String(item.fields.title);
+      if (item.fields.body !== undefined) edit.body = String(item.fields.body);
+      if (item.fields.state !== undefined) edit.state = githubStateToStatus(String(item.fields.state), stateName(cur.state));
+      if (Object.keys(edit).length) { await o.client.issue.edit(ztrackId, edit); pulled.push(ztrackId); }
+    }
   }
   // toPush: fork → real (only the fields the merge says GitHub should take)
   for (const item of plan.toPush) {
@@ -297,10 +298,18 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   }
 
   // advance the base to the converged value (non-conflict fields only, so an unresolved conflict
-  // stays detected next time instead of auto-resolving in one side's favour).
+  // stays detected next time instead of auto-resolving in one side's favour). A `take-real`
+  // (pull) decision only converges the base when applyPull actually wrote it to the tracker —
+  // otherwise the tracker is still on the OLD value, and advancing the base to the new `real`
+  // value here would make a still-outstanding GitHub-side change look "already synced" on the
+  // next reconcile, silently losing it instead of pushing/surfacing it later.
   for (const s of plan.subjects) {
     const next: BaseFields = { ...(baseStore.resources[s.id] ?? {}) };
-    for (const fd of s.fields) if (fd.resolution !== 'conflict') (next as Record<string, unknown>)[fd.field] = fd.value;
+    for (const fd of s.fields) {
+      if (fd.resolution === 'conflict') continue;
+      if (fd.resolution === 'take-real' && !applyPull) continue;
+      (next as Record<string, unknown>)[fd.field] = fd.value;
+    }
     baseStore.resources[s.id] = next;
   }
 
