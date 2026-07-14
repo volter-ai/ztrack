@@ -178,11 +178,45 @@ describe('DocumentSource.write guards (ZTB-4 dev/09)', () => {
     expect(onDisk).toContain('## DOC-2 — Beta item\n\nNo header block on this one.');
   });
 
-  test('a write that changes assignees throws, naming "assignee"', () => {
-    const { resolved } = docFile(CANON);
+  test('an assignee change rewrites only the existing header value and is reflected by a fresh read', () => {
+    const { path, resolved } = docFile(CANON);
     const src = new DocumentSource(resolved);
     const doc1 = src.load('DOC-1')!;
-    expect(() => src.write(edited(doc1, { assignees: ['someone-else'] }))).toThrow(/assignee/);
+    const before = readFileSync(path, 'utf8');
+    src.write(edited(doc1, { assignees: ['someone-else'] }));
+    expect(src.load('DOC-1')!.assignees).toEqual(['someone-else']);
+    const after = readFileSync(path, 'utf8');
+    expect(after).toBe(before.replace('assignee: kim', 'assignee: someone-else'));
+  });
+
+  test('assigning a status-only registered item inserts one assignee header line', () => {
+    const statusOnly = CANON.replace('status: in-progress\nassignee: kim', 'status: draft');
+    const { path, resolved } = docFile(statusOnly);
+    const src = new DocumentSource(resolved);
+    const doc1 = src.load('DOC-1')!;
+    expect(doc1.assignees).toEqual([]);
+    src.write(edited(doc1, { assignees: ['alex'] }));
+    expect(src.load('DOC-1')!.assignees).toEqual(['alex']);
+    expect(readFileSync(path, 'utf8')).toContain('status: draft\nassignee: alex\n\n### Context');
+  });
+
+  test('clearing an assignee removes only its header line', () => {
+    const { path, resolved } = docFile(CANON);
+    const src = new DocumentSource(resolved);
+    const doc1 = src.load('DOC-1')!;
+    const before = readFileSync(path, 'utf8');
+    src.write(edited(doc1, { assignees: [] }));
+    expect(src.load('DOC-1')!.assignees).toEqual([]);
+    expect(readFileSync(path, 'utf8')).toBe(before.replace('assignee: kim\n', ''));
+  });
+
+  test('multiple assignees fail closed because document grammar stores one header value', () => {
+    const { path, resolved } = docFile(CANON);
+    const src = new DocumentSource(resolved);
+    const doc1 = src.load('DOC-1')!;
+    const before = readFileSync(path, 'utf8');
+    expect(() => src.write(edited(doc1, { assignees: ['alex', 'sam'] }))).toThrow(/multiple assignees/);
+    expect(readFileSync(path, 'utf8')).toBe(before);
   });
 
   test('a write that changes children (a reparent) throws, naming "children"', () => {
@@ -199,7 +233,7 @@ describe('DocumentSource.write guards (ZTB-4 dev/09)', () => {
     expect(() => src.write(edited(umbrella, { body: 'new body' }))).toThrow();
   });
 
-  test('a write on a parent whose subtree was excised by a nested id-bearing child throws', () => {
+  test('a body write on a parent whose subtree was excised by a nested id-bearing child throws', () => {
     const nested = [
       '## DOC-9 — Has a nested child',
       '',
@@ -214,6 +248,30 @@ describe('DocumentSource.write guards (ZTB-4 dev/09)', () => {
     const src = new DocumentSource(resolved);
     const doc9 = src.load('DOC-9')!;
     expect(() => src.write(edited(doc9, { body: `${doc9.body}Extra.\n` }))).toThrow(/excised|child issues/i);
+  });
+
+  test('a parent with id-bearing children can still receive a byte-local assignee header edit', () => {
+    const nested = [
+      '## DOC-9 — Has a nested child',
+      '',
+      'status: draft',
+      '',
+      'Own text.',
+      '',
+      '### DOC-9A — Nested child',
+      '',
+      'status: draft',
+      '',
+      'Nested text.',
+      '',
+    ].join('\n');
+    const { path, resolved } = docFile(nested);
+    const src = new DocumentSource(resolved);
+    const parent = src.load('DOC-9')!;
+    src.write(edited(parent, { assignees: ['alex'] }));
+    expect(src.load('DOC-9')!.assignees).toEqual(['alex']);
+    expect(src.load('DOC-9A')!.body).toContain('Nested text.');
+    expect(readFileSync(path, 'utf8')).toBe(nested.replace('status: draft\n', 'status: draft\nassignee: alex\n'));
   });
 
   test('a CRLF file (Windows/autocrlf checkout) splices in LF space and writes back its own EOL', () => {

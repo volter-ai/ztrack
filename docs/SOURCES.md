@@ -201,7 +201,8 @@ you intend to `ac patch` on leaf items.
 
 Two kinds of edit reach a document source:
 
-1. **Splices** — `ztrack ac patch` and `issue edit --title`/`--body` (and, through it, `fmt`).
+1. **Splices** — `ztrack ac patch` and `issue edit --title`/`--body`/`--state`/`--assignee`
+   (and, through body edits, `fmt`).
    These re-derive the item's new section text and splice it into the file at the recorded span.
    Every byte **outside** that span is untouched; writing back an unmodified read reproduces the
    file byte-for-byte.
@@ -211,20 +212,22 @@ Two kinds of edit reach a document source:
 | Change | Result |
 |---|---|
 | `title` / `body` (ac patch, `issue edit --title`/`--body`) | spliced into the recorded span |
-| `state` (`issue edit --state`, `issue close`) | fails closed — a document item's state lives on its `status:` header line; edit the file directly |
-| `assignee` (`issue edit --assignee`) | fails closed, same shape, naming `assignee:` |
-| `labels` / `project` / `parent` / `children` | fails closed — the document stores none of these; write-back only splices body/title |
+| `state` (`issue edit --state`, `issue close`) | rewrites the existing `status:` header value; fails closed if the section has no status header |
+| `assignee` (`issue edit --assignee`) | rewrites/removes an existing `assignee:` line, inserts after `status:`, or creates a one-field header at the heading/content boundary; the document grammar stores one assignee |
+| `labels` / `project` / `parent` / `children` | fails closed — the document stores none of these |
 | `comment` (`issue comment`) | fails closed — comments have no home in the document grammar |
 | `issue delete` | **always** fails closed — removing a section is a file edit, not a tracker operation |
 | any write to the **umbrella** issue | **always** fails closed — the umbrella *is* the file, not a spliceable section within it |
-| a write to an item whose subtree was **excised** (it has an id-bearing child) | fails closed regardless of field — its recorded span doesn't map cleanly onto just its own bytes |
+| a body/title write to an item whose subtree was **excised** (it has an id-bearing child) | fails closed — its presented body excludes child sections and cannot safely reconstruct the span; byte-local state/assignee header edits still work |
 | a write to a **nested leaf** item (its section lives inside an ancestor item's section, but it has no id-bearing children of its own) | spliced into the recorded span, same as any other leaf item — the integrity guard checks the ancestor's own content (outside its child issues' sections), not its raw bytes, so the ancestor's raw legitimately changing to embed the new span doesn't trip it |
 | a write to a `readonly: true` source | fails closed at the source layer, before any document-specific guard runs |
 | a **stale** document (changed on disk since it was read) | fails closed — re-run against current contents |
 
-Header blocks are parsed on read but **never rewritten** by ztrack — the sanctioned way to change
-an item's state or assignee is to edit the document directly, not a workaround. Every fail-closed
-error names the file so the fix is always "edit it there."
+Header metadata is mutated through the same tracker verbs as an issue-per-file task. Status changes
+rewrite an existing `status:` line. Assignee changes rewrite/remove an existing line or insert one
+after an existing status line or creates a one-field header at the deterministic heading/content
+boundary. A partially recognized malformed header remains fail-closed. All splices keep the
+stale-read and candidate-integrity guards described below.
 
 ## Diagnostics
 

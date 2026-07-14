@@ -217,7 +217,7 @@ export function spliceSectionText(
   return newPrefixRaw + shiftedBody + suffixBlanks;
 }
 
-// ── spliceStatusLine ─────────────────────────────────────────────────────────────────────────
+// ── header-field splices ─────────────────────────────────────────────────────────────────────
 
 /** Thrown by `spliceStatusLine` when the section has no `status:` header line to rewrite. No
  *  position is invented for a missing header — `decomposeSection` records no insertion point for
@@ -255,5 +255,67 @@ export function spliceStatusLine(raw: string, newStatus: string): string {
     throw new NoStatusHeaderError(`spliceStatusLine: status header line ${lineIndex + 1} ("${line}") did not re-match the expected "status: <value>" shape.`);
   }
   lines[lineIndex] = `${m[1]}${newStatus}${m[3]}`;
+  return lines.join('\n') + (trailingNewline ? '\n' : '');
+}
+
+/** Thrown when a partially recognized, malformed header makes insertion ambiguous. */
+export class NoAssigneeInsertionPointError extends Error {}
+
+const ASSIGNEE_VALUE_RE = /^(\s*assignee\s*:\s*)(.*?)(\s*)$/i;
+
+/** Rewrite, add, or remove one document item's `assignee:` header line.
+ *
+ *  - Existing line + non-null value: rewrite only its value, preserving casing and whitespace.
+ *  - Existing line + null: remove only that line.
+ *  - Missing line + non-null value: insert after an existing `status:` line, or create a clean
+ *    one-field header at the section's deterministic heading/content boundary.
+ *  - Missing line + null: byte-identical no-op.
+ *
+ *  A partially recognized header that was discarded by the parser still fails closed; inserting
+ *  into that ambiguous shape could accidentally reclassify user prose as metadata. */
+export function spliceAssigneeLine(raw: string, newAssignee: string | null): string {
+  if (newAssignee !== null && (newAssignee.trim() !== newAssignee || newAssignee.includes('\n') || newAssignee.includes('\r') || newAssignee.length === 0)) {
+    throw new Error('spliceAssigneeLine: assignee must be a non-empty, single-line value without leading or trailing whitespace.');
+  }
+
+  const decomposed = decomposeSection(raw);
+  const assigneeLineIndex = decomposed.headerLineIndex.assignee;
+  const { lines, trailingNewline } = toLines(raw);
+
+  if (assigneeLineIndex !== undefined) {
+    if (newAssignee === null) {
+      lines.splice(assigneeLineIndex, 1);
+      return lines.join('\n') + (trailingNewline ? '\n' : '');
+    }
+    const line = lines[assigneeLineIndex]!;
+    const m = ASSIGNEE_VALUE_RE.exec(line);
+    if (!m) {
+      throw new Error(`spliceAssigneeLine: assignee header line ${assigneeLineIndex + 1} ("${line}") did not re-match the expected "assignee: <value>" shape.`);
+    }
+    lines[assigneeLineIndex] = `${m[1]}${newAssignee}${m[3]}`;
+    return lines.join('\n') + (trailingNewline ? '\n' : '');
+  }
+
+  if (newAssignee === null) return raw;
+
+  const statusLineIndex = decomposed.headerLineIndex.status;
+  if (decomposed.header && statusLineIndex !== undefined) {
+    lines.splice(statusLineIndex + 1, 0, `assignee: ${newAssignee}`);
+    return lines.join('\n') + (trailingNewline ? '\n' : '');
+  }
+
+  if (decomposed.discardedHeaderLine !== undefined) {
+    throw new NoAssigneeInsertionPointError(
+      `spliceAssigneeLine: the section has a partially recognized header aborted by "${decomposed.discardedHeaderLine}"; refusing to insert into an ambiguous header.`,
+    );
+  }
+
+  // No header exists. The parser's grammar deterministically skips the blank run immediately
+  // after the heading and begins content at the first non-blank line. Insert a one-field header
+  // plus its required blank terminator at that exact boundary; existing heading/body bytes remain
+  // in the same order and candidate re-parse below proves the new presentation.
+  let contentStart = 1;
+  while (contentStart < lines.length && lines[contentStart] === '') contentStart++;
+  lines.splice(contentStart, 0, `assignee: ${newAssignee}`, '');
   return lines.join('\n') + (trailingNewline ? '\n' : '');
 }

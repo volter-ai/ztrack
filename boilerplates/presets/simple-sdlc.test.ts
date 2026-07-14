@@ -94,18 +94,15 @@ describe('simple-sdlc preset', () => {
     expect(fixOf([{ ...REC, body: REC.body.replace(HEAD, 'deadbeef') }], 'evidence_commit_not_found')).toMatch(/ztrack ac patch DEF-1 .*commit that exists/);
     // an issue-level finding → an issue-level action, not ac patch
     expect(fixOf([{ id: 'D-1', title: 'x', status: 'draft', assignee: '', body: '## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n' }], 'issue_missing_assignee')).toMatch(/ztrack issue edit D-1 --assignee/);
-    // ZTB-23 dev/03: a DOCUMENT-sourced issue (origin carries a `line` — only true for a
-    // document source's own section, see core/engine.ts's toFindingOrigin) must NOT be told to
-    // run `issue edit --assignee` (DocumentSource.write fails that closed) — it must point at the
-    // `assignee:` header line in the source file instead.
+    // Document-backed issues use the same task-service mutation; write-back projects it into the
+    // section's `assignee:` header without asking callers to edit tracker persistence.
     const docFix = fixOf([{
       id: 'D-2', title: 'x', status: 'draft', assignee: '',
       body: '## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n',
       origin: { path: '/repo/backlog.md', lineStart: 12 },
     } as IssueRecord], 'issue_missing_assignee');
+    expect(docFix).toMatch(/ztrack issue edit D-2 --assignee <you>/);
     expect(docFix).toMatch(/assignee:/);
-    expect(docFix).toMatch(/backlog\.md/);
-    expect(docFix).not.toMatch(/issue edit \S+ --assignee <you>/); // the RECOMMENDED action must not be the one that fails on a document source
     // a finding the preset gives NO specific hint for still gets the universal FLOOR (located inspect)
     const floor = fixOf([{ id: 'X-1', title: 'a', status: 'draft', assignee: 'me', body: 'x' }, { id: 'X-1', title: 'b', status: 'draft', assignee: 'me', body: 'y' }], 'duplicate_issue_id');
     expect(floor).toMatch(/ztrack issue view X-1/);
