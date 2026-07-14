@@ -269,7 +269,7 @@ export class DocumentSource implements IssueSource {
     };
   }
 
-  write(c: CanonicalIssue): void {
+  write(c: CanonicalIssue, opts: { dryRun?: boolean } = {}): void {
     const stored = this.byId.get(c.identifier);
     if (!stored) throw new Error(`markdown backend (document source '${this.location}'): cannot resolve issue ${c.identifier}.`);
 
@@ -378,6 +378,12 @@ export class DocumentSource implements IssueSource {
     if (candidateLoaded.reshapeError !== undefined || candidateLoaded.issue.body !== c.body || candidateLoaded.issue.state !== c.state) {
       throw integrityFailedError(this.location, `re-presenting issue ${c.identifier} after the splice did not reproduce the new body/status exactly (the heading shift or status splice did not invert cleanly)`);
     }
+
+    // ztrack#28: a dry run stops HERE — every guard above ((a) structural, delta, (b) staleness,
+    // (c) splice, (d) integrity) has run against the real fresh file, so a non-throwing return is
+    // an honest prediction that the real write would be accepted. Nothing was written and the
+    // in-memory view is untouched.
+    if (opts.dryRun) return;
 
     // (e) write (restoring the file's own EOL — see the boundary note in (b)), then refresh the
     // in-memory view so subsequent same-process reads (ac patch's post-edit view,

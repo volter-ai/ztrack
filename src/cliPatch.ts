@@ -37,15 +37,22 @@ export async function handlePatchCommand(args: string[]): Promise<boolean> {
   const root = projectRootFrom();
   const preset = await resolveTrackerValidation(loadTrackerConfig(root), root);
   const result = applyModelPatch(preset, record, { ...(acId ? { acId } : {}), patch });
-  if (!args.includes('--dry-run') && result.changed) {
+  const dryRun = args.includes('--dry-run');
+  if (result.changed) {
     // ztrack#20: pass the sha256 of the body this patch was COMPUTED FROM as an
     // optimistic-concurrency precondition. The backend re-reads the issue at the moment of the
     // write and refuses if it changed in between — so this whole parse → overlay → serialize
     // round trip can never silently revert an edit that landed after the `view` above (the
     // stale-snapshot clobber reported upstream).
+    //
+    // ztrack#28: a dry run takes the SAME path — every gate that can refuse the real write
+    // (state vocabulary, the precondition, readonly-source, a document source's write guards)
+    // is evaluated, and only the final filesystem mutation is skipped. A dry-run success is
+    // therefore an honest prediction of the real run; it can never print an unqualified
+    // success immediately before a real-run refusal (the incident that filed the issue).
     const expectedBodySha = createHash('sha256').update(record.body).digest('hex');
     try {
-      await client.issue.edit(issueId, { ...columnsToEdit(result.body, result.columns, record), expectedBodySha });
+      await client.issue.edit(issueId, { ...columnsToEdit(result.body, result.columns, record), expectedBodySha, ...(dryRun ? { dryRun } : {}) });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.includes('precondition-failed')) {
@@ -58,6 +65,6 @@ export async function handlePatchCommand(args: string[]): Promise<boolean> {
       throw error;
     }
   }
-  process.stdout.write(`${JSON.stringify({ issue: issueId, ...(acId ? { acId } : {}), changed: result.changed, dryRun: args.includes('--dry-run') }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ issue: issueId, ...(acId ? { acId } : {}), changed: result.changed, dryRun }, null, 2)}\n`);
   return true;
 }
