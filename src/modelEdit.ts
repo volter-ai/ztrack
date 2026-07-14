@@ -92,7 +92,12 @@ export function applyModelPatch(preset: Preset<CoreRoot>, record: IssueRecord, e
     const acs = (issue.acceptanceCriteria ?? []) as Array<Record<string, unknown>>;
     const ac = acs.find((a) => String(a.id) === edit.acId);
     if (!ac) throw new Error(`AC ${edit.acId} not found in ${record.id}.`);
-    Object.assign(ac, edit.patch);
+    // ztrack#22: let the preset keep its internally-coupled AC fields consistent (e.g. sync the
+    // `checked` checkbox mirror when a patch sets `status` alone) before the overlay. The hook
+    // sees the current AC read-only and returns the fragment to apply; an explicit field in the
+    // caller's patch always wins inside the shipped implementations.
+    const patch = preset.normalizeAcPatch ? preset.normalizeAcPatch(edit.patch, { ...ac }) : edit.patch;
+    Object.assign(ac, patch);
   } else {
     Object.assign(issue, edit.patch);
   }
