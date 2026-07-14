@@ -2,7 +2,7 @@
 
 All notable ztrack release changes are recorded here.
 
-## Unreleased
+## 1.3.1
 
 - **Document-backed tasks now support assignee write-back.** `ztrack issue edit <id> --assignee`
   safely rewrites, inserts, or removes the task section's `assignee:` header while preserving all
