@@ -43,7 +43,18 @@ function issueEditArgs(identifier: string, input: TrackerIssueUpdate): string[] 
   if (input.removeParent) args.push('--remove-parent');
   for (const label of input.addLabels ?? []) args.push('--add-label', label);
   for (const label of input.removeLabels ?? []) args.push('--remove-label', label);
+  if (input.expectedBodySha) args.push('--expect-body-sha', input.expectedBodySha);
   return args;
+}
+
+// ztrack#20: the backend reports a refusal (an invalid --state, a read-only source, a failed
+// --expect-body-sha precondition) as stderr with NO stdout — same contract cli.ts's dispatch
+// exits 1 on. The SDK's mutation methods used to discard `result.stderr` entirely, so a refused
+// edit resolved as if it had succeeded (`edit()` then returned the UNCHANGED view) — a silent
+// false-positive success on the org's ledger. Every mutation now fails loud instead.
+function requireAccepted(result: { stdout: string; stderr: string }): { stdout: string; stderr: string } {
+  if (result.stderr && !result.stdout) throw new Error(result.stderr.trim());
+  return result;
 }
 
 export function createTrackerClient(options: { projectRoot?: string } = {}): TrackerClient {
@@ -95,21 +106,21 @@ export function createTrackerClient(options: { projectRoot?: string } = {}): Tra
         return parseJsonOrText((await backend.command(args)).stdout) as Record<string, unknown>;
       },
       async create(input) {
-        const output = (await backend.command(issueCreateArgs(input))).stdout.trim();
+        const output = requireAccepted(await backend.command(issueCreateArgs(input))).stdout.trim();
         return this.view(identifierFromCreateOutput(output));
       },
       async edit(identifier, input) {
-        await backend.command(issueEditArgs(identifier, input));
+        requireAccepted(await backend.command(issueEditArgs(identifier, input)));
         return this.view(identifier);
       },
       async comment(identifier, body) {
-        await backend.command(['issue', 'comment', identifier, '--body', body]);
+        requireAccepted(await backend.command(['issue', 'comment', identifier, '--body', body]));
       },
       async close(identifier, options = {}) {
         const args = ['issue', 'close', identifier];
         if (options.reason) args.push('--reason', options.reason);
         if (options.comment) args.push('--comment', options.comment);
-        await backend.command(args);
+        requireAccepted(await backend.command(args));
       },
     },
     project: {

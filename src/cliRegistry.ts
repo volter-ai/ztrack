@@ -82,7 +82,7 @@ export const REGISTRY: CommandSpec[] = [
     val('--title'), val('--body'), val('--body-file'), val('--state'), val('--assignee'),
     val('--project'), bool('--remove-project'), val('--parent'), bool('--remove-parent'),
     val('--add-label', { repeatable: true }), val('--remove-label', { repeatable: true }),
-    val('--expect-state'), val('--expect-body-sha'), // parsed+stripped in cli.ts before forwarding
+    val('--expect-state'), val('--expect-body-sha'), // optimistic-concurrency preconditions, enforced by the backend at the write (ztrack#20)
   ] },
   { path: ['issue', 'comment'], flags: [ val('--body'), val('--body-file') ] },
   { path: ['issue', 'close'], flags: [ val('--reason'), val('--comment'), val('--comment-file') ] },

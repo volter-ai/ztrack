@@ -12,6 +12,7 @@ import { initTrackerPresets, initTrackerProject } from './presetCatalog.ts';
 import { applyModelPatch, canonicalizeBody } from './modelEdit.ts';
 import { viewToRecord, columnsToEdit } from './core/loader.ts';
 import { resolveTrackerValidation } from './presetRegistry.ts';
+import { createHash } from 'node:crypto';
 import { createTrackerClient } from './sdk.ts';
 
 type JsonRpcRequest = { jsonrpc: '2.0'; id?: number | string | null; method: string; params?: Record<string, any> };
@@ -129,7 +130,8 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
       const preset = await resolveTrackerValidation(loadTrackerConfig(projectRoot), projectRoot);
       const patch = (args.patch && typeof args.patch === 'object' && !Array.isArray(args.patch)) ? args.patch as Record<string, unknown> : {};
       const result = applyModelPatch(preset, record, { ...(args.acId ? { acId: String(args.acId) } : {}), patch });
-      if (result.changed) await client.issue.edit(String(args.issue), columnsToEdit(result.body, result.columns, record));
+      // ztrack#20: refuse (rather than clobber) if the issue changed between the view above and this write.
+      if (result.changed) await client.issue.edit(String(args.issue), { ...columnsToEdit(result.body, result.columns, record), expectedBodySha: sha256(record.body) });
       return { issue: args.issue, ...(args.acId ? { acId: args.acId } : {}), changed: result.changed };
     }
     case 'tracker_fmt': {
@@ -138,12 +140,17 @@ async function callTool(name: string, args: Record<string, any>): Promise<unknow
       const preset = await resolveTrackerValidation(loadTrackerConfig(projectRoot), projectRoot);
       const result = canonicalizeBody(preset, record);
       const canonical = result.body === record.body;
-      if (args.write && !canonical) await client.issue.edit(String(args.issue), columnsToEdit(result.body, result.columns, record));
+      if (args.write && !canonical) await client.issue.edit(String(args.issue), { ...columnsToEdit(result.body, result.columns, record), expectedBodySha: sha256(record.body) });
       return { issue: args.issue, canonical, ...(args.write ? { written: !canonical } : { preview: result.body }) };
     }
     default:
       throw new Error(`unknown tool: ${name}`);
   }
+}
+
+// ztrack#20: the optimistic-concurrency precondition for read-modify-write tools (patch/fmt).
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
 }
 
 export async function serveMcp(): Promise<void> {
