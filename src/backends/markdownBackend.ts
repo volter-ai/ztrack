@@ -179,7 +179,10 @@ class MarkdownSource implements IssueSource {
   origin(id: string): SourceOrigin { return { path: this.originPath(id) }; }
   // Write the committed md to THIS checkout (board stays in git, on this branch); in shared mode (re)point
   // the central index symlink at it — making this worktree the live owner of the issue.
-  write(c: CanonicalIssue): void {
+  // ztrack#28: a dry run stops before the filesystem mutation — for an issue-per-file source the
+  // write itself has no further gates, so there is nothing left to predict past this point.
+  write(c: CanonicalIssue, opts: { dryRun?: boolean } = {}): void {
+    if (opts.dryRun) return;
     const real = issueFile(this.dir, c.identifier);
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(real, serializeIssue(c));
@@ -351,11 +354,11 @@ export class MarkdownBackend implements TrackerBackend {
   // Resolve the owning source of an EXISTING issue and write it there, after confirming that
   // source isn't `readonly: true`. Used by edit/comment/close — never by create (see
   // mintTargetSource: a NEW issue has no existing source to route to).
-  private writeIssue(c: CanonicalIssue): void {
+  private writeIssue(c: CanonicalIssue, opts: { dryRun?: boolean } = {}): void {
     const source = this.sourceOf(c.identifier);
     if (!source) throw new Error(`markdown backend: cannot resolve the source of issue ${c.identifier}.`);
     this.requireSourceWritable(source);
-    source.write(c);
+    source.write(c, opts);
   }
   private deleteIssue(id: string): void {
     const source = this.sourceOf(id);
@@ -527,8 +530,16 @@ export class MarkdownBackend implements TrackerBackend {
           };
         }
       }
-      if (reparent) this.reparentChildren(c.identifier, reparent.from, reparent.to);
-      this.writeIssue(c);
+      // ztrack#28: `--dry-run` runs the WHOLE edit path — the not-found guard, the --state
+      // vocabulary check, the precondition check above, source resolution, the readonly-source
+      // gate, and (for a document source) every structural/delta/staleness/integrity write guard
+      // — stopping only at the final filesystem mutation. A dry run that succeeds is therefore an
+      // honest prediction that the real run would be accepted; it can never print an unqualified
+      // success immediately before a real-run refusal. Reparent side-writes are skipped (they are
+      // writes), but their own gate is the same writeIssue path evaluated here for the child.
+      const dryRun = args.includes('--dry-run');
+      if (!dryRun && reparent) this.reparentChildren(c.identifier, reparent.from, reparent.to);
+      this.writeIssue(c, { dryRun });
       return ok(JSON.stringify(viewJson(c, this.originPath(c.identifier)), null, 2));
     }
     if (verb === 'issue' && sub === 'comment') {

@@ -50,6 +50,12 @@ export interface TrackerIssueUpdate {
    *  read-modify-write caller (`ac patch`, `fmt --write`) can never clobber a concurrent edit
    *  with a wholesale body replacement computed from a stale snapshot. */
   expectedBodySha?: string;
+  /** ztrack#28: run the WHOLE edit path — every gate that can refuse the real write (not-found,
+   *  --state vocabulary, the expectedBodySha precondition, readonly-source, a document source's
+   *  structural/delta/staleness/integrity guards) — but stop short of the final filesystem
+   *  mutation. A dry run resolving without error is an honest prediction that the real write
+   *  would be accepted. */
+  dryRun?: boolean;
 }
 
 export interface TrackerClient {

@@ -44,6 +44,7 @@ function issueEditArgs(identifier: string, input: TrackerIssueUpdate): string[] 
   for (const label of input.addLabels ?? []) args.push('--add-label', label);
   for (const label of input.removeLabels ?? []) args.push('--remove-label', label);
   if (input.expectedBodySha) args.push('--expect-body-sha', input.expectedBodySha);
+  if (input.dryRun) args.push('--dry-run');
   return args;
 }
 
