@@ -737,17 +737,7 @@ function defaultFixHint(f: Finding): string | undefined {
     case 'ac_checkbox_status_mismatch':
       return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
     case 'issue_missing_assignee':
-      // ZTB-23 dev/03: a document-sourced issue (many issues in one file, ZTB-4) has no home for
-      // an assignee edit through the CLI — DocumentSource.write fails closed on ANY assignee
-      // change (assigneeNotImplementedError, backends/documentSource.ts) — so telling the agent
-      // to run `issue edit --assignee` here just trades this finding for a second, different
-      // error. `f.origin.line` is present ONLY for a document-sourced issue's own section (an
-      // issue-per-file record's origin never carries a line — see core/engine.ts's
-      // toFindingOrigin); route those to the one remediation that actually works: editing the
-      // file's `assignee:` header line directly.
-      return f.origin?.line !== undefined
-        ? `Fix: ${issue} is a document-sourced issue — \`ztrack issue edit --assignee\` does not work on it (write-back has no assignee splice yet). Add or edit the \`assignee:\` header line under ${issue}'s heading in ${f.origin.path} directly.`
-        : `Fix: assign an owner — \`ztrack issue edit ${issue} --assignee <you>\` for a stored issue, or add an \`Assignee: <you>\` line to the top of the body for a loose file.`;
+      return `Fix: assign an owner through the tracker — \`ztrack issue edit ${issue} --assignee <you>\`; document-backed tasks persist this in their section's \`assignee:\` header.`;
     case 'ready_requires_dev_ac':
       return `Fix: give ${issue} at least one acceptance criterion (a \`## Acceptance Criteria\` item), or move it back to draft`;
     case 'review_requires_pr':

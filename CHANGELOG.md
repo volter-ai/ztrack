@@ -2,6 +2,15 @@
 
 All notable ztrack release changes are recorded here.
 
+## Unreleased
+
+- **Document-backed tasks now support assignee write-back.** `ztrack issue edit <id> --assignee`
+  safely rewrites, inserts, or removes the task section's `assignee:` header while preserving all
+  unrelated bytes and retaining the existing stale-read and candidate-integrity guards. Documents
+  still store one assignee and fail closed for ambiguous multi-assignee or malformed-header writes.
+  Header-only status/assignee edits also work on parent items with id-bearing child sections;
+  body/title edits on those parents remain fail-closed.
+
 ## 1.3.0
 
 **Write-path integrity release**: the four longest-open consumer-filed defects (#20, #21, #22,

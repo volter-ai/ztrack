@@ -317,6 +317,47 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     expect(parsed.summary.issues).toBeGreaterThan(0);
   });
 
+  test('5a. `issue edit --assignee` rewrites the document header through ztrack', () => {
+    const before = readFileSync(wbDocPath(), 'utf8');
+    const result = ztIn(wbRoot, 'issue', 'edit', 'DOC-1', '--assignee', 'alex');
+    expect(result.code).toBe(0);
+    const after = readFileSync(wbDocPath(), 'utf8');
+    expect(after).toBe(before.replace('assignee: kim', 'assignee: alex'));
+    const view = J(ztIn(wbRoot, 'issue', 'view', 'DOC-1', '--json')) as { assignees: { nodes: Array<{ name: string }> } };
+    expect(view.assignees.nodes.map((a) => a.name)).toEqual(['alex']);
+  });
+
+  test('5aa. `issue edit --assignee` inserts the missing header for an unassigned registered document task', () => {
+    const unassignedRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-assignee-'));
+    try {
+      mkdirSync(join(unassignedRoot, 'node_modules'), { recursive: true });
+      symlinkSync(REPO, join(unassignedRoot, 'node_modules', 'ztrack'));
+      gitIn(unassignedRoot, 'init', '-q');
+      gitIn(unassignedRoot, 'config', 'user.email', 't@t.co');
+      gitIn(unassignedRoot, 'config', 'user.name', 't');
+      expect(ztIn(unassignedRoot, 'init', '--team', 'APP').code).toBe(0);
+      const path = join(realpathSync(unassignedRoot), 'proposal.md');
+      const proposal = [
+        '## DOC-9 — Unassigned proposal',
+        '',
+        'status: draft',
+        '',
+        'Proposal body.',
+        '',
+      ].join('\n');
+      writeFileSync(path, proposal);
+      setSources(unassignedRoot, [{ path: '.volter/tracker/markdown' }, { path: 'proposal.md', format: 'document' }]);
+
+      const result = ztIn(unassignedRoot, 'issue', 'edit', 'DOC-9', '--assignee', 'alex');
+      expect(result.code).toBe(0);
+      expect(readFileSync(path, 'utf8')).toBe(proposal.replace('status: draft\n', 'status: draft\nassignee: alex\n'));
+      const view = J(ztIn(unassignedRoot, 'issue', 'view', 'DOC-9', '--json')) as { assignees: { nodes: Array<{ name: string }> } };
+      expect(view.assignees.nodes.map((a) => a.name)).toEqual(['alex']);
+    } finally {
+      rmSync(unassignedRoot, { recursive: true, force: true });
+    }
+  });
+
   test('5b. fail-closed: a document item with NO `status:` header line refuses `--state`, names the file/issue, and writes nothing', () => {
     const noHeaderRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-noheader-'));
     try {
@@ -848,14 +889,13 @@ describe('document source (ZTB-23): missing-assignee fix hint + silently-discard
 
   type CheckPayload = { ok: boolean; findings: Array<{ code: string; issueId?: string; message: string; fix?: string }> };
 
-  test('dev/03: `issue_missing_assignee`\'s fix hint on a document-sourced issue points at the file\'s `assignee:` header line, not `issue edit --assignee`', () => {
+  test('`issue_missing_assignee` routes document-sourced issues through `issue edit --assignee`', () => {
     const payload = JSON.parse(ztIn(zRoot, 'check', '--json').out) as CheckPayload;
     for (const id of ['ZDOC-1', 'ZDOC-2']) {
       const f = payload.findings.find((x) => x.code === 'issue_missing_assignee' && x.issueId === id);
       expect(f).toBeDefined();
       expect(f!.fix).toContain('assignee:');
-      expect(f!.fix).toContain('backlog.md');
-      expect(f!.fix).not.toMatch(/issue edit \S+ --assignee <you>/);
+      expect(f!.fix).toContain(`issue edit ${id} --assignee <you>`);
     }
   });
 

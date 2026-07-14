@@ -95,15 +95,12 @@ describe('ztrack import (ZTB-14 dev/33): the real CLI, a mktemp project, first-c
   });
 
   test('6. `ztrack check` is green after import + register, once each issue is assigned', () => {
-    // A document source's assignee is NOT ztrack-writable (docs/SOURCES.md: "the sanctioned way
-    // to change an item's state or assignee is to edit the document directly") — a freeform
-    // backlog carries no assignee at all, so the importer correctly mints none (never guessed).
-    // This is the SAME step any newly created issue needs (issue_missing_assignee fires
-    // unconditionally regardless of source), not something import should paper over. Simulate the
-    // realistic next step: a human adds an `assignee:` header line per item, directly in the file.
-    const withAssignees = readFileSync(backlogPath(), 'utf8')
-      .replace(/^(#{1,6} APP-\d[^\n]*)$/gm, '$1\n\nassignee: me');
-    writeFileSync(backlogPath(), withAssignees);
+    // Import never guesses ownership. Assign every materialized task through the tracker service;
+    // APP-1 also has id-bearing children, proving metadata-only writes remain safe on parents.
+    for (const id of ['APP-1', 'APP-2', 'APP-3']) {
+      const assigned = ztIn(root, 'issue', 'edit', id, '--assignee', 'me');
+      expect(assigned.code, `${id}: ${assigned.out}`).toBe(0);
+    }
 
     const check = ztIn(root, 'check');
     expect(check.code).toBe(0);
