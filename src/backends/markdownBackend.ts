@@ -5,6 +5,7 @@
 // `backend: "markdown"`. Validation reads this store through `issue list/view`
 // (the loader frames those rows into the validation bundle); the project-manager
 // `snapshot` report verb is the one backend command not yet implemented here.
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
@@ -487,14 +488,46 @@ export class MarkdownBackend implements TrackerBackend {
       // A reparent (either direction) keeps the OLD and NEW parents' `children` views in sync —
       // see reparentChildren above.
       const pa = flagVal(args, 'parent'); const removeParent = args.includes('--remove-parent');
+      // The reparent side-writes are DEFERRED until after the precondition check below, so a
+      // refused edit leaves the parents' `children` views untouched too.
+      let reparent: { from: string | null; to: string | null } | undefined;
       if (pa || removeParent) {
         const newParent = removeParent ? null : pa!;
-        this.reparentChildren(c.identifier, c.parent, newParent);
+        reparent = { from: c.parent, to: newParent };
         c.parent = newParent;
       }
       for (const l of flagAll(args, 'add-label')) if (!c.labels.includes(l)) c.labels.push(l);
       const rm = new Set(flagAll(args, 'remove-label')); c.labels = c.labels.filter((l) => !rm.has(l));
       c.updatedAt = new Date().toISOString();
+      // ztrack#20: `--expect-state`/`--expect-body-sha` are optimistic-concurrency preconditions,
+      // enforced HERE — against a FRESH re-read, at the last moment before the write — not as a
+      // separate read-then-check round trip (the old cli.ts pre-check left the whole edit
+      // computation as a race window). A read-modify-write caller (`ac patch`/`issue patch`, a
+      // scripted `issue view` → `issue edit` sequence) passes the sha256 of the body it computed
+      // from; if anything else wrote the issue in between, the edit refuses with a
+      // machine-readable precondition-failed payload and NOTHING is written — the concurrent
+      // write is never silently clobbered by a wholesale body replacement computed from a stale
+      // snapshot.
+      const expectState = flagVal(args, 'expect-state');
+      const expectBodySha = flagVal(args, 'expect-body-sha');
+      if (expectState !== undefined || expectBodySha !== undefined) {
+        const fresh = this.loadOne(rest[0]!);
+        const currentBodySha = createHash('sha256').update(fresh?.body ?? '').digest('hex');
+        const conflicts: string[] = [];
+        if (expectState !== undefined && fresh?.state !== expectState) {
+          conflicts.push(`state is ${JSON.stringify(fresh?.state ?? null)}, expected ${JSON.stringify(expectState)}`);
+        }
+        if (expectBodySha !== undefined && currentBodySha !== expectBodySha) {
+          conflicts.push(`body sha256 is ${currentBodySha}, expected ${expectBodySha}`);
+        }
+        if (conflicts.length) {
+          return {
+            stdout: '',
+            stderr: `${JSON.stringify({ ok: false, error: 'precondition-failed', issue: c.identifier, conflicts, currentState: fresh?.state ?? null, currentBodySha }, null, 2)}\n`,
+          };
+        }
+      }
+      if (reparent) this.reparentChildren(c.identifier, reparent.from, reparent.to);
       this.writeIssue(c);
       return ok(JSON.stringify(viewJson(c, this.originPath(c.identifier)), null, 2));
     }

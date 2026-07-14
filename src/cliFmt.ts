@@ -3,6 +3,7 @@
 // (`--check`), or writing it back (`--write`). Extracted from cli.ts (ZTB-28 dev/04), following
 // the established verb-module pattern (cliImport.ts/cliWaiver.ts/cliLoop.ts): flag parsing +
 // terminal rendering only, dispatched from cli.ts's main().
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { optionValue } from './cliArgs.ts';
@@ -49,7 +50,8 @@ export async function handleFmtCommand(args: string[]): Promise<boolean> {
   if (write) {
     if (canonical) { process.stdout.write('already canonical\n'); return true; }
     if (issueId) {
-      await fmtClient!.issue.edit(issueId, columnsToEdit(result.body, result.columns, record));
+      // ztrack#20: refuse (rather than clobber) if the issue changed since the view above.
+      await fmtClient!.issue.edit(issueId, { ...columnsToEdit(result.body, result.columns, record), expectedBodySha: createHash('sha256').update(record.body).digest('hex') });
       process.stdout.write(`formatted ${issueId}\n`);
     } else {
       const out = inputHadCrlf ? result.body.replace(/\n/g, '\r\n') : result.body;
