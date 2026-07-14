@@ -458,6 +458,19 @@ export interface Preset<R extends CoreRoot> {
   // an external source-of-truth (e.g. speckit over Spec-Kit's own files) is read-ONLY and
   // omits it, so `fmt` and the structured-mutation tools are unavailable for it by design.
   serialize?: (issue: R['issues'][number]) => { body: string; columns: IssueColumns };
+  // Optional AC-patch normalization (ztrack#22): given the schema-shaped fragment an `ac patch`
+  // is about to overlay and the CURRENT AC object it targets, return the fragment to actually
+  // apply. This is where a preset keeps its own INTERNALLY-COUPLED fields consistent when a
+  // patch names only one of them — e.g. simple-sdlc's `checked` is defined as the GFM mirror of
+  // `status === 'passed'`, so a `{"status":"failed"}` patch must also flip the checkbox rather
+  // than write a `[x] … status: failed` row its own `ac_checkbox_status_mismatch` rule then
+  // flags (and that a repeat of the same patch can never repair, because the status field alone
+  // is already a no-op). Preset-owned because which fields mirror which is the preset's grammar;
+  // the hook must be PURE and must only ADD/ADJUST fields derived from the given patch + current
+  // AC (an explicit field in the caller's patch always wins — see the shipped implementations).
+  // Omit for a preset with no coupled AC fields (spec derives status FROM the checkbox at parse,
+  // so it has no mirror to desynchronize).
+  normalizeAcPatch?: (patch: Record<string, unknown>, current: Record<string, unknown>) => Record<string, unknown>;
   rules: Rule<R>[];
   // Preset-specific analyzed facts: given the engine's core DerivedModel, return extra
   // fact lists (keyed by name) for this preset's rules to `select` over. This is where
