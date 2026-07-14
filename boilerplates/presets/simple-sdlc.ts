@@ -727,6 +727,25 @@ const DEFAULT_VISUALIZER: VisualizerSpec = {
   // no `pr`: this preset is PR-free by design (see the header note) — DefaultIssueSchema has no `pr` field.
 };
 
+
+// ztrack#22: `checked` is DEFINED as the GFM mirror of `status === 'passed'` (that is exactly
+// what ac_checkbox_status_mismatch above enforces) — so an `ac patch` that names only one of the
+// two coupled fields must keep the other consistent, instead of writing a row this preset's own
+// rule then immediately flags (`- [x] … status: failed`) and that a REPEAT of the same patch can
+// never repair (the named field alone is already a no-op, so `changed: false`). An explicit
+// field in the caller's patch always wins; a patch naming neither field (evidence/proof/paths/…)
+// passes through untouched. Wired via the preset's `normalizeAcPatch` hook (modelEdit.ts).
+function normalizeDefaultAcPatch(patch: Record<string, unknown>, current: Record<string, unknown>): Record<string, unknown> {
+  if ('status' in patch && !('checked' in patch)) return { ...patch, checked: patch.status === 'passed' };
+  if ('checked' in patch && !('status' in patch)) {
+    // checking implies passed; UNchecking a passed AC demotes it to pending (a current status of
+    // pending/failed is already `[ ]`-consistent and is kept as-is).
+    if (patch.checked === true) return { ...patch, status: 'passed' };
+    if (current.status === 'passed') return { ...patch, status: 'pending' };
+  }
+  return patch;
+}
+
 export const DefaultPreset: Preset<DefaultRoot> = {
   name: 'simple-sdlc',
   fixHint: defaultFixHint,
@@ -760,6 +779,7 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   },
   parse: parseDefault,
   serialize: serializeIssue, // issue -> { body, columns }; the inverse of parse
+  normalizeAcPatch: normalizeDefaultAcPatch, // keep the checkbox mirror and status coupled (ztrack#22)
   // an AC-less issue counts as done (for the block graph's completion gate) only at the terminal state.
   isIssueDone: (i) => i.status === 'done',
   // relation reciprocity + dangling proof refs; the block graph + id aggregates are core.
