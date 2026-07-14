@@ -41,7 +41,7 @@ jobs:
         run: bash demos/loop-gate-ci.sh
       - name: Import backlog (freeform -> native document source e2e)
         run: bash demos/import-backlog-demo.sh
-      - name: Visualizer mod (DOM-rendered custom board: status column + AC-unit label + theme + code panel)
+      - name: "Visualizer mod (DOM-rendered custom board: status column + AC-unit label + theme + code panel)"
         run: |
           (cd visualizer && bun install --silent)
           bash demos/visualizer-mod.sh
