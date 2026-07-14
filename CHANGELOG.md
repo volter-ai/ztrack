@@ -9,7 +9,9 @@ All notable ztrack release changes are recorded here.
   unrelated bytes and retaining the existing stale-read and candidate-integrity guards. Documents
   still store one assignee and fail closed for ambiguous multi-assignee or malformed-header writes.
   Header-only status/assignee edits also work on parent items with id-bearing child sections;
-  body/title edits on those parents remain fail-closed.
+  body/title edits on those parents remain fail-closed. Document body writes also normalize the
+  semantically equivalent trailing blank line commonly emitted by preset serializers, so a
+  combined routing/body patch round-trips through the document presentation model.
 
 ## 1.3.0
 

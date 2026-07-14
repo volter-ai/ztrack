@@ -178,6 +178,27 @@ describe('DocumentSource.write guards (ZTB-4 dev/09)', () => {
     expect(onDisk).toContain('## DOC-2 — Beta item\n\nNo header block on this one.');
   });
 
+  test('a combined metadata + body patch accepts a preset-serialized trailing blank line', () => {
+    const { path, resolved } = docFile(CANON);
+    const src = new DocumentSource(resolved);
+    const doc1 = src.load('DOC-1')!;
+    const serializedBody = `${doc1.body.replace('Some context note.', 'Updated context note.')}\n`;
+    expect(serializedBody.endsWith('\n\n')).toBe(true);
+
+    src.write(edited(doc1, {
+      state: 'ready',
+      stateType: 'open',
+      body: serializedBody,
+    }));
+
+    const reloaded = src.load('DOC-1')!;
+    expect(reloaded.state).toBe('ready');
+    expect(reloaded.body).toContain('Updated context note.');
+    expect(reloaded.body.endsWith('\n')).toBe(true);
+    expect(reloaded.body.endsWith('\n\n')).toBe(false);
+    expect(readFileSync(path, 'utf8')).toContain('status: ready\nassignee: kim');
+  });
+
   test('an assignee change rewrites only the existing header value and is reflected by a fresh read', () => {
     const { path, resolved } = docFile(CANON);
     const src = new DocumentSource(resolved);

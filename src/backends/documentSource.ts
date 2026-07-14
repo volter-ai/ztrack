@@ -226,6 +226,18 @@ function sameStrings(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
+// A document section's trailing blank-line run belongs to the separator before the next section,
+// not to the issue's presented body. The read path therefore presents at most one terminal
+// newline after the body's last non-empty line. Preset serializers commonly emit a final blank
+// line (`...\n\n`); normalize that semantically equivalent shape before diffing, splicing, and
+// checking the candidate so a body+metadata patch can round-trip through the documented model.
+function normalizeBodyTerminalNewlines(body: string): string {
+  const match = /\n+$/.exec(body);
+  if (!match) return body;
+  const content = body.slice(0, -match[0].length);
+  return content === '' ? '' : `${content}\n`;
+}
+
 /** Absolute character offset of the start of `lines[lineIndex]` (0-based) if `lines` were
  *  rejoined with `\n`. Used to locate a section's recorded line span within the fresh file text
  *  (which — by the time this is called — is confirmed LF-only, so this is exact). */
@@ -279,7 +291,8 @@ export class DocumentSource implements IssueSource {
     const stored = this.byId.get(c.identifier);
     if (!stored) throw new Error(`markdown backend (document source '${this.location}'): cannot resolve issue ${c.identifier}.`);
 
-    const bodyChanged = c.body !== stored.issue.body;
+    const bodyForWrite = normalizeBodyTerminalNewlines(c.body);
+    const bodyChanged = bodyForWrite !== stored.issue.body;
     const titleChanged = c.title !== stored.issue.title;
 
     // (a) structural fail-closed gates. The umbrella has no section span and remains unwritable.
@@ -338,7 +351,7 @@ export class DocumentSource implements IssueSource {
     let newSectionText = rawForSplice;
     if (bodyChanged || titleChanged) {
       try {
-        newSectionText = spliceSectionText(rawForSplice, stored.level, stored.issue.title, c.title, c.body);
+        newSectionText = spliceSectionText(rawForSplice, stored.level, stored.issue.title, c.title, bodyForWrite);
       } catch (e) {
         throw spliceFailedError(this.location, c.identifier, e instanceof Error ? e.message : String(e));
       }
@@ -393,7 +406,7 @@ export class DocumentSource implements IssueSource {
     if (!candidateTarget) throw integrityFailedError(this.location, `issue ${c.identifier} would no longer exist in the candidate file`);
     const candidateLoaded = buildLoadedIssue(candidateTarget);
     if (candidateLoaded.reshapeError !== undefined
-      || candidateLoaded.issue.body !== c.body
+      || candidateLoaded.issue.body !== bodyForWrite
       || candidateLoaded.issue.state !== c.state
       || candidateLoaded.issue.stateType !== c.stateType
       || !sameStrings(candidateLoaded.issue.assignees, c.assignees)) {
