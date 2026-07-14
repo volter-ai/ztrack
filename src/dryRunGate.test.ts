@@ -81,7 +81,7 @@ describe('ztrack#28: --dry-run runs every write gate and mutates nothing', () =>
     }
   });
 
-  test('document source: a dry run runs ALL write guards (delta gate refuses) yet a valid dry run leaves the file byte-identical', async () => {
+  test('document source: a dry run runs ALL write guards; supported assignee/body edits leave the file byte-identical', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ztrk-28-doc-'));
     try {
       const docPath = join(root, 'BACKLOG.md');
@@ -93,9 +93,10 @@ describe('ztrack#28: --dry-run runs every write gate and mutates nothing', () =>
         sources: [{ path: 'BACKLOG.md', format: 'document', name: 'doc' }],
       }));
       const client = createTrackerClient({ projectRoot: root });
-      // the delta guard fires under dry-run exactly as it would on the real write
-      await expect(client.issue.edit('DOC-1', { assignee: 'someone', dryRun: true })).rejects.toThrow(/assignee/);
-      // a valid body edit dry-runs clean through splice + integrity guards, writing nothing
+      // An unsupported delta still fires under dry-run exactly as it would on the real write.
+      await expect(client.issue.edit('DOC-1', { addLabels: ['unsupported'], dryRun: true })).rejects.toThrow(/labels/);
+      // Supported assignee and body edits dry-run clean through splice + integrity guards.
+      await client.issue.edit('DOC-1', { assignee: 'someone', dryRun: true });
       await client.issue.edit('DOC-1', { body: 'Alpha body, revised.\n', dryRun: true });
       expect(readFileSync(docPath, 'utf8')).toBe(original);
     } finally {
