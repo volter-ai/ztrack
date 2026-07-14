@@ -2,6 +2,49 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.3.0
+
+**Write-path integrity release**: the four longest-open consumer-filed defects (#20, #21, #22,
+#28 — every one hit in production tracker operations by `volter-ai/peak-internal`) are fixed or
+pinned, plus the CI restoration that un-broke every workflow run.
+
+- **Stale-snapshot mutations refuse instead of clobbering (#20).** `--expect-state`/
+  `--expect-body-sha` are now enforced by the markdown backend itself, against a fresh re-read at
+  the last moment before the write — not as a separate racy CLI pre-check read. Every
+  read-modify-write caller (`ac patch`/`issue patch`, `fmt --write`, MCP `tracker_patch`/
+  `tracker_fmt`) passes the sha256 of the body it computed from via the SDK's new
+  `TrackerIssueUpdate.expectedBodySha`, so a wholesale body replacement computed from a stale
+  snapshot can never silently revert a concurrent edit; the refusal is a machine-readable
+  `precondition-failed` payload and `ac patch` explains exactly what happened. Reparent
+  side-writes are deferred behind the check. SDK mutations (`create`/`edit`/`comment`/`close`)
+  now THROW on a backend refusal instead of discarding stderr and resolving as success (the
+  false-positive-success shape from the issue's PH-65 report). The other half of #20 — `issue
+  edit --body` reverting existing Sources/Evidence rows — was already structurally gone at 1.x
+  (verbatim body storage) and is pinned by regression test (`src/staleWriteGuard.test.ts`).
+- **AC versions are one explicit value across mutation and validation (#21).** The 0.3.0
+  dual-phase computed `acv_<hash>` disagreement is structurally unrepresentable at 1.x (explicit
+  `v<N>` on the AC line, explicit `acv=<n>` on evidence, one comparison rule) — now pinned by
+  `src/acVersionSingleSource.test.ts`, including a source meta-scan asserting no computed
+  AC-version derivation regrows in shipping code.
+- **A status-only `ac patch` keeps the GFM checkbox mirror in sync (#22).** New optional, pure
+  `Preset.normalizeAcPatch(patch, current)` hook, applied by `applyModelPatch` before the
+  overlay; `simple-sdlc`/`simple-gh-sdlc` implement it (status drives the checkbox; checking
+  implies passed; unchecking a passed AC demotes to pending; an explicit field in the caller's
+  patch always wins; evidence/proof citations on the row survive). `{"status":"failed"}` on a
+  passed AC no longer writes the `- [x] … status: failed` contradiction its own
+  `ac_checkbox_status_mismatch` rule then flags — and that re-running the same patch could never
+  repair.
+- **`--dry-run` runs the whole write path (#28).** `issue edit` gains `--dry-run`;
+  `ac patch --dry-run`/`issue patch --dry-run` now take the SAME path as the real run — every
+  gate that can refuse (not-found, `--state` vocabulary, the #20 preconditions, readonly-source,
+  and ALL of a document source's structural/delta/staleness/integrity write guards) is evaluated
+  against the real fresh file, stopping only at the final filesystem mutation
+  (`IssueSource.write`'s new `dryRun` option). A dry-run success is an honest prediction of the
+  real run; it can never print an unqualified success immediately before a real-run refusal.
+- **CI restored.** Both `ci.yml` and `publish.yml` carried the VIZ-16 step name with an unquoted
+  `: ` — a YAML parse error that failed EVERY workflow run (all workflows, all branches, zero
+  jobs) since VIZ-10 landed. Quoted; CI and the tag-triggered npm publish gate run again.
+
 ## 1.2.0
 
 **Dialect lenses** (docs/DIALECTS.md): read a repo's OWN task-list idiom as issues — without
