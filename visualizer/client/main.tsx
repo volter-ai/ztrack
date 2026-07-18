@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AuditEntry, CoreIssue, Finding, Payload, Timestamps } from './model';
 import { buildEffectiveExtension, type EffectiveExtension } from './extensions';
+import { isOperationallyBlocked, operationalBlockLabel } from './operationalBlocking';
 
 // The shared `/project/` URL mapper — passed to `acEvidence` and `issuePanels` so an extension
 // (data-derived or code) can link evidence/design-artifact files under the project root.
@@ -65,20 +66,21 @@ function writeRoute(view: string, issueId: string | null) {
 type GroupBy = 'status' | 'label' | 'none';
 type OrderBy = 'priority' | 'identifier' | 'title' | 'progress';
 type IssueFilter = 'all' | 'blocked' | 'blocking' | 'withPr' | 'errors' | 'warnings';
-const issueFilterLabels: Record<IssueFilter, string> = { all: 'Any issue', blocked: 'Blocked', blocking: 'Blocking others', withPr: 'Has a PR', errors: 'Has errors', warnings: 'Has warnings' };
+const issueFilterLabels: Record<IssueFilter, string> = { all: 'Any issue', blocked: 'Operationally blocked', blocking: 'Blocking others', withPr: 'Has a PR', errors: 'Has errors', warnings: 'Has warnings' };
 
-function applyView(list: CoreIssue[], view: string, findings: Finding[]) {
+function applyView(list: CoreIssue[], view: string, findings: Finding[], ext: EffectiveExtension) {
   if (view === 'all') return list;
+  if (view === 'operationally-blocked') return list.filter((issue) => isOperationallyBlocked(issue, ext));
   if (view === 'findings') return list.filter((i) => errorsOf(findings, i.id).length || warningsOf(findings, i.id).length || acknowledgedOf(findings, i.id).length);
   return list.filter((i) => i.status === view);
 }
 function primaryLabel(i: CoreIssue) { const l = labelsOf(i); return l.find((x) => x.startsWith('priority:') || /^P\d$/.test(x)) ?? l[0] ?? 'No label'; }
-function issueWeight(i: CoreIssue, f: Finding[]) { return errorsOf(f, i.id).length * 1000 + warningsOf(f, i.id).length * 100 + relsOf(i, 'blocked-by').length * 10 + relsOf(i, 'blocks').length; }
-function sortValue(i: CoreIssue, orderBy: OrderBy, f: Finding[]): string | number {
+function issueWeight(i: CoreIssue, f: Finding[], ext: EffectiveExtension) { return errorsOf(f, i.id).length * 1000 + warningsOf(f, i.id).length * 100 + (isOperationallyBlocked(i, ext) ? 10 : 0) + relsOf(i, 'blocks').length; }
+function sortValue(i: CoreIssue, orderBy: OrderBy, f: Finding[], ext: EffectiveExtension): string | number {
   if (orderBy === 'identifier') return i.id;
   if (orderBy === 'title') return i.title.toLowerCase();
   if (orderBy === 'progress') return acProgress(i).percent;
-  return issueWeight(i, f);
+  return issueWeight(i, f, ext);
 }
 function filterAndSort(issues: CoreIssue[], query: string, label: string, issueFilter: IssueFilter, orderBy: OrderBy, ext: EffectiveExtension, findings: Finding[]) {
   const q = query.trim().toLowerCase();
@@ -86,7 +88,7 @@ function filterAndSort(issues: CoreIssue[], query: string, label: string, issueF
     const hay = [i.id, i.title, i.summary, i.status, ...labelsOf(i)].join(' ').toLowerCase();
     if (q && !hay.includes(q)) return false;
     if (label !== 'all' && !labelsOf(i).includes(label)) return false;
-    if (issueFilter === 'blocked' && relsOf(i, 'blocked-by').length === 0) return false;
+    if (issueFilter === 'blocked' && !isOperationallyBlocked(i, ext)) return false;
     if (issueFilter === 'blocking' && relsOf(i, 'blocks').length === 0) return false;
     if (issueFilter === 'withPr' && !ext.pr?.(i)) return false;
     if (issueFilter === 'errors' && errorsOf(findings, i.id).length === 0) return false;
@@ -94,7 +96,7 @@ function filterAndSort(issues: CoreIssue[], query: string, label: string, issueF
     return true;
   });
   return out.sort((a, b) => {
-    const av = sortValue(a, orderBy, findings), bv = sortValue(b, orderBy, findings);
+    const av = sortValue(a, orderBy, findings, ext), bv = sortValue(b, orderBy, findings, ext);
     if (typeof av === 'number' && typeof bv === 'number') return bv - av || a.id.localeCompare(b.id);
     return String(av).localeCompare(String(bv)) || a.id.localeCompare(b.id);
   });
@@ -112,6 +114,11 @@ function groupedItems(items: CoreIssue[], groupBy: GroupBy, ext: EffectiveExtens
 // ── shared bits ──────────────────────────────────────────────────────────────
 function StatePill({ status, ext }: { status: string; ext: EffectiveExtension }) {
   return <span className={`state-pill state-${ext.statusClass ? ext.statusClass(status) : status}`}>{status}</span>;
+}
+function OperationalBlockPill({ issue, ext, metric = false }: { issue: CoreIssue; ext: EffectiveExtension; metric?: boolean }) {
+  const label = operationalBlockLabel(issue, ext);
+  if (!label) return null;
+  return <span className={metric ? 'metric-operational-block' : 'operational-block-chip'}>{label}</span>;
 }
 function AcMiniRing({ issue, ext }: { issue: CoreIssue; ext: EffectiveExtension }) {
   const { done, total, percent } = acProgress(issue);
@@ -190,6 +197,7 @@ function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, o
                   <span className="progress-cell"><AcMiniRing issue={i} ext={ext} /></span>
                   <span className="signals">
                     {ext.pr?.(i) && <span>PR</span>}
+                    <OperationalBlockPill issue={i} ext={ext} />
                     {relsOf(i, 'blocked-by').length > 0 && <span className="blocked-by-chip">blocked by {relsOf(i, 'blocked-by').length}</span>}
                     {relsOf(i, 'blocks').length > 0 && <span className="blocks-chip">blocks {relsOf(i, 'blocks').length}</span>}
                     <FindingBadges findings={findings} id={i.id} />
@@ -232,6 +240,7 @@ function Board({ groups, collapsed, selectedId, findings, ext, onSelect, onToggl
                   {i.summary && i.summary !== i.title && <span className="board-summary">{i.summary}</span>}
                   <span className="board-meta">{total === 0 ? '0 AC' : `${done}/${total} AC`}</span>
                   <span className="signals board-signals">
+                    <OperationalBlockPill issue={i} ext={ext} />
                     {relsOf(i, 'blocked-by').length > 0 && <span className="blocked-by-chip">blocked by {relsOf(i, 'blocked-by').length}</span>}
                     {relsOf(i, 'blocks').length > 0 && <span className="blocks-chip">blocks {relsOf(i, 'blocks').length}</span>}
                     <FindingBadges findings={findings} id={i.id} />
@@ -298,6 +307,7 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
           <div className="case-metrics">
             <AssigneeAvatar assignee={ext.assignee?.(issue)} />
             <StatePill status={issue.status} ext={ext} />
+            <OperationalBlockPill issue={issue} ext={ext} metric />
             {ext.pr?.(issue) && <span>PR {ext.pr(issue)!.url}</span>}
             {timestamps.created && <span title={formatDateTime(timestamps.created)}>issue age {timeSince(timestamps.created)}</span>}
             {timestamps.stateSince && <span title={formatDateTime(timestamps.stateSince)}>in state {timeSince(timestamps.stateSince)}</span>}
@@ -453,7 +463,7 @@ function App() {
   const findings = payload?.findings ?? [];
   const all = payload?.issues ?? [];
   const labelSet = useMemo(() => [...new Set(all.flatMap(labelsOf))].sort((a, b) => a.localeCompare(b)), [all]);
-  const inView = useMemo(() => applyView(all, view, findings), [all, view, findings]);
+  const inView = useMemo(() => applyView(all, view, findings, ext), [all, view, findings, ext]);
   const items = useMemo(() => filterAndSort(inView, query, label, issueFilter, orderBy, ext, findings), [inView, query, label, issueFilter, orderBy, ext, findings]);
   const groups = useMemo(() => groupedItems(items, groupBy, ext), [items, groupBy, ext]);
   const selected = useMemo(() => (selectedId ? all.find((i) => i.id === selectedId) ?? null : null), [all, selectedId]);
@@ -467,16 +477,17 @@ function App() {
   const closeDetail = () => { setSelectedId(null); writeRoute(view, null); };
   const changeView = (v: string) => { setView(v); writeRoute(v, selectedId); };
   const toggleGroup = (t: string) => setCollapsed((c) => { const n = new Set(c); n.has(t) ? n.delete(t) : n.add(t); return n; });
-  const viewCount = (v: string) => applyView(all, v, findings).length;
-  const VIEWS = ['all', ...ext.statusOrder, 'findings'];
-  const viewLabel = (v: string) => (v === 'all' ? 'All issues' : v === 'findings' ? 'Needs attention' : v);
+  const viewCount = (v: string) => applyView(all, v, findings, ext).length;
+  const hasOperationalBlocks = all.some((issue) => isOperationallyBlocked(issue, ext));
+  const VIEWS = ['all', ...(hasOperationalBlocks ? ['operationally-blocked'] : []), ...ext.statusOrder.filter((status) => status !== 'operationally-blocked'), 'findings'];
+  const viewLabel = (v: string) => (v === 'all' ? 'All issues' : v === 'operationally-blocked' ? (ext.blockedViewLabel ?? 'Operationally blocked') : v === 'findings' ? 'Needs attention' : v);
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><span className="brand-mark">◆</span><div><strong>tracker</strong><small>preset: {payload?.preset ?? '…'}</small></div></div>
         <nav className="views" aria-label="Views">
-          {VIEWS.map((v) => <button className={`view${view === v ? ' active' : ''}`} key={v} onClick={() => changeView(v)} type="button"><span>{viewLabel(v)}</span><strong>{viewCount(v)}</strong></button>)}
+          {VIEWS.map((v) => <button className={`view view-${v}${view === v ? ' active' : ''}`} key={v} onClick={() => changeView(v)} type="button"><span>{viewLabel(v)}</span><strong>{viewCount(v)}</strong></button>)}
         </nav>
         <div className={`health health-${payload ? (payload.ok ? 'pass' : 'fail') : 'pass'}`}><span>{payload ? (payload.ok ? 'PASS' : 'FAIL') : '…'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div>
         {payload && (
@@ -542,4 +553,5 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+export const appRoot = createRoot(document.getElementById('root')!);
+appRoot.render(<App />);

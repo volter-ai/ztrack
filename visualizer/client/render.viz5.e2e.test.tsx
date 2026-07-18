@@ -107,6 +107,7 @@ async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<void> {
 // ── the DOM harness (identical wiring to render.e2e.test.tsx's `mountDom`/`unmountDom`) ────────
 let restoreFetch: (() => void) | null = null;
 let activeWindow: { happyDOM: { close(): Promise<void> } } | null = null;
+let activeRoot: { unmount(): void } | null = null;
 
 function mountDom(url: string, port: number): void {
   const win = new GlobalWindow({ url }) as unknown as typeof globalThis & { document: Document; happyDOM: { close(): Promise<void> } };
@@ -131,6 +132,7 @@ function mountDom(url: string, port: number): void {
 }
 
 async function unmountDom(): Promise<void> {
+  activeRoot?.unmount(); activeRoot = null;
   restoreFetch?.(); restoreFetch = null;
   if (activeWindow) { await activeWindow.happyDOM.close(); activeWindow = null; }
   for (const k of ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'Event', 'MouseEvent', 'customElements']) {
@@ -140,7 +142,8 @@ async function unmountDom(): Promise<void> {
 
 let scenarioId = 0;
 async function bootApp(): Promise<void> {
-  await import(`./main.tsx?viz5Scenario=${++scenarioId}`);
+  const module = await import(`./main.tsx?viz5Scenario=${++scenarioId}`);
+  activeRoot = module.appRoot;
   await waitFor(() => !!document.querySelector('.app-shell'));
 }
 
@@ -210,10 +213,10 @@ suite('VIZ-5 — per-preset rendered-fact drift guard (manifest-driven)', () => 
       test('status views render in the preset\'s OWN declared statusOrder', async () => {
         mountDom('http://localhost/', port);
         await bootApp();
-        await waitFor(() => !!document.querySelector('nav.views'));
-
-        const viewLabels = [...document.querySelectorAll('nav.views .view span:first-child')].map((n) => n.textContent);
-        expect(viewLabels).toEqual(['All issues', ...p.visualizer!.statusOrder, 'Needs attention']);
+        const expected = ['All issues', ...p.visualizer!.statusOrder, 'Needs attention'];
+        const viewLabels = () => [...document.querySelectorAll('nav.views .view span:first-child')].map((n) => n.textContent);
+        await waitFor(() => JSON.stringify(viewLabels()) === JSON.stringify(expected));
+        expect(viewLabels()).toEqual(expected);
       }, 15_000);
 
       if (p.visualizer?.acUnitLabel) {
@@ -251,16 +254,18 @@ suite('VIZ-5 — per-preset rendered-fact drift guard (manifest-driven)', () => 
       // a copy-pasted literal from its source, so it survives that file's content changing.
       if (p.hasCodeExtension) {
         test('the first-party code extension adds at least one issuePanels section', async () => {
+          // Other DOM suites may have registered this first-party extension already because Bun
+          // shares the module registry across test files. Force the intended data-only BEFORE;
+          // repeat registration is member-wise, so an explicit undefined clears this one slot.
+          const { registerExtension } = await import('./extensions');
+          registerExtension(p.name, { issuePanels: undefined });
           mountDom(`http://localhost/?issue=${issueId}`, port);
           await bootApp();
           await waitFor(() => !!document.querySelector('.detail-drawer'));
           const before = document.querySelectorAll('.detail-drawer .panel').length;
           await unmountDom();
 
-          const [{ registerExtension }, extMod] = await Promise.all([
-            import('./extensions'),
-            import(p.extensionPath),
-          ]) as [{ registerExtension: (name: string, ext: unknown) => void }, { default: unknown }];
+          const extMod = await import(p.extensionPath) as { default: unknown };
           registerExtension(p.name, extMod.default);
 
           mountDom(`http://localhost/?issue=${issueId}`, port);

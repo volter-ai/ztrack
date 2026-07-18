@@ -15,7 +15,7 @@ function ac(overrides: Partial<CoreAC> & Record<string, unknown> = {}): CoreAC {
 function payload(overrides: Partial<Payload> = {}): Payload {
   return {
     title: 'tracker', preset: 'simple-sdlc', projectDir: '/x', fetchedAt: 'now', trackerChangedAt: null, ok: true,
-    primitives: {}, visualizer: null, issues: [], findings: [], audit: {}, timestamps: {}, ...overrides,
+    primitives: {}, visualizer: null, operationalBlocking: {}, issues: [], findings: [], audit: {}, timestamps: {}, ...overrides,
   };
 }
 
@@ -112,6 +112,20 @@ describe('buildEffectiveExtension', () => {
     registerExtension('viz4-unit-test-preset-panels', { issuePanels: () => 'PANEL' });
     const withCode = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-preset-panels', visualizer: { statusOrder: [], acUnitLabel: 'x' } })).ext;
     expect(renderToStaticMarkup(<>{withCode.issuePanels?.(issue(), (p) => p)}</>)).toBe('PANEL');
+  });
+
+  test('operational-block policy and view label come only from the registered code extension', () => {
+    registerExtension('viz4-unit-test-operational-block', {
+      isOperationallyBlocked: (candidate) => candidate.status === 'human-required',
+      operationalBlockLabel: () => 'awaiting owner action',
+      blockedViewLabel: 'Owner action',
+    });
+    const blocked = issue({ status: 'human-required' });
+    const { ext } = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-operational-block' }));
+
+    expect(ext.isOperationallyBlocked?.(blocked)).toBe(true);
+    expect(ext.operationalBlockLabel?.(blocked)).toBe('awaiting owner action');
+    expect(ext.blockedViewLabel).toBe('Owner action');
   });
 
   test('repeat registration merges PER MEMBER — later wins where present, other members survive (VIZ-13 layering seam)', () => {

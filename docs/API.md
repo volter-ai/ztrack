@@ -110,7 +110,7 @@ mechanism, two demoed narrow imports, and the world-integration extension).
 |---|---|---|
 | `ztrack` (root) | **The supported public API**: `checkTracker`, `checkTrackerRoot`, `createTrackerClient`, `exportTrackerRoot`, `serveTrackerApi`, `parseRawIssueMarkdown`/`renderPresetCanonicalIssueMarkdown`, config helpers (`loadTrackerConfig`, `projectRootFrom`, `trackerConfigPath`, …), and types (`TrackerCheckResult`, `Finding`, `CoreRoot`, `Preset`, …) | app / tooling authors |
 | `ztrack/preset-kit` | Mechanism to author a **standalone preset** (schema/parse/rules) | preset authors → [PRESETS.md](PRESETS.md) |
-| `ztrack/visualizer-kit` | `VisualizerExtension` (render-only dashboard panels) + `Payload` (the `/api/board` wire shape) for a repo-owned `extension.tsx` | dashboard extension authors → VISUALIZER.md |
+| `ztrack/visualizer-kit` | `VisualizerExtension` (bounded dashboard render slots + operational-block policy) + `Payload` (the `/api/board` wire shape) for a repo-owned `extension.tsx` | dashboard extension authors → VISUALIZER.md |
 | `ztrack/check` | `checkTracker` / `checkFile` directly (also on the root) | tooling |
 | `ztrack/sdk` | `createTrackerClient` directly (also on the root) | tooling |
 | `ztrack/world-annotations`, `ztrack/world-source-books` | the world-integration extension a world-using preset imports | [EVIDENCE.md § mirrored world](EVIDENCE.md#advanced-validating-against-a-mirrored-world) |

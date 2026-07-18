@@ -35,7 +35,7 @@ void payloadShapesMatch;
 const extensionShapesMatch: Equals<VisualizerExtension, ClientVisualizerExtension> = true;
 void extensionShapesMatch;
 
-describe('VisualizerExtension — render-only surface (VIZ-14 dev/03)', () => {
+describe('VisualizerExtension — bounded dashboard surface (VIZ-14 dev/03)', () => {
   test('defineVisualizerExtension is the identity helper', () => {
     const ext: VisualizerExtension = { statusClass: (s) => s };
     expect(defineVisualizerExtension(ext)).toBe(ext);
@@ -45,15 +45,21 @@ describe('VisualizerExtension — render-only surface (VIZ-14 dev/03)', () => {
     expect(defineVisualizerExtension({})).toEqual({});
   });
 
-  test('a fully-populated extension has EXACTLY the render-only key set', () => {
+  test('a fully-populated extension has EXACTLY the bounded key set', () => {
     const full: VisualizerExtension = {
+      isOperationallyBlocked: () => true,
+      operationalBlockLabel: () => 'blocked',
+      blockedViewLabel: 'Waiting on owner',
       statusClass: () => 'state-draft',
       acText: () => 'AC text',
       acEvidence: () => 'evidence',
       acProof: () => 'proof',
       issuePanels: () => 'panels',
     };
-    expect(new Set(Object.keys(full))).toEqual(new Set(['statusClass', 'acText', 'acEvidence', 'acProof', 'issuePanels']));
+    expect(new Set(Object.keys(full))).toEqual(new Set([
+      'isOperationallyBlocked', 'operationalBlockLabel', 'blockedViewLabel',
+      'statusClass', 'acText', 'acEvidence', 'acProof', 'issuePanels',
+    ]));
   });
 
   test('issuePanels receives (issue, projectUrl) — the same /project/ mapper acEvidence gets', () => {

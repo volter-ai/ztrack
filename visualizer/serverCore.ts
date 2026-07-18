@@ -48,3 +48,4 @@ export async function resolvePreset(name) {
 export { loadTrackerConfig, cacheRoot, stateDirName } from '../src/config.ts';
 export { resolveTrackerValidation } from '../src/presetRegistry.ts';
 export { loadValidationInput } from '../src/core/loader.ts';
+export { visualizerOperationalBlocking } from '../src/visualizerBlocking.ts';

@@ -16,6 +16,7 @@
 //   - `issuePanels`               → inside the issue detail drawer (`visualizer/client/main.tsx:342`)
 //   - `acText` / `acProof` / `acEvidence` → the detail AC list (`visualizer/client/main.tsx:333-336`)
 //   - `statusClass`               → the state-pill css class
+//   - operational-block members  → the built-in blocked view/filter and its reason badge
 // The preset-agnostic SKELETON — columns, list rows, card faces, sidebar, topbar — stays
 // core-owned, exactly as `src/core/engine.ts` is the core-owned bound for presets. Whole-board
 // replacement is a different, wider seam (docs/VISUALIZER.md depth (iv) — the raw `/api/board`
@@ -70,6 +71,7 @@ export interface Finding {
 export type PrimitiveName = 'labels' | 'relations' | 'children' | 'sources' | 'category' | 'proof' | 'audit';
 export interface AuditEntry { ts: string; issueId: string; op: string; field?: string; from?: string; to?: string; actor?: string }
 export interface Timestamps { created?: string; updated?: string; stateSince?: string }
+export interface OperationalBlockStatus { blocked: boolean; blockers: Array<{ issue: string; ac?: string }> }
 
 /** The `/api/board` response shape (VIZ-3). Core keys are semver-covered; preset ride-along
  *  fields on `issues`/`acceptanceCriteria` are preset-owned and NOT part of this stability
@@ -89,20 +91,27 @@ export interface Payload {
   // the repo extension (failure isolation: the board keeps working) and ships this field so the
   // client can render a notice with the compile-error text instead of failing silently.
   extensionError?: string;
+  operationalBlocking: Record<string, OperationalBlockStatus>;
   issues: CoreIssue[]; findings: Finding[];
   audit: Record<string, AuditEntry[]>;
   timestamps: Record<string, Timestamps>;
   error?: string;
 }
 
-// ── the render-only extension contract ──────────────────────────────────────────────────────
+// ── the bounded dashboard extension contract ───────────────────────────────────────────────
 
-/** The render-only surface of today's `PresetExtension` (`visualizer/client/extensions.ts:11-21`)
+/** The bounded surface of today's `PresetExtension` (`visualizer/client/extensions.ts:11-21`)
  *  — deliberately excludes `statusOrder`/`acUnitLabel`/field-mapping members; see the DRIFT
  *  GUARD note above the file header. `issuePanels` receives `(issue, projectUrl)` — the SAME
  *  `/project/` URL mapper `acEvidence` already gets (`visualizer/client/main.tsx:336`) — so a
  *  panel can link evidence files under the project root. */
 export interface VisualizerExtension {
+  /** Optional repo policy that adds operational blocking beyond core issue/AC block relations. */
+  isOperationallyBlocked?(issue: CoreIssue): boolean;
+  /** Optional badge for the repo-specific reason an issue is operationally blocked. */
+  operationalBlockLabel?(issue: CoreIssue): string | undefined;
+  /** Optional label for the synthetic operationally-blocked view. */
+  blockedViewLabel?: string;
   /** -> css `state-<x>` for the status pill. */
   statusClass?(status: string): string;
   /** The AC label, rendered in the detail AC list. */

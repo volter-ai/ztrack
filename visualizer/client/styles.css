@@ -545,6 +545,11 @@ button { cursor: pointer; }
   border-color: rgba(153, 111, 0, 0.32);
   background: #fff8e5;
 }
+.signals .operational-block-chip {
+  color: var(--amber);
+  border-color: rgba(153, 111, 0, 0.32);
+  background: #fff8e5;
+}
 .signals .blocks-chip {
   color: var(--red);
   border-color: rgba(199, 52, 52, 0.3);
@@ -694,6 +699,11 @@ button { cursor: pointer; }
   background: #ecfeff;
 }
 .case-metrics .metric-blocked-by {
+  color: var(--amber);
+  border-color: rgba(153, 111, 0, 0.32);
+  background: #fff8e5;
+}
+.case-metrics .metric-operational-block {
   color: var(--amber);
   border-color: rgba(153, 111, 0, 0.32);
   background: #fff8e5;

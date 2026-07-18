@@ -93,6 +93,7 @@ async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<void> {
 // REAL fixture server, not a mock payload.
 let restoreFetch: (() => void) | null = null;
 let activeWindow: { happyDOM: { close(): Promise<void> } } | null = null;
+let activeRoot: { unmount(): void } | null = null;
 
 function mountDom(url: string, port: number): void {
   const win = new GlobalWindow({ url }) as unknown as typeof globalThis & { document: Document; happyDOM: { close(): Promise<void> } };
@@ -117,6 +118,7 @@ function mountDom(url: string, port: number): void {
 }
 
 async function unmountDom(): Promise<void> {
+  activeRoot?.unmount(); activeRoot = null;
   restoreFetch?.(); restoreFetch = null;
   // Abort happy-dom's own pending async tasks (the app's `setInterval(refresh, 4000)` poll loop
   // among them) BEFORE tearing down the globals they close over — otherwise a timer fires later,
@@ -131,7 +133,8 @@ let scenarioId = 0;
 /** Import `main.tsx` fresh (cache-busted so its top-level `createRoot(...).render(<App/>)` mount
  *  re-runs for every scenario) and wait for the shell to appear. */
 async function bootApp(): Promise<void> {
-  await import(`./main.tsx?viz4Scenario=${++scenarioId}`);
+  const module = await import(`./main.tsx?viz4Scenario=${++scenarioId}`);
+  activeRoot = module.appRoot;
   await waitFor(() => !!document.querySelector('.app-shell'));
 }
 
@@ -330,7 +333,9 @@ suite('VIZ-4 — DOM-rendered vocabulary (happy-dom)', () => {
     test('editing preset.mts live shows the new status column on the next poll — no restart', async () => {
       mountDom('http://localhost/', port);
       await bootApp();
-      await waitFor(() => !!document.querySelector('nav.views'));
+      // The shell/nav exist before the initial board fetch settles. Wait for the declared
+      // lifecycle so an older in-flight response cannot race the post-edit refresh below.
+      await waitFor(() => [...document.querySelectorAll('nav.views .view span:first-child')].some((n) => n.textContent === 'done'));
 
       const viewsBefore = [...document.querySelectorAll('nav.views .view span:first-child')].map((n) => n.textContent);
       expect(viewsBefore).not.toContain('archived');
@@ -352,5 +357,53 @@ suite('VIZ-4 — DOM-rendered vocabulary (happy-dom)', () => {
       const viewsAfter = [...document.querySelectorAll('nav.views .view span:first-child')].map((n) => n.textContent);
       expect(viewsAfter).toContain('archived');
     }, 20_000);
+  });
+
+  describe('operational-block policy — rendered core view and badges', () => {
+    test('combines issue relations, AC blocks, and a repo hook in one labeled view', async () => {
+      mountDom('http://localhost/', 1);
+      const [{ registerExtension }] = await Promise.all([import('./extensions')]);
+      registerExtension('operational-block-e2e', {
+        isOperationallyBlocked: (candidate) => candidate.status === 'human-required',
+        operationalBlockLabel: (candidate) => candidate.status === 'human-required' ? 'awaiting owner action' : undefined,
+        blockedViewLabel: 'Owner action',
+      });
+      const coreIssue = (id: string, overrides: Record<string, unknown> = {}) => ({
+        id, title: id, summary: '', status: 'draft', acceptanceCriteria: [], ...overrides,
+      });
+      const payload = {
+        title: 'tracker', preset: 'operational-block-e2e', projectDir: '/fixture', fetchedAt: 'now', trackerChangedAt: null, ok: true,
+        primitives: { relations: true },
+        visualizer: { statusOrder: ['draft', 'human-required'], acUnitLabel: 'ACs' },
+        operationalBlocking: {
+          'REL-1': { blocked: true, blockers: [{ issue: 'ROOT-1' }] },
+          'AC-1': { blocked: true, blockers: [{ issue: 'ROOT-1' }] },
+          'HUMAN-1': { blocked: false, blockers: [] },
+          'FREE-1': { blocked: false, blockers: [] },
+        },
+        issues: [
+          coreIssue('REL-1', { relations: [{ type: 'blocked-by', issueId: 'ROOT-1' }] }),
+          coreIssue('AC-1', { acceptanceCriteria: [{ id: 'dev/01', status: 'pending', evidence: [], blockedBy: [{ issue: 'ROOT-1' }] }] }),
+          coreIssue('HUMAN-1', { status: 'human-required' }),
+          coreIssue('FREE-1'),
+        ],
+        findings: [], audit: {}, timestamps: {},
+      };
+      (globalThis as { fetch: typeof fetch }).fetch = (async () => Response.json(payload)) as typeof fetch;
+
+      await bootApp();
+      await waitFor(() => !!document.querySelector('.view-operationally-blocked'));
+      const view = document.querySelector('.view-operationally-blocked') as HTMLButtonElement;
+      expect(view.querySelector('span')?.textContent).toBe('Owner action');
+      expect(view.querySelector('strong')?.textContent).toBe('3');
+      expect(document.body.textContent).toContain('awaiting owner action');
+      expect(document.body.textContent).toContain('blocked by ROOT-1');
+
+      view.click();
+      await waitFor(() => document.querySelectorAll('.issue-row').length === 3);
+      const ids = [...document.querySelectorAll('.issue-row .issue-id')].map((node) => node.textContent).sort();
+      expect(ids).toEqual(['AC-1', 'HUMAN-1', 'REL-1']);
+      expect(ids).not.toContain('FREE-1');
+    }, 15_000);
   });
 });

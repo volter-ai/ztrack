@@ -34,6 +34,7 @@ const {
   loadValidationInput,
   VisualizerSpecSchema,
   bustPresetCacheIfChanged,
+  visualizerOperationalBlocking,
 } = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
@@ -215,6 +216,10 @@ async function board() {
   // VIZ-3: validated pass-through of the preset's dashboard vocabulary (VIZ-1) — see
   // resolveVisualizerBlock above for the validate-or-null-plus-error contract.
   const { visualizer, visualizerError } = resolveVisualizerBlock(preset);
+  const operationalBlocking = visualizerOperationalBlocking(
+    { issues },
+    (preset as { isIssueDone?: (issue: unknown) => boolean }).isIssueDone,
+  );
   // VIZ-13: surface a repo extension.tsx build failure (failure-isolation retry, see
   // getClientBundle) as a payload field the client renders as a notice — independent of whether
   // /assets/app.js has actually been fetched yet (board() drives its own bundle-status check so
@@ -230,6 +235,7 @@ async function board() {
     visualizer,
     visualizerError, // JSON.stringify drops this key entirely when undefined (the no-error case)
     extensionError, // ditto — VIZ-13's repo-extension compile-error notice
+    operationalBlocking,
     projectDir: PROJECT_DIR,
     fetchedAt: new Date().toISOString(),
     trackerChangedAt: mtime,
