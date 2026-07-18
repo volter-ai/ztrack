@@ -114,6 +114,20 @@ describe('buildEffectiveExtension', () => {
     expect(renderToStaticMarkup(<>{withCode.issuePanels?.(issue(), (p) => p)}</>)).toBe('PANEL');
   });
 
+  test('operational-block policy and view label come only from the registered code extension', () => {
+    registerExtension('viz4-unit-test-operational-block', {
+      isOperationallyBlocked: (candidate) => candidate.status === 'human-required',
+      operationalBlockLabel: () => 'awaiting owner action',
+      blockedViewLabel: 'Owner action',
+    });
+    const blocked = issue({ status: 'human-required' });
+    const { ext } = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-operational-block' }));
+
+    expect(ext.isOperationallyBlocked?.(blocked)).toBe(true);
+    expect(ext.operationalBlockLabel?.(blocked)).toBe('awaiting owner action');
+    expect(ext.blockedViewLabel).toBe('Owner action');
+  });
+
   test('repeat registration merges PER MEMBER — later wins where present, other members survive (VIZ-13 layering seam)', () => {
     // The VIZ-13 scenario: a first-party extension (e.g. speckit) registers acText + issuePanels;
     // a repo extension later registers ONLY issuePanels under the same name. Per the spec's

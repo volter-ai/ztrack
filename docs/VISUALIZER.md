@@ -14,7 +14,7 @@ level deeper each time. **Skim to the depth you need; deeper is rarer and reache
 |---|---|---|
 | (i) Theme the board | Colors only — a CSS override | anyone, no code |
 | (ii) Teach the board your vocabulary | The preset's `visualizer` block (data: columns, field mappings) | preset editors |
-| (iii) Mod the board with code | A repo-owned `extension.tsx` (render-only panels) | dashboard authors |
+| (iii) Mod the board with code | A repo-owned `extension.tsx` (bounded render slots + operational-block policy) | dashboard authors |
 | (iv) Build your own dashboard | The raw `/api/board` payload / GraphQL API | integrators, a whole new client |
 
 ## See it: stock vs. modded (VIZ-11)
@@ -207,10 +207,15 @@ rest of the board — no separate build step, no restart on edit.
 
 ### The contract (`ztrack/visualizer-kit`)
 
-`VisualizerExtension` (`src/visualizerKit.ts:105-116`) is render-only:
+`VisualizerExtension` exposes bounded render slots plus one bounded board policy: a repo may add
+an operational-block predicate/reason and rename the built-in operationally-blocked view. It
+cannot replace the view, filter, rows, cards, or navigation skeleton:
 
 ```ts
 export interface VisualizerExtension {
+  isOperationallyBlocked?(issue: CoreIssue): boolean;
+  operationalBlockLabel?(issue: CoreIssue): string | undefined;
+  blockedViewLabel?: string;
   /** -> css `state-<x>` for the status pill. */
   statusClass?(status: string): string;
   /** The AC label, rendered in the detail AC list. */
@@ -239,6 +244,7 @@ This is the whole reach — nothing else is addressable from `extension.tsx`:
 
 | Member | Reaches | Slot |
 |---|---|---|
+| `isOperationallyBlocked` / `operationalBlockLabel` / `blockedViewLabel` | adds repo-specific issues/reasons to the core operationally-blocked view | built-in view, filter, list/card/detail reason badge |
 | `issuePanels` | a new panel inside the issue detail drawer | `visualizer/client/main.tsx:346` |
 | `acText` / `acProof` / `acEvidence` | the per-AC rendering inside the detail AC list | `visualizer/client/main.tsx:337-340` |
 | `statusClass` | the CSS class on the status pill | `visualizer/client/main.tsx:114` |
@@ -257,7 +263,8 @@ every other data-derived renderer.
 **The engine analogy, stated plainly.** The preset-agnostic SKELETON — columns, list rows, card
 faces, sidebar, topbar — is core-owned, exactly as `src/core/engine.ts` is the core-owned bound
 for presets: a preset supplies data/rules, never the engine that runs them; an extension supplies
-render logic for named slots, never the skeleton around them. Whole-board replacement — your own
+render logic for named slots and may classify an issue into the core-owned operational-blocked
+view, never replace the skeleton around them. Whole-board replacement — your own
 client entirely — is a wider, different seam: depth (iv) below, an honest bound, stated not
 hidden.
 

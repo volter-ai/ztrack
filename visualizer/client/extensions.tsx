@@ -16,7 +16,7 @@
 import type { ReactNode } from 'react';
 import type { CoreAC, CoreIssue, Payload, VisualizerAcEvidence, VisualizerAcProof, VisualizerAcText, VisualizerExtension, VisualizerPr, VisualizerSpec } from './model';
 
-// The render-only extension contract lives in `model.ts` beside the other wire mirrors (where
+// The bounded dashboard extension contract lives in `model.ts` beside the other wire mirrors (where
 // `src/visualizerKit.test.ts`'s Equals guard can reach it) — re-exported here so extension
 // modules (`presets/*.tsx`) keep importing it from the seam they register into.
 export type { VisualizerExtension } from './model';
@@ -28,6 +28,9 @@ export type { VisualizerExtension } from './model';
 export interface EffectiveExtension {
   statusOrder: string[];
   acUnitLabel?: string;
+  isOperationallyBlocked?(issue: CoreIssue): boolean;
+  operationalBlockLabel?(issue: CoreIssue): string | undefined;
+  blockedViewLabel?: string;
   statusClass?(status: string): string;
   assignee?(issue: CoreIssue): string | undefined;
   pr?(issue: CoreIssue): { url: string } | undefined;
@@ -158,6 +161,9 @@ export function buildEffectiveExtension(payload: Payload | null): { ext: Effecti
   const ext: EffectiveExtension = {
     statusOrder: spec?.statusOrder ?? firstSeenStatuses(issues),
     acUnitLabel: spec?.acUnitLabel,
+    isOperationallyBlocked: codeExt?.isOperationallyBlocked,
+    operationalBlockLabel: codeExt?.operationalBlockLabel,
+    blockedViewLabel: codeExt?.blockedViewLabel,
     statusClass: codeExt?.statusClass ?? dataStatusClass(spec?.statusClass),
     assignee: dataAssignee(spec?.assignee),
     pr: dataPr(spec?.pr),

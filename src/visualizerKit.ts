@@ -16,6 +16,7 @@
 //   - `issuePanels`               → inside the issue detail drawer (`visualizer/client/main.tsx:342`)
 //   - `acText` / `acProof` / `acEvidence` → the detail AC list (`visualizer/client/main.tsx:333-336`)
 //   - `statusClass`               → the state-pill css class
+//   - operational-block members  → the built-in blocked view/filter and its reason badge
 // The preset-agnostic SKELETON — columns, list rows, card faces, sidebar, topbar — stays
 // core-owned, exactly as `src/core/engine.ts` is the core-owned bound for presets. Whole-board
 // replacement is a different, wider seam (docs/VISUALIZER.md depth (iv) — the raw `/api/board`
@@ -95,14 +96,20 @@ export interface Payload {
   error?: string;
 }
 
-// ── the render-only extension contract ──────────────────────────────────────────────────────
+// ── the bounded dashboard extension contract ───────────────────────────────────────────────
 
-/** The render-only surface of today's `PresetExtension` (`visualizer/client/extensions.ts:11-21`)
+/** The bounded surface of today's `PresetExtension` (`visualizer/client/extensions.ts:11-21`)
  *  — deliberately excludes `statusOrder`/`acUnitLabel`/field-mapping members; see the DRIFT
  *  GUARD note above the file header. `issuePanels` receives `(issue, projectUrl)` — the SAME
  *  `/project/` URL mapper `acEvidence` already gets (`visualizer/client/main.tsx:336`) — so a
  *  panel can link evidence files under the project root. */
 export interface VisualizerExtension {
+  /** Optional repo policy that adds operational blocking beyond core issue/AC block relations. */
+  isOperationallyBlocked?(issue: CoreIssue): boolean;
+  /** Optional badge for the repo-specific reason an issue is operationally blocked. */
+  operationalBlockLabel?(issue: CoreIssue): string | undefined;
+  /** Optional label for the synthetic operationally-blocked view. */
+  blockedViewLabel?: string;
   /** -> css `state-<x>` for the status pill. */
   statusClass?(status: string): string;
   /** The AC label, rendered in the detail AC list. */

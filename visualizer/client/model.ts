@@ -53,7 +53,7 @@ export interface VisualizerSpec {
   acEvidence?: VisualizerAcEvidence;
 }
 
-// VIZ-4: hand-mirrored render-only extension contract (mirrors `VisualizerExtension`,
+// VIZ-4: hand-mirrored bounded dashboard extension contract (mirrors `VisualizerExtension`,
 // src/visualizerKit.ts — the kit's authoritative, published copy). A type-only import from the
 // kit does not typecheck here for the exact reason documented on `VisualizerSpec` above
 // (visualizerKit.ts transitively re-exports from src/core/engine.ts, which imports
@@ -64,6 +64,12 @@ export interface VisualizerSpec {
 // fail the moment this copy and the kit's diverge (the guard cannot live in the client test
 // files — they are excluded from every tsconfig and would be inert).
 export interface VisualizerExtension {
+  /** Optional repo policy that adds operational blocking beyond core issue/AC block relations. */
+  isOperationallyBlocked?(issue: CoreIssue): boolean;
+  /** Optional badge for the repo-specific reason an issue is operationally blocked. */
+  operationalBlockLabel?(issue: CoreIssue): string | undefined;
+  /** Optional label for the synthetic operationally-blocked view. */
+  blockedViewLabel?: string;
   /** -> css `state-<x>` for the status pill. */
   statusClass?(status: string): string;
   /** The AC label, rendered in the detail AC list. */

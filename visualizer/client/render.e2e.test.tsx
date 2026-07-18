@@ -353,4 +353,46 @@ suite('VIZ-4 — DOM-rendered vocabulary (happy-dom)', () => {
       expect(viewsAfter).toContain('archived');
     }, 20_000);
   });
+
+  describe('operational-block policy — rendered core view and badges', () => {
+    test('combines issue relations, AC blocks, and a repo hook in one labeled view', async () => {
+      mountDom('http://localhost/', 1);
+      const [{ registerExtension }] = await Promise.all([import('./extensions')]);
+      registerExtension('operational-block-e2e', {
+        isOperationallyBlocked: (candidate) => candidate.status === 'human-required',
+        operationalBlockLabel: (candidate) => candidate.status === 'human-required' ? 'awaiting owner action' : undefined,
+        blockedViewLabel: 'Owner action',
+      });
+      const coreIssue = (id: string, overrides: Record<string, unknown> = {}) => ({
+        id, title: id, summary: '', status: 'draft', acceptanceCriteria: [], ...overrides,
+      });
+      const payload = {
+        title: 'tracker', preset: 'operational-block-e2e', projectDir: '/fixture', fetchedAt: 'now', trackerChangedAt: null, ok: true,
+        primitives: { relations: true },
+        visualizer: { statusOrder: ['draft', 'human-required'], acUnitLabel: 'ACs' },
+        issues: [
+          coreIssue('REL-1', { relations: [{ type: 'blocked-by', issueId: 'ROOT-1' }] }),
+          coreIssue('AC-1', { acceptanceCriteria: [{ id: 'dev/01', status: 'pending', evidence: [], blockedBy: [{ issue: 'ROOT-1' }] }] }),
+          coreIssue('HUMAN-1', { status: 'human-required' }),
+          coreIssue('FREE-1'),
+        ],
+        findings: [], audit: {}, timestamps: {},
+      };
+      (globalThis as { fetch: typeof fetch }).fetch = (async () => Response.json(payload)) as typeof fetch;
+
+      await bootApp();
+      await waitFor(() => !!document.querySelector('.view-operationally-blocked'));
+      const view = document.querySelector('.view-operationally-blocked') as HTMLButtonElement;
+      expect(view.querySelector('span')?.textContent).toBe('Owner action');
+      expect(view.querySelector('strong')?.textContent).toBe('3');
+      expect(document.body.textContent).toContain('awaiting owner action');
+      expect(document.body.textContent).toContain('blocked by acceptance criterion');
+
+      view.click();
+      await waitFor(() => document.querySelectorAll('.issue-row').length === 3);
+      const ids = [...document.querySelectorAll('.issue-row .issue-id')].map((node) => node.textContent).sort();
+      expect(ids).toEqual(['AC-1', 'HUMAN-1', 'REL-1']);
+      expect(ids).not.toContain('FREE-1');
+    }, 15_000);
+  });
 });
