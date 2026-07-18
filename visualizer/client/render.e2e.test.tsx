@@ -370,6 +370,12 @@ suite('VIZ-4 — DOM-rendered vocabulary (happy-dom)', () => {
         title: 'tracker', preset: 'operational-block-e2e', projectDir: '/fixture', fetchedAt: 'now', trackerChangedAt: null, ok: true,
         primitives: { relations: true },
         visualizer: { statusOrder: ['draft', 'human-required'], acUnitLabel: 'ACs' },
+        operationalBlocking: {
+          'REL-1': { blocked: true, blockers: [{ issue: 'ROOT-1' }] },
+          'AC-1': { blocked: true, blockers: [{ issue: 'ROOT-1' }] },
+          'HUMAN-1': { blocked: false, blockers: [] },
+          'FREE-1': { blocked: false, blockers: [] },
+        },
         issues: [
           coreIssue('REL-1', { relations: [{ type: 'blocked-by', issueId: 'ROOT-1' }] }),
           coreIssue('AC-1', { acceptanceCriteria: [{ id: 'dev/01', status: 'pending', evidence: [], blockedBy: [{ issue: 'ROOT-1' }] }] }),
@@ -386,7 +392,7 @@ suite('VIZ-4 — DOM-rendered vocabulary (happy-dom)', () => {
       expect(view.querySelector('span')?.textContent).toBe('Owner action');
       expect(view.querySelector('strong')?.textContent).toBe('3');
       expect(document.body.textContent).toContain('awaiting owner action');
-      expect(document.body.textContent).toContain('blocked by acceptance criterion');
+      expect(document.body.textContent).toContain('blocked by ROOT-1');
 
       view.click();
       await waitFor(() => document.querySelectorAll('.issue-row').length === 3);

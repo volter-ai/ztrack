@@ -15,7 +15,7 @@ function ac(overrides: Partial<CoreAC> & Record<string, unknown> = {}): CoreAC {
 function payload(overrides: Partial<Payload> = {}): Payload {
   return {
     title: 'tracker', preset: 'simple-sdlc', projectDir: '/x', fetchedAt: 'now', trackerChangedAt: null, ok: true,
-    primitives: {}, visualizer: null, issues: [], findings: [], audit: {}, timestamps: {}, ...overrides,
+    primitives: {}, visualizer: null, operationalBlocking: {}, issues: [], findings: [], audit: {}, timestamps: {}, ...overrides,
   };
 }
 

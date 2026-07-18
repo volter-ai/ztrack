@@ -359,12 +359,22 @@ export interface Payload {
   visualizer: VisualizerSpec | null;     // the preset's own vocabulary (depth ii), or null
   visualizerError?: string;              // set when a declared block fails validation
   extensionError?: string;               // set when a repo extension.tsx failed to compile
+  operationalBlocking: Record<string, {  // canonical whole-graph dispatch frontier by issue id
+    blocked: boolean;
+    blockers: Array<{ issue: string; ac?: string }>;
+  }>;
   issues: CoreIssue[]; findings: Finding[];
   audit: Record<string, AuditEntry[]>;
   timestamps: Record<string, Timestamps>;
   error?: string;
 }
 ```
+
+`operationalBlocking` is computed server-side by the same `issueFrontier` graph used by
+`ztrack issue list --actionable|--blocked`. It reports only unmet external dependencies: a
+satisfied referenced issue does not remain blocked, and same-issue AC sequencing remains
+actionable. Dashboard clients should consume this field instead of inferring live blocking from
+the mere presence of `blocked-by` references.
 
 `CoreIssue`/`CoreAC`/`CoreEvidence` (`visualizer/client/model.ts:1-9`) name the CORE fields every
 preset guarantees (`id`, `title`, `summary`, `status`, `acceptanceCriteria`, and per-AC `id`/

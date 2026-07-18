@@ -17,6 +17,7 @@ export interface Finding {
 export type PrimitiveName = 'labels' | 'relations' | 'children' | 'sources' | 'category' | 'proof' | 'audit';
 export interface AuditEntry { ts: string; issueId: string; op: string; field?: string; from?: string; to?: string; actor?: string }
 export interface Timestamps { created?: string; updated?: string; stateSince?: string }
+export interface OperationalBlockStatus { blocked: boolean; blockers: Array<{ issue: string; ac?: string }> }
 
 // VIZ-1's dashboard vocabulary, as the client sees it over the wire (mirrors
 // `VisualizerSpec`/`VisualizerSpecSchema`, src/core/engine.ts — a hand-mirrored client-side view,
@@ -96,6 +97,7 @@ export interface Payload {
   // the repo extension (failure isolation: the board keeps working) and ships this field so the
   // client can render a notice with the compile-error text instead of failing silently.
   extensionError?: string;
+  operationalBlocking: Record<string, OperationalBlockStatus>;
   issues: CoreIssue[]; findings: Finding[];
   audit: Record<string, AuditEntry[]>;
   timestamps: Record<string, Timestamps>;

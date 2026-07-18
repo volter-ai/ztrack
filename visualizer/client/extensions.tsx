@@ -14,7 +14,7 @@
 // Precedence: a code member wins where present (VIZ-14's contract), else the data-derived
 // member, else undefined (core renders its own fallback, e.g. bare AC id).
 import type { ReactNode } from 'react';
-import type { CoreAC, CoreIssue, Payload, VisualizerAcEvidence, VisualizerAcProof, VisualizerAcText, VisualizerExtension, VisualizerPr, VisualizerSpec } from './model';
+import type { CoreAC, CoreIssue, OperationalBlockStatus, Payload, VisualizerAcEvidence, VisualizerAcProof, VisualizerAcText, VisualizerExtension, VisualizerPr, VisualizerSpec } from './model';
 
 // The bounded dashboard extension contract lives in `model.ts` beside the other wire mirrors (where
 // `src/visualizerKit.test.ts`'s Equals guard can reach it) — re-exported here so extension
@@ -31,6 +31,7 @@ export interface EffectiveExtension {
   isOperationallyBlocked?(issue: CoreIssue): boolean;
   operationalBlockLabel?(issue: CoreIssue): string | undefined;
   blockedViewLabel?: string;
+  operationalBlocking: Record<string, OperationalBlockStatus>;
   statusClass?(status: string): string;
   assignee?(issue: CoreIssue): string | undefined;
   pr?(issue: CoreIssue): { url: string } | undefined;
@@ -164,6 +165,7 @@ export function buildEffectiveExtension(payload: Payload | null): { ext: Effecti
     isOperationallyBlocked: codeExt?.isOperationallyBlocked,
     operationalBlockLabel: codeExt?.operationalBlockLabel,
     blockedViewLabel: codeExt?.blockedViewLabel,
+    operationalBlocking: payload?.operationalBlocking ?? {},
     statusClass: codeExt?.statusClass ?? dataStatusClass(spec?.statusClass),
     assignee: dataAssignee(spec?.assignee),
     pr: dataPr(spec?.pr),

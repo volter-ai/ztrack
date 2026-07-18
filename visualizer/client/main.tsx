@@ -478,7 +478,8 @@ function App() {
   const changeView = (v: string) => { setView(v); writeRoute(v, selectedId); };
   const toggleGroup = (t: string) => setCollapsed((c) => { const n = new Set(c); n.has(t) ? n.delete(t) : n.add(t); return n; });
   const viewCount = (v: string) => applyView(all, v, findings, ext).length;
-  const VIEWS = ['all', 'operationally-blocked', ...ext.statusOrder.filter((status) => status !== 'operationally-blocked'), 'findings'];
+  const hasOperationalBlocks = all.some((issue) => isOperationallyBlocked(issue, ext));
+  const VIEWS = ['all', ...(hasOperationalBlocks ? ['operationally-blocked'] : []), ...ext.statusOrder.filter((status) => status !== 'operationally-blocked'), 'findings'];
   const viewLabel = (v: string) => (v === 'all' ? 'All issues' : v === 'operationally-blocked' ? (ext.blockedViewLabel ?? 'Operationally blocked') : v === 'findings' ? 'Needs attention' : v);
 
   return (
