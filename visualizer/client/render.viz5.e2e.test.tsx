@@ -254,16 +254,18 @@ suite('VIZ-5 — per-preset rendered-fact drift guard (manifest-driven)', () => 
       // a copy-pasted literal from its source, so it survives that file's content changing.
       if (p.hasCodeExtension) {
         test('the first-party code extension adds at least one issuePanels section', async () => {
+          // Other DOM suites may have registered this first-party extension already because Bun
+          // shares the module registry across test files. Force the intended data-only BEFORE;
+          // repeat registration is member-wise, so an explicit undefined clears this one slot.
+          const { registerExtension } = await import('./extensions');
+          registerExtension(p.name, { issuePanels: undefined });
           mountDom(`http://localhost/?issue=${issueId}`, port);
           await bootApp();
           await waitFor(() => !!document.querySelector('.detail-drawer'));
           const before = document.querySelectorAll('.detail-drawer .panel').length;
           await unmountDom();
 
-          const [{ registerExtension }, extMod] = await Promise.all([
-            import('./extensions'),
-            import(p.extensionPath),
-          ]) as [{ registerExtension: (name: string, ext: unknown) => void }, { default: unknown }];
+          const extMod = await import(p.extensionPath) as { default: unknown };
           registerExtension(p.name, extMod.default);
 
           mountDom(`http://localhost/?issue=${issueId}`, port);

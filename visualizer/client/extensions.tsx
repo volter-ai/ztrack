@@ -42,14 +42,7 @@ export interface EffectiveExtension {
 }
 
 // ── the registry (no central list) ──────────────────────────────────────────────────────────
-// A query-suffixed hot/test import can instantiate this module more than once. The registry is
-// application state, so keep one map per browser realm rather than one map per module instance;
-// otherwise an extension registered by the generated entry can be invisible to main.tsx.
-interface ExtensionRegistryGlobal {
-  __ztrackVisualizerExtensionRegistry?: Map<string, VisualizerExtension>;
-}
-const registryHost = globalThis as typeof globalThis & ExtensionRegistryGlobal;
-const registry = registryHost.__ztrackVisualizerExtensionRegistry ??= new Map<string, VisualizerExtension>();
+const registry = new Map<string, VisualizerExtension>();
 
 /** Called by the generated bundle entry (server.ts, VIZ-4) once per discovered
  *  `client/presets/<name>.tsx` module — filename is the canonical preset name. VIZ-13 calls

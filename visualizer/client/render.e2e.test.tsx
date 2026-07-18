@@ -93,6 +93,7 @@ async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<void> {
 // REAL fixture server, not a mock payload.
 let restoreFetch: (() => void) | null = null;
 let activeWindow: { happyDOM: { close(): Promise<void> } } | null = null;
+let activeRoot: { unmount(): void } | null = null;
 
 function mountDom(url: string, port: number): void {
   const win = new GlobalWindow({ url }) as unknown as typeof globalThis & { document: Document; happyDOM: { close(): Promise<void> } };
@@ -117,6 +118,7 @@ function mountDom(url: string, port: number): void {
 }
 
 async function unmountDom(): Promise<void> {
+  activeRoot?.unmount(); activeRoot = null;
   restoreFetch?.(); restoreFetch = null;
   // Abort happy-dom's own pending async tasks (the app's `setInterval(refresh, 4000)` poll loop
   // among them) BEFORE tearing down the globals they close over — otherwise a timer fires later,
@@ -131,7 +133,8 @@ let scenarioId = 0;
 /** Import `main.tsx` fresh (cache-busted so its top-level `createRoot(...).render(<App/>)` mount
  *  re-runs for every scenario) and wait for the shell to appear. */
 async function bootApp(): Promise<void> {
-  await import(`./main.tsx?viz4Scenario=${++scenarioId}`);
+  const module = await import(`./main.tsx?viz4Scenario=${++scenarioId}`);
+  activeRoot = module.appRoot;
   await waitFor(() => !!document.querySelector('.app-shell'));
 }
 
@@ -330,7 +333,9 @@ suite('VIZ-4 — DOM-rendered vocabulary (happy-dom)', () => {
     test('editing preset.mts live shows the new status column on the next poll — no restart', async () => {
       mountDom('http://localhost/', port);
       await bootApp();
-      await waitFor(() => !!document.querySelector('nav.views'));
+      // The shell/nav exist before the initial board fetch settles. Wait for the declared
+      // lifecycle so an older in-flight response cannot race the post-edit refresh below.
+      await waitFor(() => [...document.querySelectorAll('nav.views .view span:first-child')].some((n) => n.textContent === 'done'));
 
       const viewsBefore = [...document.querySelectorAll('nav.views .view span:first-child')].map((n) => n.textContent);
       expect(viewsBefore).not.toContain('archived');
