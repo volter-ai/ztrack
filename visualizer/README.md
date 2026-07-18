@@ -45,4 +45,10 @@ See [docs/VISUALIZER.md](../docs/VISUALIZER.md) for theming the board, teaching 
 - `GET /` — the app shell
 - `GET /api/board` — the validated core export (issues, findings, audit, timestamps)
 - `GET /assets/app.js`, `GET /assets/styles.css` — client bundle + styles
-- `GET /project/<path>` — sandboxed static files from the project dir (e.g. evidence images)
+- `GET /project/<path>` — sandboxed static files from the project dir. Canonical
+  `<stateDir>/evidence/**` and `docs/sources/**` URLs may carry `sha256:<hex>` and an optional
+  40-character `commit`; ztrack verifies the exact response bytes and can recover a cited
+  historical blob from git after the working-tree copy changes or disappears. Byte ranges and
+  `HEAD` are supported for video and other large evidence.
+- `GET /assets/source-previews/<source-sha256>/page-<n>.png` — a confined raster preview keyed to
+  the immutable source digest under `<stateDir>/tracker/visualizer/source-previews/`.

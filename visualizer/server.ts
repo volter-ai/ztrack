@@ -10,6 +10,7 @@
 // extension.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -50,7 +51,10 @@ let clientBundle: Promise<{ text: string; extensionError?: string }> | null = nu
 // file-presence is the opt-in, exactly like preset.mts. This is a CONSTANT, not built from
 // any request field, so the /assets/theme.css route below has no request-path input to abuse.
 const THEME_CSS_PATH = join(PROJECT_DIR, stateDirName(), 'tracker', 'visualizer', 'theme.css');
-
+// Repo-owned raster previews of immutable source pages. The directory name is the
+// canonical source PDF's SHA-256 (without the `sha256:` prefix), so a preview URL
+// is tied to the exact source bytes rather than Chrome's stateful PDF viewer.
+const SOURCE_PREVIEW_DIR = join(PROJECT_DIR, stateDirName(), 'tracker', 'visualizer', 'source-previews');
 // Orphan guard. This server is a child of the `ztrack visualizer` wrapper, which
 // awaits it and is meant to bound its lifetime; the wrapper kills us on its own
 // SIGINT/SIGTERM/exit. But if the wrapper is SIGKILLed no signal reaches us and we
@@ -247,16 +251,32 @@ async function board() {
   };
 }
 
-function projectFile(pathname: string): string | null {
-  const rel = normalize(decodeURIComponent(pathname.replace(/^\/project\//, ''))).replace(/^\/+/, '');
+function projectRelative(pathname: string): string | null {
+  try {
+    return normalize(decodeURIComponent(pathname.replace(/^\/project\//, ''))).replace(/^\/+/, '');
+  } catch {
+    return null;
+  }
+}
+
+function projectFile(rel: string): { abs: string; pinnedArtifact: boolean } | null {
   if (rel.startsWith('..') || rel.includes('/../')) return null;
   // Never serve dotfiles or sensitive stores (.git, .env, .volter signing keys,
-  // the tracker DB). The visualizer only needs tracker markdown + evidence images.
-  if (rel.split('/').some((seg) => seg.startsWith('.')) || /\.(sqlite|pem|key)$/i.test(rel)) return null;
+  // the tracker DB). The one explicit exception is ztrack's own canonical committed
+  // evidence directory (`<stateDir>/evidence/**`): the visualizer's evidence renderer
+  // cannot work when its default `.volter/evidence/**` paths are rejected merely because
+  // the state directory starts with a dot. Only the state-dir segment itself is exempt;
+  // nested dotfiles and sensitive extensions remain blocked.
+  const segments = rel.split('/');
+  const stateDir = stateDirName();
+  const isCanonicalEvidence = segments.length > 2 && segments[0] === stateDir && segments[1] === 'evidence';
+  const isCanonicalSource = segments.length > 2 && segments[0] === 'docs' && segments[1] === 'sources';
+  const hasForbiddenDotSegment = segments.some((seg, index) => seg.startsWith('.') && !(isCanonicalEvidence && index === 0));
+  if (hasForbiddenDotSegment || /\.(sqlite|pem|key)$/i.test(rel)) return null;
   const abs = join(PROJECT_DIR, rel);
   // resolve symlinks and re-check containment
   try { if (!realpathSync(abs).startsWith(realpathSync(PROJECT_DIR) + sep)) return null; } catch { /* not yet existing — join check below */ }
-  return abs;
+  return { abs, pinnedArtifact: isCanonicalEvidence || isCanonicalSource };
 }
 
 function contentType(p: string): string {
@@ -265,7 +285,286 @@ function contentType(p: string): string {
   if (l.endsWith('.jpg') || l.endsWith('.jpeg')) return 'image/jpeg';
   if (l.endsWith('.webp')) return 'image/webp';
   if (l.endsWith('.gif')) return 'image/gif';
+  if (l.endsWith('.webm')) return 'video/webm';
+  if (l.endsWith('.mp4')) return 'video/mp4';
+  if (l.endsWith('.pdf')) return 'application/pdf';
+  if (l.endsWith('.json')) return 'application/json; charset=utf-8';
+  if (l.endsWith('.txt') || l.endsWith('.md')) return 'text/plain; charset=utf-8';
   return 'application/octet-stream';
+}
+
+// Evidence URLs may carry both the artifact's tracker pin (`sha256`) and the
+// commit that contains it. Resolve commit-pinned files from git so historical
+// evidence remains viewable after it leaves the current working tree, then
+// verify the exact bytes before serving them. Both paths deliberately remain
+// asynchronous: browsers request many artifacts in parallel, and synchronous
+// hashing or `git show` would stall Bun's request loop. In-flight promises are
+// cached too, deduplicating concurrent requests for the same artifact.
+const MAX_CURRENT_ARTIFACT_CACHE_ENTRIES = 32;
+const MAX_CURRENT_ARTIFACT_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_GIT_ARTIFACT_CACHE_ENTRIES = 32;
+const MAX_GIT_ARTIFACT_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_GIT_ARTIFACT_BYTES = 256 * 1024 * 1024;
+type FileIdentity = { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number };
+type CurrentArtifact = { bytes: Uint8Array; digest: string; identity: FileIdentity };
+type GitArtifact = { bytes: Uint8Array; digest: string; commit: string };
+const currentArtifactCache = new Map<string, CurrentArtifact>();
+const currentArtifactInFlight = new Map<string, Promise<CurrentArtifact | null>>();
+const gitArtifactCache = new Map<string, GitArtifact>();
+const gitArtifactInFlight = new Map<string, Promise<GitArtifact | null>>();
+const gitArtifactByDigestInFlight = new Map<string, Promise<GitArtifact | null>>();
+const digestCommitCache = new Map<string, string>();
+let currentArtifactCacheBytes = 0;
+let gitArtifactCacheBytes = 0;
+
+function trimOldest<K, V>(cache: Map<K, V>, maxEntries: number): void {
+  while (cache.size > maxEntries) cache.delete(cache.keys().next().value!);
+}
+
+function fileIdentity(p: string): FileIdentity {
+  const stat = statSync(p);
+  return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs };
+}
+
+function sameFileIdentity(a: FileIdentity, b: FileIdentity): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+}
+
+function cacheCurrentArtifact(key: string, artifact: CurrentArtifact): void {
+  if (artifact.bytes.byteLength > MAX_CURRENT_ARTIFACT_CACHE_BYTES) return;
+  const previous = currentArtifactCache.get(key);
+  if (previous) currentArtifactCacheBytes -= previous.bytes.byteLength;
+  currentArtifactCache.delete(key);
+  currentArtifactCache.set(key, artifact);
+  currentArtifactCacheBytes += artifact.bytes.byteLength;
+  while (currentArtifactCache.size > MAX_CURRENT_ARTIFACT_CACHE_ENTRIES || currentArtifactCacheBytes > MAX_CURRENT_ARTIFACT_CACHE_BYTES) {
+    const oldestKey = currentArtifactCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = currentArtifactCache.get(oldestKey);
+    if (oldest) currentArtifactCacheBytes -= oldest.bytes.byteLength;
+    currentArtifactCache.delete(oldestKey);
+  }
+}
+
+function cacheGitArtifact(key: string, artifact: GitArtifact): void {
+  if (artifact.bytes.byteLength > MAX_GIT_ARTIFACT_CACHE_BYTES) return;
+  const previous = gitArtifactCache.get(key);
+  if (previous) gitArtifactCacheBytes -= previous.bytes.byteLength;
+  gitArtifactCache.delete(key);
+  gitArtifactCache.set(key, artifact);
+  gitArtifactCacheBytes += artifact.bytes.byteLength;
+  while (gitArtifactCache.size > MAX_GIT_ARTIFACT_CACHE_ENTRIES || gitArtifactCacheBytes > MAX_GIT_ARTIFACT_CACHE_BYTES) {
+    const oldestKey = gitArtifactCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = gitArtifactCache.get(oldestKey);
+    if (oldest) gitArtifactCacheBytes -= oldest.bytes.byteLength;
+    gitArtifactCache.delete(oldestKey);
+  }
+}
+
+// Read, hash, and retain one immutable byte snapshot. The response is built from
+// this same in-memory byte array, so a file replacement can never race between verification and
+// streaming. Device/inode/ctime join mtime+size in the cache identity, and the
+// post-read stat prevents caching bytes from a file that changed mid-read.
+async function currentArtifact(p: string): Promise<CurrentArtifact | null> {
+  let identity: FileIdentity;
+  try { identity = fileIdentity(p); } catch { return null; }
+  const cached = currentArtifactCache.get(p);
+  if (cached && sameFileIdentity(cached.identity, identity)) {
+    currentArtifactCache.delete(p);
+    currentArtifactCache.set(p, cached);
+    return cached;
+  }
+  const inFlight = currentArtifactInFlight.get(p);
+  if (inFlight) return await inFlight;
+  const pending = (async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const before = fileIdentity(p);
+      if (before.size > MAX_GIT_ARTIFACT_BYTES) return null;
+      const bytes = await Bun.file(p).arrayBuffer();
+      const after = fileIdentity(p);
+      if (bytes.byteLength !== before.size || !sameFileIdentity(before, after)) continue;
+      const snapshot = new Uint8Array(bytes);
+      return {
+        bytes: snapshot,
+        digest: `sha256:${createHash('sha256').update(snapshot).digest('hex')}`,
+        identity: after,
+      };
+    }
+    return null;
+  })().catch(() => null);
+  currentArtifactInFlight.set(p, pending);
+  try {
+    const artifact = await pending;
+    if (artifact) cacheCurrentArtifact(p, artifact);
+    return artifact;
+  } finally {
+    if (currentArtifactInFlight.get(p) === pending) currentArtifactInFlight.delete(p);
+  }
+}
+
+async function gitArtifact(commit: string, rel: string): Promise<GitArtifact | null> {
+  const key = `${commit}\u0000${rel}`;
+  const cached = gitArtifactCache.get(key);
+  if (cached) {
+    gitArtifactCache.delete(key);
+    gitArtifactCache.set(key, cached);
+    return cached;
+  }
+  const inFlight = gitArtifactInFlight.get(key);
+  if (inFlight) return await inFlight;
+  const pending = (async () => {
+    const sizeChild = Bun.spawn(['git', 'cat-file', '-s', `${commit}:${rel}`], {
+      cwd: PROJECT_DIR,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [sizeText, sizeExitCode] = await Promise.all([new Response(sizeChild.stdout).text(), sizeChild.exited]);
+    const objectSize = Number(sizeText.trim());
+    if (sizeExitCode !== 0 || !Number.isSafeInteger(objectSize) || objectSize < 0 || objectSize > MAX_GIT_ARTIFACT_BYTES) return null;
+    const child = Bun.spawn(['git', 'show', `${commit}:${rel}`], {
+      cwd: PROJECT_DIR,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [bytes, exitCode] = await Promise.all([new Response(child.stdout).arrayBuffer(), child.exited]);
+    if (exitCode !== 0 || bytes.byteLength !== objectSize) return null;
+    const snapshot = new Uint8Array(bytes);
+    return {
+      bytes: snapshot,
+      digest: `sha256:${createHash('sha256').update(snapshot).digest('hex')}`,
+      commit,
+    };
+  })().catch(() => null);
+  gitArtifactInFlight.set(key, pending);
+  try {
+    const artifact = await pending;
+    if (artifact) cacheGitArtifact(key, artifact);
+    return artifact;
+  } finally {
+    if (gitArtifactInFlight.get(key) === pending) gitArtifactInFlight.delete(key);
+  }
+}
+
+// Older adapter records pin video bytes but do not carry a separate video
+// commit. If the working-tree copy has since been removed, search commits that
+// touched that exact confined path and accept only the blob matching the cited
+// digest. This preserves durable playback without ever guessing by filename.
+async function gitArtifactByDigest(rel: string, expected: string): Promise<GitArtifact | null> {
+  const key = `${rel}\u0000${expected.toLowerCase()}`;
+  const resolvedCommit = digestCommitCache.get(key);
+  if (resolvedCommit) {
+    digestCommitCache.delete(key);
+    digestCommitCache.set(key, resolvedCommit);
+    const artifact = await gitArtifact(resolvedCommit, rel);
+    if (artifact?.digest.toLowerCase() === expected.toLowerCase()) return artifact;
+    digestCommitCache.delete(key);
+  }
+  const inFlight = gitArtifactByDigestInFlight.get(key);
+  if (inFlight) return await inFlight;
+  const pending = (async () => {
+    const child = Bun.spawn(['git', 'log', '--all', '--format=%H', '--', rel], {
+      cwd: PROJECT_DIR,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [text, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+    if (exitCode !== 0) return null;
+    for (const commit of text.split(/\s+/).filter((value) => /^[0-9a-f]{40}$/i.test(value))) {
+      const artifact = await gitArtifact(commit.toLowerCase(), rel);
+      if (artifact?.digest.toLowerCase() === expected.toLowerCase()) {
+        digestCommitCache.set(key, commit.toLowerCase());
+        trimOldest(digestCommitCache, 256);
+        return artifact;
+      }
+    }
+    return null;
+  })().catch(() => null);
+  gitArtifactByDigestInFlight.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (gitArtifactByDigestInFlight.get(key) === pending) gitArtifactByDigestInFlight.delete(key);
+  }
+}
+
+async function projectFileResponse(req: Request, url: URL, p: string, rel: string, pinnedArtifact: boolean): Promise<Response> {
+  const expected = url.searchParams.get('sha256');
+  const commit = url.searchParams.get('commit');
+  if (!pinnedArtifact && (expected || commit)) return new Response('Not Found', { status: 404, headers: NO_STORE });
+  if (expected && !/^sha256:[0-9a-f]{64}$/i.test(expected)) {
+    return new Response('Invalid sha256 pin', { status: 400, headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  if (commit && !/^[0-9a-f]{40}$/i.test(commit)) {
+    return new Response('Invalid evidence commit', { status: 400, headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  let historical = commit ? await gitArtifact(commit.toLowerCase(), rel) : null;
+  if (commit && !historical) return new Response('Evidence not found at cited commit', { status: 404, headers: NO_STORE });
+  if (!historical && !existsSync(p) && expected) historical = await gitArtifactByDigest(rel, expected);
+  if (!historical && !existsSync(p)) return new Response('Not Found', { status: 404, headers: NO_STORE });
+
+  let current = !historical && expected ? await currentArtifact(p) : null;
+  if (!historical && expected && !current) {
+    return new Response('Evidence changed while verifying or exceeds the artifact size limit', {
+      status: 409,
+      headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  if (!historical && !commit && expected && current?.digest.toLowerCase() !== expected.toLowerCase()) {
+    historical = await gitArtifactByDigest(rel, expected);
+    if (historical) current = null;
+  }
+
+  const bytes = historical?.bytes ?? current?.bytes;
+  const diskFile = bytes ? null : Bun.file(p);
+  let digest: string | null = historical?.digest ?? current?.digest ?? null;
+  if (expected) {
+    if (digest.toLowerCase() !== expected.toLowerCase()) {
+      return new Response('Evidence sha256 mismatch', {
+        status: 409,
+        headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8', 'X-Ztrack-Artifact-Sha256': digest },
+      });
+    }
+  }
+
+  const size = bytes?.byteLength ?? diskFile!.size;
+  const headers: Record<string, string> = {
+    ...NO_STORE,
+    'Accept-Ranges': 'bytes',
+    'Content-Type': contentType(p),
+    'X-Content-Type-Options': 'nosniff',
+    ...(digest ? { 'X-Ztrack-Artifact-Sha256': digest, ETag: `"${digest}"` } : {}),
+    ...(historical ? { 'X-Ztrack-Artifact-Commit': historical.commit } : {}),
+  };
+  const range = req.headers.get('range');
+  if (!range) {
+    headers['Content-Length'] = String(size);
+    return new Response(req.method === 'HEAD' ? null : (bytes ?? diskFile!), { headers });
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!match) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+  let start: number;
+  let end: number;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    if (!Number.isInteger(suffix) || suffix <= 0) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : size - 1;
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= size || end < start) {
+    return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+  }
+  end = Math.min(end, size - 1);
+  headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+  headers['Content-Length'] = String(end - start + 1);
+  return new Response(req.method === 'HEAD' ? null : (bytes ? bytes.slice(start, end + 1) : diskFile!.slice(start, end + 1)), { status: 206, headers });
 }
 
 // VIZ-4: `Bun.build` has NO glob/virtual-module facility, and multiple entrypoints produce
@@ -477,10 +776,33 @@ const server = Bun.serve({
       if (!existsSync(THEME_CSS_PATH)) return new Response('', { status: 404 });
       return new Response(Bun.file(THEME_CSS_PATH), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
     }
+    const sourcePreview = /^\/assets\/source-previews\/([0-9a-f]{64})\/page-([1-9]\d*)\.png$/.exec(url.pathname);
+    if (sourcePreview) {
+      const [, sourceDigest, pageText] = sourcePreview;
+      const page = Number(pageText);
+      if (!Number.isSafeInteger(page) || page > 9999) return new Response('Not Found', { status: 404 });
+      const previewPath = join(SOURCE_PREVIEW_DIR, sourceDigest!, `page-${String(page).padStart(2, '0')}.png`);
+      if (!existsSync(previewPath)) return new Response('Not Found', { status: 404 });
+      try {
+        if (!realpathSync(previewPath).startsWith(realpathSync(PROJECT_DIR) + sep)) return new Response('Not Found', { status: 404 });
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
+      return new Response(Bun.file(previewPath), {
+        headers: {
+          'Content-Type': 'image/png',
+          'X-Ztrack-Source-Sha256': `sha256:${sourceDigest}`,
+          'X-Ztrack-Source-Page': String(page),
+          ...NO_STORE,
+        },
+      });
+    }
     if (url.pathname.startsWith('/project/')) {
-      const p = projectFile(url.pathname);
-      if (!p || !existsSync(p)) return new Response('Not Found', { status: 404 });
-      return new Response(Bun.file(p), { headers: { 'Content-Type': contentType(p) } });
+      const rel = projectRelative(url.pathname);
+      if (rel === null) return new Response('Invalid project path', { status: 400, headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' } });
+      const project = projectFile(rel);
+      if (!project) return new Response('Not Found', { status: 404 });
+      return projectFileResponse(req, url, project.abs, rel, project.pinnedArtifact);
     }
     if (url.pathname === '/api/board') {
       try { return Response.json(await board()); }
