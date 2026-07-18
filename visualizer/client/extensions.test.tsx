@@ -2,6 +2,7 @@
 // members are asserted via `renderToStaticMarkup`); the DOM-runtime e2e tests live in
 // `render.e2e.test.tsx`.
 import { describe, expect, test } from 'bun:test';
+import { spawnSync } from 'node:child_process';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { buildEffectiveExtension, registerExtension, UPGRADE_NOTICE } from './extensions';
 import type { CoreAC, CoreIssue, Payload } from './model';
@@ -20,6 +21,18 @@ function payload(overrides: Partial<Payload> = {}): Payload {
 }
 
 describe('buildEffectiveExtension', () => {
+  test('query-isolated module instances share one extension registry', () => {
+    const script = `
+      const registering = await import('./visualizer/client/extensions.tsx?register');
+      const consuming = await import('./visualizer/client/extensions.tsx?consume');
+      registering.registerExtension('query-isolated', { blockedViewLabel: 'shared registry' });
+      const payload = { title: 'tracker', preset: 'query-isolated', projectDir: '/x', fetchedAt: 'now', trackerChangedAt: null, ok: true, primitives: {}, visualizer: null, operationalBlocking: {}, issues: [], findings: [], audit: {}, timestamps: {} };
+      if (consuming.buildEffectiveExtension(payload).ext.blockedViewLabel !== 'shared registry') process.exit(1);
+    `;
+    const result = spawnSync('bun', ['-e', script], { cwd: new URL('../..', import.meta.url), encoding: 'utf8' });
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+  });
+
   test('null payload (still loading): no notice yet, empty statusOrder', () => {
     const { ext, notice } = buildEffectiveExtension(null);
     expect(notice).toBeNull();

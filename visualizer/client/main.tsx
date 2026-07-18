@@ -553,4 +553,5 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />);
+export const appRoot = createRoot(document.getElementById('root')!);
+appRoot.render(<App />);
