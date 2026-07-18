@@ -11,7 +11,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname, join, normalize, resolve, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Resolve the ztrack core. In a repo checkout (src/*.ts present) import the
@@ -36,6 +36,8 @@ const {
   VisualizerSpecSchema,
   bustPresetCacheIfChanged,
   visualizerOperationalBlocking,
+  classifyProjectPath,
+  normalizeProjectUrlPath,
 } = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
@@ -252,11 +254,7 @@ async function board() {
 }
 
 function projectRelative(pathname: string): string | null {
-  try {
-    return normalize(decodeURIComponent(pathname.replace(/^\/project\//, ''))).replace(/^\/+/, '');
-  } catch {
-    return null;
-  }
+  return normalizeProjectUrlPath(pathname);
 }
 
 function projectFile(rel: string): { abs: string; pinnedArtifact: boolean } | null {
@@ -267,10 +265,8 @@ function projectFile(rel: string): { abs: string; pinnedArtifact: boolean } | nu
   // cannot work when its default `.volter/evidence/**` paths are rejected merely because
   // the state directory starts with a dot. Only the state-dir segment itself is exempt;
   // nested dotfiles and sensitive extensions remain blocked.
-  const segments = rel.split('/');
   const stateDir = stateDirName();
-  const isCanonicalEvidence = segments.length > 2 && segments[0] === stateDir && segments[1] === 'evidence';
-  const isCanonicalSource = segments.length > 2 && segments[0] === 'docs' && segments[1] === 'sources';
+  const { segments, canonicalEvidence: isCanonicalEvidence, canonicalSource: isCanonicalSource } = classifyProjectPath(rel, stateDir);
   const hasForbiddenDotSegment = segments.some((seg, index) => seg.startsWith('.') && !(isCanonicalEvidence && index === 0));
   if (hasForbiddenDotSegment || /\.(sqlite|pem|key)$/i.test(rel)) return null;
   const abs = join(PROJECT_DIR, rel);
