@@ -1,4 +1,4 @@
-// Issue #13: `@volter-ai-dev/twin`/`@volter-ai-dev/twin-github` became an OPTIONAL peer dep, so
+// Issue #13: `@volter/twin`/`@volter/twin-github` became an OPTIONAL peer dep, so
 // `ztrack sync github` must fail with a clear, actionable install hint (not a raw
 // MODULE_NOT_FOUND) when they aren't installed — and every OTHER command must not even attempt to
 // load them. `importTwinModules` is the injectable seam: swapping it to a rejecting stub
@@ -12,7 +12,7 @@ const realImport = importTwinModules;
 afterEach(() => { __setImportTwinModulesForTest(realImport); });
 
 function unresolvable(): never {
-  const err = new Error("Cannot find package '@volter-ai-dev/twin' imported from sync.ts") as Error & { code?: string };
+  const err = new Error("Cannot find package '@volter/twin' imported from sync.ts") as Error & { code?: string };
   err.code = 'ERR_MODULE_NOT_FOUND';
   throw err;
 }
@@ -21,7 +21,7 @@ function unresolvable(): never {
 // TypeScript source (no compiled JS) — verified for real against a live install in the manual
 // lean-install verification; this simulates it here so the distinct message is unit-tested too.
 function nodeCannotStripTypes(): never {
-  const err = new Error("Stripping types is currently unsupported for files under node_modules, for \"file:///x/node_modules/@volter-ai-dev/twin-github/src/index.ts\"") as Error & { code?: string };
+  const err = new Error("Stripping types is currently unsupported for files under node_modules, for \"file:///x/node_modules/@volter/twin-github/src/index.ts\"") as Error & { code?: string };
   err.code = 'ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING';
   throw err;
 }
@@ -35,7 +35,7 @@ describe('loadTwinRuntime — missing optional peers', () => {
   test('the install hint names both packages and the fix', async () => {
     __setImportTwinModulesForTest(unresolvable);
     await expect(loadTwinRuntime()).rejects.toThrow(
-      /npm install -D @volter-ai-dev\/twin @volter-ai-dev\/twin-github/,
+      /npm install -D @volter\/twin @volter\/twin-github/,
     );
   });
 });

@@ -5,7 +5,7 @@
 // auth) never breaks the underlying command — ztrack must keep working without the network.
 import { loadTrackerConfig } from '../../config.ts';
 import { createTrackerClient } from '../../sdk.ts';
-import type { ReconcilePolicy } from '@volter-ai-dev/twin';
+import type { ReconcilePolicy } from '@volter/twin';
 import { resolveGithubExecute } from './execute.ts';
 import { pull, push, reconcileSync } from './sync.ts';
 

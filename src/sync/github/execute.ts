@@ -5,7 +5,7 @@
 // so `state=all`/pagination never reach GitHub — `tokenExecute` below fixes that (GET params
 // become a query string; writes send a JSON body).
 import { spawnSync } from 'node:child_process';
-import type { GithubExecute } from '@volter-ai-dev/twin-github';
+import type { GithubExecute } from '@volter/twin-github';
 
 // Split a twin route+params into {method, path (templates substituted), rest params}.
 export function splitRoute(route: string, params: Record<string, unknown>): { method: string; path: string; rest: Array<[string, unknown]> } {

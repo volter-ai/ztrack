@@ -39,14 +39,14 @@ function rewriteDeclarations(dir) {
 }
 rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 
-// twin (@volter-ai-dev/twin*) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
+// twin (@volter/twin*) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
 // ztrack` must not pull in its transitive tree (react/react-dom) or its stray
 // `volter-twin`/`world-github` bins. `sync.ts` only ever reaches it through a lazy `import()`
 // (twinRuntime.ts) — `--external` here keeps that import() a real, unresolved-until-runtime
 // module load in dist/cli.js instead of bun inlining the packages into the bundle, so an install
 // without the peers stays lean and `ztrack sync github` fails with an install hint instead of a
 // module-not-found buried inside a bundled blob.
-const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter-ai-dev/twin', '--external=@volter-ai-dev/twin-github', '--outfile=dist/cli.js'], {
+const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/twin', '--external=@volter/twin-github', '--outfile=dist/cli.js'], {
   cwd: packageRoot,
   encoding: 'utf8',
 });
@@ -88,7 +88,7 @@ if (vizCore.status !== 0) {
 // external ESM.
 const kitCjs = spawnSync(
   'bun',
-  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter-ai-dev/twin', '--outfile=dist/preset-kit.cjs'],
+  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter/twin', '--outfile=dist/preset-kit.cjs'],
   { cwd: packageRoot, encoding: 'utf8' },
 );
 if (kitCjs.status !== 0) {

@@ -14,13 +14,13 @@
 //                     clobber the other — non-overlapping field changes MERGE, only a same-field
 //                     collision is a surfaced conflict (default policy `merge`). `base` (the last
 //                     synced common ancestor) is persisted by ztrack since the fork is the tracker.
-// NOTE: `@volter-ai-dev/twin`/`@volter-ai-dev/twin-github` are an OPTIONAL peer (package.json
+// NOTE: `@volter/twin`/`@volter/twin-github` are an OPTIONAL peer (package.json
 // `peerDependenciesMeta`) — only TYPES are imported statically here (erased at build time, so
 // they impose no runtime resolution). The actual runtime bindings come from `loadTwinRuntime()`
 // (twinRuntime.ts), a lazy `import()` so a plain `npm i -D ztrack` (peers absent) never fails to
 // even LOAD this module — see twinRuntime.ts for why a static value import here would be fatal.
-import type { GithubExecute } from '@volter-ai-dev/twin-github';
-import type { ReconcilePolicy, TwinResource } from '@volter-ai-dev/twin';
+import type { GithubExecute } from '@volter/twin-github';
+import type { ReconcilePolicy, TwinResource } from '@volter/twin';
 import { githubIssueConnector } from './connector.ts';
 import type { TrackerClient } from '../../types.ts';
 import { githubStateToStatus, issueResourceToRecordFields, statusToGithubState } from './map.ts';
@@ -110,7 +110,7 @@ const unboundForkRows = (rows: Array<Record<string, unknown>>, b: GithubBindings
 // followed by the very FIRST pull against a repo (no bindings recorded yet) can observe zero
 // remote issues even though one was just created — and silently report "0 created, 0 updated",
 // which reads as success. `runConnectorPoll` only advances its cursor when it actually observed
-// something newer (see @volter-ai-dev/twin's connector.js: `if (!truncated && maxOccurredAt &&
+// something newer (see @volter/twin's connector.js: `if (!truncated && maxOccurredAt &&
 // maxOccurredAt !== cursorBefore)`), so a zero-observation bootstrap poll leaves the cursor
 // untouched — a same-cursor re-poll is therefore risk-free (no window where a re-poll could skip
 // an issue). Retry ONCE, after a short delay, but ONLY in that narrow "first pull found nothing"
