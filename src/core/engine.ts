@@ -874,10 +874,24 @@ export function checkRoot<R extends CoreRoot>(preset: Preset<R>, root: unknown, 
 // repo-local preset built against a different zod major) must surface as a finding,
 // not a raw crash of `ztrack check`.
 function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, root: unknown, isExportedRoot: boolean, originById: Map<string, Origin> = new Map()): CheckResult<R> {
+  // Waivers are core-owned (parsed from `## Waivers` by the CORE, never per-preset), so
+  // they are validated against the core WaiverDirectiveSchema here and kept out of the
+  // per-preset contextSchema parse entirely. Routing them through preset schemas broke
+  // both ways: z.object() silently STRIPS undeclared keys, so a preset contextSchema
+  // without a `waivers` field no-oped every signed waiver before applyWaivers ever saw
+  // it, and a .strict() schema without the field would instead fail the whole check.
+  const { waivers: rawWaivers, ...bareCtx } = ctx;
+  let waivers: WaiverDirective[] = [];
+  const waiverFindings: Finding[] = [];
+  if (rawWaivers?.length) {
+    const revalidated = z.array(WaiverDirectiveSchema).safeParse(rawWaivers);
+    if (revalidated.success) waivers = revalidated.data;
+    else waiverFindings.push({ code: 'waivers_context_invalid', severity: 'error', message: `context.waivers does not match the core waiver schema (issueId/code/reason/approvedBy strings, optional acId/ref): ${revalidated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` });
+  }
   let result: ReturnType<z.ZodType<ValidationInput<R>>['safeParse']>;
   try {
     const inputSchema = makeValidationInputSchema(preset.schema, preset.contextSchema);
-    result = inputSchema.safeParse({ context: ctx, root });
+    result = inputSchema.safeParse({ context: bareCtx, root });
   } catch (error) {
     return { ok: false, findings: [{ code: 'schema_error', severity: 'error', message: `Could not validate against the preset schema (a preset/zod version mismatch?): ${String((error as Error)?.message ?? error)}` }], examinedIssues: countCandidateIssues(root) };
   }
@@ -887,5 +901,9 @@ function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, roo
       ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error, root, originById)], examinedIssues }
       : { ok: false, findings: shapeFindings(result.error, root, originById), examinedIssues };
   }
-  return runRules(preset, result.data, originById);
+  const data = result.data as ValidationInput<R>;
+  if (waivers.length) (data.context as Context).waivers = waivers;
+  const ran = runRules(preset, data, originById);
+  if (!waiverFindings.length) return ran;
+  return { ...ran, ok: false, findings: [...waiverFindings, ...ran.findings] };
 }

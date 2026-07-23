@@ -81,6 +81,39 @@ describe('check() runner', () => {
     expect(r3.findings.find((x) => x.code === 'needs_work')?.severity).toBe('error');
   });
 
+  // Waivers are core-owned: a preset's contextSchema must not be able to eat them.
+  // Regression for the peak preset shipping weeks with every signed waiver silently
+  // no-oped — its contextSchema had no `waivers` field, and z.object() strips
+  // undeclared keys on parse, so applyWaivers never saw a single directive.
+  test('waivers survive a preset contextSchema that does not declare them (non-strict AND strict)', () => {
+    const mk = (contextSchema: z.ZodTypeAny): Preset<R> => ({
+      name: 'wstrip', schema: RootSchema, contextSchema,
+      parse: () => ({ issues: [{ id: 'A-1', title: 't', summary: '', status: 'open', acceptanceCriteria: [{ id: 'AC-1', status: 'pending', evidence: [] }] }] }),
+      rules: [rule<R, { issueId?: string; acId?: string }>({ code: 'needs_work', select: (m) => m.acs, message: () => 'AC needs work' })],
+    });
+    const waived = [{ id: 'A-1', title: 't', status: 'draft', body: '## Waivers\n\n- code: needs_work ac: AC-1 reason: tracked elsewhere by: Otto\n' }];
+    // non-strict: undeclared keys are silently stripped — the historical failure mode
+    const r = check(mk(z.object({ now: z.string().optional() })), waived);
+    expect(r.findings.find((x) => x.code === 'needs_work')?.severity).toBe('acknowledged');
+    expect(r.ok).toBe(true);
+    // strict: undeclared keys reject the parse — waivers must not reach it at all
+    const r2 = check(mk(z.object({ now: z.string().optional() }).strict()), waived);
+    expect(r2.findings.find((x) => x.code === 'needs_work')?.severity).toBe('acknowledged');
+    expect(r2.ok).toBe(true);
+  });
+
+  test('malformed context.waivers surface as a loud finding, not silence or a crash', () => {
+    const preset: Preset<R> = {
+      name: 'wbad', schema: RootSchema,
+      parse: () => ({ issues: [emptyIssue] }),
+      rules: [],
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = checkRoot(preset, { issues: [emptyIssue] }, { waivers: [{ nonsense: true }] as any });
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((x) => x.code === 'waivers_context_invalid' && x.severity === 'error')).toBe(true);
+  });
+
   // ── fingerprinted, self-expiring waivers (`// eslint-disable-next-line` parity) ──────────────
   // A preset whose rule emits one finding per evidence entry, each carrying the commit sha as its
   // `subject` — so a `ref:` waiver can pin to exactly one occurrence.
