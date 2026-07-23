@@ -2,6 +2,18 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.3.2
+
+- **Waivers survive preset contextSchemas that don't declare them.** Waivers are core-owned —
+  parsed from `## Waivers` by the core, never per-preset — but `validateAndRun` routed
+  `context.waivers` through the per-preset `contextSchema` parse. A non-strict `z.object()`
+  without a `waivers` field silently stripped the key (every signed waiver no-oped before
+  `applyWaivers` ever saw it — the peak preset shipped weeks in this state; peak-internal
+  PH-240), and a `.strict()` schema without the field failed the whole check instead. The
+  engine now validates `context.waivers` against the core `WaiverDirectiveSchema`, keeps them
+  out of the preset-schema parse, and re-attaches them post-parse; malformed directives surface
+  as a loud `waivers_context_invalid` error finding rather than silence or a crash. (#43)
+
 ## 1.3.1
 
 - **Document-backed tasks now support assignee write-back.** `ztrack issue edit <id> --assignee`
