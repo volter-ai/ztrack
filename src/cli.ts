@@ -29,6 +29,11 @@ import { handleLintCommand } from './cliLint.ts';
 import { handleSyncCommand } from './cliSync.ts';
 import { handlePatchCommand } from './cliPatch.ts';
 import { isMutatingCommand, observeAfterMutation } from './cliAudit.ts';
+import {
+  handleProjectHooksCommand,
+  runProjectHooks,
+  shouldRunProjectHooks,
+} from './projectHooks.ts';
 import { rejectUnknownFlags } from './cliRegistry.ts';
 import { heading, statusMark, ui } from './cliStyle.ts';
 
@@ -125,6 +130,18 @@ async function main(): Promise<void> {
   // covers everything. A no-op for any command path not in the registry — that preserves today's
   // existing behavior for ghosts/stubs/genuinely-unknown verbs untouched by this fix.
   rejectUnknownFlags(args);
+
+  if (handleProjectHooksCommand(args, projectRootFrom(), command)) return;
+
+  if (shouldRunProjectHooks(args)) {
+    const project = (args[0] === 'visualizer' || args[0] === 'viz')
+      ? resolve(optionValue(args, '--project') || projectRootFrom())
+      : projectRootFrom();
+    const hooks = runProjectHooks(project, args);
+    for (const warning of hooks.warnings) {
+      process.stderr.write(`${statusMark('warn')} ${ui.yellow(warning)}\n`);
+    }
+  }
 
   if (await handleInitCommand(args)) return;
 

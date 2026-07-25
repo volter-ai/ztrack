@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Independent tools can now register bounded, shell-free `project:invoke` hooks in a versioned,
+  machine-local Git-common-dir registry. Hooks are shared across worktrees, cannot be enabled by committed
+  files, and warn without changing the ztrack command's result.
+
 All notable ztrack release changes are recorded here.
 
 ## 1.3.2

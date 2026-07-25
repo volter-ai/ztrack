@@ -5,7 +5,7 @@
 // Top-level commands worth completing (the resource/action surface a user types first).
 const TOP_LEVEL = [
   'init', 'migrate-local', 'check', 'export', 'issue', 'loop', 'waiver', 'preset', 'fmt', 'lint',
-  'tx', 'ac', 'evidence', 'visualizer', 'mcp', 'completions',
+  'tx', 'ac', 'evidence', 'visualizer', 'mcp', 'hooks', 'completions',
 ];
 
 // Subcommands per command (second word).
@@ -15,6 +15,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   waiver: ['sign', 'clear', 'status'],
   preset: ['upgrade'],
   mcp: ['serve'],
+  hooks: ['add', 'remove', 'list'],
   completions: ['bash', 'zsh'],
 };
 

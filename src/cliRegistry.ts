@@ -44,6 +44,9 @@ function bool(name: string, opts: Partial<Pick<FlagSpec, 'aliases' | 'repeatable
 // spec's per-bullet file:line citations). Ordered roughly as the CLI's own dispatch order in
 // cli.ts, for ease of cross-checking.
 export const REGISTRY: CommandSpec[] = [
+  { path: ['hooks', 'add'], flags: [ val('--event'), val('--id'), val('--timeout-ms') ] },
+  { path: ['hooks', 'remove'], flags: [] },
+  { path: ['hooks', 'list'], flags: [ bool('--json') ] },
   { path: ['check'], flags: [
     val('--issues'),
     val('--source', { repeatable: true }),
@@ -219,6 +222,10 @@ function walkArgs(spec: CommandSpec, remaining: string[]): WalkedToken[] {
   const out: WalkedToken[] = [];
   for (let i = 0; i < remaining.length; i++) {
     const token = remaining[i]!;
+    if (token === '--') {
+      for (const literal of remaining.slice(i + 1)) out.push({ kind: 'positional', token: literal });
+      break;
+    }
     if (HELP_TOKENS.has(token)) continue;
     if (!token.startsWith('--')) { out.push({ kind: 'positional', token }); continue; }
     const eq = token.indexOf('=');

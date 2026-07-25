@@ -13,7 +13,7 @@ export function commandName(): string {
 // and `view` (ZTB-24 dev/05) were 100% prose with zero implementation and are gone from here.
 export const TOP_LEVEL_RESOURCES = [
   'init', 'migrate-local', 'issue', 'project', 'api', 'check', 'export', 'import',
-  'fmt', 'lint', 'tx', 'evidence', 'ac', 'mcp', 'sync', 'visualizer', 'loop', 'waiver', 'preset', 'completions',
+  'fmt', 'lint', 'tx', 'evidence', 'ac', 'mcp', 'sync', 'visualizer', 'loop', 'waiver', 'preset', 'hooks', 'completions',
 ];
 
 export function printHelp(): void {
@@ -128,6 +128,17 @@ export function printIssueActionHelp(action: string): boolean {
 
 export function printResourceHelp(resource: string): boolean {
   const command = commandName();
+  if (resource === 'hooks') {
+    process.stdout.write(
+      `Usage: ${command} hooks <add|remove|list>\n\n` +
+      `  ${command} hooks add --event project:invoke --id <id> [--timeout-ms <100-15000>] -- <absolute-executable> [args...]\n` +
+      `  ${command} hooks remove <id>\n` +
+      `  ${command} hooks list [--json]\n\n` +
+      `Hooks are explicit machine-local integrations stored under Git's common directory. ` +
+      `They run without a shell and cannot be enabled by committed repository files.\n`,
+    );
+    return true;
+  }
   if (resource === 'init') {
     process.stdout.write(`Usage: ${command} init [--root dir] [--team KEY] [--preset <name>] [--branch] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
 

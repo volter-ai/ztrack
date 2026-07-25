@@ -9,4 +9,14 @@ export type { CheckResult, Context, CoreRoot, Finding, Preset, Rule, ValidationI
 export { parseRawIssueMarkdown, renderPresetCanonicalIssueMarkdown } from './rawIssueMarkdown.ts';
 export type { RawIssueMarkdown, RawIssueSection, RawIssueCheckboxRow } from './rawIssueMarkdown.ts';
 export { loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, trackerDatabasePath } from './config.ts';
+export {
+  PROJECT_HOOK_EVENT,
+  PROJECT_HOOKS_SCHEMA,
+  projectHookRegistryPath,
+  readProjectHooks,
+  registerProjectHook,
+  removeProjectHook,
+  runProjectHooks,
+} from './projectHooks.ts';
+export type { ProjectHook, ProjectHookRegistry, ProjectHookRunResult } from './projectHooks.ts';
 export type { TrackerClient, TrackerConfig, TrackerBackend, TrackerBackendName } from './types.ts';

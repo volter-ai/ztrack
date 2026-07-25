@@ -98,6 +98,24 @@ plugin once; it's **dormant unless a loop is armed**, so it's safe to leave enab
 Not using Claude Code plugins? Wire the Stop and SubagentStop hooks yourself — see the
 [Guide → drive an agent to green](docs/GUIDE.md#3-usage-drive-an-agent-to-green).
 
+### Optional machine-local project hooks
+
+Independent tools can subscribe to ztrack's `project:invoke` event without becoming a ztrack dependency:
+
+```sh
+ztrack hooks add --event project:invoke --id my-tool --timeout-ms 10000 -- /absolute/path/to/tool arg1
+ztrack hooks list --json
+ztrack hooks remove my-tool
+```
+
+The versioned `ztrack.project-hooks.v1` registry lives at `<git-common-dir>/ztrack/hooks.json`, so it is
+local to one clone, shared by its worktrees, and cannot be enabled by committed repository files. Commands
+are stored as an absolute executable plus a literal argv vector and run without a shell. Each hook is
+bounded to 15 seconds and failures warn without changing the ztrack command's result. ztrack supplies
+`ZTRACK_HOOK_EVENT`, `ZTRACK_PROJECT_ROOT`, and `ZTRACK_COMMAND_JSON` to the child. Help, version,
+completions, hook management, initialization, migration, unrecognized commands, and standalone-file checks
+do not invoke project hooks.
+
 ---
 
 # Usage
