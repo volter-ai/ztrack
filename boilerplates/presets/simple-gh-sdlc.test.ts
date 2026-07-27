@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
-import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
+import { assertAcSubLineFidelity, assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkDefault, DefaultPreset, type DefaultRoot, DefaultRootSchema, parseDefault, serializeIssue } from './simple-gh-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
@@ -27,6 +27,22 @@ PR: ${PR}
 
 // ZTB-5 round-trip fidelity fixtures — see assertRoundTripFidelity/assertNotePositionFidelity.
 const rtPreset = DefaultPreset as unknown as Preset<CoreRoot>;
+
+// An AC carrying a sub-line this preset does not model — the field an operator reaches for to
+// record WHY an AC is being held (a blind-verification refusal, a source caveat). It used to be
+// deleted by the next `ac patch` on any AC of the issue.
+const AC_SUBLINE = '  - note: "held: independent verification returned NOT-PROVEN"';
+const AC_SUBLINE_REC: IssueRecord = {
+  id: 'DEF-4', title: 'A held criterion', status: 'in-progress', assignee: 'otto',
+  body: `Summary: one criterion, deliberately not passing
+
+## Acceptance Criteria
+
+- [ ] AC-1 v1 First criterion
+  - status: pending
+${AC_SUBLINE}
+`,
+};
 
 // two ACs, so editing one has an OTHER AC's lines to prove untouched (edit-locality).
 const EDIT_REC: IssueRecord = {
@@ -130,6 +146,7 @@ describe('simple-gh-sdlc preset', () => {
     edit: { record: EDIT_REC, acId: 'AC-1', patch: { checked: true, status: 'passed', evidence: [{ id: 'ev1', commit: HEAD, acVersion: 1 }], proof: { explanation: 'ev1 shows it', evidenceRefs: ['ev1'] } } },
   });
   assertNotePositionFidelity({ preset: rtPreset, record: NOTE_BETWEEN_REC });
+  assertAcSubLineFidelity({ preset: rtPreset, record: AC_SUBLINE_REC, acId: 'AC-1', subLine: AC_SUBLINE });
   assertVisualizerSpecConformance(rtPreset);
 
   test('rule: PR head unknown when git world has no head', () => {

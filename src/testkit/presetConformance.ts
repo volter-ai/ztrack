@@ -249,6 +249,46 @@ export function assertNotePositionFidelity(p: { preset: Preset<CoreRoot>; record
 }
 
 /**
+ * Case 1 one level DOWN: an unknown SUB-LINE of an AC survives the round trip.
+ *
+ * Section-level carry (`notes`/`notesBefore`/`prose`) had this covered; AC sub-lines did not. The
+ * sub-field parser is an if-chain over the fields the preset models, and anything else fell off the
+ * end into nothing — no field, no diagnostic, exit 0. Because `ztrack fmt` and EVERY `ztrack ac
+ * patch` write re-serialize the whole body, editing one AC silently deleted an operator's note on
+ * a different one, and nothing in the tracker recorded that it had happened.
+ *
+ * Also asserts the carry is inert: a carried line that merely LOOKS like `proof:` must set no
+ * field and move no AC state, so carrying can never become a back door that talks an unchecked AC
+ * into passing.
+ *
+ * `record` must contain an AC bearing a sub-line the preset does not model, and — so the carry is
+ * proven, not merely tolerated — that line should be the LAST one of its AC block, since the typed
+ * fields have a canonical serialization order that an unrecognized line cannot be interleaved into.
+ */
+export function assertAcSubLineFidelity(p: { preset: Preset<CoreRoot>; record: IssueRecord; acId: string; subLine: string }): void {
+  test('an AC sub-line the preset does not model survives an unmodified round trip', () => {
+    expect(p.record.body).toContain(p.subLine); // sanity: the fixture actually carries it
+    const root = p.preset.schema.parse(p.preset.parse([p.record]));
+    const { body } = p.preset.serialize!(root.issues[0]!);
+    expect(body).toContain(p.subLine);
+    expect(body).toBe(p.record.body);
+  });
+
+  test('a carried sub-line is inert — it sets no field and cannot pass an AC', () => {
+    const decoy = p.record.body.replace(p.subLine, `  - rationale: proof: "looks like a proof line" -> ev1`);
+    const root = p.preset.schema.parse(p.preset.parse([{ ...p.record, body: decoy }]));
+    // `checked`/`proof` are preset-level fields, not part of the core AC shape this testkit is
+    // typed against, so read them through a narrow structural view rather than the core type.
+    type AcView = { id: string; status?: string; checked?: boolean; proof?: unknown };
+    const ac = (root.issues[0]!.acceptanceCriteria as unknown as AcView[]).find((a) => a.id === p.acId);
+    expect(ac).toBeDefined();
+    expect(ac!.proof).toBeUndefined();
+    expect(ac!.checked).toBe(false);
+    expect(ac!.status).toBe('pending');
+  });
+}
+
+/**
  * Case 3: a preset with no `serialize` (a read-only adapter, e.g. `speckit`) is EXEMPT from the
  * round-trip contract by construction — demonstrates the exemption path rather than asserting
  * round-trip fidelity (there is no `serialize` to round-trip through).
