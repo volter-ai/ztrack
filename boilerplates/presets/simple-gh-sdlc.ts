@@ -60,6 +60,19 @@ export const DefaultAcSchema = z.object({
   // OPTIONAL relevance anchor: the repo paths this AC's work concerns (globs ok: *, **). When set,
   // a passed AC's cited commit must TOUCH one of them — so an unrelated real commit can't pass.
   paths: z.array(z.string().min(1)).optional(),
+  // Sub-lines this grammar does not recognize are CARRIED verbatim rather than dropped — the same
+  // choice, and the same rationale, as `notes`/`notesBefore`/`prose` at the issue level: a
+  // patch/fmt round trip must never silently delete human-authored content.
+  //
+  // It used to. The sub-field loop below is an if-chain over status/evidence/proof/blocked-by/
+  // blocks/paths, and every other line fell off the end into nothing — no field, no diagnostic,
+  // exit 0. `ztrack fmt` and every `ztrack ac patch` write re-serialize through this preset, so a
+  // reviewer checking one AC would silently delete an operator's note on a DIFFERENT one.
+  //
+  // Each entry is one raw sub-line, without its `- ` marker. It is text only: a carried line that
+  // merely LOOKS like `proof:`/`evidence` sets no field and moves no AC state, so it can never
+  // talk an unchecked AC into passing.
+  notes: z.array(z.string().min(1)).optional(),
 }).strict();
 
 // primitives the default SDLC implements (issue-level)
@@ -323,6 +336,7 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
         const evidence: unknown[] = [];
         const paths: string[] = [];
         const blockedBy: RawBlockRef[] = [];
+        const carried: string[] = [];
         const blocks: RawBlockRef[] = [];
         const rawList = (raw: string): RawBlockRef[] =>
           splitList(raw).map((t) => parseBlockToken(t, issue.id as string)).filter((r): r is RawBlockRef => r !== null);
@@ -344,6 +358,8 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
           if (bk) { blocks.push(...rawList(bk[1]!)); continue; }
           const pa = /^paths:\s*(.+)$/i.exec(line);
           if (pa) { paths.push(...splitList(pa[1]!)); continue; }
+          // anything else is human-authored and is kept verbatim (see the `notes` schema comment)
+          if (line.trim()) carried.push(line);
         }
         // status defaults from the checkbox; an explicit line can override (and is then guarded by a rule)
         if (!status) status = checked ? 'passed' : 'pending';
@@ -353,6 +369,7 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
         if (paths.length) ac.paths = paths;
         if (blockedBy.length) ac.blockedBy = blockedBy;
         if (blocks.length) ac.blocks = blocks;
+        if (carried.length) ac.notes = carried;
         acs.push(ac);
       }
       continue;
@@ -409,6 +426,10 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
     if (ac.paths?.length) out.push(`  - paths: ${ac.paths.join(', ')}`);
     if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
     if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
+    // carried-verbatim sub-lines go last: the typed fields above have a canonical order, so an
+    // unrecognized line's ORIGINAL position between them cannot be preserved anyway. Content
+    // survives, which is the whole point (see the `notes` schema comment).
+    for (const note of ac.notes ?? []) out.push(`  - ${note}`);
   }
   // unknown sections that sat AFTER "## Acceptance Criteria" (the common case: appendices/notes) stay after it.
   for (const note of issue.notes ?? []) out.push('', note);
