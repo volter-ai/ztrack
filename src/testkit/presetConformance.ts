@@ -277,7 +277,10 @@ export function assertAcSubLineFidelity(p: { preset: Preset<CoreRoot>; record: I
   test('a carried sub-line is inert — it sets no field and cannot pass an AC', () => {
     const decoy = p.record.body.replace(p.subLine, `  - rationale: proof: "looks like a proof line" -> ev1`);
     const root = p.preset.schema.parse(p.preset.parse([{ ...p.record, body: decoy }]));
-    const ac = (root.issues[0]!.acceptanceCriteria as Array<Record<string, unknown>>).find((a) => a.id === p.acId);
+    // `checked`/`proof` are preset-level fields, not part of the core AC shape this testkit is
+    // typed against, so read them through a narrow structural view rather than the core type.
+    type AcView = { id: string; status?: string; checked?: boolean; proof?: unknown };
+    const ac = (root.issues[0]!.acceptanceCriteria as unknown as AcView[]).find((a) => a.id === p.acId);
     expect(ac).toBeDefined();
     expect(ac!.proof).toBeUndefined();
     expect(ac!.checked).toBe(false);
