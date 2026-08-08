@@ -81,6 +81,18 @@ jobs:
       - name: Publish to npm
         # --provenance uses the id-token permission above; without the flag the
         # OIDC grant is dead weight and npm ships no attestation (ZL-E10).
-        run: npm publish --access public --provenance
+        # When the version being published is LOWER than npm's current `latest`
+        # (a fix cut while a higher version holds latest — e.g. an out-of-band
+        # release), npm refuses the implicit latest tag outright; publish under
+        # the `backport` dist-tag instead and leave `latest` untouched.
+        run: |
+          PKG=$(node -p "require('./package.json').version")
+          LATEST=$(npm view ztrack version 2>/dev/null || echo '0.0.0')
+          TAG_ARGS=""
+          if [ "$(printf '%s\n%s\n' "$LATEST" "$PKG" | sort -V | tail -1)" != "$PKG" ]; then
+            echo "::notice::version ${PKG} is below npm latest ${LATEST} — publishing under dist-tag 'backport'"
+            TAG_ARGS="--tag backport"
+          fi
+          npm publish --access public --provenance $TAG_ARGS
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
