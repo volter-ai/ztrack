@@ -21,12 +21,12 @@ describe('gitWorld', () => {
     expect(ctx.git?.existingCommits?.length).toBe(2);
   });
 
-  test('a failing existence scan WITHHOLDS existingCommits instead of returning an empty list', () => {
-    // Regression: `git log --all` failure (e.g. ENOBUFS on a large repo) used to be
-    // swallowed into '' → existingCommits: [] → every cited commit in the org failed
-    // *_commit_not_found at once. Failure must degrade like verifyCommits === false.
+  test('a NON-repo keeps the empty list — fabricated citations stay catchable', () => {
+    // Outside any git repo, no commit citation is verifiable by construction, so
+    // commit rules must stay RED on fabricated commits (document trackers outside
+    // a repo rely on this — see cliCheckTargets' deadbeef cases).
     const ctx = gitWorld(join(tmpdir(), 'ztrack-definitely-not-a-repo'), []);
-    expect(ctx.git?.existingCommits).toBeUndefined();
+    expect(ctx.git?.existingCommits).toEqual([]);
     expect(ctx.git?.prs).toEqual({});
   });
 

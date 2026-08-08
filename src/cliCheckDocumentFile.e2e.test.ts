@@ -49,13 +49,6 @@ beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'ztrk-cdf-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
   symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
-  // A real repo with one commit: the commit-existence scan must SUCCEED here so
-  // DOC-2's fabricated `deadbeef` is caught as genuinely missing. (In a non-repo
-  // the scan now withholds existingCommits and commit rules skip — the old
-  // behavior of treating scan failure as "no commit exists" was the gitWorld
-  // ENOBUFS mass-false-positive bug.)
-  spawnSync('git', ['-C', root, 'init', '-b', 'main'], { stdio: 'ignore' });
-  spawnSync('git', ['-C', root, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--allow-empty', '-m', 'init'], { stdio: 'ignore' });
   ztrack(['init', '--team', 'ZT']);
 });
 afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
