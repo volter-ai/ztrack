@@ -4,6 +4,17 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.4.1
+
+- **A large repo no longer mass-fails every commit citation.** `gitWorld`'s commit-existence
+  scan (`git log --all`) overflowed `execFileSync`'s 1 MiB default `maxBuffer` at ~26k commits
+  (ENOBUFS), and the swallowed error produced an EMPTY `existingCommits` list — every cited
+  commit in the org failed `*_commit_not_found` at once (observed live: 1,559 of 1,636 errors
+  in one consuming org). Git calls now carry a 512 MiB buffer, and an in-repo scan failure
+  WITHHOLDS `existingCommits` (commit rules skip, the `verifyCommits === false` degradation)
+  instead of reading as "no commit exists anywhere". Outside a git repo the empty list is kept:
+  fabricated citations on document trackers stay RED. (#47)
+
 ## 1.4.0
 
 - Independent tools can now register bounded, shell-free `project:invoke` hooks in a versioned,
