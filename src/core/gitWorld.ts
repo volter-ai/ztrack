@@ -10,9 +10,16 @@
 import { execFileSync } from 'node:child_process';
 import type { Context } from './engine.ts';
 
+// execFileSync's default maxBuffer is 1 MiB — a busy repo's `git log --all --format=%H`
+// blows past that at ~26k commits (40 hex chars + newline each) and throws ENOBUFS,
+// which the swallow-into-'' path below then turned into an EMPTY existingCommits list:
+// every cited commit in the whole org failed *_commit_not_found at once. Commit lists
+// are ~41 bytes/commit, so 512 MiB covers ~13M commits.
+const MAX_GIT_BUFFER = 512 * 1024 * 1024;
+
 export function git(repo: string, args: string[]): string {
   try {
-    return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: MAX_GIT_BUFFER }).trim();
   } catch {
     return '';
   }
@@ -54,6 +61,16 @@ export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommi
   // verifyCommits===false withholds commit existence so commit-verification rules
   // skip (the typed replacement for the old `--verify-commits` opt-in).
   if (opts.verifyCommits === false) return { git: { prs } };
-  const existingCommits = git(repo, ['log', '--all', '--format=%H']).split('\n').filter(Boolean);
+  // Failure here must WITHHOLD existingCommits (rules skip — same degradation as
+  // verifyCommits===false), never return [] — an empty list reads as "no commit
+  // exists anywhere" and mass-fails every commit citation in the org.
+  let existingCommits: string[];
+  try {
+    existingCommits = execFileSync('git', ['-C', repo, 'log', '--all', '--format=%H'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: MAX_GIT_BUFFER,
+    }).trim().split('\n').filter(Boolean);
+  } catch {
+    return { git: { prs } };
+  }
   return { git: { existingCommits, prs } };
 }
