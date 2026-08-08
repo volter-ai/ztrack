@@ -10,9 +10,16 @@
 import { execFileSync } from 'node:child_process';
 import type { Context } from './engine.ts';
 
+// execFileSync's default maxBuffer is 1 MiB — a busy repo's `git log --all --format=%H`
+// blows past that at ~26k commits (40 hex chars + newline each) and throws ENOBUFS,
+// which the swallow-into-'' path below then turned into an EMPTY existingCommits list:
+// every cited commit in the whole org failed *_commit_not_found at once. Commit lists
+// are ~41 bytes/commit, so 512 MiB covers ~13M commits.
+const MAX_GIT_BUFFER = 512 * 1024 * 1024;
+
 export function git(repo: string, args: string[]): string {
   try {
-    return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: MAX_GIT_BUFFER }).trim();
   } catch {
     return '';
   }
@@ -54,6 +61,27 @@ export function gitWorld(repo: string, prBranches: string[], opts: { verifyCommi
   // verifyCommits===false withholds commit existence so commit-verification rules
   // skip (the typed replacement for the old `--verify-commits` opt-in).
   if (opts.verifyCommits === false) return { git: { prs } };
-  const existingCommits = git(repo, ['log', '--all', '--format=%H']).split('\n').filter(Boolean);
+  let existingCommits: string[];
+  try {
+    existingCommits = execFileSync('git', ['-C', repo, 'log', '--all', '--format=%H'], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: MAX_GIT_BUFFER,
+    }).trim().split('\n').filter(Boolean);
+  } catch {
+    // Two very different failures land here, with opposite correct degradations:
+    // - Not a git repo at all: every commit citation is unverifiable BY CONSTRUCTION,
+    //   so keep the empty list — commit rules stay RED on fabricated citations
+    //   (document trackers outside any repo rely on this).
+    // - A real repo whose scan FAILED (the ENOBUFS class this fix removes; any
+    //   transient git breakage): WITHHOLD existingCommits so commit rules skip —
+    //   the same degradation as verifyCommits===false. Treating scan failure as
+    //   "no commit exists anywhere" mass-failed every citation in the org at once.
+    let isRepo = false;
+    try {
+      execFileSync('git', ['-C', repo, 'rev-parse', '--git-dir'], { stdio: 'ignore' });
+      isRepo = true;
+    } catch { /* not a repo */ }
+    if (isRepo) return { git: { prs } };
+    existingCommits = [];
+  }
   return { git: { existingCommits, prs } };
 }
