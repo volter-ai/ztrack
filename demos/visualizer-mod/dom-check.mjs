@@ -9,9 +9,9 @@
 // `visualizer/client/render.e2e.test.tsx` (VIZ-4)'s `clickButtonWithText` helper: fetch the REAL
 // served `/assets/app.js` from the running server, write it to a temp file, and `import()` it
 // inside a happy-dom window — the app's own top-level `createRoot(...).render(<App/>)` mount runs
-// exactly as a real browser tab would, repo extension bundled in and all.
+// exactly as a real browser tab would, including its fetch/import of `/assets/extension.js`.
 //
-// The PAYLOAD/BUNDLE sections below it are the spec's named fallback, not a substitute — they'd
+// The PAYLOAD/MODULE sections below it are the spec's named fallback, not a substitute — they'd
 // pass even if React rendered nothing, so the DOM section is what actually carries dev/01.
 //
 // This file lives under `demos/` (not a bare tmp file) so `import 'happy-dom'` resolves from THIS
@@ -39,7 +39,7 @@ function ok(cond, label) {
   else { console.log(`  FAIL: ${label}`); fails += 1; }
 }
 
-async function waitFor(check, timeoutMs = 8000) {
+async function waitFor(check, timeoutMs = 15_000) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (check()) return true;
@@ -78,14 +78,15 @@ console.log('## payload fallback (/api/board)');
   ok(board.extensionError === undefined, 'payload: no extensionError — the copied VIZ-16 boilerplate compiled cleanly');
 }
 
-// ── BUNDLE fallback: the served /assets/app.js literally contains the boilerplate's own panel
-// heading — proof the repo extension.tsx was actually compiled INTO the served client, not just
-// present on disk. ─────────────────────────────────────────────────────────────────────────────
-console.log('## bundle fallback (/assets/app.js)');
+// ── MODULE fallback: the public extension module literally contains the boilerplate's own panel
+// heading — proof the repo extension.tsx was actually compiled for the served client, not just
+// present on disk. The stable app bundle imports this module at runtime. ───────────────────────
+console.log('## extension module fallback (/assets/extension.js)');
 let bundleCode = '';
 {
   bundleCode = await (await fetch(`${base}/assets/app.js`)).text();
-  ok(bundleCode.includes(panelHeading), `bundle: "${panelHeading}" is compiled into /assets/app.js`);
+  const extensionCode = await (await fetch(`${base}/assets/extension.js`)).text();
+  ok(extensionCode.includes(panelHeading), `module: "${panelHeading}" is compiled into /assets/extension.js`);
 }
 
 // ── the DOM harness (same globals-wiring pattern as VIZ-13/VIZ-4's mountDom) ──────────────────
@@ -133,7 +134,9 @@ async function bootBundle(path = '/') {
   bundleTmpFiles.push(tmpFile);
   mountWindow(`${base}${path}`);
   await import(tmpFile);
-  await waitFor(() => !!document.querySelector('.app-shell'));
+  const ready = await waitFor(() => [...document.querySelectorAll('button')]
+    .some((button) => button.textContent?.trim() === 'Board'));
+  if (!ready) throw new Error('visualizer controls did not load before the DOM proof timeout');
 }
 
 function clickButtonWithText(text) {
@@ -158,7 +161,9 @@ await unmountDom();
 console.log('## dev/01 — the AC-unit label and the custom panel render (detail drawer OPEN, happy-dom real bundle)');
 await bootBundle(`/?issue=${issueId}`);
 await waitFor(() => !!document.querySelector('.detail-drawer'));
-await waitFor(() => (document.body.textContent ?? '').includes(panelHeading));
+await waitFor(() => [...document.querySelectorAll('.detail-drawer .panel-title h3')]
+  .some((heading) => heading.textContent === panelHeading));
+await waitFor(() => (document.body.textContent ?? '').includes(panelContent));
 const body = document.body.textContent ?? '';
 ok(body.includes(acUnitLabel), `AC-unit label "${acUnitLabel}" renders inside the open detail drawer`);
 ok(body.includes(panelHeading), `custom panel heading "${panelHeading}" renders inside the open detail drawer`);
