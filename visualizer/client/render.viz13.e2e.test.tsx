@@ -476,12 +476,11 @@ export default defineVisualizerExtension({
       if (root) rmSync(root, { recursive: true, force: true });
     });
 
-    test('editing extension.tsx live is reflected in the NEXT /assets/app.js fetch — no restart', async () => {
+    test('editing extension.tsx updates the already-open board — no reload or server restart', async () => {
       await bootBundle(port, `/?issue=${issueId}`);
       await waitFor(() => !!document.querySelector('.detail-drawer'));
       await waitFor(() => (document.body.textContent ?? '').includes('Version One'));
       expect(document.body.textContent ?? '').toContain('Version One');
-      await unmountDom();
 
       writeExtension(root, `
 import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
@@ -492,12 +491,10 @@ export default defineVisualizerExtension({
       const future = new Date(Date.now() + 2000);
       utimesSync(extensionPath(root), future, future); // some filesystems coalesce sub-second mtimes; force a distinct one, mirroring VIZ-4 dev/05's own live-edit test
 
-      await bootBundle(port, `/?issue=${issueId}`); // a fresh /assets/app.js fetch — same server PROCESS, no restart
-      await waitFor(() => !!document.querySelector('.detail-drawer'));
-      await waitFor(() => (document.body.textContent ?? '').includes('Version Two'));
+      await waitFor(() => (document.body.textContent ?? '').includes('Version Two'), 12_000);
       const body = document.body.textContent ?? '';
       expect(body).toContain('Version Two');
-      expect(body).not.toContain('Version One'); // the OLD bundle content is genuinely gone, not just appended
+      expect(body).not.toContain('Version One');
     }, 25_000);
   });
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { AuditEntry, CoreIssue, Finding, Payload, Timestamps, VisualizerExtension } from './model';
-import { buildEffectiveExtension, registerExtension, type EffectiveExtension } from './extensions';
+import { buildEffectiveExtension, replaceExtension, type EffectiveExtension } from './extensions';
 import { isOperationallyBlocked, operationalBlockLabel } from './operationalBlocking';
 import type { ExternalWorkActivity } from '../../src/supercode';
 
@@ -611,6 +611,7 @@ export function StandaloneVisualizerApp(): React.ReactElement {
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState('');
   const [extensionRevision, setExtensionRevision] = useState(0);
+  const extensionModule = useRef<{ preset: string; source: string } | null>(null);
   const refresh = async () => {
     try {
       const response = await fetch('/api/board');
@@ -628,14 +629,19 @@ export function StandaloneVisualizerApp(): React.ReactElement {
       const response = await fetch('/assets/extension.js');
       if (!response.ok) return;
       const source = await response.text();
+      if (extensionModule.current?.preset === payload.preset && extensionModule.current.source === source) return;
       const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
       try {
         const loaded = await import(url) as { default?: VisualizerExtension };
-        if (current && loaded.default) { registerExtension(payload.preset, loaded.default); setExtensionRevision((revision) => revision + 1); }
+        if (current && loaded.default) {
+          replaceExtension(payload.preset, loaded.default);
+          extensionModule.current = { preset: payload.preset, source };
+          setExtensionRevision((revision) => revision + 1);
+        }
       } finally { URL.revokeObjectURL(url); }
     })().catch(() => { /* payload.extensionError is the visible failure channel */ });
     return () => { current = false; };
-  }, [payload?.preset, payload?.trackerChangedAt]);
+  }, [payload?.preset, payload?.fetchedAt]);
   if (!payload) return <div className="app-shell ztrack-root"><main className="workspace">{error ? <pre className="error">{error}</pre> : 'Loading tracker…'}</main></div>;
   const { notice } = buildEffectiveExtension(payload);
   return <ZtrackVisualizer payload={payload} variant="standalone" extensionRevision={extensionRevision} onRefresh={() => void refresh()} notice={notice} error={error} />;
