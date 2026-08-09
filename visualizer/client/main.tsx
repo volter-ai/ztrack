@@ -1,12 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import type { AuditEntry, CoreIssue, Finding, Payload, Timestamps } from './model';
-import { buildEffectiveExtension, type EffectiveExtension } from './extensions';
+import type { AuditEntry, CoreIssue, Finding, Payload, Timestamps, VisualizerExtension } from './model';
+import { buildEffectiveExtension, registerExtension, type EffectiveExtension } from './extensions';
 import { isOperationallyBlocked, operationalBlockLabel } from './operationalBlocking';
+import type { ExternalWorkActivity } from '../../src/supercode';
+
+const runtimeKey = Symbol.for('ztrack.visualizer-react.v1');
+export function installVisualizerReactRuntime(): void {
+  Object.defineProperty(globalThis, runtimeKey, {
+    configurable: true,
+    value: { createElement: React.createElement, Fragment: React.Fragment },
+  });
+}
+
+installVisualizerReactRuntime();
 
 // The shared `/project/` URL mapper — passed to `acEvidence` and `issuePanels` so an extension
 // (data-derived or code) can link evidence/design-artifact files under the project root.
-const projectUrl = (p: string) => '/project/' + p.replace(/^\/+/, '');
+const standaloneProjectUrl = (p: string) => '/project/' + p.replace(/^\/+/, '');
 
 // ── time helpers (ported subset of the original time.ts) ─────────────────────
 const parseTs = (iso?: string) => { const t = iso ? Date.parse(iso) : NaN; return Number.isFinite(t) ? t : null; };
@@ -155,7 +165,7 @@ function FindingBadges({ findings, id }: { findings: Finding[]; id: string }) {
 }
 
 // ── list view (the original 7-col grid) ──────────────────────────────────────
-function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, onSelect, onToggleGroup }: {
+export function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, onSelect, onToggleGroup }: {
   groups: Array<{ title: string; items: CoreIssue[] }>; groupBy: GroupBy; collapsed: Set<string>; selectedId: string;
   findings: Finding[]; ext: EffectiveExtension; ts: Record<string, Timestamps>; onSelect: (i: CoreIssue) => void; onToggleGroup: (t: string) => void;
 }) {
@@ -214,7 +224,7 @@ function WorkList({ groups, groupBy, collapsed, selectedId, findings, ext, ts, o
 }
 
 // ── board ────────────────────────────────────────────────────────────────────
-function Board({ groups, collapsed, selectedId, findings, ext, onSelect, onToggleGroup }: {
+export function Board({ groups, collapsed, selectedId, findings, ext, onSelect, onToggleGroup }: {
   groups: Array<{ title: string; items: CoreIssue[] }>; collapsed: Set<string>; selectedId: string;
   findings: Finding[]; ext: EffectiveExtension; onSelect: (i: CoreIssue) => void; onToggleGroup: (t: string) => void;
 }) {
@@ -287,8 +297,17 @@ function PrimitivesPanel({ issue }: { issue: CoreIssue }) {
     </div>
   );
 }
-function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
-  issue: CoreIssue; ext: EffectiveExtension; findings: Finding[]; audit: AuditEntry[]; timestamps: Timestamps; width: number; onClose: () => void;
+export function Detail({ issue, ext, findings, audit, timestamps, width, activity = [], projectUrl = standaloneProjectUrl, onWorkWithAgent, onClose }: {
+  issue: CoreIssue;
+  ext: EffectiveExtension;
+  findings: Finding[];
+  audit: AuditEntry[];
+  timestamps: Timestamps;
+  width: number;
+  activity?: ExternalWorkActivity[];
+  projectUrl?: (path: string) => string;
+  onWorkWithAgent?: (issueId: string) => void;
+  onClose: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('overview');
   const fs = findings.filter((f) => f.issueId === issue.id);
@@ -316,6 +335,7 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
             {errs > 0 && <span className="metric-error">{errs} errors</span>}
             {warns > 0 && <span className="metric-warning">{warns} warnings</span>}
             {acks > 0 && <span className="metric-acknowledged" title="downgraded to acknowledged by a fresh waiver">{acks} acknowledged</span>}
+            {onWorkWithAgent && <button className="work-with-agent" type="button" onClick={() => onWorkWithAgent(issue.id)}>Work with agent</button>}
           </div>
         </header>
         <AcWheelStrip issue={issue} ext={ext} />
@@ -337,6 +357,14 @@ function Detail({ issue, ext, findings, audit, timestamps, width, onClose }: {
             <div className="detail-grid">
               <RelationPanel issue={issue} />
               <PrimitivesPanel issue={issue} />
+              {activity.length > 0 && <section className="panel agent-activity-panel">
+                <div className="panel-title"><h3>Agent activity</h3><span>{activity.length}</span></div>
+                <div className="agent-activity-list">{activity.map((session) => <div className="agent-activity-row" key={session.sessionIdentity}>
+                  <strong>{session.sessionLabel ?? session.sessionIdentity}</strong>
+                  <span>{session.freshness === 'live' ? session.turnState : 'last observed'}</span>
+                  <small>{session.tasks.filter((task) => task.status === 'completed').length}/{session.tasks.length} session tasks</small>
+                </div>)}</div>
+              </section>}
               <section className="panel">
                 <div className="panel-title"><h3>Acceptance Criteria</h3><span>{issue.acceptanceCriteria.length}</span></div>
                 <div className="ac-list">
@@ -428,130 +456,187 @@ function FilterOptions({ open, labels, label, issueFilter, onClose, onLabel, onI
   );
 }
 
-// ── app ──────────────────────────────────────────────────────────────────────
-function App() {
-  const initial = readRoute();
-  const [payload, setPayload] = useState<Payload | null>(null);
-  const [error, setError] = useState('');
+// ── actual visualizer component ──────────────────────────────────────────────
+export interface ZtrackVisualizerProps {
+  payload: Payload;
+  extension?: VisualizerExtension | null;
+  extensionRevision?: number;
+  variant?: 'standalone' | 'embedded' | 'compact';
+  theme?: Record<string, string>;
+  activity?: ExternalWorkActivity[];
+  initialIssueId?: string | null;
+  onSelectIssue?: (issueId: string | null) => void;
+  onWorkWithAgent?: (issueId: string) => void;
+  onOpenBoard?: () => void;
+  onOpenProjectPath?: (path: string) => void;
+  onRefresh?: () => void;
+  notice?: string | null;
+  error?: string;
+}
+
+function mergedExtension(payload: Payload, extension?: VisualizerExtension | null): EffectiveExtension {
+  const base = buildEffectiveExtension(payload).ext;
+  if (!extension) return base;
+  return {
+    ...base,
+    ...extension,
+    statusOrder: base.statusOrder,
+    acUnitLabel: base.acUnitLabel,
+    operationalBlocking: base.operationalBlocking,
+    assignee: base.assignee,
+    pr: base.pr,
+  };
+}
+
+export function ZtrackVisualizer({
+  payload,
+  extension,
+  extensionRevision = 0,
+  variant = 'embedded',
+  theme,
+  activity = [],
+  initialIssueId = null,
+  onSelectIssue,
+  onWorkWithAgent,
+  onOpenBoard,
+  onOpenProjectPath,
+  onRefresh,
+  notice,
+  error = '',
+}: ZtrackVisualizerProps): React.ReactElement {
+  const initial = variant === 'standalone' ? readRoute() : { view: 'all', issueId: initialIssueId };
   const [selectedId, setSelectedId] = useState<string | null>(initial.issueId);
   const [view, setView] = useState(initial.view);
   const [query, setQuery] = useState('');
   const [label, setLabel] = useState('all');
   const [issueFilter, setIssueFilter] = useState<IssueFilter>('all');
-  const [layout, setLayout] = useState<'list' | 'board'>('list');
+  const [layout, setLayout] = useState<'list' | 'board'>(variant === 'compact' ? 'board' : 'list');
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [orderBy, setOrderBy] = useState<OrderBy>('priority');
   const [filterOpen, setFilterOpen] = useState(false);
   const [displayOpen, setDisplayOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [detailWidth, setDetailWidth] = useState(720);
-
-  async function refresh() {
-    try {
-      const res = await fetch('/api/board'); const data = await res.json() as Payload;
-      if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setPayload(data); setError('');
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-  }
-  useEffect(() => { void refresh(); const t = window.setInterval(() => void refresh(), 4000); return () => window.clearInterval(t); }, []);
-  useEffect(() => { const onPop = () => { const r = readRoute(); setView(r.view); setSelectedId(r.issueId); }; window.addEventListener('popstate', onPop); return () => window.removeEventListener('popstate', onPop); }, []);
-
-  // VIZ-4: build the effective (data + code) extension from the wire payload itself — no
-  // preset-name lookup against a hardcoded map. `notice` is the one-line vocabulary-missing/
-  // -invalid message (VIZ-4 dev/04); null once a valid `visualizer` block is present.
-  const { ext, notice } = useMemo(() => buildEffectiveExtension(payload), [payload]);
-  const findings = payload?.findings ?? [];
-  const all = payload?.issues ?? [];
+  const ext = useMemo(() => mergedExtension(payload, extension), [payload, extension, extensionRevision]);
+  const findings = payload.findings;
+  const all = payload.issues;
   const labelSet = useMemo(() => [...new Set(all.flatMap(labelsOf))].sort((a, b) => a.localeCompare(b)), [all]);
   const inView = useMemo(() => applyView(all, view, findings, ext), [all, view, findings, ext]);
   const items = useMemo(() => filterAndSort(inView, query, label, issueFilter, orderBy, ext, findings), [inView, query, label, issueFilter, orderBy, ext, findings]);
-  const groups = useMemo(() => groupedItems(items, groupBy, ext), [items, groupBy, ext]);
+  const visibleItems = variant === 'compact' ? items.filter((issue) => !['done', 'completed', 'canceled', 'cancelled'].includes(issue.status.toLowerCase())).slice(0, 4) : items;
+  const groups = useMemo(() => groupedItems(visibleItems, groupBy, ext), [visibleItems, groupBy, ext]);
   const selected = useMemo(() => (selectedId ? all.find((i) => i.id === selectedId) ?? null : null), [all, selectedId]);
-
   const errors = findings.filter((f) => f.severity === 'error').length;
   const warnings = findings.filter((f) => f.severity === 'warning').length;
   const acknowledged = findings.filter((f) => f.severity === 'acknowledged').length;
   const globalFindings = findings.filter((f) => !f.issueId);
-
-  const selectIssue = (i: CoreIssue) => { setSelectedId(i.id); writeRoute(view, i.id); };
-  const closeDetail = () => { setSelectedId(null); writeRoute(view, null); };
-  const changeView = (v: string) => { setView(v); writeRoute(v, selectedId); };
-  const toggleGroup = (t: string) => setCollapsed((c) => { const n = new Set(c); n.has(t) ? n.delete(t) : n.add(t); return n; });
-  const viewCount = (v: string) => applyView(all, v, findings, ext).length;
+  const issueActivity = selected ? activity.filter((entry) => entry.issueId === selected.id) : [];
+  const projectUrl = (path: string) => `ztrack-project:${encodeURIComponent(path)}`;
+  const selectIssue = (issue: CoreIssue) => {
+    setSelectedId(issue.id);
+    onSelectIssue?.(issue.id);
+    if (variant === 'standalone') writeRoute(view, issue.id);
+  };
+  const closeDetail = () => {
+    setSelectedId(null);
+    onSelectIssue?.(null);
+    if (variant === 'standalone') writeRoute(view, null);
+  };
+  const changeView = (next: string) => {
+    setView(next);
+    if (variant === 'standalone') writeRoute(next, selectedId);
+  };
+  const toggleGroup = (title: string) => setCollapsed((current) => {
+    const next = new Set(current);
+    next.has(title) ? next.delete(title) : next.add(title);
+    return next;
+  });
+  const viewCount = (candidate: string) => applyView(all, candidate, findings, ext).length;
   const hasOperationalBlocks = all.some((issue) => isOperationallyBlocked(issue, ext));
-  const VIEWS = ['all', ...(hasOperationalBlocks ? ['operationally-blocked'] : []), ...ext.statusOrder.filter((status) => status !== 'operationally-blocked'), 'findings'];
-  const viewLabel = (v: string) => (v === 'all' ? 'All issues' : v === 'operationally-blocked' ? (ext.blockedViewLabel ?? 'Operationally blocked') : v === 'findings' ? 'Needs attention' : v);
+  const views = ['all', ...(hasOperationalBlocks ? ['operationally-blocked'] : []), ...ext.statusOrder.filter((status) => status !== 'operationally-blocked'), 'findings'];
+  const viewLabel = (candidate: string) => candidate === 'all' ? 'All issues' : candidate === 'operationally-blocked' ? (ext.blockedViewLabel ?? 'Operationally blocked') : candidate === 'findings' ? 'Needs attention' : candidate;
 
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand"><span className="brand-mark">◆</span><div><strong>tracker</strong><small>preset: {payload?.preset ?? '…'}</small></div></div>
-        <nav className="views" aria-label="Views">
-          {VIEWS.map((v) => <button className={`view view-${v}${view === v ? ' active' : ''}`} key={v} onClick={() => changeView(v)} type="button"><span>{viewLabel(v)}</span><strong>{viewCount(v)}</strong></button>)}
-        </nav>
-        <div className={`health health-${payload ? (payload.ok ? 'pass' : 'fail') : 'pass'}`}><span>{payload ? (payload.ok ? 'PASS' : 'FAIL') : '…'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div>
-        {payload && (
-          <div className="primitives-strip"><div className="primitives-head">primitives</div>
-            {(['proof', 'labels', 'relations', 'children', 'sources', 'category'] as const).map((p) => (
-              <div className={`primitive-cap${payload.primitives[p] ? ' on' : ' off'}`} key={p}><span>{p}</span><span>{payload.primitives[p] ? '✓' : 'not impl'}</span></div>
-            ))}
-            <div className="primitive-cap on"><span>audit</span><span>✓ auto</span></div>
-          </div>
-        )}
-      </aside>
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <div className="breadcrumbs"><span>{payload?.preset ?? '…'} SDLC</span><span>/</span><strong>{viewLabel(view)}</strong></div>
-            <h1>{viewLabel(view)}</h1>
-            <p>{payload ? payload.projectDir : 'loading…'}</p>
-          </div>
-          <div className="toolbar-actions">
-            <label className="search"><span>Search</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter issues, labels, states" /></label>
-            <div className="segmented">
-              <button className={layout === 'list' ? 'active' : ''} onClick={() => setLayout('list')} type="button">List</button>
-              <button className={layout === 'board' ? 'active' : ''} onClick={() => setLayout('board')} type="button">Board</button>
-            </div>
-            <div className="display-anchor">
-              <button className={label !== 'all' || issueFilter !== 'all' ? 'active' : ''} onClick={() => { setFilterOpen((o) => !o); setDisplayOpen(false); }} type="button">Filter</button>
-              <FilterOptions open={filterOpen} labels={labelSet} label={label} issueFilter={issueFilter} onClose={() => setFilterOpen(false)} onLabel={setLabel} onIssueFilter={setIssueFilter} onReset={() => { setLabel('all'); setIssueFilter('all'); }} />
-            </div>
-            <div className="display-anchor">
-              <button onClick={() => { setDisplayOpen((o) => !o); setFilterOpen(false); }} type="button">Display</button>
-              <DisplayOptions open={displayOpen} layout={layout} groupBy={groupBy} orderBy={orderBy} onClose={() => setDisplayOpen(false)} onLayout={setLayout} onGroupBy={setGroupBy} onOrderBy={setOrderBy} />
-            </div>
-            <button className="primary" onClick={() => void refresh()} type="button">Refresh</button>
-          </div>
-        </header>
-        {error && <pre className="error">{error}</pre>}
-        {payload && notice && <div className="visualizer-notice" role="status">{notice}</div>}
-        {payload?.extensionError && <div className="visualizer-notice extension-error" role="status">{payload.extensionError}</div>}
-        {payload && (
-          <div className={`tracker-layout${selected ? ' has-detail' : ''}`} style={selected ? ({ '--detail-width': `${detailWidth}px` } as React.CSSProperties) : undefined}>
-            <div className="view-summary">
-              <span>{items.length} issues</span>
-              <span>{errors} errors</span>
-              <span>{warnings} warnings</span>
-              {acknowledged > 0 && <span>{acknowledged} acknowledged</span>}
-              {view !== 'all' && <button className="active-filter" onClick={() => changeView('all')} type="button">View: {viewLabel(view)} x</button>}
-              {query && <button className="active-filter" onClick={() => setQuery('')} type="button">Search: {query} x</button>}
-              {issueFilter !== 'all' && <button className="active-filter" onClick={() => setIssueFilter('all')} type="button">{issueFilterLabels[issueFilter]} x</button>}
-              {label !== 'all' && <button className="active-filter" onClick={() => setLabel('all')} type="button">Label: {label} x</button>}
-            </div>
-            {view === 'findings' && globalFindings.length > 0 && (
-              <section className="global-findings"><h2>Global Findings</h2>{globalFindings.map((f, i) => <div className={`finding ${f.severity}`} key={i}>{f.severity.toUpperCase()} {f.code}: {f.message}</div>)}</section>
-            )}
-            {layout === 'list'
-              ? <WorkList groups={groups} groupBy={groupBy} collapsed={collapsed} selectedId={selected?.id ?? ''} findings={findings} ext={ext} ts={payload.timestamps} onSelect={selectIssue} onToggleGroup={toggleGroup} />
-              : <Board groups={groups} collapsed={collapsed} selectedId={selected?.id ?? ''} findings={findings} ext={ext} onSelect={selectIssue} onToggleGroup={toggleGroup} />}
-            {selected && <DetailResizer onResize={setDetailWidth} />}
-            {selected && <Detail issue={selected} ext={ext} findings={findings} audit={payload.audit[selected.id] ?? []} timestamps={payload.timestamps[selected.id] ?? {}} width={detailWidth} onClose={closeDetail} />}
-          </div>
-        )}
-      </main>
+  useEffect(() => {
+    if (variant !== 'standalone') return;
+    const onPop = () => { const route = readRoute(); setView(route.view); setSelectedId(route.issueId); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [variant]);
+
+  if (variant === 'compact') {
+    return <section className="ztrack-root ztrack-compact" style={theme as React.CSSProperties}>
+      <header className="compact-head"><div><strong>Project work</strong><small>{all.length} issues · {errors} errors</small></div>{onOpenBoard && <button type="button" onClick={onOpenBoard}>View all</button>}</header>
+      <Board groups={groups} collapsed={collapsed} selectedId="" findings={findings} ext={ext} onSelect={(issue) => { selectIssue(issue); onOpenBoard?.(); }} onToggleGroup={toggleGroup} />
+      {activity.some((entry) => entry.freshness === 'live') && <div className="compact-activity"><span>Working on</span><strong>{activity.find((entry) => entry.freshness === 'live')?.issueId}</strong></div>}
+    </section>;
+  }
+
+  const workspace = <main className="workspace">
+    <header className="topbar">
+      <div><div className="breadcrumbs"><span>{payload.preset} SDLC</span><span>/</span><strong>{viewLabel(view)}</strong></div><h1>{viewLabel(view)}</h1><p>{payload.projectDir}</p></div>
+      <div className="toolbar-actions">
+        <label className="search"><span>Search</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filter issues, labels, states" /></label>
+        <div className="segmented"><button className={layout === 'list' ? 'active' : ''} onClick={() => setLayout('list')} type="button">List</button><button className={layout === 'board' ? 'active' : ''} onClick={() => setLayout('board')} type="button">Board</button></div>
+        <div className="display-anchor"><button className={label !== 'all' || issueFilter !== 'all' ? 'active' : ''} onClick={() => { setFilterOpen((open) => !open); setDisplayOpen(false); }} type="button">Filter</button><FilterOptions open={filterOpen} labels={labelSet} label={label} issueFilter={issueFilter} onClose={() => setFilterOpen(false)} onLabel={setLabel} onIssueFilter={setIssueFilter} onReset={() => { setLabel('all'); setIssueFilter('all'); }} /></div>
+        <div className="display-anchor"><button onClick={() => { setDisplayOpen((open) => !open); setFilterOpen(false); }} type="button">Display</button><DisplayOptions open={displayOpen} layout={layout} groupBy={groupBy} orderBy={orderBy} onClose={() => setDisplayOpen(false)} onLayout={setLayout} onGroupBy={setGroupBy} onOrderBy={setOrderBy} /></div>
+        {onRefresh && <button className="primary" onClick={onRefresh} type="button">Refresh</button>}
+      </div>
+    </header>
+    {error && <pre className="error">{error}</pre>}
+    {notice && <div className="visualizer-notice" role="status">{notice}</div>}
+    {payload.extensionError && <div className="visualizer-notice extension-error" role="status">{payload.extensionError}</div>}
+    {payload.themeError && <div className="visualizer-notice extension-error" role="status">{payload.themeError}</div>}
+    <div className={`tracker-layout${selected ? ' has-detail' : ''}`} style={selected ? ({ '--detail-width': `${detailWidth}px` } as React.CSSProperties) : undefined} onClick={(event) => {
+      const anchor = (event.target as Element | null)?.closest?.('a[href^="ztrack-project:"]') as HTMLAnchorElement | null;
+      if (!anchor || !onOpenProjectPath) return;
+      event.preventDefault();
+      onOpenProjectPath(decodeURIComponent(anchor.getAttribute('href')!.slice('ztrack-project:'.length)));
+    }}>
+      <div className="view-summary"><span>{items.length} issues</span><span>{errors} errors</span><span>{warnings} warnings</span>{acknowledged > 0 && <span>{acknowledged} acknowledged</span>}{view !== 'all' && <button className="active-filter" onClick={() => changeView('all')} type="button">View: {viewLabel(view)} x</button>}{query && <button className="active-filter" onClick={() => setQuery('')} type="button">Search: {query} x</button>}</div>
+      {view === 'findings' && globalFindings.length > 0 && <section className="global-findings"><h2>Global Findings</h2>{globalFindings.map((finding, index) => <div className={`finding ${finding.severity}`} key={`${finding.code}-${index}`}>{finding.severity.toUpperCase()} {finding.code}: {finding.message}</div>)}</section>}
+      {layout === 'list' ? <WorkList groups={groups} groupBy={groupBy} collapsed={collapsed} selectedId={selected?.id ?? ''} findings={findings} ext={ext} ts={payload.timestamps} onSelect={selectIssue} onToggleGroup={toggleGroup} /> : <Board groups={groups} collapsed={collapsed} selectedId={selected?.id ?? ''} findings={findings} ext={ext} onSelect={selectIssue} onToggleGroup={toggleGroup} />}
+      {selected && <DetailResizer onResize={setDetailWidth} />}
+      {selected && <Detail issue={selected} ext={ext} findings={findings} audit={payload.audit[selected.id] ?? []} timestamps={payload.timestamps[selected.id] ?? {}} width={detailWidth} activity={issueActivity} projectUrl={onOpenProjectPath ? projectUrl : standaloneProjectUrl} onWorkWithAgent={onWorkWithAgent} onClose={closeDetail} />}
     </div>
-  );
+  </main>;
+
+  if (variant === 'embedded') return <div className="ztrack-root ztrack-embedded" style={theme as React.CSSProperties}>{workspace}</div>;
+  return <div className="app-shell ztrack-root" style={theme as React.CSSProperties}>
+    <aside className="sidebar"><div className="brand"><span className="brand-mark">◆</span><div><strong>tracker</strong><small>preset: {payload.preset}</small></div></div><nav className="views" aria-label="Views">{views.map((candidate) => <button className={`view view-${candidate}${view === candidate ? ' active' : ''}`} key={candidate} onClick={() => changeView(candidate)} type="button"><span>{viewLabel(candidate)}</span><strong>{viewCount(candidate)}</strong></button>)}</nav><div className={`health health-${payload.ok ? 'pass' : 'fail'}`}><span>{payload.ok ? 'PASS' : 'FAIL'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div><div className="primitives-strip"><div className="primitives-head">primitives</div>{(['proof', 'labels', 'relations', 'children', 'sources', 'category'] as const).map((primitive) => <div className={`primitive-cap${payload.primitives[primitive] ? ' on' : ' off'}`} key={primitive}><span>{primitive}</span><span>{payload.primitives[primitive] ? '✓' : 'not impl'}</span></div>)}<div className="primitive-cap on"><span>audit</span><span>✓ auto</span></div></div></aside>
+    {workspace}
+  </div>;
 }
 
-export const appRoot = createRoot(document.getElementById('root')!);
-appRoot.render(<App />);
+export function StandaloneVisualizerApp(): React.ReactElement {
+  const [payload, setPayload] = useState<Payload | null>(null);
+  const [error, setError] = useState('');
+  const [extensionRevision, setExtensionRevision] = useState(0);
+  const refresh = async () => {
+    try {
+      const response = await fetch('/api/board');
+      const data = await response.json() as Payload;
+      if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
+      setPayload(data);
+      setError('');
+    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+  };
+  useEffect(() => { void refresh(); const timer = window.setInterval(() => void refresh(), 4000); return () => window.clearInterval(timer); }, []);
+  useEffect(() => {
+    if (!payload) return;
+    let current = true;
+    void (async () => {
+      const response = await fetch('/assets/extension.js');
+      if (!response.ok) return;
+      const source = await response.text();
+      const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+      try {
+        const loaded = await import(url) as { default?: VisualizerExtension };
+        if (current && loaded.default) { registerExtension(payload.preset, loaded.default); setExtensionRevision((revision) => revision + 1); }
+      } finally { URL.revokeObjectURL(url); }
+    })().catch(() => { /* payload.extensionError is the visible failure channel */ });
+    return () => { current = false; };
+  }, [payload?.preset, payload?.trackerChangedAt]);
+  if (!payload) return <div className="app-shell ztrack-root"><main className="workspace">{error ? <pre className="error">{error}</pre> : 'Loading tracker…'}</main></div>;
+  const { notice } = buildEffectiveExtension(payload);
+  return <ZtrackVisualizer payload={payload} variant="standalone" extensionRevision={extensionRevision} onRefresh={() => void refresh()} notice={notice} error={error} />;
+}

@@ -1,0 +1,348 @@
+{
+  "schema": "ztrack.supercode-contract-fixtures.v1",
+  "references": [
+    {
+      "version": 1,
+      "provider": "ztrack",
+      "uri": "ztrack://project-a/ZT-1",
+      "label": "ZT-1 — First issue"
+    },
+    {
+      "version": 1,
+      "provider": "ztrack",
+      "uri": "ztrack://project-a/ZT-2",
+      "label": "ZT-2 — Second issue"
+    }
+  ],
+  "scenarios": [
+    {
+      "name": "explicit-ambient-agreement",
+      "sessions": [
+        {
+          "sessionIdentity": "session-active",
+          "contextTurns": [
+            {
+              "turn": 1,
+              "items": [
+                {
+                  "id": "ztrack://project-a/ZT-1",
+                  "kind": "work-item",
+                  "label": "ZT-1 — First issue",
+                  "detail": "State: in-progress"
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "state": "resolved",
+            "issueId": "ZT-1",
+            "source": "explicit",
+            "explicit": {
+              "reference": {
+                "version": 1,
+                "provider": "ztrack",
+                "uri": "ztrack://project-a/ZT-1",
+                "label": "ZT-1 — First issue"
+              },
+              "issueId": "ZT-1",
+              "state": "valid"
+            },
+            "ambient": {
+              "issueId": "ZT-1",
+              "source": "branch",
+              "detail": "matched ZT-1 in branch 'ZT-1-build'"
+            },
+            "signals": [
+              { "source": "explicit", "issueIds": ["ZT-1"], "detail": "latest structured work-item context" },
+              { "source": "branch", "issueIds": ["ZT-1"], "detail": "matched ZT-1 in branch 'ZT-1-build'" }
+            ],
+            "reason": "explicit context agrees with ambient branch evidence"
+          }
+        }
+      ]
+    },
+    {
+      "name": "explicit-ambient-conflict",
+      "sessions": [
+        {
+          "sessionIdentity": "session-conflict",
+          "contextTurns": [
+            {
+              "turn": 1,
+              "items": [
+                {
+                  "id": "ztrack://project-a/ZT-1",
+                  "kind": "work-item",
+                  "label": "ZT-1 — First issue",
+                  "detail": "State: in-progress"
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "state": "conflict",
+            "issueId": null,
+            "source": null,
+            "explicit": {
+              "reference": {
+                "version": 1,
+                "provider": "ztrack",
+                "uri": "ztrack://project-a/ZT-1",
+                "label": "ZT-1 — First issue"
+              },
+              "issueId": "ZT-1",
+              "state": "valid"
+            },
+            "ambient": {
+              "issueId": "ZT-2",
+              "source": "loop",
+              "detail": "loop is armed for ZT-2"
+            },
+            "signals": [
+              { "source": "explicit", "issueIds": ["ZT-1"], "detail": "latest structured work-item context" },
+              { "source": "loop", "issueIds": ["ZT-2"], "detail": "loop is armed for ZT-2" }
+            ],
+            "reason": "explicit context names ZT-1 while the armed loop names ZT-2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "ambiguous-ambient",
+      "sessions": [
+        {
+          "sessionIdentity": "session-ambiguous",
+          "contextTurns": [],
+          "expected": {
+            "state": "unresolved",
+            "issueId": null,
+            "source": null,
+            "explicit": null,
+            "ambient": null,
+            "signals": [
+              { "source": "branch", "issueIds": ["ZT-1", "ZT-2"], "detail": "branch 'ZT-1-and-ZT-2' matches multiple issues" }
+            ],
+            "reason": "ambient evidence is ambiguous"
+          }
+        }
+      ]
+    },
+    {
+      "name": "foreign-project",
+      "sessions": [
+        {
+          "sessionIdentity": "session-foreign",
+          "contextTurns": [
+            {
+              "turn": 1,
+              "items": [
+                {
+                  "id": "ztrack://project-b/ZT-1",
+                  "kind": "work-item",
+                  "label": "ZT-1 — Foreign issue",
+                  "detail": "State: in-progress"
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "state": "stale",
+            "issueId": null,
+            "source": null,
+            "explicit": {
+              "reference": {
+                "version": 1,
+                "provider": "ztrack",
+                "uri": "ztrack://project-b/ZT-1",
+                "label": "ZT-1 — Foreign issue"
+              },
+              "issueId": "ZT-1",
+              "state": "foreign-project"
+            },
+            "ambient": null,
+            "signals": [
+              { "source": "explicit", "issueIds": ["ZT-1"], "detail": "reference project key is project-b, expected project-a" }
+            ],
+            "reason": "the latest explicit reference belongs to another ztrack project"
+          }
+        }
+      ]
+    },
+    {
+      "name": "missing-issue",
+      "sessions": [
+        {
+          "sessionIdentity": "session-missing",
+          "contextTurns": [
+            {
+              "turn": 1,
+              "items": [
+                {
+                  "id": "ztrack://project-a/ZT-99",
+                  "kind": "work-item",
+                  "label": "ZT-99 — Removed issue",
+                  "detail": "Historical context"
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "state": "stale",
+            "issueId": null,
+            "source": null,
+            "explicit": {
+              "reference": {
+                "version": 1,
+                "provider": "ztrack",
+                "uri": "ztrack://project-a/ZT-99",
+                "label": "ZT-99 — Removed issue"
+              },
+              "issueId": "ZT-99",
+              "state": "missing-issue"
+            },
+            "ambient": null,
+            "signals": [
+              { "source": "explicit", "issueIds": ["ZT-99"], "detail": "ZT-99 is not present in the current payload" }
+            ],
+            "reason": "the referenced issue no longer exists"
+          }
+        }
+      ]
+    },
+    {
+      "name": "retarget-history",
+      "sessions": [
+        {
+          "sessionIdentity": "session-retargeted",
+          "contextTurns": [
+            {
+              "turn": 1,
+              "items": [
+                {
+                  "id": "ztrack://project-a/ZT-1",
+                  "kind": "work-item",
+                  "label": "ZT-1 — First issue",
+                  "detail": "Original target"
+                }
+              ]
+            },
+            {
+              "turn": 4,
+              "items": [
+                {
+                  "id": "ztrack://project-a/ZT-2",
+                  "kind": "work-item",
+                  "label": "ZT-2 — Second issue",
+                  "detail": "Retargeted explicitly"
+                },
+                {
+                  "id": "design://board/right-column",
+                  "kind": "design-reference",
+                  "label": "Editor composition",
+                  "detail": "Unrecognized context kinds round-trip unchanged"
+                }
+              ]
+            }
+          ],
+          "expected": {
+            "state": "resolved",
+            "issueId": "ZT-2",
+            "source": "explicit",
+            "explicit": {
+              "reference": {
+                "version": 1,
+                "provider": "ztrack",
+                "uri": "ztrack://project-a/ZT-2",
+                "label": "ZT-2 — Second issue"
+              },
+              "issueId": "ZT-2",
+              "state": "valid"
+            },
+            "ambient": null,
+            "signals": [
+              { "source": "explicit", "issueIds": ["ZT-2"], "detail": "latest structured work-item context at turn 4" }
+            ],
+            "reason": "the latest structured work-item context retargets the session"
+          }
+        }
+      ]
+    },
+    {
+      "name": "multiple-sessions-one-issue",
+      "sessions": [
+        {
+          "sessionIdentity": "session-active",
+          "contextTurns": [],
+          "expected": {
+            "state": "resolved",
+            "issueId": "ZT-1",
+            "source": "ambient",
+            "explicit": null,
+            "ambient": {
+              "issueId": "ZT-1",
+              "source": "branch",
+              "detail": "matched ZT-1 in branch 'ZT-1-build'"
+            },
+            "signals": [
+              { "source": "branch", "issueIds": ["ZT-1"], "detail": "matched ZT-1 in branch 'ZT-1-build'" }
+            ],
+            "reason": "ambient branch evidence identifies ZT-1"
+          }
+        },
+        {
+          "sessionIdentity": "session-review",
+          "contextTurns": [],
+          "expected": {
+            "state": "resolved",
+            "issueId": "ZT-1",
+            "source": "ambient",
+            "explicit": null,
+            "ambient": {
+              "issueId": "ZT-1",
+              "source": "worktree",
+              "detail": "matched ZT-1 in worktree 'review-ZT-1'"
+            },
+            "signals": [
+              { "source": "worktree", "issueIds": ["ZT-1"], "detail": "matched ZT-1 in worktree 'review-ZT-1'" }
+            ],
+            "reason": "ambient worktree evidence identifies ZT-1"
+          }
+        }
+      ]
+    }
+  ],
+  "activity": [
+    {
+      "version": 1,
+      "provider": "supercode",
+      "sessionIdentity": "session-active",
+      "sessionLabel": "Build task integration",
+      "issueId": "ZT-1",
+      "freshness": "live",
+      "turnState": "working",
+      "planSource": "codex-update-plan",
+      "tasks": [
+        { "id": "1", "title": "Inspect contract", "status": "completed" },
+        { "id": "2", "title": "Implement resolver", "status": "in_progress" },
+        { "id": "3", "title": "Verify fixtures", "status": "pending", "blockedBy": ["2"] }
+      ],
+      "residue": [],
+      "observedAt": 1786118400000
+    },
+    {
+      "version": 1,
+      "provider": "supercode",
+      "sessionIdentity": "session-review",
+      "sessionLabel": "Review task integration",
+      "issueId": "ZT-1",
+      "freshness": "last-observed",
+      "turnState": "unknown",
+      "planSource": "claude-tasks",
+      "tasks": [
+        { "id": "review", "title": "Review association behavior", "status": "completed", "nativeStatus": "done" }
+      ],
+      "residue": [{ "nativeStatus": "archived" }],
+      "observedAt": 1786118300000
+    }
+  ]
+}

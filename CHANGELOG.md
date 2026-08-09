@@ -4,6 +4,18 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.5.1
+
+- Removed the parallel minimal embed components. The published React surface now exports the
+  standalone visualizer's real list, board, filtering, grouping, signals, progress, and detail
+  component tree, with standalone, embedded, and compact host layouts.
+
+## 1.5.0
+
+- Added embeddable, scoped React board/summary/detail components and shared browser-safe payload models.
+- Added confined project-owned visualizer extension/theme loaders for trusted local hosts.
+- Added the optional `ztrack/supercode` bridge for explicit/ambient work association and read-only session activity.
+
 ## 1.4.1
 
 - **A large repo no longer mass-fails every commit citation.** `gitWorld`'s commit-existence

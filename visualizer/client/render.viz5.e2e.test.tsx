@@ -142,7 +142,7 @@ async function unmountDom(): Promise<void> {
 
 let scenarioId = 0;
 async function bootApp(): Promise<void> {
-  const module = await import(`./main.tsx?viz5Scenario=${++scenarioId}`);
+  const module = await import(`./entry.tsx?viz5Scenario=${++scenarioId}`);
   activeRoot = module.appRoot;
   await waitFor(() => !!document.querySelector('.app-shell'));
 }

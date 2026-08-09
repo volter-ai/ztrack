@@ -32,12 +32,14 @@ const {
   cacheRoot,
   stateDirName,
   resolveTrackerValidation,
-  loadValidationInput,
   VisualizerSpecSchema,
   bustPresetCacheIfChanged,
   visualizerOperationalBlocking,
   classifyProjectPath,
   normalizeProjectUrlPath,
+  loadVisualizerPayload,
+  buildVisualizerExtensionModule,
+  loadVisualizerTheme,
 } = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
@@ -103,32 +105,8 @@ function documents(preset: string): string[] {
   return existsSync(TRACKER_DIR) ? readdirSync(TRACKER_DIR).filter((f) => f.endsWith('.md')).sort().map((f) => readFileSync(join(TRACKER_DIR, f), 'utf8')) : [];
 }
 
-// Load issues + findings the way `ztrack check`/`export` do: resolve the active
-// preset from the repo's tracker-config `validation.entrypoint` (so a repo-local
-// preset like peak's `peakcore` loads — not "Unknown preset"), and read issues
-// through the configured backend (so a sqlite-backed repo yields its real issues —
-// not an empty board from globbing tracker/*.md). One bundle, one check — the same
-// pipeline the CLI runs. Returns null when there is no tracker-config to honor
-// (e.g. a bare markdown/speckit dir), so the caller falls back to per-document.
-async function configuredBoard(): Promise<{ preset: unknown; presetName: string; issues: unknown[]; findings: unknown[] } | null> {
-  const resolved = await resolveActivePreset();
-  if (!resolved) return null;
-  const { preset, presetName } = resolved;
-  const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
-  const r = check(preset, records, context);
-  return {
-    preset,
-    presetName,
-    issues: r.export ? [...r.export.issues] : [],
-    findings: [...r.findings],
-  };
-}
-
-// Preset resolution ONLY (no check/loadValidationInput) — shared by `configuredBoard` (which
-// goes on to check()) and the VIZ-13 bundle build (which only needs the RUNNING preset's name, to
-// register the repo extension under it, VIZ-4's per-member merge). Returns null exactly when
-// `configuredBoard` would: no tracker-config, so the caller falls back to the legacy per-document
-// preset/name (`resolvePreset(PRESET)`).
+// Preset resolution for the VIZ-13 standalone app bundle, which needs the running preset's name
+// to register the repo extension under the same key as the shared payload builder.
 async function resolveActivePreset(): Promise<{ preset: unknown; presetName: string } | null> {
   let config: { validation?: { entrypoint?: string } };
   try {
@@ -179,28 +157,38 @@ function resolveVisualizerBlock(preset: unknown): { visualizer: unknown; visuali
 }
 
 async function board() {
-  const configured = await configuredBoard();
+  // Configured projects use the public builder shared with embedding hosts. The legacy no-config
+  // document viewer below remains only for bare `tracker/*.md` / speckit directories.
+  if (existsSync(join(PROJECT_DIR, stateDirName(), 'tracker-config.json'))) {
+    const active = await resolveActivePreset();
+    const { payload } = await loadVisualizerPayload({
+      projectRoot: PROJECT_DIR,
+      ...(active ? { preset: active.preset } : {}),
+    });
+    const [extension, theme] = await Promise.all([
+      buildVisualizerExtensionModule({ projectRoot: PROJECT_DIR }),
+      loadVisualizerTheme({ projectRoot: PROJECT_DIR }),
+    ]);
+    return {
+      ...payload,
+      ...(extension.error ? { extensionError: extension.error } : {}),
+      ...(theme.error ? { themeError: theme.error } : {}),
+    };
+  }
   let preset: unknown;
   let presetName: string;
   const issues: unknown[] = [];
   const findings: unknown[] = [];
-  if (configured) {
-    preset = configured.preset;
-    presetName = configured.presetName;
-    issues.push(...configured.issues);
-    findings.push(...configured.findings);
-  } else {
-    // No tracker-config: legacy per-document path (bare tracker/*.md or speckit specs/).
-    preset = await resolvePreset(PRESET);
-    presetName = (preset as { name?: string }).name ?? PRESET;
-    for (const doc of documents(PRESET)) {
-      // Context is preset-owned: each preset's loadContext gathers exactly the facts
-      // its rules read (git/world/services). The visualizer assumes nothing.
-      const ctx = (await (preset as { loadContext?: (i: unknown) => unknown }).loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
-      const r = check(preset, doc, ctx);
-      if (r.export) issues.push(...r.export.issues);
-      findings.push(...r.findings);
-    }
+  // No tracker-config: legacy per-document path (bare tracker/*.md or speckit specs/).
+  preset = await resolvePreset(PRESET);
+  presetName = (preset as { name?: string }).name ?? PRESET;
+  for (const doc of documents(PRESET)) {
+    // Context is preset-owned: each preset's loadContext gathers exactly the facts
+    // its rules read (git/world/services). The visualizer assumes nothing.
+    const ctx = (await (preset as { loadContext?: (i: unknown) => unknown }).loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
+    const r = check(preset, doc, ctx);
+    if (r.export) issues.push(...r.export.issues);
+    findings.push(...r.findings);
   }
   let mtime: string | null = null;
   try { mtime = existsSync(TRACKER_DIR) ? statSync(TRACKER_DIR).mtime.toISOString() : null; } catch { mtime = null; }
@@ -669,7 +657,7 @@ function writeGeneratedEntry(repoExt: { path: string; presetName: string } | nul
     lines.push(`import repoExt from ${JSON.stringify(repoExt.path)};`);
     lines.push(`registerExtension(${JSON.stringify(repoExt.presetName)}, repoExt);`);
   }
-  lines.push(`import ${JSON.stringify(join(CLIENT_DIR, 'main.tsx'))};`);
+  lines.push(`import ${JSON.stringify(join(CLIENT_DIR, 'entry.tsx'))};`);
   writeFileSync(entryPath, lines.join('\n') + '\n');
   return entryPath;
 }
@@ -719,24 +707,10 @@ function translateExtensionBuildError(err: unknown, extPath: string): string {
 let lastExtensionMtime: number | null | undefined; // undefined = not checked yet (forces the first build)
 
 async function getClientBundle(): Promise<{ text: string; extensionError?: string }> {
-  const mtime = extensionMtimeMs();
-  if (mtime !== lastExtensionMtime) { clientBundle = null; lastExtensionMtime = mtime; }
   if (!clientBundle) {
-    clientBundle = (async () => {
-      const extPath = resolveExtensionPath(); // throws ExtensionConfinementError — NOT isolated, propagates as-is
-      if (!extPath) return { text: await runBuild(null) };
-      const presetName = await activePresetName();
-      try {
-        return { text: await runBuild({ path: extPath, presetName }) };
-      } catch (err) {
-        // FAILURE ISOLATION (VIZ-13): a malformed extension, or one whose own
-        // 'ztrack/visualizer-kit' import doesn't resolve, must not take the board down — rebuild
-        // WITHOUT it and surface the (translated) error as a payload/notice field instead.
-        const extensionError = translateExtensionBuildError(err, extPath);
-        const text = await runBuild(null); // truly broken even without the extension -> propagates, no further isolation
-        return { text, extensionError };
-      }
-    })().catch((error) => { clientBundle = null; throw error; });
+    // The SPA shell is stable. Repo presentation is compiled independently by the public
+    // extension loader and fetched from /assets/extension.js, exactly as embedding hosts do.
+    clientBundle = runBuild(null).then((text) => ({ text })).catch((error) => { clientBundle = null; throw error; });
   }
   return clientBundle;
 }
@@ -746,6 +720,7 @@ const SHELL = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>tracker · core</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324262d'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='11' font-weight='700' fill='white'%3E◆%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/assets/styles.css">
+<link rel="stylesheet" href="/assets/visualizer-react.css">
 <link rel="stylesheet" href="/assets/theme.css"></head>
 <body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>`;
 
@@ -762,6 +737,20 @@ const server = Bun.serve({
     if (url.pathname === '/assets/styles.css') {
       return new Response(Bun.file(new URL('./client/styles.css', import.meta.url)), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
     }
+    if (url.pathname === '/assets/visualizer-react.css') {
+      return new Response(Bun.file(new URL('../src/visualizerReact.css', import.meta.url)), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+    }
+    if (url.pathname === '/assets/extension.js') {
+      const built = await buildVisualizerExtensionModule({ projectRoot: PROJECT_DIR });
+      if (built.error || !built.code) {
+        return new Response('export default {};', { headers: { 'Content-Type': 'text/javascript; charset=utf-8', ...NO_STORE } });
+      }
+      return new Response(built.code, { headers: {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'ETag': `"${built.contentHash}"`,
+        ...NO_STORE,
+      } });
+    }
     if (url.pathname === '/assets/theme.css') {
       // Read PER REQUEST (no memo) so an edit to the repo-local file shows on the next reload —
       // unlike /assets/app.js this file is cheap to stat+read and has no build step. The
@@ -769,8 +758,13 @@ const server = Bun.serve({
       // theme.css lives under the dotdir state root, so this dedicated route exists instead.
       // THEME_CSS_PATH is a fixed constant, not derived from the request, so there is no
       // request-path input for a traversal to act on.
-      if (!existsSync(THEME_CSS_PATH)) return new Response('', { status: 404 });
-      return new Response(Bun.file(THEME_CSS_PATH), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+      const theme = await loadVisualizerTheme({ projectRoot: PROJECT_DIR });
+      if (theme.error) return new Response('', { status: 422, headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+      const declarations = Object.entries(theme.variables).flatMap(([name, value]) => {
+        const legacy = name.replace(/^--ztrack-/, '--');
+        return [`${name}: ${value}`, `${legacy}: ${value}`];
+      }).join(';');
+      return new Response(declarations ? `.ztrack-root { ${declarations}; }` : '', { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
     }
     const sourcePreview = /^\/assets\/source-previews\/([0-9a-f]{64})\/page-([1-9]\d*)\.png$/.exec(url.pathname);
     if (sourcePreview) {

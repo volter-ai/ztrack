@@ -425,6 +425,29 @@ The board is yours to mod — its vocabulary, theme, and panels are repo-owned c
 preset. See [docs/VISUALIZER.md](docs/VISUALIZER.md) for theming it, teaching it a new status, and
 adding custom panels.
 
+### Embed Project Work
+
+Hosts can render the same validated board without an iframe or a second parser:
+
+```tsx
+import { ZtrackVisualizer } from 'ztrack/visualizer-react';
+import 'ztrack/visualizer-react/styles.css';
+
+<ZtrackVisualizer variant="embedded" payload={payload} />
+```
+
+`ztrack/visualizer-node` supplies the configured payload plus confined theme
+and extension loaders for a trusted local server. The React surface is
+browser-safe, rooted under `.ztrack-root`, and styled through `--ztrack-*`
+variables. Use `variant="compact"` for a chat-side summary, `"embedded"` for
+a host-owned work document, and `"standalone"` for ztrack's complete app.
+All three variants render ztrack's real list, board, and detail components;
+there is no separate simplified component set. `ztrack/supercode` is the
+optional read-only integration seam: it
+resolves exact work-item context or ambient branch/worktree signals, reports
+conflicts and stale references, and projects Supercode task activity without
+writing either tracker issues or transcripts.
+
 ## Why believe it
 
 ztrack runs our own autonomous agent fleet in production — it's what we use to ship real code. Every
