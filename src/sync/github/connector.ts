@@ -9,9 +9,9 @@
 //
 // This is ztrack's standalone github provider using its OWN executor (which handles GET query
 // params correctly, unlike the twin's bundled one); it is written to lift into
-// `@volter-ai-dev/twin-github` verbatim — it would be the first real user of the poll framework.
-import type { ConnectorObservation, WorldConnector } from '@volter-ai-dev/twin';
-import type { GithubExecute } from '@volter-ai-dev/twin-github';
+// `@volter/twin-github` verbatim — it would be the first real user of the poll framework.
+import type { ConnectorObservation, WorldConnector } from '@volter/twin';
+import type { GithubExecute } from '@volter/twin-github';
 
 type Row = Record<string, unknown>;
 const nameList = (v: unknown, key: 'login' | 'name'): string[] =>

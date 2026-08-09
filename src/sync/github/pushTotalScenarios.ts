@@ -1,5 +1,5 @@
 // ZTB-21 dev/04 scenarios — run in a SUBPROCESS by pushTotal.e2e.test.ts for the same reason
-// reconcileScenarios.ts is (another test's global `mock.module('@volter-ai-dev/twin')` would
+// reconcileScenarios.ts is (another test's global `mock.module('@volter/twin')` would
 // otherwise leak a stub into this in-process twin user). Drives the REAL `push()` against a real
 // markdown tracker; only GitHub's HTTP boundary is a stateful fake. Prints a JSON result the test
 // asserts on.

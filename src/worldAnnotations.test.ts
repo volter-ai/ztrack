@@ -4,14 +4,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { __resetTwinWorldRuntimeCacheForTest } from './worldTwinRuntime.ts';
 
-// The world adapters read the mirrored world through @volter-ai-dev/twin's generic surface.
+// The world adapters read the mirrored world through @volter/twin's generic surface.
 // twin is an OPTIONAL peer (absent in this standalone repo), so stub its surface to
 // exercise the adapters' own logic (annotation CRUD + integrity validation). This proves
 // "surviving functionality still works with the peer present" (ZTB-27 dev/01) — the peer is
 // loaded lazily now (see worldTwinRuntime.ts), so every call below is async.
 type Ev = { id: string; service: string; type: string; origin: string; occurredAt: string; subject?: unknown; data?: Record<string, unknown>; external?: { id?: string; url?: string }; raw?: unknown };
 let EVENTS: Ev[] = [];
-mock.module('@volter-ai-dev/twin', () => ({
+mock.module('@volter/twin', () => ({
   DELTA_TYPE_SUFFIX: '.delta',
   isEgressEventType: (t: string) => t.endsWith('.egress'),
   worldStateRoot: (root?: string) => root ?? process.cwd(), // annotations live at <root>/<service>/annotations.jsonl
@@ -24,7 +24,7 @@ const { createAnnotation, addAnnotation, listAnnotations, validateServiceAnnotat
 // `loadTwinWorldRuntime()` memoizes the twin module after its first successful load — process-
 // wide, since ES modules are singletons. Reset it before every test so this file's `EVENTS`
 // closure is always the one actually consulted, regardless of what other test files (also
-// mocking or exercising `@volter-ai-dev/twin`) ran first in the same `bun test` process.
+// mocking or exercising `@volter/twin`) ran first in the same `bun test` process.
 beforeEach(() => { __resetTwinWorldRuntimeCacheForTest(); });
 
 function tempWorld(): string {

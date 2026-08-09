@@ -5,10 +5,10 @@
 // the acceptance-criteria checks). So only open/closed round-trips — as done-ness; the fine
 // ztrack status (draft/ready/in-progress/in-review) is ztrack-LOCAL and is never pushed to
 // GitHub (an issue's `state` can't represent it). This module is the pure field/status
-// mapping; the GitHub I/O (pull/reconcile/push through @volter-ai-dev/twin + the github twin)
+// mapping; the GitHub I/O (pull/reconcile/push through @volter/twin + the github twin)
 // builds on top of it.
 import type { IssueRecord } from '../../core/engine.ts';
-import type { SyncResource } from '@volter-ai-dev/twin';
+import type { SyncResource } from '@volter/twin';
 
 const DONE = 'done';
 

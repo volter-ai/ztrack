@@ -255,7 +255,7 @@ Berry + PnP), and bun with no build step.
 
 ztrack can use a **mirrored world** of the SaaS systems your code talks to
 (GitHub/Jira/Slack/...) as an evidence substrate, via the
-`@volter-ai-dev/twin` runtime (the same engine behind `ztrack sync github`).
+`@volter/twin` runtime (the same engine behind `ztrack sync github`).
 
 | file | role |
 |---|---|
@@ -263,9 +263,9 @@ ztrack can use a **mirrored world** of the SaaS systems your code talks to
 | `worldSourceBooks.ts` | adapter: twin events → "source books" the loader feeds into `Context` |
 | `sync/<provider>/` | two-way issue sync (e.g. `sync/github/`: `execute`/`map`/`bindings`/`sync`). A **standalone provider module** — ztrack has no universal sync engine; the twin is the shared event-sourced substrate that makes pull/push incremental + idempotent. `ztrack sync github` is the user surface; identity bindings live at `.volter/sync/<provider>.json` |
 
-`@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`) is an **optional peer
+`@volter/twin` (+ `@volter/twin-github`) is an **optional peer
 dependency** on the public npm registry (since 0.38.0) — absent unless a consumer
-installs it explicitly, and `@volter-ai-dev/twin-github` specifically only loads
+installs it explicitly, and `@volter/twin-github` specifically only loads
 under bun (its TS-only source can't type-strip from `node_modules` under plain
 node/npx). Sync and world-backed validation need the explicit install plus the
 bun-only invocation; see the canonical recipe at

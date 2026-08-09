@@ -1,4 +1,4 @@
-// Optional tracker-side world adapter (requires the @volter-ai-dev/twin peer): maps world
+// Optional tracker-side world adapter (requires the @volter/twin peer): maps world
 // events/annotations to "source books" that a world-backed preset's loader can fold
 // into `Context.world` for its rules. Standalone source-level code — not wired into
 // the default loader; a PUBLIC subpath export (`ztrack/world-source-books`, documented in
@@ -6,12 +6,12 @@
 // world-backed preset's loadContext imports directly; ztrack reads only twin's public
 // event API.
 //
-// `@volter-ai-dev/twin` is loaded LAZILY (dynamic import, only when `loadWorldSourceBooks`
+// `@volter/twin` is loaded LAZILY (dynamic import, only when `loadWorldSourceBooks`
 // actually runs) via `./worldTwinRuntime.ts` — a consumer without the optional twin peer
 // installed must get a friendly error, not a raw ESM resolution crash. See
 // worldTwinRuntime.ts for the full rationale.
 import { existsSync, readdirSync } from 'node:fs';
-import type { WorldServiceConfig, WorldServiceEvent } from '@volter-ai-dev/twin';
+import type { WorldServiceConfig, WorldServiceEvent } from '@volter/twin';
 import { loadTwinWorldRuntime } from './worldTwinRuntime.ts';
 import { listAnnotations } from './worldAnnotations.ts';
 import type { WorldAnnotation } from './worldAnnotations.ts';
