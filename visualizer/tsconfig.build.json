@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "rootDir": "..",
+    "outDir": "../dist/visualizer-types"
+  },
+  "include": [
+    "client/main.tsx",
+    "client/extensions.tsx",
+    "client/model.ts",
+    "client/operationalBlocking.ts",
+    "../src/supercode.ts",
+    "../src/visualizerModel.ts"
+  ]
+}

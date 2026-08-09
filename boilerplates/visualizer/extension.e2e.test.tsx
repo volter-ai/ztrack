@@ -208,7 +208,9 @@ suite('VIZ-16 dev/01 — the shipped example extension DOM-renders in the issue 
   test('opening the issue detail drawer renders the "Proof coverage" panel heading and its per-AC line', async () => {
     await bootBundle(port, `/?issue=${issueId}`);
     await waitFor(() => !!document.querySelector('.detail-drawer'));
-    await waitFor(() => (document.body.textContent ?? '').includes('Proof coverage'));
+    await waitFor(() => [...document.querySelectorAll('.detail-drawer .panel-title h3')]
+      .some((heading) => heading.textContent === 'Proof coverage'));
+    await waitFor(() => (document.body.textContent ?? '').includes('1/1'));
 
     const body = document.body.textContent ?? '';
     expect(body).toContain('Proof coverage'); // the example panel's own heading

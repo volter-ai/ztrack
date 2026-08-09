@@ -346,10 +346,12 @@ export default defineVisualizerExtension({
       expect(boardAbsent.extensionError).toBeUndefined();
     }, 20_000);
 
-    test('the generated entry for the starter DOES register it (genuinely exercises the compile path, not skipped)', async () => {
-      await fetch(`http://localhost:${portStarter}/assets/app.js`);
-      const entry = readFileSync(join(cacheRoot(rootStarter), 'visualizer', 'generated-entry.ts'), 'utf8');
-      expect(entry).toContain('repoExt'); // unlike the true-absence case above, the starter IS compiled in
+    test('the public extension module genuinely compiles the starter instead of serving the empty fallback', async () => {
+      const response = await fetch(`http://localhost:${portStarter}/assets/extension.js`);
+      const source = await response.text();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('etag')).toBeTruthy();
+      expect(source.trim()).not.toBe('export default {};');
     }, 20_000);
 
     test('the DOM renders IDENTICALLY to the no-extension board — no notice, no custom panel/override text', async () => {
@@ -416,7 +418,7 @@ export default defineVisualizerExtension({
     }, 20_000);
   });
 
-  describe('dev/03b — failure isolation: an unresolvable \'ztrack/visualizer-kit\' import', () => {
+  describe('dev/03b — the confined compiler owns the visualizer-kit import', () => {
     const port = BASE_PORT + 5;
     let root = '';
     let proc: ChildProcess | undefined;
@@ -438,19 +440,14 @@ export default defineVisualizerExtension({ acText: (ac) => ac.id });
       if (root) rmSync(root, { recursive: true, force: true });
     });
 
-    test('the board keeps working (preset.mts still resolves ztrack/preset-kit) and the notice carries the npm-install translation', async () => {
-      const res = await fetch(`http://localhost:${port}/assets/app.js`);
+    test('the extension still compiles when the fixture package omits the visualizer-kit export', async () => {
+      const res = await fetch(`http://localhost:${port}/assets/extension.js`);
       expect(res.status).toBe(200);
-
+      expect(res.headers.get('etag')).toBeTruthy();
       const board = await fetchBoard(port);
       expect(Array.isArray(board.issues)).toBe(true);
-      expect((board.issues as unknown[]).length).toBeGreaterThan(0); // preset.mts resolution is UNAFFECTED — a real board, not a 500
-      expect(board.extensionError).toBeTruthy();
-      expect(String(board.extensionError)).toContain('npm install -D ztrack'); // presetRegistry.ts:110-115's translation, reused
-
-      await bootBundle(port);
-      await waitFor(() => (document.body.textContent ?? '').includes('npm install -D ztrack'));
-      expect(document.body.textContent ?? '').toContain('npm install -D ztrack');
+      expect((board.issues as unknown[]).length).toBeGreaterThan(0);
+      expect(board.extensionError).toBeUndefined();
     }, 20_000);
   });
 
@@ -535,12 +532,16 @@ export default defineVisualizerExtension({ acText: (ac) => ac.id });
       if (external) rmSync(external, { recursive: true, force: true });
     });
 
-    test('/assets/app.js is refused, naming the escaping path', async () => {
-      const res = await fetch(`http://localhost:${port}/assets/app.js`);
-      expect(res.status).toBe(500);
-      const text = await res.text();
-      expect(text).toContain(external); // the error names the path it actually resolved to (outside the project)
-      expect(text.toLowerCase()).toContain('outside');
+    test('the data board remains available while the payload names the escaping path', async () => {
+      const app = await fetch(`http://localhost:${port}/assets/app.js`);
+      expect(app.status).toBe(200);
+      const board = await fetchBoard(port);
+      expect(Array.isArray(board.issues)).toBe(true);
+      expect(String(board.extensionError)).toContain(external);
+      expect(String(board.extensionError).toLowerCase()).toContain('outside');
+      const extension = await fetch(`http://localhost:${port}/assets/extension.js`);
+      expect(extension.status).toBe(200);
+      expect((await extension.text()).trim()).toBe('export default {};');
     }, 20_000);
   });
 

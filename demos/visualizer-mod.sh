@@ -15,7 +15,7 @@
 #      `extension.tsx` (the VIZ-13 seam),
 #   4. boots the real visualizer server and hands off to `dom-check.mjs`, which asserts the
 #      RENDERED difference — the new status column, the modded AC-unit label, and the custom
-#      panel's own heading/content — via the DOM-runtime harness (payload + bundle checks stand
+#      panel's own heading/content — via the DOM-runtime harness (payload + extension-module checks stand
 #      in as its named fallback, not a substitute; see that file's header).
 #
 # Deterministic, no live agent; CI + publish gate (see .github/workflows/ci.yml, publish.yml).
@@ -154,7 +154,7 @@ done
 test "$up" -eq 1
 printf 'visualizer server up on :%s\n' "$port"
 
-# ── hand off to the single assertion harness: theme.css FLOOR, payload/bundle fallback, and the
+# ── hand off to the single assertion harness: theme.css FLOOR, payload/module fallback, and the
 #    DOM-runtime checks for the new status column, the modded AC-unit label, and the custom
 #    panel's own heading/content. See demos/visualizer-mod/dom-check.mjs for why each of these is
 #    checked the way it is (in particular: why the theme check is a floor, not a computed style,

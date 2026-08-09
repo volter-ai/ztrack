@@ -34,7 +34,10 @@ function idInName(name: string, id: string): boolean {
   return new RegExp(`(^|[^A-Za-z0-9])${escapeRegExp(id)}([^A-Za-z0-9]|$)`, 'i').test(name);
 }
 
-function matchName(name: string, issueIds: string[]): string[] {
+/** Every known issue id that appears in a branch/worktree name on id boundaries. Exported so
+ * observational integrations can report all evidence while the gate keeps using the same
+ * matcher and precedence below. */
+export function matchIssueIdsInName(name: string, issueIds: string[]): string[] {
   return [...new Set(issueIds)].filter((id) => idInName(name, id));
 }
 
@@ -55,7 +58,7 @@ export function resolveActiveIssue(signals: ScopeSignals): ScopeResolution {
   ];
   for (const [label, name] of sources) {
     if (!name) continue;
-    const matched = matchName(name, signals.issueIds);
+    const matched = matchIssueIdsInName(name, signals.issueIds);
     if (matched.length === 1) return { issueId: matched[0]!, reason: `matched ${matched[0]} in ${label} '${name}'` };
     if (matched.length > 1) return { issueId: null, reason: `ambiguous: ${label} '${name}' matches ${matched.join(', ')}` };
   }

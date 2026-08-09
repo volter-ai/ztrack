@@ -130,10 +130,10 @@ async function unmountDom(): Promise<void> {
 }
 
 let scenarioId = 0;
-/** Import `main.tsx` fresh (cache-busted so its top-level `createRoot(...).render(<App/>)` mount
+/** Import `entry.tsx` fresh (cache-busted so its top-level `createRoot(...).render(<App/>)` mount
  *  re-runs for every scenario) and wait for the shell to appear. */
 async function bootApp(): Promise<void> {
-  const module = await import(`./main.tsx?viz4Scenario=${++scenarioId}`);
+  const module = await import(`./entry.tsx?viz4Scenario=${++scenarioId}`);
   activeRoot = module.appRoot;
   await waitFor(() => !!document.querySelector('.app-shell'));
 }

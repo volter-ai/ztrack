@@ -342,6 +342,9 @@ export class MarkdownBackend implements TrackerBackend {
     return this.sources.filter((s) => selectors.some((sel) => sel === s.name || sel === basename(s.location)));
   }
   private loadAll(): CanonicalIssue[] { return this.loadAllRaw().map((r) => r.c); }
+  /** Read-only id projection for infrastructure that needs the exact backend/source union without
+   * executing a validation preset or duplicating source/index/document resolution. */
+  issueIds(): string[] { return this.loadAllRaw().map((record) => record.c.identifier); }
   // The full origin (path + optional line span) id's content actually resolved from (first source
   // that has it — see sourceOf). Every caller has already confirmed the id exists (via loadOne),
   // so the fallback to sources[0] (always non-empty — see the constructor) is unreachable in

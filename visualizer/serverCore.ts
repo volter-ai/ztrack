@@ -17,13 +17,18 @@ export { buildSpeckitBundle } from '../boilerplates/presets/speckit.ts';
 // edit — acceptable for a local dev tool. Shared by both preset-loading paths (this file's own
 // `resolvePreset`, and server.ts's use for the repo-config `validation.entrypoint` path) so there
 // is exactly one bust implementation, keyed on the actual file each path imports.
-import { statSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 const presetMtimes = new Map();
 export function bustPresetCacheIfChanged(absolutePath) {
   let mtimeMs;
   try { mtimeMs = statSync(absolutePath).mtimeMs; } catch { return; } // file gone — nothing to bust
   const prev = presetMtimes.get(absolutePath);
-  if (prev !== undefined && prev !== mtimeMs) delete require.cache[absolutePath];
+  if (prev !== undefined && prev !== mtimeMs) {
+    delete require.cache[absolutePath];
+    // macOS exposes /var through the /private/var realpath. Bun keys import cache entries by the
+    // canonical path, while project/config resolution may retain the symlinked spelling.
+    try { delete require.cache[realpathSync(absolutePath)]; } catch { /* file disappeared */ }
+  }
   presetMtimes.set(absolutePath, mtimeMs);
 }
 
@@ -50,3 +55,5 @@ export { resolveTrackerValidation } from '../src/presetRegistry.ts';
 export { loadValidationInput } from '../src/core/loader.ts';
 export { visualizerOperationalBlocking } from '../src/visualizerBlocking.ts';
 export { classifyProjectPath, normalizeProjectUrlPath } from '../src/visualizerProjectPath.ts';
+export { loadVisualizerPayload } from '../src/visualizerPayload.ts';
+export { buildVisualizerExtensionModule, loadVisualizerTheme } from '../src/visualizerPresentation.ts';

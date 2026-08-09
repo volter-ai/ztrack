@@ -1,6 +1,6 @@
 {
   "name": "ztrack",
-  "version": "1.4.1",
+  "version": "1.5.2",
   "description": "A typechecker for your issue tracker — every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
   "type": "module",
   "engines": {
@@ -13,6 +13,8 @@
     "CONTRIBUTING.md",
     "ROADMAP.md",
     "scripts/build-node-cli.mjs",
+    "scripts/build-visualizer-react.mjs",
+    "scripts/build-visualizer-extension.mjs",
     "SECURITY.md",
     "SUPPORT.md",
     "boilerplates/README.md",
@@ -22,6 +24,8 @@
     "docs",
     "!docs/demo.gif",
     "dist",
+    "fixtures/supercode",
+    "src/visualizerReact.css",
     "hooks",
     "plugins",
     "visualizer",
@@ -47,6 +51,19 @@
       "types": "./dist/src/visualizerKit.d.ts",
       "default": "./dist/src/visualizerKit.js"
     },
+    "./visualizer-node": {
+      "types": "./dist/src/visualizerNode.d.ts",
+      "default": "./dist/src/visualizerNode.js"
+    },
+    "./visualizer-react": {
+      "types": "./dist/visualizer-types/visualizer/client/main.d.ts",
+      "default": "./dist/visualizer-react.js"
+    },
+    "./visualizer-react/styles.css": "./src/visualizerReact.css",
+    "./supercode": {
+      "types": "./dist/src/supercode.d.ts",
+      "default": "./dist/src/supercode.js"
+    },
     "./check": {
       "types": "./dist/src/check.d.ts",
       "default": "./dist/src/check.js"
@@ -64,11 +81,12 @@
     "ztrack": "dist/cli.js"
   },
   "scripts": {
-    "build": "npm run build:node-cli",
+    "build": "npm run build:node-cli && npm run build:visualizer-react",
     "build:node-cli": "node scripts/build-node-cli.mjs",
+    "build:visualizer-react": "bun run scripts/build-visualizer-react.mjs && tsc -p visualizer/tsconfig.build.json",
     "cli": "bun run src/cli.ts",
     "visualizer": "bun run visualizer/server.ts",
-    "prepack": "npm run build:node-cli",
+    "prepack": "npm run build",
     "test": "bun test",
     "test:parallel": "node scripts/test-parallel.mjs",
     "typecheck": "tsc --noEmit"
@@ -81,11 +99,15 @@
     "zod": "4.4.2"
   },
   "peerDependencies": {
+    "@volter-ai-dev/supercode-client": "^0.3.4",
     "@volter-ai-dev/twin": "^0.1.0",
     "@volter-ai-dev/twin-github": "^0.1.0",
-    "react": "^18.3.1"
+    "react": "^18.3.1 || ^19.0.0"
   },
   "peerDependenciesMeta": {
+    "@volter-ai-dev/supercode-client": {
+      "optional": true
+    },
     "@volter-ai-dev/twin": {
       "optional": true
     },
@@ -100,6 +122,7 @@
     "@types/bun": "^1.2.20",
     "@types/node": "^24.0.0",
     "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
     "@volter-ai-dev/twin": "^0.1.0",
     "@volter-ai-dev/twin-github": "^0.1.0",
     "happy-dom": "^20.10.6",
