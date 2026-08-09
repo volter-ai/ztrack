@@ -3,7 +3,12 @@
 // `render.e2e.test.tsx`.
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { buildEffectiveExtension, registerExtension, UPGRADE_NOTICE } from './extensions';
+import {
+  buildEffectiveExtension,
+  registerExtension,
+  replaceExtension,
+  UPGRADE_NOTICE,
+} from './extensions';
 import type { CoreAC, CoreIssue, Payload } from './model';
 
 function issue(overrides: Partial<CoreIssue> & Record<string, unknown> = {}): CoreIssue {
@@ -139,5 +144,17 @@ describe('buildEffectiveExtension', () => {
     const { ext } = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-preset-merge', visualizer: { statusOrder: [], acUnitLabel: 'x' } }));
     expect(renderToStaticMarkup(<>{ext.issuePanels?.(issue(), (p) => p)}</>)).toBe('REPO-PANEL'); // the later (repo) member wins
     expect(renderToStaticMarkup(<>{ext.acText?.(ac())}</>)).toBe('FIRST-PARTY-ACTEXT'); // the earlier member SURVIVES the re-registration
+  });
+
+  test('hot reload replaces the complete compiled extension so removed members disappear', () => {
+    replaceExtension('viz-hot-reload', {
+      acText: () => 'VERSION-ONE',
+      issuePanels: () => 'REMOVED-PANEL',
+    });
+    replaceExtension('viz-hot-reload', { acText: () => 'VERSION-TWO' });
+
+    const { ext } = buildEffectiveExtension(payload({ preset: 'viz-hot-reload' }));
+    expect(renderToStaticMarkup(<>{ext.acText?.(ac())}</>)).toBe('VERSION-TWO');
+    expect(ext.issuePanels).toBeUndefined();
   });
 });

@@ -55,6 +55,13 @@ export function registerExtension(name: string, ext: VisualizerExtension): void 
   registry.set(name, { ...registry.get(name), ...ext });
 }
 
+/** Replace the complete compiled extension for one preset. The standalone loader uses this
+ * for hot reload because its module already contains the shipped + repo layers; merging would
+ * leave deleted repo members stuck in the registry after an edit. */
+export function replaceExtension(name: string, ext: VisualizerExtension): void {
+  registry.set(name, ext);
+}
+
 function codeExtensionFor(presetName: string): VisualizerExtension | undefined {
   return registry.get(presetName);
 }
