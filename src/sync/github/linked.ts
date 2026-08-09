@@ -32,5 +32,5 @@ export async function syncLinked(projectRoot: string, dir: { pull?: boolean; pus
   // Both directions → the three-way reconcile (conflict-aware). A single direction → one-way.
   if (dir.pull && dir.push) await reconcileSync(o, linkedPolicy(projectRoot));
   else if (dir.pull) await pull(o);
-  else if (dir.push) await push(o);
+  else if (dir.push) await push(o, linkedPolicy(projectRoot));
 }

@@ -8,6 +8,20 @@ import { createTrackerClient } from './sdk.ts';
 import * as githubSync from './sync/github/index.ts';
 import { statusMark, ui } from './cliStyle.ts';
 
+// Shared by both the --push and the default (bidirectional) branches below: --policy overrides
+// the linked config (default merge) either way.
+function resolvePolicy(args: string[], projectRoot: string): 'hub-wins' | 'twin-wins' | 'merge' {
+  const policyFlag = optionValue(args, '--policy');
+  if (policyFlag && !['hub-wins', 'twin-wins', 'merge'].includes(policyFlag)) throw new Error(`tracker sync: --policy must be merge | hub-wins | twin-wins (got '${policyFlag}')`);
+  return (policyFlag as 'hub-wins' | 'twin-wins' | 'merge') || githubSync.linkedPolicy(projectRoot);
+}
+
+function reportConflicts(conflicts: Array<{ issue: string; fields: string[] }>): void {
+  for (const c of conflicts) {
+    process.stdout.write(`${statusMark('warn')} ${ui.yellow(`conflict on ${c.issue}`)} ${ui.dim(`(both sides changed: ${c.fields.join(', ')} — left untouched; edit one side and re-sync)`)}\n`);
+  }
+}
+
 /** `ztrack sync github [--repo o/n] [--pull | --push] [--policy merge|hub-wins|twin-wins]
  *  [--json]`. Returns true once handled. */
 export async function handleSyncCommand(args: string[]): Promise<boolean> {
@@ -33,20 +47,21 @@ export async function handleSyncCommand(args: string[]): Promise<boolean> {
     // identical to "really has zero issues" unless we say so — GitHub's list API can still lag.
     if (r.note) process.stderr.write(`${statusMark('warn')} ${ui.yellow(r.note)}\n`);
   } else if (onlyPush) {
-    const r = await githubSync.push(o); out.push = r;
+    // push is now a three-way reconcile with pull-application suppressed (see sync.ts's `push`
+    // doc comment) — a same-field collision (e.g. an issue closed on GitHub while edited locally)
+    // is a surfaced conflict, never silently clobbered, so it's reported here just like the
+    // bidirectional branch below reports it.
+    const policy = resolvePolicy(args, o.projectRoot);
+    const r = await githubSync.push(o, policy); out.push = r;
     process.stdout.write(`${statusMark('pass')} push: ${r.created.length} created, ${r.updated.length} updated on GitHub\n`);
+    reportConflicts(r.conflicts);
   } else {
     // default: bidirectional three-way merge (concurrent non-overlapping edits merge; a
-    // same-field collision is surfaced, never silently clobbered). Policy: --policy overrides
-    // the linked config (default merge).
-    const policyFlag = optionValue(args, '--policy');
-    if (policyFlag && !['hub-wins', 'twin-wins', 'merge'].includes(policyFlag)) throw new Error(`tracker sync: --policy must be merge | hub-wins | twin-wins (got '${policyFlag}')`);
-    const policy = (policyFlag as 'hub-wins' | 'twin-wins' | 'merge') || githubSync.linkedPolicy(o.projectRoot);
+    // same-field collision is surfaced, never silently clobbered).
+    const policy = resolvePolicy(args, o.projectRoot);
     const r = await githubSync.reconcileSync(o, policy); out.reconcile = r;
     process.stdout.write(`${statusMark('pass')} sync: ${r.pulled.length} pulled, ${r.pushed.length} pushed, ${r.created.length} created\n`);
-    for (const c of r.conflicts) {
-      process.stdout.write(`${statusMark('warn')} ${ui.yellow(`conflict on ${c.issue}`)} ${ui.dim(`(both sides changed: ${c.fields.join(', ')} — left untouched; edit one side and re-sync)`)}\n`);
-    }
+    reportConflicts(r.conflicts);
   }
   if (args.includes('--json')) process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
   return true;
