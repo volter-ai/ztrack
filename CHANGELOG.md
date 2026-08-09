@@ -4,6 +4,11 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.5.3
+
+- Standalone boards now hot-reload a changed project visualizer extension in the already-open
+  page, replacing the complete compiled extension so removed members do not remain stuck.
+
 ## 1.5.2
 
 - Published the exact shared visualizer component and extension-module implementation, including
