@@ -758,13 +758,10 @@ const server = Bun.serve({
       // theme.css lives under the dotdir state root, so this dedicated route exists instead.
       // THEME_CSS_PATH is a fixed constant, not derived from the request, so there is no
       // request-path input for a traversal to act on.
-      const theme = await loadVisualizerTheme({ projectRoot: PROJECT_DIR });
-      if (theme.error) return new Response('', { status: 422, headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
-      const declarations = Object.entries(theme.variables).flatMap(([name, value]) => {
-        const legacy = name.replace(/^--ztrack-/, '--');
-        return [`${name}: ${value}`, `${legacy}: ${value}`];
-      }).join(';');
-      return new Response(declarations ? `.ztrack-root { ${declarations}; }` : '', { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+      if (!existsSync(THEME_CSS_PATH)) return new Response('', { status: 404 });
+      return new Response(Bun.file(THEME_CSS_PATH), {
+        headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE },
+      });
     }
     const sourcePreview = /^\/assets\/source-previews\/([0-9a-f]{64})\/page-([1-9]\d*)\.png$/.exec(url.pathname);
     if (sourcePreview) {

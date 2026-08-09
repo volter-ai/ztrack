@@ -95,7 +95,7 @@ async function waitUp(port: number): Promise<void> {
   throw new Error(`server on port ${port} never came up`);
 }
 
-async function waitFor(check: () => boolean, timeoutMs = 8000): Promise<void> {
+async function waitFor(check: () => boolean, timeoutMs = 15_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (check()) return;

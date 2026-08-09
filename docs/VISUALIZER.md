@@ -230,7 +230,7 @@ export interface VisualizerExtension {
 ```
 
 Construct one with the blessed identity helper, mirroring `definePreset`'s convention
-(`src/visualizerKit.ts:122-124`):
+(`src/visualizerKit.ts:20-22`):
 
 ```ts
 import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
