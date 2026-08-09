@@ -1,6 +1,6 @@
 {
   "name": "ztrack",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "A typechecker for your issue tracker — every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
   "type": "module",
   "engines": {
@@ -99,7 +99,7 @@
     "zod": "4.4.2"
   },
   "peerDependencies": {
-    "@volter-ai-dev/supercode-client": "^0.3.3",
+    "@volter-ai-dev/supercode-client": "^0.3.4",
     "@volter-ai-dev/twin": "^0.1.0",
     "@volter-ai-dev/twin-github": "^0.1.0",
     "react": "^18.3.1 || ^19.0.0"

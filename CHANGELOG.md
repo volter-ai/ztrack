@@ -4,6 +4,11 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.5.2
+
+- Published the exact shared visualizer component and extension-module implementation, including
+  the standalone compatibility fixes, against `@volter-ai-dev/supercode-client` 0.3.4.
+
 ## 1.5.1
 
 - Removed the parallel minimal embed components. The published React surface now exports the
