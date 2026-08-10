@@ -4,6 +4,11 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.5.4
+
+- Make the embeddable compact visualizer a bounded current-work summary instead of a truncated,
+  independently scrolling board.
+
 ## 1.5.3
 
 - Standalone boards now hot-reload a changed project visualizer extension in the already-open
