@@ -77,6 +77,8 @@ type GroupBy = 'status' | 'label' | 'none';
 type OrderBy = 'priority' | 'identifier' | 'title' | 'progress';
 type IssueFilter = 'all' | 'blocked' | 'blocking' | 'withPr' | 'errors' | 'warnings';
 const issueFilterLabels: Record<IssueFilter, string> = { all: 'Any issue', blocked: 'Operationally blocked', blocking: 'Blocking others', withPr: 'Has a PR', errors: 'Has errors', warnings: 'Has warnings' };
+const terminalIssueStatuses = new Set(['done', 'completed', 'canceled', 'cancelled']);
+const isOpenIssue = (issue: CoreIssue) => !terminalIssueStatuses.has(issue.status.toLowerCase());
 
 function applyView(list: CoreIssue[], view: string, findings: Finding[], ext: EffectiveExtension) {
   if (view === 'all') return list;
@@ -523,7 +525,7 @@ export function ZtrackVisualizer({
   const labelSet = useMemo(() => [...new Set(all.flatMap(labelsOf))].sort((a, b) => a.localeCompare(b)), [all]);
   const inView = useMemo(() => applyView(all, view, findings, ext), [all, view, findings, ext]);
   const items = useMemo(() => filterAndSort(inView, query, label, issueFilter, orderBy, ext, findings), [inView, query, label, issueFilter, orderBy, ext, findings]);
-  const visibleItems = variant === 'compact' ? items.filter((issue) => !['done', 'completed', 'canceled', 'cancelled'].includes(issue.status.toLowerCase())).slice(0, 4) : items;
+  const visibleItems = items;
   const groups = useMemo(() => groupedItems(visibleItems, groupBy, ext), [visibleItems, groupBy, ext]);
   const selected = useMemo(() => (selectedId ? all.find((i) => i.id === selectedId) ?? null : null), [all, selectedId]);
   const errors = findings.filter((f) => f.severity === 'error').length;
@@ -564,10 +566,36 @@ export function ZtrackVisualizer({
   }, [variant]);
 
   if (variant === 'compact') {
+    const openItems = items.filter(isOpenIssue);
+    const activeActivity = activity.find((entry) => entry.freshness === 'live')
+      ?? activity.find((entry) => entry.turnState === 'working')
+      ?? activity[0];
+    const focusIssue = (activeActivity
+      ? all.find((issue) => issue.id === activeActivity.issueId)
+      : null) ?? openItems[0] ?? null;
+    const focusActivity = activeActivity?.issueId === focusIssue?.id ? activeActivity : null;
+    const currentTask = focusActivity?.tasks.find((task) => task.status === 'in_progress')
+      ?? focusActivity?.tasks.find((task) => task.status === 'pending')
+      ?? null;
+    const completedTasks = focusActivity?.tasks.filter((task) => task.status === 'completed').length ?? 0;
+    const focusProgress = focusIssue ? acProgress(focusIssue) : null;
+    const remainingOpen = Math.max(0, openItems.length - (focusIssue && isOpenIssue(focusIssue) ? 1 : 0));
+    const openFocus = () => {
+      if (!focusIssue) return;
+      selectIssue(focusIssue);
+      onOpenBoard?.();
+    };
     return <section className="ztrack-root ztrack-compact" style={theme as React.CSSProperties}>
       <header className="compact-head"><div><strong>Project work</strong><small>{all.length} issues · {errors} errors</small></div>{onOpenBoard && <button type="button" onClick={onOpenBoard}>View all</button>}</header>
-      <Board groups={groups} collapsed={collapsed} selectedId="" findings={findings} ext={ext} onSelect={(issue) => { selectIssue(issue); onOpenBoard?.(); }} onToggleGroup={toggleGroup} />
-      {activity.some((entry) => entry.freshness === 'live') && <div className="compact-activity"><span>Working on</span><strong>{activity.find((entry) => entry.freshness === 'live')?.issueId}</strong></div>}
+      <div className="compact-body">
+        {focusIssue ? <button className="compact-focus" type="button" onClick={openFocus}>
+          <span className="compact-kicker">{focusActivity?.freshness === 'live' ? 'Working on' : focusActivity ? 'Last observed' : 'Next up'}</span>
+          <span className="compact-issue-line"><span className="issue-id">{focusIssue.id}</span><strong>{focusIssue.title}</strong></span>
+          <span className="compact-meta"><StatePill status={focusIssue.status} ext={ext} /><span>{focusProgress!.done}/{focusProgress!.total} AC</span>{focusActivity && focusActivity.tasks.length > 0 && <span>{completedTasks}/{focusActivity.tasks.length} tasks</span>}</span>
+          {currentTask && <span className="compact-task"><span>{currentTask.status === 'in_progress' ? 'Now' : 'Next'}</span><strong>{currentTask.title}</strong></span>}
+        </button> : <div className="compact-empty">No open issues.</div>}
+        {remainingOpen > 0 && <div className="compact-rest">+{remainingOpen} more open issue{remainingOpen === 1 ? '' : 's'}</div>}
+      </div>
     </section>;
   }
 
