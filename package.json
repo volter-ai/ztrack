@@ -121,7 +121,7 @@
   "devDependencies": {
     "@types/bun": "^1.2.20",
     "@types/node": "^24.0.0",
-    "@types/react": "^18.3.0",
+    "@types/react": "^19.2.18",
     "@types/react-dom": "^18.3.0",
     "@volter-ai-dev/twin": "^0.1.0",
     "@volter-ai-dev/twin-github": "^0.1.0",
