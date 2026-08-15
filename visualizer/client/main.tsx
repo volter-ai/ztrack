@@ -567,34 +567,38 @@ export function ZtrackVisualizer({
 
   if (variant === 'compact') {
     const openItems = items.filter(isOpenIssue);
-    const activeActivity = activity.find((entry) => entry.freshness === 'live')
-      ?? activity.find((entry) => entry.turnState === 'working')
-      ?? activity[0];
-    const focusIssue = (activeActivity
-      ? all.find((issue) => issue.id === activeActivity.issueId)
-      : null) ?? openItems[0] ?? null;
-    const focusActivity = activeActivity?.issueId === focusIssue?.id ? activeActivity : null;
-    const currentTask = focusActivity?.tasks.find((task) => task.status === 'in_progress')
-      ?? focusActivity?.tasks.find((task) => task.status === 'pending')
-      ?? null;
-    const completedTasks = focusActivity?.tasks.filter((task) => task.status === 'completed').length ?? 0;
-    const focusProgress = focusIssue ? acProgress(focusIssue) : null;
-    const remainingOpen = Math.max(0, openItems.length - (focusIssue && isOpenIssue(focusIssue) ? 1 : 0));
-    const openFocus = () => {
-      if (!focusIssue) return;
-      selectIssue(focusIssue);
+    const liveActivityByIssue = new Map<string, ExternalWorkActivity>();
+    for (const entry of activity) {
+      if (entry.freshness === 'live' && !liveActivityByIssue.has(entry.issueId)) {
+        liveActivityByIssue.set(entry.issueId, entry);
+      }
+    }
+    const orderedOpenItems = [
+      ...openItems.filter((issue) => liveActivityByIssue.has(issue.id)),
+      ...openItems.filter((issue) => !liveActivityByIssue.has(issue.id)),
+    ];
+    const visibleOpenItems = orderedOpenItems.slice(0, 4);
+    const remainingOpen = Math.max(0, orderedOpenItems.length - visibleOpenItems.length);
+    const openIssue = (issue: CoreIssue) => {
+      selectIssue(issue);
       onOpenBoard?.();
     };
     return <section className="ztrack-root ztrack-compact" style={theme as React.CSSProperties}>
-      <header className="compact-head"><div><strong>Project work</strong><small>{all.length} issues · {errors} errors</small></div>{onOpenBoard && <button type="button" onClick={onOpenBoard}>View all</button>}</header>
       <div className="compact-body">
-        {focusIssue ? <button className="compact-focus" type="button" onClick={openFocus}>
-          <span className="compact-kicker">{focusActivity?.freshness === 'live' ? 'Working on' : focusActivity ? 'Last observed' : 'Next up'}</span>
-          <span className="compact-issue-line"><span className="issue-id">{focusIssue.id}</span><strong>{focusIssue.title}</strong></span>
-          <span className="compact-meta"><StatePill status={focusIssue.status} ext={ext} /><span>{focusProgress!.done}/{focusProgress!.total} AC</span>{focusActivity && focusActivity.tasks.length > 0 && <span>{completedTasks}/{focusActivity.tasks.length} tasks</span>}</span>
-          {currentTask && <span className="compact-task"><span>{currentTask.status === 'in_progress' ? 'Now' : 'Next'}</span><strong>{currentTask.title}</strong></span>}
-        </button> : <div className="compact-empty">No open issues.</div>}
-        {remainingOpen > 0 && <div className="compact-rest">+{remainingOpen} more open issue{remainingOpen === 1 ? '' : 's'}</div>}
+        {visibleOpenItems.map((issue) => {
+          const liveActivity = liveActivityByIssue.get(issue.id);
+          return <button className="compact-issue-row" type="button" key={issue.id} onClick={() => openIssue(issue)}>
+            <StatePill status={issue.status} ext={ext} />
+            <span className="issue-id">{issue.id}</span>
+            <strong>{issue.title}</strong>
+            {liveActivity && <span className="compact-chat" title={`Tackled in chat: ${liveActivity.sessionLabel}`}>{liveActivity.sessionLabel}</span>}
+          </button>;
+        })}
+        {visibleOpenItems.length === 0 && <div className="compact-empty">No open issues.</div>}
+        {(remainingOpen > 0 || onOpenBoard) && <div className="compact-footer">
+          <span>{remainingOpen > 0 ? `+${remainingOpen} more` : ''}</span>
+          {onOpenBoard && <button type="button" onClick={onOpenBoard}>View all</button>}
+        </div>}
       </div>
     </section>;
   }

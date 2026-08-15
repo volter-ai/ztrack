@@ -23,6 +23,8 @@ const payload: Payload = {
     { id: 'ZT-2', title: 'Second open issue', summary: '', status: 'ready', acceptanceCriteria: [] },
     { id: 'ZT-3', title: 'Third open issue', summary: '', status: 'ready', acceptanceCriteria: [] },
     { id: 'ZT-4', title: 'Completed issue', summary: '', status: 'done', acceptanceCriteria: [] },
+    { id: 'ZT-5', title: 'Fourth open issue', summary: '', status: 'ready', acceptanceCriteria: [] },
+    { id: 'ZT-6', title: 'Fifth open issue', summary: '', status: 'ready', acceptanceCriteria: [] },
   ],
   findings: [],
   audit: {},
@@ -48,20 +50,26 @@ const activity: ExternalWorkActivity[] = [{
 }];
 
 describe('compact visualizer', () => {
-  test('renders one current-work summary instead of miniature board cards', () => {
+  test('renders up to four open issues with real status and live chat attribution on one row', () => {
     const html = renderToStaticMarkup(
       <ZtrackVisualizer payload={payload} activity={activity} variant="compact" onOpenBoard={() => undefined} />,
     );
 
-    expect(html).toContain('Working on');
     expect(html).toContain('ZT-1');
     expect(html).toContain('Live integration work');
-    expect(html).toContain('1/2 AC');
-    expect(html).toContain('1/3 tasks');
-    expect(html).toContain('Render one bounded summary');
-    expect(html).toContain('+2 more open issues');
+    expect(html).toContain('in-progress');
+    expect(html).toContain('Live session');
+    expect(html).toContain('Second open issue');
+    expect(html).toContain('Third open issue');
+    expect(html).toContain('Fourth open issue');
+    expect(html).toContain('+1 more');
+    expect(html).not.toContain('Fifth open issue');
+    expect(html).not.toContain('Completed issue');
+    expect(html).not.toContain('Project work');
+    expect(html).not.toContain('issues ·');
+    expect(html).not.toContain('Render one bounded summary');
     expect(html).not.toContain('board-card');
-    expect(html).not.toContain('Second open issue');
-    expect(html.match(/compact-focus/g)).toHaveLength(1);
+    expect(html.match(/compact-issue-row/g)).toHaveLength(4);
+    expect(html.match(/compact-chat/g)).toHaveLength(1);
   });
 });
