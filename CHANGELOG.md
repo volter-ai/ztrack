@@ -4,6 +4,8 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.5.5
+
 - Make compact embeds headerless and render each open issue as a single bounded row with its real
   status and, when live work is associated, the specific chat handling it.
 
