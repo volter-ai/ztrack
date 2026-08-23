@@ -4,6 +4,16 @@
 
 All notable ztrack release changes are recorded here.
 
+## 1.5.6
+
+- `gitWorld` now fails loudly instead of silently degrading when a real repo's
+  `git log --all` commit scan fails for a reason other than the already-guarded
+  ENOBUFS case. The previous fallback used a second subprocess spawn to tell
+  "not a repo" apart from "real repo, scan failed" — under host CPU/process-spawn
+  pressure that fallback could fail too, misclassifying "the host is thrashing"
+  as "there is no repo here" and mass-failing every real commit citation as
+  `*_commit_not_found`. The oracle is now a plain filesystem check.
+
 ## 1.5.5
 
 - Make compact embeds headerless and render each open issue as a single bounded row with its real
