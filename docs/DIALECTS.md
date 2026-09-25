@@ -21,7 +21,7 @@ map one-to-one onto issues/status/ACs/relations; only the surface grammar differ
   materialized (full rigor: evidence, ACs, gating) — value at every rung, each step opt-in.
 - **Inference over annotation.** Absence of `status:` is an inference site, not an error —
   checkbox state, emoji vocabulary, and `**Acceptance:**` prose infer into status/ACs in the
-  default profiles (sdlc / gh-sdlc); strict rigor levels may still demand declarations.
+  default profiles (simple-sdlc / simple-gh-sdlc); strict rigor levels may still demand declarations.
   Findings degrade gracefully: an inferred doc gets structural checks (unique ids, resolving
   relations, status consistency), not evidence discipline it never claimed.
 - **The ids belong to the repo.** Never renumber someone's namespace: adopt native ids
