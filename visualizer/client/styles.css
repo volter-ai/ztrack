@@ -402,6 +402,7 @@ button { cursor: pointer; }
   font-weight: 800;
   line-height: 16px;
 }
+/* vendor mark: Jira's own colours */
 .linked-issue-pill.jira {
   border-color: #b8d3ff;
   background: #edf4ff;
@@ -412,6 +413,7 @@ button { cursor: pointer; }
   background: var(--volter-surface-subtle);
   color: var(--volter-text-muted);
 }
+/* vendor mark: Runhuman's own colours */
 .linked-issue-pill.runhuman {
   border-color: #b7e1d4;
   background: #ecf8f4;
@@ -807,11 +809,11 @@ button { cursor: pointer; }
   background: transparent;
   padding: 0;
 }
-.ac-progress-default { --tone: #475569; }
-.ac-progress-case { --tone: #5f55ee; }
-.ac-progress-development { --tone: #0f766e; }
-.ac-progress-external { --tone: #b45309; }
-.ac-progress-procedural { --tone: #2563eb; }
+.ac-progress-default { --tone: var(--volter-data-base); }
+.ac-progress-case { --tone: var(--volter-data-violet); }
+.ac-progress-development { --tone: var(--volter-data-green); }
+.ac-progress-external { --tone: var(--volter-data-amber); }
+.ac-progress-procedural { --tone: var(--volter-data-blue); }
 .ac-ring {
   width: 34px;
   height: 34px;
@@ -991,8 +993,10 @@ button { cursor: pointer; }
   color: var(--volter-text-on-strong);
   font-size: 13px;
   font-weight: 900;
+  /* vendor mark: Slack's own colour, the default source */
   background: #4a154b;
 }
+/* vendor mark: Jira's own colour */
 .source-jira .source-avatar { background: #0c66e4; }
 .source-chat .source-avatar { background: var(--volter-surface-inverse); }
 .native-source-meta {
@@ -1683,8 +1687,8 @@ body.resizing-detail {
 
 /* speckit: AC category tag, clarification marker, commit-from-task evidence */
 .cat-tag { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; border-radius: 4px; padding: 1px 5px; }
-.cat-functional-requirement { background: rgba(15, 118, 110, 0.12); color: #0f766e; }
-.cat-success-criterion { background: rgba(180, 83, 9, 0.12); color: #b45309; }
+.cat-functional-requirement { background: color-mix(in srgb, var(--volter-data-green) 12%, transparent); color: var(--volter-data-green); }
+.cat-success-criterion { background: color-mix(in srgb, var(--volter-data-amber) 12%, transparent); color: var(--volter-data-amber); }
 .clar-tag { margin-left: 6px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--red); background: var(--volter-status-danger-soft); border: 1px solid var(--volter-status-danger-line); border-radius: 4px; padding: 1px 5px; }
 .commit-evidence { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .commit-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--volter-surface-subtle); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 11px; }
