@@ -23,3 +23,6 @@ visualizer/bun.lock
 
 # claude code agent worktrees (ephemeral)
 .claude/worktrees/
+
+# The brand tokens and faces, fetched at build by scripts/build-brand-tokens.mjs; shipped, not committed.
+visualizer/brand/

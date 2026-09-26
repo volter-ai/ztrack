@@ -1,23 +1,23 @@
 .ztrack-root {
-  --ztrack-bg: #f7f8fa;
-  --ztrack-sidebar: #fbfbfc;
-  --ztrack-panel: #fff;
-  --ztrack-panel-soft: #fafafb;
-  --ztrack-line: #e1e3e8;
-  --ztrack-line-soft: #eef0f3;
-  --ztrack-text: #1f2328;
-  --ztrack-muted: #68707d;
-  --ztrack-subtle: #8b929f;
-  --ztrack-accent: #5f55ee;
-  --ztrack-green: #1f7a4d;
-  --ztrack-amber: #996f00;
-  --ztrack-red: #c73434;
+  --ztrack-bg: var(--volter-surface-page);
+  --ztrack-sidebar: var(--volter-surface-subtle);
+  --ztrack-panel: var(--volter-surface-raised);
+  --ztrack-panel-soft: var(--volter-surface-subtle);
+  --ztrack-line: var(--volter-border-default);
+  --ztrack-line-soft: var(--volter-border-subtle);
+  --ztrack-text: var(--volter-text-primary);
+  --ztrack-muted: var(--volter-text-muted);
+  --ztrack-subtle: var(--volter-text-tertiary);
+  --ztrack-accent: var(--volter-action-default);
+  --ztrack-green: var(--volter-status-healthy-text);
+  --ztrack-amber: var(--volter-status-attention-text);
+  --ztrack-red: var(--volter-status-danger-text);
   box-sizing: border-box;
   min-width: 0;
   min-height: 0;
   color: var(--ztrack-text);
   background: var(--ztrack-bg);
-  font: 13px/1.4 Inter, ui-sans-serif, system-ui, sans-serif;
+  font: 13px/1.4 var(--volter-font-ui);
 }
 .ztrack-root *, .ztrack-root *::before, .ztrack-root *::after { box-sizing: border-box; }
 .ztrack-root button, .ztrack-root input, .ztrack-root select { font: inherit; }
@@ -39,10 +39,10 @@
 .ztrack-root .segmented button { border: 0; border-radius: 5px; padding: 0 9px; background: transparent; color: var(--ztrack-muted); }
 .ztrack-root .segmented button.active { background: var(--ztrack-panel-soft); color: var(--ztrack-text); box-shadow: 0 0 0 1px var(--ztrack-line); }
 .ztrack-root .toolbar-actions > button, .ztrack-root .display-anchor > button { padding: 0 10px; }
-.ztrack-root .toolbar-actions .primary { border-color: var(--ztrack-accent); background: var(--ztrack-accent); color: #fff; font-weight: 750; }
+.ztrack-root .toolbar-actions .primary { border-color: var(--ztrack-accent); background: var(--ztrack-accent); color: var(--volter-text-on-strong); font-weight: 750; }
 .ztrack-root .display-anchor { position: relative; }
 .ztrack-root .display-anchor > button.active { border-color: color-mix(in srgb, var(--ztrack-accent) 45%, var(--ztrack-line)); color: var(--ztrack-accent); }
-.ztrack-root .popover { position: absolute; top: 40px; right: 0; z-index: 30; width: 250px; padding: 10px; border: 1px solid var(--ztrack-line); border-radius: 8px; background: var(--ztrack-panel); box-shadow: 0 18px 60px rgb(0 0 0 / 22%); }
+.ztrack-root .popover { position: absolute; top: 40px; right: 0; z-index: 30; width: 250px; padding: 10px; border: 1px solid var(--ztrack-line); border-radius: 8px; background: var(--ztrack-panel); box-shadow: var(--volter-shadow-floating); }
 .ztrack-root .popover-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .ztrack-root .popover-head button { border: 0; background: transparent; color: var(--ztrack-muted); }
 .ztrack-root .popover label { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 8px; padding: 5px 0; color: var(--ztrack-muted); }
@@ -93,7 +93,7 @@
 .ztrack-root .case-metrics { display: flex; justify-content: flex-end; align-content: flex-start; gap: 6px; flex-wrap: wrap; }
 .ztrack-embedded .detail-header { flex-direction: column; }
 .ztrack-embedded .case-metrics { justify-content: flex-start; }
-.ztrack-root .work-with-agent { padding: 5px 9px; border: 1px solid var(--ztrack-accent); border-radius: 6px; background: var(--ztrack-accent); color: #fff; }
+.ztrack-root .work-with-agent { padding: 5px 9px; border: 1px solid var(--ztrack-accent); border-radius: 6px; background: var(--ztrack-accent); color: var(--volter-text-on-strong); }
 .ztrack-root .ac-progress-strip { display: flex; margin: 14px 0; }
 .ztrack-root .ac-progress-wheel { display: flex; align-items: center; gap: 9px; padding: 8px 11px; border: 1px solid var(--ztrack-line); border-radius: 8px; background: var(--ztrack-panel-soft); }
 .ztrack-root .ac-ring, .ztrack-root .ac-mini-ring { width: 38px; height: 38px; display: inline-grid; place-items: center; border-radius: 50%; background: conic-gradient(var(--ztrack-green) var(--progress), var(--ztrack-line) 0); position: relative; }

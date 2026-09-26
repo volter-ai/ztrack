@@ -47,6 +47,10 @@ const PROJECT_DIR = (process.env.PROJECT_DIR ?? process.cwd()).replace(/\/$/, ''
 const PRESET = process.env.PRESET ?? 'default';
 const TRACKER_DIR = join(PROJECT_DIR, 'tracker');
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
+const BRAND_TOKENS_PATH = join(here, 'brand', 'tokens.css');
+if (!existsSync(BRAND_TOKENS_PATH)) {
+  console.warn('ztrack visualizer: visualizer/brand/tokens.css is missing, so the board has no colours; run `npm run build:brand-tokens` in the ztrack checkout.');
+}
 let clientBundle: Promise<{ text: string; extensionError?: string }> | null = null;
 
 // Optional repo-local theme override (VIZ-6) — fixed conventional path beside the preset
@@ -719,6 +723,7 @@ const SHELL = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Ztrack</title>
 <link rel="icon" type="image/svg+xml" href="https://brand.volter.ai/logo/ztrack/svg?size=64&variant=mono">
+<link rel="stylesheet" href="/assets/brand/tokens.css">
 <link rel="stylesheet" href="/assets/styles.css">
 <link rel="stylesheet" href="/assets/visualizer-react.css">
 <link rel="stylesheet" href="/assets/theme.css"></head>
@@ -733,6 +738,18 @@ const server = Bun.serve({
     if (url.pathname === '/assets/app.js') {
       try { return new Response((await getClientBundle()).text, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', ...NO_STORE } }); }
       catch (e) { return new Response(String(e), { status: 500 }); }
+    }
+    // The brand's tokens and faces (company decision 0018), generated into visualizer/brand/ at build
+    // time by scripts/build-brand-tokens.mjs; both stylesheets read their colours from them.
+    if (url.pathname === '/assets/brand/tokens.css') {
+      if (!existsSync(BRAND_TOKENS_PATH)) return new Response('', { status: 404 });
+      return new Response(Bun.file(BRAND_TOKENS_PATH), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+    }
+    const brandFace = /^\/assets\/brand\/fonts\/([A-Za-z0-9-]+\.woff2)$/.exec(url.pathname);
+    if (brandFace) {
+      const face = join(here, 'brand', 'fonts', brandFace[1]!);
+      if (!existsSync(face)) return new Response('Not Found', { status: 404 });
+      return new Response(Bun.file(face), { headers: { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=86400' } });
     }
     if (url.pathname === '/assets/styles.css') {
       return new Response(Bun.file(new URL('./client/styles.css', import.meta.url)), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });

@@ -12,6 +12,7 @@
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
     "ROADMAP.md",
+    "scripts/build-brand-tokens.mjs",
     "scripts/build-node-cli.mjs",
     "scripts/build-visualizer-react.mjs",
     "scripts/build-visualizer-extension.mjs",
@@ -29,6 +30,7 @@
     "hooks",
     "plugins",
     "visualizer",
+    "visualizer/brand",
     "!visualizer/node_modules",
     "!dist/src/**/*.test.*"
   ],
@@ -60,6 +62,7 @@
       "default": "./dist/visualizer-react.js"
     },
     "./visualizer-react/styles.css": "./src/visualizerReact.css",
+    "./visualizer-react/tokens.css": "./visualizer/brand/tokens.css",
     "./supercode": {
       "types": "./dist/src/supercode.d.ts",
       "default": "./dist/src/supercode.js"
@@ -81,11 +84,13 @@
     "ztrack": "dist/cli.js"
   },
   "scripts": {
-    "build": "npm run build:node-cli && npm run build:visualizer-react",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "build": "npm run build:brand-tokens && npm run build:node-cli && npm run build:visualizer-react",
+    "build:brand-tokens": "node scripts/build-brand-tokens.mjs",
     "build:node-cli": "node scripts/build-node-cli.mjs",
     "build:visualizer-react": "bun run scripts/build-visualizer-react.mjs && tsc -p visualizer/tsconfig.build.json",
     "cli": "bun run src/cli.ts",
-    "visualizer": "bun run visualizer/server.ts",
+    "visualizer": "npm run build:brand-tokens && bun run visualizer/server.ts",
     "prepack": "npm run build",
     "test": "bun test",
     "test:parallel": "node scripts/test-parallel.mjs",
