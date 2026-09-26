@@ -24,5 +24,7 @@ if (faces.length === 0) throw new Error('brand tokens.css names no faces');
 await rm(out, { recursive: true, force: true });
 await mkdir(resolve(out, 'fonts'), { recursive: true });
 for (const face of faces) await writeFile(resolve(out, 'fonts', face), await fetched(`/fonts/${face}`));
+// the faces' licences (SIL OFL 1.1), which travel with the faces in the published package
+await writeFile(resolve(out, 'fonts', 'LICENSES.txt'), await fetched('/fonts/LICENSES.txt'));
 await writeFile(resolve(out, 'tokens.css'), tokens);
 console.log(`brand tokens: visualizer/brand/tokens.css and ${faces.length} faces`);
