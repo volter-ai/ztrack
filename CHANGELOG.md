@@ -6,7 +6,7 @@ All notable ztrack release changes are recorded here.
 
 ## 1.5.7
 
-- The visualizer reads the Volter brand's semantic roles (company decision 0018), and so do the embedded board's styles. Every `--bg`/`--text`/`--accent`… token defaults to a brand role, and category tones use the brand's data roles. Jira, Slack and Runhuman marks keep their own colours. The brand's tokens and faces, with the faces' OFL licences, ship in the package at `visualizer/brand/`, fetched at build. An embedding host imports `ztrack/visualizer-react/tokens.css` before `styles.css`.
+- The visualizer reads the Volter brand's semantic roles (company decision 0018), and so do the embedded board's styles. Every `--bg`/`--text`/`--accent`… token defaults to a brand role, and category tones use the brand's data roles. Jira, Slack and Runhuman marks keep their own colours. The brand's tokens and faces, with the faces' OFL licences, ship in the package, fetched at build. An embedding host imports `ztrack/visualizer-react/tokens.css` before `styles.css`.
 - The visualizer carries the brand's ztrack logo, icons and runner avatars by URL.
 
 ## 1.5.6
