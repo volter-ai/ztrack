@@ -433,6 +433,7 @@ Hosts can render the same validated board without an iframe or a second parser:
 
 ```tsx
 import { ZtrackVisualizer } from 'ztrack/visualizer-react';
+import 'ztrack/visualizer-react/tokens.css'; // the Volter brand roles the styles read
 import 'ztrack/visualizer-react/styles.css';
 
 <ZtrackVisualizer variant="embedded" payload={payload} />

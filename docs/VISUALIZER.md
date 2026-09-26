@@ -41,24 +41,27 @@ fixed 1400x900 viewport with the same issue (`MOD-1`) open in both.
 ## (i) Theme the board
 
 The board's entire palette is a small set of CSS custom properties declared once, on `:root`
-(`visualizer/client/styles.css:1-17`):
+(`visualizer/client/styles.css:1-17`). Each defaults to a Volter brand role (brand.volter.ai/tokens,
+company decision 0018), from `visualizer/brand/tokens.css`, which `npm run build:brand-tokens` fetches
+at build and the server serves at `/assets/brand/tokens.css`; an embedding host imports it as
+`ztrack/visualizer-react/tokens.css`:
 
 | Token | Default | Meaning |
 |---|---|---|
-| `--bg` | `#f7f8fa` | page background, behind the sidebar/topbar |
-| `--sidebar` | `#fbfbfc` | the issue-list sidebar's own background |
-| `--panel` | `#ffffff` | card/panel/detail-drawer background |
-| `--panel-soft` | `#fafafb` | a slightly recessed panel surface (nested sections) |
-| `--line` | `#e1e3e8` | the primary border/divider color |
-| `--line-soft` | `#eef0f3` | a lighter divider (inside panels, between rows) |
-| `--text` | `#1f2328` | primary text color |
-| `--muted` | `#68707d` | secondary text (labels, metadata) |
-| `--subtle` | `#8b929f` | tertiary text (timestamps, placeholders) |
-| `--accent` | `#5f55ee` | the one brand color — active tab, links, focus rings |
-| `--green` | `#1f7a4d` | passed / done semantics |
-| `--amber` | `#996f00` | pending / warning semantics |
-| `--red` | `#c73434` | failed / error semantics |
-| `--shadow` | `0 24px 80px rgba(31, 35, 40, 0.18)` | the detail drawer's drop shadow |
+| `--bg` | `var(--volter-surface-page)` | page background, behind the sidebar/topbar |
+| `--sidebar` | `var(--volter-surface-subtle)` | the issue-list sidebar's own background |
+| `--panel` | `var(--volter-surface-raised)` | card/panel/detail-drawer background |
+| `--panel-soft` | `var(--volter-surface-subtle)` | a slightly recessed panel surface (nested sections) |
+| `--line` | `var(--volter-border-default)` | the primary border/divider color |
+| `--line-soft` | `var(--volter-border-subtle)` | a lighter divider (inside panels, between rows) |
+| `--text` | `var(--volter-text-primary)` | primary text color |
+| `--muted` | `var(--volter-text-muted)` | secondary text (labels, metadata) |
+| `--subtle` | `var(--volter-text-tertiary)` | tertiary text (timestamps, placeholders) |
+| `--accent` | `var(--volter-action-default)` | the action colour — active tab, links, focus rings |
+| `--green` | `var(--volter-status-healthy-text)` | passed / done semantics |
+| `--amber` | `var(--volter-status-attention-text)` | pending / warning semantics |
+| `--red` | `var(--volter-status-danger-text)` | failed / error semantics |
+| `--shadow` | `var(--volter-shadow-floating)` | the detail drawer's drop shadow |
 
 Nothing else in the client reaches outside this token set for color — every component references
 one of these fourteen, so overriding them re-themes the whole board.
