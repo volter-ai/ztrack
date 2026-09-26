@@ -1,3 +1,5 @@
+<p align="center"><img src="https://brand.volter.ai/logo/ztrack/svg?size=96" alt="ztrack"></p>
+
 <h1 align="center">ztrack</h1>
 
 <p align="center"><strong>Done is earned, not declared.</strong> A verification gate for AI coding agents — every &ldquo;done&rdquo; backed by a real commit and proof, or it doesn&rsquo;t pass.</p>
@@ -445,7 +447,7 @@ All three variants render ztrack's real list, board, and detail components;
 there is no separate simplified component set. `ztrack/supercode` is the
 optional read-only integration seam: it
 resolves exact work-item context or ambient branch/worktree signals, reports
-conflicts and stale references, and projects Supercode task activity without
+conflicts and stale references, and projects Volter Harness task activity without
 writing either tracker issues or transcripts.
 
 ## Why believe it

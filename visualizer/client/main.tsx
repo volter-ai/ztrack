@@ -53,13 +53,14 @@ const labelsOf = (i: CoreIssue) => ((i as { labels?: string[] }).labels ?? []);
 const childrenOf = (i: CoreIssue) => ((i as { children?: string[] }).children ?? []);
 const relsOf = (i: CoreIssue, t: string) => ((i as { relations?: Array<{ type: string; issueId: string }> }).relations ?? []).filter((r) => r.type === t).map((r) => r.issueId);
 
-function initials(name: string) {
-  const p = name.replace(/@/g, '').split(/[\s._-]+/).filter(Boolean);
-  return (((p[0]?.[0] ?? '') + (p[1]?.[0] ?? '')) || name.slice(0, 2)).toUpperCase();
+// Logos, icons and profile pictures come from the Volter brand site by URL.
+const BRAND = 'https://brand.volter.ai';
+function BrandIcon({ name, label, size = 12 }: { name: string; label?: string; size?: number }) {
+  return <img className="brand-icon" src={`${BRAND}/icon/${name}/svg`} width={size} height={size} alt={label ?? ''} aria-hidden={label ? undefined : true} />;
 }
 function AssigneeAvatar({ assignee }: { assignee?: string }) {
   const v = assignee?.trim(); if (!v) return null;
-  return <span className="assignee-avatar" title={`Assigned to ${v}`}>{initials(v)}</span>;
+  return <img className="assignee-avatar" src={`${BRAND}/runner/svg?seed=${encodeURIComponent(v)}`} width={20} height={20} alt={v} title={`Assigned to ${v}`} />;
 }
 
 // ── routing ──────────────────────────────────────────────────────────────────
@@ -343,7 +344,7 @@ export function Detail({ issue, ext, findings, audit, timestamps, width, activit
         <AcWheelStrip issue={issue} ext={ext} />
         {(issue as { waiver?: { reason?: string; approvedBy?: string } }).waiver && (
           <div className="waiver-banner" title="A signed waiver downgrades this issue's errors to acknowledged while its acceptance criteria are unchanged.">
-            ⚑ Waiver by {(issue as { waiver?: { approvedBy?: string } }).waiver!.approvedBy || 'unknown'}: {(issue as { waiver?: { reason?: string } }).waiver!.reason || '(no reason)'}
+            <BrandIcon name="flag" /> Waiver by {(issue as { waiver?: { approvedBy?: string } }).waiver!.approvedBy || 'unknown'}: {(issue as { waiver?: { reason?: string } }).waiver!.reason || '(no reason)'}
           </div>
         )}
         {fs.length > 0 && (
@@ -634,7 +635,7 @@ export function ZtrackVisualizer({
 
   if (variant === 'embedded') return <div className="ztrack-root ztrack-embedded" style={theme as React.CSSProperties}>{workspace}</div>;
   return <div className="app-shell ztrack-root" style={theme as React.CSSProperties}>
-    <aside className="sidebar"><div className="brand"><span className="brand-mark">◆</span><div><strong>tracker</strong><small>preset: {payload.preset}</small></div></div><nav className="views" aria-label="Views">{views.map((candidate) => <button className={`view view-${candidate}${view === candidate ? ' active' : ''}`} key={candidate} onClick={() => changeView(candidate)} type="button"><span>{viewLabel(candidate)}</span><strong>{viewCount(candidate)}</strong></button>)}</nav><div className={`health health-${payload.ok ? 'pass' : 'fail'}`}><span>{payload.ok ? 'PASS' : 'FAIL'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div><div className="primitives-strip"><div className="primitives-head">primitives</div>{(['proof', 'labels', 'relations', 'children', 'sources', 'category'] as const).map((primitive) => <div className={`primitive-cap${payload.primitives[primitive] ? ' on' : ' off'}`} key={primitive}><span>{primitive}</span><span>{payload.primitives[primitive] ? '✓' : 'not impl'}</span></div>)}<div className="primitive-cap on"><span>audit</span><span>✓ auto</span></div></div></aside>
+    <aside className="sidebar"><div className="brand"><img className="brand-mark" src={`${BRAND}/logo/ztrack/svg?size=56`} width={28} height={28} alt="ztrack" /><div><strong>ztrack</strong><small>preset: {payload.preset}</small></div></div><nav className="views" aria-label="Views">{views.map((candidate) => <button className={`view view-${candidate}${view === candidate ? ' active' : ''}`} key={candidate} onClick={() => changeView(candidate)} type="button"><span>{viewLabel(candidate)}</span><strong>{viewCount(candidate)}</strong></button>)}</nav><div className={`health health-${payload.ok ? 'pass' : 'fail'}`}><span>{payload.ok ? 'PASS' : 'FAIL'}</span><small>{errors} errors, {warnings} warnings{acknowledged > 0 ? `, ${acknowledged} acknowledged` : ''}</small></div><div className="primitives-strip"><div className="primitives-head">primitives</div>{(['proof', 'labels', 'relations', 'children', 'sources', 'category'] as const).map((primitive) => <div className={`primitive-cap${payload.primitives[primitive] ? ' on' : ' off'}`} key={primitive}><span>{primitive}</span><span>{payload.primitives[primitive] ? <BrandIcon name="check" label="implemented" /> : 'not impl'}</span></div>)}<div className="primitive-cap on"><span>audit</span><span><BrandIcon name="check" label="implemented" /> auto</span></div></div></aside>
     {workspace}
   </div>;
 }

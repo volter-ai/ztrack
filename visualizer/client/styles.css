@@ -60,14 +60,12 @@ button { cursor: pointer; }
 .brand-mark {
   width: 28px;
   height: 28px;
-  border-radius: 7px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #24262d;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 800;
+  display: block;
+  flex: 0 0 auto;
+}
+.brand-icon {
+  display: inline-block;
+  vertical-align: -2px;
 }
 .brand strong { display: block; font-size: 14px; line-height: 1.25; }
 .brand time, .health small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
