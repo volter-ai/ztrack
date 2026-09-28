@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.1.0
+
 - **A Hermes kanban as one markdown file.** `ztrack init --preset kanban --sync hermes --hermes-home <dir>` writes the board to `arcs.md`, one `## t-<id> — <title>` section per card. `ztrack sync hermes` keeps it two-way in step with the board, through `hermes kanban` only. It merges each card field three ways against the last agreed state. A file edit reaches the board (lane, assignee, `Blocked by:` links, new comments, new cards, archive by deleting a section). A board change reaches the file, including a dispatcher's. A same-field collision, or an edit Hermes refuses, is a `sync_conflict` that gates `ztrack check`. Hermes can't edit a card's title or body or reopen a done card, so the sync re-creates the card: `replaces`/`replaced by` comments, children relinked, the old card archived. `ztrack check` and `loop start` sync first. The grammar: docs/SYNC-HERMES.md.
 - **The `kanban` preset**: an evidence-free board of cards in Hermes's lanes, with `Blocked by:` / `Workspace:` / `Branch:` / `Priority:`, an opening post and a comment thread. It has no ACs and no evidence.
 - A failed `ztrack check` ends with "fix the errors above or lower the configured rigor". It no longer tells a preset without evidence to produce evidence.
