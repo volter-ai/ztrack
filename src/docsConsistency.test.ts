@@ -104,7 +104,7 @@ describe('docs consistency', () => {
     expect(unknown).toEqual([]);
   });
 
-  // ZTB-25: PR #13 (0.38.0) made `@volter-ai-dev/twin`/`twin-github` OPTIONAL peer dependencies,
+  // ZTB-25: PR #13 (0.38.0) made the twin packages (now `@volter/world-core`/`@volter/twin-github`) OPTIONAL peer dependencies,
   // but the docs kept saying otherwise for a full release — the existence checks above (link,
   // path, command, preset-name) can't catch a doc that's internally consistent but semantically
   // wrong. This phrase list is exactly what dev/01 removed from README.md/docs/EVIDENCE.md/

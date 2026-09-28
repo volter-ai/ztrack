@@ -6,12 +6,11 @@ import { __resetTwinWorldRuntimeCacheForTest } from './worldTwinRuntime.ts';
 
 // worldSourceBooks.ts had NO test file before ZTB-27 — closing that gap while also proving
 // "surviving functionality still works with the peer present" (dev/01) now that
-// `@volter-ai-dev/twin` is loaded lazily (see worldTwinRuntime.ts) instead of statically.
+// `@volter/world-core` is loaded lazily (see worldTwinRuntime.ts) instead of statically.
 type Ev = { id: string; service: string; type: string; origin: string; occurredAt: string; subject: { id: string }; data?: Record<string, unknown>; external?: { id?: string; url?: string; provider?: string }; raw?: unknown; actor?: { id?: string; name?: string } };
 let EVENTS: Ev[] = [];
-mock.module('@volter-ai-dev/twin', () => ({
+mock.module('@volter/world-core', () => ({
   DELTA_TYPE_SUFFIX: '.delta',
-  isEgressEventType: (t: string) => t.endsWith('.egress'),
   worldStateRoot: (root?: string) => root ?? process.cwd(),
   listEvents: (service: string, _root?: string) => EVENTS.filter((e) => e.service === service),
   loadWorldConfig: (_root?: string) => ({ services: { slack: {} } }),

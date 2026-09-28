@@ -104,19 +104,19 @@
     "zod": "4.4.2"
   },
   "peerDependencies": {
-    "@volter-ai-dev/supercode-client": "^0.3.4",
-    "@volter-ai-dev/twin": "^0.1.0",
-    "@volter-ai-dev/twin-github": "^0.1.0",
+    "@volter/supercode-client": "^0.3.60",
+    "@volter/twin-github": "^2.0.4",
+    "@volter/world-core": "^2.0.4",
     "react": "^18.3.1 || ^19.0.0"
   },
   "peerDependenciesMeta": {
-    "@volter-ai-dev/supercode-client": {
+    "@volter/supercode-client": {
       "optional": true
     },
-    "@volter-ai-dev/twin": {
+    "@volter/twin-github": {
       "optional": true
     },
-    "@volter-ai-dev/twin-github": {
+    "@volter/world-core": {
       "optional": true
     },
     "react": {
@@ -128,8 +128,8 @@
     "@types/node": "^24.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@volter-ai-dev/twin": "^0.1.0",
-    "@volter-ai-dev/twin-github": "^0.1.0",
+    "@volter/twin-github": "^2.0.4",
+    "@volter/world-core": "^2.0.4",
     "happy-dom": "^20.10.6",
     "typescript": "^5.9.0"
   },

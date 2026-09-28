@@ -1,10 +1,12 @@
-// Two-way GitHub issue sync over the twin's event-sourced engine.
+// Two-way GitHub issue sync over the GitHub twin in the project's world.
 //
-// READ is incremental: `runConnectorPoll` over githubIssueConnector — a `since` cursor poll that
-// reads only issues changed past the persisted cursor (closed ones included), never a full scan.
-// WRITE is idempotent: `applyGithubWrite` morphs the twin (one pending action per changed issue)
-// and `pushPendingGithubActions` flushes through the egress ledger, so an unchanged issue is
-// never re-PATCHed. The identity binding ties each ztrack id to the GitHub issue number it IS.
+// READ: `syncGithubFromRemote` pulls the repo's issues (closed ones included) into the twin, and
+// `twinResources` reads them back. WRITE: `applyGithubWrite` records one pending entry per changed
+// issue and `performEntries` settles those entries against GitHub through the kernel's head
+// transaction (checks, reference resolution, one performer per twin, the vendor's id rebound), so
+// an entry already deployed is never performed again. The world's github root names the repo and
+// holds (`deploy: 'hold'`): nothing reaches GitHub until ztrack performs. The identity binding ties
+// each ztrack id to the GitHub issue number it IS.
 //
 // Directions:
 //   pull(o)           one-way GitHub → tracker   (CLI `--pull`)
@@ -14,14 +16,13 @@
 //                     clobber the other — non-overlapping field changes MERGE, only a same-field
 //                     collision is a surfaced conflict (default policy `merge`). `base` (the last
 //                     synced common ancestor) is persisted by ztrack since the fork is the tracker.
-// NOTE: `@volter-ai-dev/twin`/`@volter-ai-dev/twin-github` are an OPTIONAL peer (package.json
+// NOTE: `@volter/world-core`/`@volter/twin-github` are an OPTIONAL peer (package.json
 // `peerDependenciesMeta`) — only TYPES are imported statically here (erased at build time, so
 // they impose no runtime resolution). The actual runtime bindings come from `loadTwinRuntime()`
 // (twinRuntime.ts), a lazy `import()` so a plain `npm i -D ztrack` (peers absent) never fails to
 // even LOAD this module — see twinRuntime.ts for why a static value import here would be fatal.
-import type { GithubExecute } from '@volter-ai-dev/twin-github';
-import type { ReconcilePolicy, TwinResource } from '@volter-ai-dev/twin';
-import { githubIssueConnector } from './connector.ts';
+import type { DeployReport, RemoteExecute } from '@volter/world-core';
+import { reconcile, type ReconcilePolicy, type TwinResource } from './reconcile.ts';
 import type { TrackerClient } from '../../types.ts';
 import { githubStateToStatus, issueResourceToRecordFields, statusToGithubState } from './map.ts';
 import { loadBindings, saveBindings, bind, type GithubBindings } from './bindings.ts';
@@ -29,15 +30,38 @@ import { loadBase, saveBase, type BaseFields } from './baseStore.ts';
 import { loadConflicts, saveConflicts, stripConflictSection, withConflictSection, type ConflictRecord } from '../conflicts.ts';
 import { loadTwinRuntime, type TwinRuntime } from './twinRuntime.ts';
 
-export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: GithubExecute; client: TrackerClient; occurredAt: string };
+export type SyncOpts = { projectRoot: string; owner: string; repo: string; execute: RemoteExecute; client: TrackerClient; occurredAt: string };
 export type PullResult = { created: string[]; updated: string[]; total: number; note?: string };
 export type PushResult = { created: Array<{ ztrack: string; number: number }>; updated: string[]; skipped: number; total: number };
 export type ReconcileResult = { pulled: string[]; pushed: string[]; created: Array<{ ztrack: string; number: number }>; conflicts: Array<{ issue: string; number: number; fields: string[] }> };
 
-// PUSH-side egress timestamp — a STABLE constant keeps re-confirming the same content idempotent
-// (the egress ledger keys on the action; a constant avoids minting a re-observation that would
-// conflict on a later poll). The pull no longer needs it (the cursor connector shadow-diffs).
+// The instant ztrack's writes and their settlement carry: a STABLE constant keeps re-recording the
+// same content idempotent.
 const OBSERVED_AT = '2020-01-01T00:00:00.000Z';
+
+/** The world's github root names this repo and holds: its entries reach GitHub only when ztrack
+ *  performs them. Written once, and again only if the repo changes. */
+function ensureRoot(o: SyncOpts, twin: TwinRuntime): void {
+  const scope = `repos/${o.owner}/${o.repo}`;
+  const current = twin.readRoot('github', o.projectRoot);
+  if (current?.url === 'https://api.github.com' && current.scope === scope && current.deploy === 'hold') return;
+  twin.writeRoot('github', { url: 'https://api.github.com', scope, deploy: 'hold' }, o.projectRoot);
+}
+
+/** Pull the repo's issues (all states) from GitHub into the twin. */
+async function pullRemote(o: SyncOpts, twin: TwinRuntime): Promise<{ observed: number }> {
+  ensureRoot(o, twin);
+  return twin.syncGithubFromRemote(o.execute, { root: o.projectRoot, origin: `https://api.github.com/repos/${o.owner}/${o.repo}`, state: 'all', perPage: 100 });
+}
+
+/** Settle pending github entries against GitHub; a refusal or failure stops the sync with the vendor's words. */
+async function deploy(o: SyncOpts, twin: TwinRuntime, actionIds?: string[]): Promise<DeployReport> {
+  ensureRoot(o, twin);
+  const report = await twin.performEntries({ service: 'github', root: o.projectRoot, execute: o.execute, at: OBSERVED_AT, ...(actionIds ? { actionIds } : {}) });
+  if (report.refused) throw new Error(`github push refused ${report.refused.actionId} (${report.refused.check}): ${report.refused.reason}`);
+  if (report.failed) throw new Error(`github push failed at ${report.failed.actionId}: ${report.failed.error}`);
+  return report;
+}
 
 // the tracker 'state'/'status' may arrive as a string or a nested { name }.
 function stateName(v: unknown): string {
@@ -46,13 +70,15 @@ function stateName(v: unknown): string {
   return '';
 }
 
-// One issue resource as currentResources('github') returns it: the FLAT TwinResource shape.
+// One issue resource as twinResources('github') returns it: the FLAT TwinResource shape.
 type IssueResource = { id: string; number: number; title?: string; body?: string; state?: string };
 function issueResources(projectRoot: string, twin: TwinRuntime): IssueResource[] {
   const opt = (v: unknown) => (v == null ? undefined : String(v));
-  return (twin.currentResources('github', projectRoot) as Array<Record<string, unknown>>)
+  return (twin.twinResources('github', projectRoot) as Array<Record<string, unknown>>)
     .filter((r) => r.type === 'issue')
-    .map((r) => ({ id: String(r.id), number: Number(r.number), title: opt(r.title), body: opt(r.body), state: opt(r.state) }));
+    // GitHub's body in the tracker's canonical form (what stripConflictSection leaves: no trailing
+    // whitespace, no run of blank lines), so pull, push and the merge compare like with like.
+    .map((r) => ({ id: String(r.id), number: Number(r.number), title: opt(r.title), body: r.body == null ? undefined : stripConflictSection(String(r.body)), state: opt(r.state) }));
 }
 const asSyncResource = (r: IssueResource) => ({ type: 'issue', id: r.id, fields: { title: r.title, body: r.body, state: r.state } });
 
@@ -73,8 +99,8 @@ async function createInTracker(o: SyncOpts, b: GithubBindings, real: IssueResour
   return out;
 }
 
-/** Create a GitHub issue for each unbound tracker issue, binding it to the real number the
- *  egress push returns (and closing it after if the local issue is done). */
+/** Create a GitHub issue for each unbound tracker issue, binding it to the real number GitHub
+ *  minted (and closing it after if the local issue is done). */
 async function createOnGithub(o: SyncOpts, b: GithubBindings, rows: Array<{ ztrack: string; title: string; body: string; closed: boolean }>, twin: TwinRuntime): Promise<Array<{ ztrack: string; number: number }>> {
   const pendingCreate = new Map<string, { ztrack: string; closed: boolean }>();
   for (const row of rows) {
@@ -84,11 +110,13 @@ async function createOnGithub(o: SyncOpts, b: GithubBindings, rows: Array<{ ztra
     if (fresh) pendingCreate.set(fresh.id, { ztrack: row.ztrack, closed: row.closed });
   }
   if (!pendingCreate.size) return [];
-  const { externalIds } = await twin.pushPendingGithubActions(o.execute, { root: o.projectRoot, occurredAt: OBSERVED_AT });
+  const report = await deploy(o, twin, [...pendingCreate.keys()]);
+  const externalIds = new Map(report.deployed.map((d) => [d.actionId, d.externalId]));
   const out: Array<{ ztrack: string; number: number }> = [];
   const closeAfter: number[] = [];
   for (const [actionId, info] of pendingCreate) {
-    const num = Number(externalIds[actionId]);
+    // the vendor's id in the pack's subject grammar (`o/r#issue:57`): its trailing number
+    const num = Number(String(externalIds.get(actionId) ?? '').split(/[#:]/).pop());
     if (!num) continue;
     bind(b, info.ztrack, num);
     out.push({ ztrack: info.ztrack, number: num });
@@ -97,7 +125,7 @@ async function createOnGithub(o: SyncOpts, b: GithubBindings, rows: Array<{ ztra
   for (const num of closeAfter) {
     await twin.applyGithubWrite({ method: 'PATCH', path: `/repos/${o.owner}/${o.repo}/issues/${num}`, body: JSON.stringify({ state: 'closed' }), root: o.projectRoot, occurredAt: OBSERVED_AT });
   }
-  if (closeAfter.length) await twin.pushPendingGithubActions(o.execute, { root: o.projectRoot, occurredAt: OBSERVED_AT });
+  if (closeAfter.length) await deploy(o, twin);
   return out;
 }
 
@@ -106,16 +134,11 @@ const unboundForkRows = (rows: Array<Record<string, unknown>>, b: GithubBindings
     .filter((r) => r.id && !b.byZtrack[r.id])
     .map((r) => ({ ztrack: r.id, title: r.title, body: r.body, closed: r.ghState === 'closed' }));
 
-// ZTB-21 dev/02: GitHub's issue list is eventually consistent. `gh issue create` immediately
-// followed by the very FIRST pull against a repo (no bindings recorded yet) can observe zero
-// remote issues even though one was just created — and silently report "0 created, 0 updated",
-// which reads as success. `runConnectorPoll` only advances its cursor when it actually observed
-// something newer (see @volter-ai-dev/twin's connector.js: `if (!truncated && maxOccurredAt &&
-// maxOccurredAt !== cursorBefore)`), so a zero-observation bootstrap poll leaves the cursor
-// untouched — a same-cursor re-poll is therefore risk-free (no window where a re-poll could skip
-// an issue). Retry ONCE, after a short delay, but ONLY in that narrow "first pull found nothing"
-// case: a repo that legitimately has zero issues after N prior syncs must not pay this delay on
-// every call.
+// GitHub's issue list is eventually consistent: an issue created a moment before the very FIRST
+// pull (no bindings yet) can be missing from it, and "0 created, 0 updated" would read as success.
+// A pull observes the whole list each time, so a second one is risk-free. Retry ONCE, after a short
+// delay, but ONLY in that narrow "first pull found nothing" case: a repo that legitimately has zero
+// issues after N prior syncs must not pay this delay on every call.
 const FIRST_PULL_RETRY_DELAY_MS = 2000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -125,17 +148,17 @@ export async function pull(o: SyncOpts, opts: { retryDelayMs?: number } = {}): P
   const repoKey = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repoKey);
   const isFirstPull = Object.keys(b.byNumber).length === 0;
-  let poll = await twin.runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+  let poll = await pullRemote(o, twin);
   let retried = false;
-  if (isFirstPull && poll.fetched === 0 && !poll.truncated) {
+  if (isFirstPull && poll.observed === 0) {
     await sleep(opts.retryDelayMs ?? FIRST_PULL_RETRY_DELAY_MS);
-    poll = await twin.runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+    poll = await pullRemote(o, twin);
     retried = true;
   }
   const resources = issueResources(o.projectRoot, twin);
   // Even the retry can still lose the race on a slower propagation — be honest about that
   // residual case instead of a bare "0 created, 0 updated" that looks identical to "really empty".
-  const note = retried && poll.fetched === 0
+  const note = retried && poll.observed === 0
     ? 'first pull found zero remote issues (retried once after GitHub list lag) — if you just created one, GitHub list results can still lag a few more seconds; retry the pull.'
     : undefined;
   const updated: string[] = [];
@@ -161,12 +184,12 @@ export async function pull(o: SyncOpts, opts: { retryDelayMs?: number } = {}): P
   return { created: created.map((c) => c.ztrack), updated, total: resources.length, ...(note ? { note } : {}) };
 }
 
-/** PUSH: morph the twin for each changed/new tracker issue, then idempotent egress to GitHub. */
+/** PUSH: record an entry for each changed/new tracker issue, then settle them against GitHub. */
 export async function push(o: SyncOpts): Promise<PushResult> {
   const twin = await loadTwinRuntime();
   const repoKey = `${o.owner}/${o.repo}`;
   const b = loadBindings(o.projectRoot, repoKey);
-  await twin.runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+  await pullRemote(o, twin);
   const baseline = new Map(issueResources(o.projectRoot, twin).map((r) => [r.number, r]));
   const rows = await o.client.issue.list({ state: 'all', limit: 5000, json: 'identifier,title,state,body' }) as Array<Record<string, unknown>>;
   const list = Array.isArray(rows) ? rows : [];
@@ -189,7 +212,7 @@ export async function push(o: SyncOpts): Promise<PushResult> {
     await twin.applyGithubWrite({ method: 'PATCH', path: `/repos/${o.owner}/${o.repo}/issues/${number}`, body: JSON.stringify({ title, body, state: ghState }), root: o.projectRoot, occurredAt: OBSERVED_AT });
     updated.push(id);
   }
-  if (updated.length) await twin.pushPendingGithubActions(o.execute, { root: o.projectRoot, occurredAt: OBSERVED_AT });
+  if (updated.length) await deploy(o, twin);
   const created = await createOnGithub(o, b, unboundForkRows(list, b), twin);
   saveBindings(o.projectRoot, b);
   return { created, updated, skipped, total: created.length + updated.length + skipped };
@@ -211,8 +234,8 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   const b = loadBindings(o.projectRoot, repoKey);
   const baseStore = loadBase(o.projectRoot, repoKey);
 
-  // REAL: a fresh incremental pull.
-  await twin.runConnectorPoll(githubIssueConnector(o.execute, o.owner, o.repo), { root: o.projectRoot });
+  // REAL: a fresh pull.
+  await pullRemote(o, twin);
   const real = issueResources(o.projectRoot, twin);
   const realByNumber = new Map(real.map((r) => [r.number, r]));
 
@@ -233,7 +256,7 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
     if (baseStore.resources[id]) boundBase.push(res(id, baseStore.resources[id]!));
   }
 
-  const plan = twin.reconcile({ policy, base: boundBase, fork: boundFork, real: boundReal });
+  const plan = reconcile({ policy, base: boundBase, fork: boundFork, real: boundReal });
   const pulled: string[] = [];
   const pushed: string[] = [];
 
@@ -259,7 +282,7 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
     const ztrackId = b.byNumber[String(number)];
     if (ztrackId) pushed.push(ztrackId);
   }
-  if (plan.toPush.length) await twin.pushPendingGithubActions(o.execute, { root: o.projectRoot, occurredAt: OBSERVED_AT });
+  if (plan.toPush.length) await deploy(o, twin);
 
   // creates (one-sided issues — no conflict possible)
   const created = [...await createInTracker(o, b, real), ...await createOnGithub(o, b, unboundForkRows(rows, b), twin)];

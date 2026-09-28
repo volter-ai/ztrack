@@ -4,11 +4,11 @@
 // "this event is a `source` (a requirement), `noise`, or a `duplicate`", with an
 // exact quote that must resolve into the event payload. That classification is
 // verification vocabulary — using the mirrored world as an *evidence substrate* is
-// the tracker's decision, so this lives here, not in `@volter-ai-dev/twin`. It reads the
-// world only through `@volter-ai-dev/twin`'s generic event surface and stores annotations
+// the tracker's decision, so this lives here, not in `@volter/world-core`. It reads the
+// world only through `@volter/world-core`'s generic event surface and stores annotations
 // alongside the events they describe (`.volter/world/<service>/annotations.jsonl`).
 //
-// `@volter-ai-dev/twin` is loaded LAZILY (dynamic import, only when a function here actually
+// `@volter/world-core` is loaded LAZILY (dynamic import, only when a function here actually
 // runs) via `./worldTwinRuntime.ts` — this module is a PUBLIC subpath export
 // (`ztrack/world-annotations`), so a consumer without the optional twin peer installed must get
 // a friendly error, not a raw ESM resolution crash. See worldTwinRuntime.ts for the full
@@ -16,14 +16,17 @@
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { z } from 'zod';
-import type { WorldConfig, WorldServiceConfig, WorldServiceEvent, WorldValidationFinding } from '@volter-ai-dev/twin';
+import type { WorldConfig, WorldServiceConfig, WorldServiceEvent, WorldValidationFinding } from '@volter/world-core';
 import { loadTwinWorldRuntime } from './worldTwinRuntime.ts';
 
 export { MISSING_WORLD_TWIN_MESSAGE } from './worldTwinRuntime.ts';
 
+/** A write's egress record (its intent or its result): mechanical sync bookkeeping, never evidence. */
+const isEgressEventType = (type: string): boolean => type.endsWith('.write.intent') || type.endsWith('.write.result');
+
 // The annotation/source config the tracker layers on the world's generic per-service
 // config (carried via its index signature). These fields are verification concerns,
-// owned + typed here, not in @volter-ai-dev/twin.
+// owned + typed here, not in @volter/world-core.
 type AnnotationServiceConfig = WorldServiceConfig & {
   annotationPolicy?: 'required' | 'exempt';
   browseUrlTemplate?: string;
@@ -84,13 +87,13 @@ export async function addAnnotation(annotation: WorldAnnotation, root?: string):
  */
 export async function isAnnotationExemptEvent(event: WorldServiceEvent, config?: WorldConfig): Promise<boolean> {
   const twin = await loadTwinWorldRuntime();
-  if (twin.isEgressEventType(event.type)) return true;
+  if (isEgressEventType(event.type)) return true;
   if (event.type.endsWith(twin.DELTA_TYPE_SUFFIX) && event.origin === 'connector') return true;
   if ((config?.services[event.service] as AnnotationServiceConfig | undefined)?.annotationPolicy === 'exempt') return true;
   return false;
 }
 
-// ── annotation integrity validation (was validateWorldService in @volter-ai-dev/twin) ──
+// ── annotation integrity validation ──
 type JsonObject = Record<string, unknown>;
 const isObject = (v: unknown): v is JsonObject => Boolean(v && typeof v === 'object' && !Array.isArray(v));
 const stringValue = (v: unknown): string => (typeof v === 'string' ? v : '');

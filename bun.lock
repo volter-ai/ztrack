@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "ztrack",
@@ -15,21 +16,21 @@
         "@types/node": "^24.0.0",
         "@types/react": "^18.3.0",
         "@types/react-dom": "^18.3.0",
-        "@volter-ai-dev/twin": "^0.1.0",
-        "@volter-ai-dev/twin-github": "^0.1.0",
+        "@volter/twin-github": "^2.0.4",
+        "@volter/world-core": "^2.0.4",
         "happy-dom": "^20.10.6",
         "typescript": "^5.9.0",
       },
       "peerDependencies": {
-        "@volter-ai-dev/supercode-client": "^0.3.4",
-        "@volter-ai-dev/twin": "^0.1.0",
-        "@volter-ai-dev/twin-github": "^0.1.0",
+        "@volter/supercode-client": "^0.3.60",
+        "@volter/twin-github": "^2.0.4",
+        "@volter/world-core": "^2.0.4",
         "react": "^18.3.1 || ^19.0.0",
       },
       "optionalPeers": [
-        "@volter-ai-dev/supercode-client",
-        "@volter-ai-dev/twin",
-        "@volter-ai-dev/twin-github",
+        "@volter/supercode-client",
+        "@volter/twin-github",
+        "@volter/world-core",
         "react",
       ],
     },
@@ -57,9 +58,11 @@
 
     "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
-    "@volter-ai-dev/twin": ["@volter-ai-dev/twin@0.1.0", "", { "dependencies": { "zod": "^4.4.2" }, "bin": { "volter-twin": "src/cli.ts" } }, "sha512-y2rSyQcqEGD0Er4hWr6Epni0ozodSMW0xVpVNeOMKn0l96aBExyOjzI8X4Mugl4pUUNUBjjwJmDQe8AN4OJVHA=="],
+    "@volter/twin-github": ["@volter/twin-github@2.0.4", "", { "dependencies": { "@volter/world-ui": "0.1.4", "graphql": "16.14.2", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.4" }, "bin": { "world-github": "dist/src/cli.js" } }, "sha512-eUapeDpXW/rMp6/P1ndJBq8c9yoiKGGhfaY3FdNfQv9uDznfIl8pCHS9yrEH2GGuS2viXhQy/91T/AF4OCKQUA=="],
 
-    "@volter-ai-dev/twin-github": ["@volter-ai-dev/twin-github@0.1.0", "", { "dependencies": { "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter-ai-dev/twin": "0.1.0" }, "bin": { "world-github": "src/cli.ts" } }, "sha512-efBFefQXYZo5lJ1JtAUcEtbHGWnjndLSmFH2nJDUVOsHlJFmiLSPVS51+qZQHFhnfT+HzPC7J31U7Oen1MWPMw=="],
+    "@volter/world-core": ["@volter/world-core@2.0.4", "", { "dependencies": { "ws": "^8.18.0", "zod": "^4.4.2" } }, "sha512-9YrhVaYm7qs3hHiFoWQV2etUfx2CChJlYi5tipisB+XQDbpd/Yxau1K56k4IfQDzrTi1q2FefGVAAIFsdZULJg=="],
+
+    "@volter/world-ui": ["@volter/world-ui@0.1.4", "", { "peerDependencies": { "@volter/world-core": "2.0.4", "react": "^19.2.7", "react-dom": "^19.2.7" } }, "sha512-ni7LONWFFYFQu0bMH29AC0WPn9XMY+GRCdst1+ljGIt2Y9FJR4aoyISUacfqOtxdhLBL0S+/6b6G+3NOEPm9GA=="],
 
     "buffer-image-size": ["buffer-image-size@0.6.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ=="],
 
@@ -82,6 +85,8 @@
     "entities": ["entities@7.0.1", "", {}, "sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA=="],
 
     "escape-string-regexp": ["escape-string-regexp@5.0.0", "", {}, "sha512-/veY75JbMK4j1yjvuUxuVsiS/hr/4iHs9FTT6cgTexxdE0Ly/glccBAkloH/DofkjRbZU3bnoj38mOmhkZ0lHw=="],
+
+    "graphql": ["graphql@16.14.2", "", {}, "sha512-Chq1s4CY7jmh8gO2qvLIJyfCDIN+EHLFW/9iShnp1z8FjBQMoodWP1kDC36VAMXXIvAjj4ARa7ntfAV2BrjsbA=="],
 
     "happy-dom": ["happy-dom@20.10.6", "", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-6QD0ilzDDt93tX44y8tbmZdAcdTRYDhUP+Asgi6pC8Pp5IA3cvaZGyoVN/EGtlq9ziT65iPuBBn3ASLr6hCgVw=="],
 
@@ -195,6 +200,6 @@
 
     "zwitch": ["zwitch@2.0.4", "", {}, "sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A=="],
 
-    "@volter-ai-dev/twin/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
+    "@volter/world-core/zod": ["zod@4.4.3", "", {}, "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ=="],
   }
 }

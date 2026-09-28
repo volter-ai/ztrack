@@ -52,9 +52,8 @@ gate.
 `missing-peer-gate.sh` is the real (non-mocked) CLI E2E for #13's optional-peer
 contract: packs the repo and installs it in two fresh consumer projects — peers
 absent (`sync github` fails closed with the install hint, everything else keeps
-working), and peers installed but run under plain node/npx (the bun-hint path,
-since `@volter-ai-dev/twin-github` ships TypeScript source only). Deterministic,
-no gh auth, no live GitHub network call; a CI/publish gate.
+working), and peers installed under plain node/npx (both the sync command and the
+world subpath load them). No gh auth; a CI/publish gate.
 
 `loop-gate-ci.sh` is deterministic CI coverage for the ztrack loop — everything
 in `loop-e2e.sh` that does NOT need a live agent. It drives the real Stop hook

@@ -128,47 +128,27 @@ npx ztrack check --phase gate    # skip promotion/transition checks on already-l
 
 **GitHub-linked tracker.** In linked mode your issues live on GitHub (the local store is gitignored),
 so there's no committed `root.json`. Pull then check (the Action gates a committed root; it does not
-sync) — this needs the optional sync peers installed and must run under bun; see the canonical
-recipe just below.
+sync) — this needs the optional sync peers installed; see the canonical recipe just below.
 
-### GitHub sync since 0.38: install the peers, run under bun
+### GitHub sync: install the peers
 
-Two-way GitHub sync (`ztrack sync github`) is powered by `@volter-ai-dev/twin` and
-`@volter-ai-dev/twin-github`. Since 0.38.0 (the twin/twin-github split — see CHANGELOG) these are
-**optional peer dependencies**, not regular dependencies of `ztrack`. Everything else — `check`,
-`evidence`, `issue *`, every preset — works with nothing extra installed; only `sync github` (and a
-preset that opts into world-backed evidence, see [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world))
-needs them.
+Two-way GitHub sync (`ztrack sync github`) runs on the GitHub twin: `@volter/world-core` and
+`@volter/twin-github`. They are **optional peer dependencies**, not regular dependencies of `ztrack`.
+Everything else — `check`, `evidence`, `issue *`, every preset — works with nothing extra installed;
+only `sync github` (and a preset that opts into world-backed evidence, see
+[EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world)) needs them.
 
 1. **Install the peers explicitly** — a plain `npm install ztrack` does not pull them in:
 
    ```bash
-   npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github
+   npm install -D @volter/world-core @volter/twin-github
    ```
 
    Without them, any twin-touching command fails closed with: *"ztrack sync github requires the
-   optional sync packages. Install them with: npm install -D @volter-ai-dev/twin
-   @volter-ai-dev/twin-github"*.
+   optional sync packages. Install them with: npm install -D @volter/world-core
+   @volter/twin-github"*.
 
-2. **Run `sync github` under bun, not npx/node.** `@volter-ai-dev/twin-github` ships TypeScript
-   source only (no compiled JS entry point). Node — even with the peer correctly installed —
-   refuses to type-strip a `.ts` file that lives under `node_modules`
-   (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`); this is a hard platform restriction, not
-   something a flag lifts. bun is TS-native and loads it directly — but note the `--bun` flag:
-   ztrack's CLI has a `#!/usr/bin/env node` shebang, and a plain `bunx ztrack` honors it and hands
-   off to real node, reproducing the very error you're avoiding. Force bun's runtime explicitly:
-
-   ```bash
-   bunx --bun ztrack sync github --pull
-   # or, if ztrack is already a devDependency:
-   bun node_modules/.bin/ztrack sync github --pull
-   ```
-
-   `npx ztrack sync github` (or a plain `node` run) fails by design with a hint to use bun instead.
-   Every other command keeps working fine under npx/node — only `sync github` needs bun.
-
-3. **CI recipe** — install bun, install the peers, run sync under bun, then gate with the usual
-   Action (which stays on Node — `check` itself never touches twin):
+2. **CI recipe** — install the peers, sync, then gate with the usual Action:
 
    ```yaml
    jobs:
@@ -179,11 +159,9 @@ needs them.
        steps:
          - uses: actions/checkout@v6
            with: { fetch-depth: 0 }
-         - uses: oven-sh/setup-bun@v2
-           with: { bun-version: 1.2.20 }
-         - run: npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github
-         - run: bunx --bun ztrack sync github --pull  # --bun overrides the CLI's node shebang
-         - run: npx ztrack check --phase gate          # check has no twin dependency; node is fine
+         - run: npm install -D @volter/world-core @volter/twin-github
+         - run: npx ztrack sync github --pull
+         - run: npx ztrack check --phase gate
    ```
 
 Auth uses the `gh` CLI or `GITHUB_TOKEN` (never a prompted PAT).

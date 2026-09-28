@@ -255,21 +255,18 @@ Berry + PnP), and bun with no build step.
 
 ztrack can use a **mirrored world** of the SaaS systems your code talks to
 (GitHub/Jira/Slack/...) as an evidence substrate, via the
-`@volter-ai-dev/twin` runtime (the same engine behind `ztrack sync github`).
+`@volter/world-core` runtime (the same engine behind `ztrack sync github`).
 
 | file | role |
 |---|---|
 | `worldAnnotations.ts` | tracker annotations over twin events (`source`/`noise`/`duplicate`), quote-resolved into the event; stored at `.volter/world/<svc>/annotations.jsonl` |
 | `worldSourceBooks.ts` | adapter: twin events → "source books" the loader feeds into `Context` |
-| `sync/<provider>/` | two-way issue sync (e.g. `sync/github/`: `execute`/`map`/`bindings`/`sync`). A **standalone provider module** — ztrack has no universal sync engine; the twin is the shared event-sourced substrate that makes pull/push incremental + idempotent. `ztrack sync github` is the user surface; identity bindings live at `.volter/sync/<provider>.json` |
+| `sync/<provider>/` | two-way issue sync (e.g. `sync/github/`: `execute`/`map`/`bindings`/`sync`). A **standalone provider module** — ztrack has no universal sync engine; the GitHub twin is the substrate: its pull mirrors the repo, and the kernel's push settles each entry once. `ztrack sync github` is the user surface; identity bindings live at `.volter/sync/<provider>.json` |
 
-`@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`) is an **optional peer
-dependency** on the public npm registry (since 0.38.0) — absent unless a consumer
-installs it explicitly, and `@volter-ai-dev/twin-github` specifically only loads
-under bun (its TS-only source can't type-strip from `node_modules` under plain
-node/npx). Sync and world-backed validation need the explicit install plus the
-bun-only invocation; see the canonical recipe at
-[docs/GUIDE.md § GitHub sync since 0.38](docs/GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun).
+`@volter/world-core` (+ `@volter/twin-github`) is an **optional peer
+dependency** on the public npm registry — absent unless a consumer installs it
+explicitly. Sync and world-backed validation need that install; see the canonical
+recipe at [docs/GUIDE.md § GitHub sync](docs/GUIDE.md#github-sync-install-the-peers).
 World integration is still opt-in by *policy* on top of that: a baseline tracker
 validates over the store + git and never consults the world. The adapters are
 reachable from the `ztrack/world-annotations` / `ztrack/world-source-books`
