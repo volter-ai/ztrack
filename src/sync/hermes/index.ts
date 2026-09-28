@@ -6,8 +6,10 @@ import { loadTrackerConfig } from '../../config.ts';
 import { resolveTrackerValidation } from '../../presetRegistry.ts';
 import { hermesExec, type HermesExec } from './board.ts';
 import { syncHermes, type HermesPolicy, type HermesSyncResult } from './sync.ts';
+import { watchHermes } from './watch.ts';
 
 export { syncHermes, toFileId, toHermesId, STATE_AUTHOR, type HermesPolicy, type HermesSyncOpts, type HermesSyncResult } from './sync.ts';
+export { watchHermes, type HermesWatchOpts } from './watch.ts';
 export { hermesExec, readBoard, boardWriter, type HermesCard, type HermesExec, type HermesTarget } from './board.ts';
 
 /** The project's Hermes link, or null when it has none. */
@@ -32,5 +34,18 @@ export async function syncLinkedHermes(projectRoot: string, o: { policy?: Hermes
     preset,
     policy: o.policy ?? link.policy ?? 'merge',
     ...(o.dryRun ? { dryRun: true } : {}),
+  });
+}
+
+/** Sync the linked board file whenever it or its board changes, until the board's event stream
+ *  ends (then rejects). Null when the project has no Hermes link. */
+export function watchLinkedHermes(projectRoot: string, o: { policy?: HermesPolicy; onSync: (why: string, r: HermesSyncResult | Error) => void }): Promise<never> | null {
+  const link = linkedHermes(projectRoot);
+  if (!link) return null;
+  return watchHermes({
+    projectRoot,
+    link,
+    sync: async () => (await syncLinkedHermes(projectRoot, o.policy ? { policy: o.policy } : {}))!,
+    onSync: o.onSync,
   });
 }

@@ -318,7 +318,7 @@ conflicts surface as an unwaivable \`sync_conflict\` that gates check; --policy 
 merge) sets resolution: hub-wins | twin-wins | merge. Auth uses the gh CLI or
 GITHUB_TOKEN — no prompted PAT.
 
-Usage: ${command} sync hermes [--dry-run] [--policy merge|board-wins|file-wins] [--json]
+Usage: ${command} sync hermes [--dry-run | --watch] [--policy merge|board-wins|file-wins] [--json]
 
 Two-way sync of the board file (\`init --preset kanban --sync hermes\`) with its Hermes
 kanban, through \`hermes kanban\` only. A three-way merge per card field against the
@@ -328,7 +328,9 @@ A new section (any id that isn't a board id) creates a card; a deleted section
 archives it. A card's prose, Machine:, Session: and ### Tasks are its state: a
 change posts one comment authored \`arcs\`, never a new card. An edited title,
 workspace, branch or priority, or a done card moved back, re-creates the card.
---dry-run prints the board writes it would make.
+--dry-run prints the board writes it would make. --watch keeps running and syncs
+whenever the file is saved or the board changes (Hermes's own \`kanban watch\` stream),
+one sync at a time; a manual sync waits for it.
 The grammar: docs/SYNC-HERMES.md.
 `);
     return true;

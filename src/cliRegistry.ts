@@ -114,7 +114,7 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['tx', 'plan'], flags: [ val('--file') ] },
   { path: ['tx', 'apply'], flags: [ val('--file') ] },
   { path: ['sync', 'github'], flags: [ val('--repo'), bool('--pull'), bool('--push'), val('--policy'), bool('--json') ] },
-  { path: ['sync', 'hermes'], flags: [ bool('--dry-run'), val('--policy'), bool('--json') ] },
+  { path: ['sync', 'hermes'], flags: [ bool('--dry-run'), bool('--watch'), val('--policy'), bool('--json') ] },
   { path: ['evidence', 'add'], flags: [
     val('--file'), val('--name'), bool('--attach'), bool('--commit'),
   ] },

@@ -267,7 +267,33 @@ function transitionVerb(from: string, to: string): ((w: BoardWriter, id: string)
 }
 
 /** Two-way sync of one board file with a Hermes kanban. */
+// ── one sync at a time per board file: a manual `sync hermes` and `--watch` never interleave ──
+const lockPath = (projectRoot: string, file: string) => join(syncStateDir(projectRoot), `hermes-sync.${file.replace(/[^A-Za-z0-9._-]+/g, '_')}.lock`);
+function alive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
+}
+async function withSyncLock<T>(p: string, fn: () => Promise<T>): Promise<T> {
+  mkdirSync(dirname(p), { recursive: true });
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try { writeFileSync(p, String(process.pid), { flag: 'wx' }); break; } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      let holder = 0;
+      try { holder = Number(readFileSync(p, 'utf8')); } catch { continue; } // released between the two calls
+      if (holder && !alive(holder)) { rmSync(p, { force: true }); continue; } // a dead sync's lock
+      if (Date.now() > deadline) throw new Error(`ztrack sync hermes: another sync (pid ${holder || '?'}) has held this board file for two minutes (${p}).`);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  try { return await fn(); } finally { rmSync(p, { force: true }); }
+}
+
 export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult> {
+  const abs = isAbsolute(opts.file) ? opts.file : resolve(opts.projectRoot, opts.file);
+  return withSyncLock(lockPath(opts.projectRoot, abs), () => syncHermesLocked(opts));
+}
+
+async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult> {
   const preset = opts.preset;
   if (preset.name !== 'kanban' || !preset.serialize) {
     throw new Error(`ztrack sync hermes: the installed preset is '${preset.name}'; a Hermes-backed board needs the kanban preset (\`ztrack init --preset kanban\`).`);
@@ -488,7 +514,8 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
     if (drift.length) throw new Error(`ztrack sync hermes: the rendered file does not read back as the board (${drift.slice(0, 5).join('; ')}); ${opts.file} was left as it was. This is a ztrack defect: report it with the card's section.`);
     const now = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
     if (now !== before) throw new Error(`ztrack sync hermes: ${opts.file} changed while syncing; the board has the changes that were read before it did. Run the sync again.`);
-    renameSync(tmp, abs);
+    // Unchanged text is not rewritten: a watcher on the file would take the write for an edit.
+    if (text !== before) renameSync(tmp, abs);
   } finally {
     if (existsSync(tmp)) rmSync(tmp);
   }

@@ -159,6 +159,26 @@ error `ztrack check` would report, and any card whose `status:`/`assignee:` line
 a blank line. It names each problem and makes no board write. `--dry-run` prints the board writes a
 sync would make and changes nothing.
 
+## Keeping it synced
+
+```bash
+npx ztrack sync hermes --watch
+```
+
+keeps running and syncs whenever either side moves: the board file is saved, or the board records
+an event (Hermes's own `hermes kanban watch` stream, whoever made the change: a person, a
+dispatcher, this sync). Triggers are debounced by a second and coalesced into one sync at a time.
+A sync's own writes trigger one more sync, which finds both sides agreeing and writes nothing. Events
+that change nothing the file shows don't trigger a sync: `claim_extended`, `goal_continued`, and a
+comment not authored `arcs`. A failed sync (a file saved mid-edit that doesn't validate, say) is
+printed and the next change tries again. When `hermes kanban watch` ends, so does `--watch`, so
+run it under something that restarts it.
+
+Syncs of one board file take turns through a lock in the sync state directory, so a manual
+`ztrack sync hermes` waits for a running one. A sync that changes nothing leaves the file
+untouched. After a board change, the file changes under whoever has it open: read it again before
+editing it.
+
 ## Collisions
 
 By default a collision is not applied either way. The file keeps its value, the board keeps its
@@ -179,8 +199,8 @@ board as it now stands.
 
 ## Limits
 
-- One writer at a time. If the file changes while a sync runs, the sync applies what it read, leaves
-  the file alone, and says to run it again.
+- If the file changes while a sync runs, the sync applies what it read, leaves the file alone, and
+  says to run it again (`--watch` does, on the save that changed it).
 - Every sync checks that the file it rendered reads back as the board it rendered it from, before
   it replaces the file. If it doesn't, the file is left as it was and the sync names the card and
   field.

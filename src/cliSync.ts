@@ -15,7 +15,7 @@ export async function handleSyncCommand(args: string[]): Promise<boolean> {
   if (args[0] !== 'sync') return false;
   if (args[1] === 'hermes') return handleHermesSync(args);
   if (args[1] !== 'github') {
-    throw new Error("usage: tracker sync github [--repo <owner/name>] [--pull | --push] [--policy merge|hub-wins|twin-wins]   (default: bidirectional reconcile; --repo + --policy default to the `init --sync` link)\n       tracker sync hermes [--dry-run] [--policy merge|board-wins|file-wins] [--json]   (the board file linked by `init --sync hermes`)");
+    throw new Error("usage: tracker sync github [--repo <owner/name>] [--pull | --push] [--policy merge|hub-wins|twin-wins]   (default: bidirectional reconcile; --repo + --policy default to the `init --sync` link)\n       tracker sync hermes [--dry-run | --watch] [--policy merge|board-wins|file-wins] [--json]   (the board file linked by `init --sync hermes`)");
   }
   const client = createTrackerClient();
   // --repo is optional once the project is linked (`init --sync github --repo o/n`).
@@ -54,13 +54,30 @@ export async function handleSyncCommand(args: string[]): Promise<boolean> {
   return true;
 }
 
-/** `ztrack sync hermes [--dry-run] [--policy merge|board-wins|file-wins] [--json]` — the board
+/** `ztrack sync hermes [--dry-run | --watch] [--policy merge|board-wins|file-wins] [--json]` — the board
  *  file two-way with its Hermes kanban (docs/SYNC-HERMES.md). */
 async function handleHermesSync(args: string[]): Promise<boolean> {
   const root = projectRootFrom();
   const policy = optionValue(args, '--policy');
   if (policy && !['merge', 'board-wins', 'file-wins'].includes(policy)) throw new Error(`ztrack sync hermes: --policy must be merge | board-wins | file-wins (got '${policy}')`);
   const dryRun = args.includes('--dry-run');
+  if (args.includes('--watch')) {
+    if (dryRun) throw new Error('ztrack sync hermes: --watch writes; it takes no --dry-run.');
+    const stamp = () => new Date().toISOString().slice(11, 19);
+    const watching = hermesSync.watchLinkedHermes(root, {
+      ...(policy ? { policy: policy as hermesSync.HermesPolicy } : {}),
+      onSync: (why, r) => {
+        if (r instanceof Error) { process.stdout.write(`${stamp()} ${statusMark('fail')} ${ui.red(r.message)} ${ui.dim(`(${why})`)}\n`); return; }
+        const moved = r.actions.length + r.pulled.length + r.conflicts.length;
+        if (!moved && why !== 'start') return; // a sync that found both sides agreeing says nothing
+        for (const a of r.actions) process.stdout.write(`  ${ui.dim(a)}\n`);
+        process.stdout.write(`${stamp()} ${statusMark(r.conflicts.length || r.failed.length ? 'warn' : 'pass')} ${r.pulled.length} pulled, ${r.pushed.length} pushed, ${r.created.length} created, ${r.archived.length} archived${r.conflicts.length ? `, ${r.conflicts.length} conflicts (\`ztrack check\`)` : ''} ${ui.dim(`(${why.length > 120 ? `${why.slice(0, 120)}…` : why})`)}\n`);
+      },
+    });
+    if (!watching) throw new Error('ztrack sync hermes: this project has no Hermes link. Add one with `ztrack init --preset kanban --sync hermes --hermes-home <dir>`.');
+    process.stdout.write(`${statusMark('info')} watching the board file and its Hermes board; every change on either side syncs\n`);
+    await watching;
+  }
   const r = await hermesSync.syncLinkedHermes(root, { ...(policy ? { policy: policy as hermesSync.HermesPolicy } : {}), dryRun });
   if (!r) throw new Error('ztrack sync hermes: this project has no Hermes link. Add one with `ztrack init --preset kanban --sync hermes --hermes-home <dir>` (or a `sync: { "provider": "hermes", "file": "arcs.md", … }` config entry).');
   if (dryRun) {
