@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.0.0
+
 - **ztrack is `@volter/ztrack`** (2.0.0, breaking). Install it with `npm install -D @volter/ztrack`; the command is still `ztrack`. An installed preset imports `@volter/ztrack/preset-kit` (and a dashboard extension `@volter/ztrack/visualizer-kit`), so a project moving to 2.0 changes those imports in `.volter/tracker/` and any hook command that names `node_modules/ztrack/…` (now `node_modules/@volter/ztrack/…`). The Action is `volter-ai/ztrack@v2`.
 
 ## 1.5.10
