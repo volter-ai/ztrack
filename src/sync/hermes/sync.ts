@@ -23,7 +23,7 @@
 // new card with the edited fields, the same parents and state, children relinked to it, a
 // `replaces`/`replaced by` comment on each, the old card archived, the section renamed.
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { check as runCheck, type BlockRef, type CoreRoot, type IssueRecord, type Preset } from '../../core/engine.ts';
 import { formatRef } from '../../core/ref.ts';
 import { DocumentSource } from '../../backends/documentSource.ts';
@@ -171,7 +171,7 @@ function saveBase(p: string, cards: Base): void {
 }
 
 // ── the file: read through the document source + the installed preset; render as a whole ─────
-function readFile(abs: string, preset: Preset<CoreRoot>): { cards: FileCard[]; preamble: string } {
+function readFile(abs: string, preset: Preset<CoreRoot>, strict = false): { cards: FileCard[]; preamble: string } {
   if (!existsSync(abs)) return { cards: [], preamble: '' };
   const text = readFileSync(abs, 'utf8').replace(/\r\n?/g, '\n');
   // The sync re-renders the file whole, so every heading must belong to the grammar: a card
@@ -195,6 +195,18 @@ function readFile(abs: string, preset: Preset<CoreRoot>): { cards: FileCard[]; p
   if (!result.export) {
     const why = result.findings.filter((f) => f.severity === 'error').slice(0, 5).map((f) => `  ${f.issueId ?? ''} ${f.message}`).join('\n');
     throw new Error(`ztrack sync hermes: ${abs} does not parse as a kanban board — nothing was synced.\n${why}`);
+  }
+  // A file an agent wrote must validate before any of it reaches the board: a card whose
+  // `status:`/`assignee:` block was discarded (no blank line after it) would otherwise read as a
+  // `todo`, unassigned card with those lines in its prose, and push all three.
+  if (strict) {
+    const problems = [
+      ...source.headerDiagnostics().map((d) => `  ${d.issueId}: ${d.message}`),
+      ...result.findings.filter((f) => f.severity === 'error').map((f) => `  ${f.issueId ?? ''}${f.origin?.line ? ` (line ${f.origin.line})` : ''}: ${f.message}`),
+    ];
+    if (problems.length) {
+      throw new Error(`ztrack sync hermes: ${abs} doesn't validate, so nothing was synced and the board is untouched. Fix these (\`ztrack check ${basename(abs)}\` shows them too), then sync:\n${problems.slice(0, 10).join('\n')}${problems.length > 10 ? `\n  … ${problems.length - 10} more` : ''}`);
+    }
   }
   const first = text.split('\n').findIndex((l) => /^#{1,6}\s+[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+\b/.test(l));
   const preamble = (first < 0 ? text : text.split('\n').slice(0, first).join('\n')).replace(/\s+$/, '');
@@ -272,7 +284,7 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
   const res: HermesSyncResult = { pulled: [], pushed: [], created: [], recreated: [], archived: [], conflicts: [], failed: [], actions: [] };
 
   const before = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
-  const { cards: localCards, preamble } = readFile(abs, preset);
+  const { cards: localCards, preamble } = readFile(abs, preset, true);
   const boardCards = await readBoard(opts.exec);
   const remote = new Map(boardCards.map((c) => [c.id, c]));
   const states = boardStates(boardCards, preset);

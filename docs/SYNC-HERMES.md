@@ -70,11 +70,13 @@ Done when: the manager's arcs live in arcs.md backed by its Hermes kanban; relea
   Hermes id with `-` for `_` (`t_65a8d101` is `t-65a8d101`). The title is the card's whole title:
   the outcome.
 - **Its header block** follows the heading after one blank line: `status: <lane>` and, when the card
-  has one, `assignee: <profile>`, one per line, ending at a blank line. The lanes are Hermes's:
+  has one, `assignee: <profile>`, one per line, ending at a blank line. The blank line is required:
+  without it the lines read as prose, the card as an unassigned `todo`, and both `ztrack check`
+  (`card_header_unended`) and the sync refuse the file. The lanes are Hermes's:
   `triage`, `todo`, `ready`, `running`, `review`, `blocked`, `scheduled`, `done`, `archived`.
   A new card written with no `status:` line is `todo`.
-- **Its metadata block** is the first paragraph after the header, and only when every line of it
-  is one of these keys. Each key is optional:
+- **Its metadata block** is the paragraphs after the header made wholly of these keys (the sync
+  writes them as one). Each key is optional:
   - `Blocked by:` lists the cards that must finish first (Hermes parent links), comma-separated.
   - `Workspace:` is `scratch` (the default, never written), `worktree`, `worktree:<path>` or
     `dir:<path>`.
@@ -108,6 +110,7 @@ lane or a malformed field, and it reports these rules:
 | `duplicate_issue_id` | error | two sections carry the same id |
 | `duplicate_task_id` | error | a card has two tasks with one id |
 | `done_before_blocker` | warning | a ticked task (or a done card) waits on something that isn't done |
+| `card_header_unended` | error | a card's prose starts with a `status:`/`assignee:` line (no blank line after the header) |
 | `kanban_line_unparsed` | error | a line under Tasks is neither a task nor its `blocked-by` line |
 | `sync_conflict` | error | the last sync found a collision, a refused edit, or a section with no card behind it |
 
@@ -150,10 +153,11 @@ moves to `running`, gets the dispatcher's `assignee:`, and gets a `Run:` line na
 started or adopted. When the run ends, the `Run:` line goes away. A card that goes done or archived
 on the board leaves the file. So does a `Blocked by:` naming it, since it no longer gates anything.
 
-`ztrack check` (the whole tracker, not `ztrack check <file>.md`) and `ztrack loop start` run the
-sync first on a Hermes-linked project, like they do for a GitHub-linked one. A sync that can't run prints `! sync hermes skipped: <why>`, and the check
-then reads the file as it is. `--dry-run` prints the board writes a sync would make and changes
-nothing.
+`ztrack check` only validates: it never syncs, so it never writes the file or the board. Only
+`ztrack sync hermes` writes, and it refuses a file that doesn't validate. The refusal covers any
+error `ztrack check` would report, and any card whose `status:`/`assignee:` lines aren't followed by
+a blank line. It names each problem and makes no board write. `--dry-run` prints the board writes a
+sync would make and changes nothing.
 
 ## Collisions
 

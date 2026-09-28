@@ -7,7 +7,6 @@ import { optionValue } from './cliArgs.ts';
 import { commandName } from './cliHelp.ts';
 import { statusMark, ui } from './cliStyle.ts';
 import * as githubSync from './sync/github/index.ts';
-import * as hermesSync from './sync/hermes/index.ts';
 import { activeStatusEnum } from './presetRegistry.ts';
 import { nearestKey } from './configSchema.ts';
 import { detectGateWiring } from './gateWiring.ts';
@@ -142,7 +141,6 @@ export async function handleLoopCommand(args: string[]): Promise<boolean> {
     writeFileSync(marker, `${JSON.stringify({ target, maxIterations, startedAt: new Date().toISOString(), label, ...(until ? { until } : {}) }, null, 2)}\n`);
     // Pull the latest from a linked tracker before the ralph loop starts (best-effort).
     await githubSync.syncLinked(root, { pull: true }).catch(() => {});
-    await hermesSync.syncLinkedHermes(root).catch((e: Error) => { process.stderr.write(`! sync hermes skipped: ${e.message.split('\n')[0]}\n`); });
     const untilSuffix = until ? ` until "${until}"` : '';
     const holdDescription = until ? `${label} reaches "${until}" (and passes check there)` : `${label} is green`;
     process.stdout.write(`${statusMark('pass')} ${ui.green('loop armed')} ${ui.dim(`→ ${label}${untilSuffix} (max ${maxIterations}); once the ztrack plugin's Stop/SubagentStop hooks are wired (README → Agent workflows), it holds every turn in this root — the agent's and any subagent's — until ${holdDescription}`)}\n`);

@@ -28,8 +28,8 @@
 //   - [ ] c3 release
 //     - blocked-by: c1, t-954aa1da:c2
 //
-// The metadata block is the body's FIRST paragraph, and only when every line of it is one of the
-// keys above; anything else is the opening post. A task is `- [ ] <id> <text>`: the id is `c<N>`,
+// The metadata block is the body's leading paragraphs made wholly of the keys above; anything
+// else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>`,
 // and a task written without one gets the next free `c<N>` of its card. `blocked-by` names tasks
 // (`c1` in this card, `<card>:<task>` in another) or whole cards.
 
@@ -134,15 +134,21 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   const head = at < 0 ? lines : lines.slice(0, at);
   const tail = at < 0 ? [] : lines.slice(at + 1);
 
-  // The metadata block: the first paragraph, iff every line of it is a metadata line.
+  // The metadata block: the leading paragraphs made wholly of metadata lines (written as one
+  // paragraph, read from several, so a blank line inside the block loses nothing).
   const content = trimBlankLines(head);
-  let end = content.findIndex((l) => l.trim() === '');
-  if (end < 0) end = content.length;
-  const first = content.slice(0, end);
-  const isMeta = first.length > 0 && first.every((l) => META_LINE.test(l));
   const meta: Record<string, string> = {};
-  if (isMeta) for (const l of first) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.trim(); }
-  const bodyLines = trimBlankLines(isMeta ? content.slice(end) : content).map((l) => l.replace(ESCAPED, ''));
+  let at2 = 0;
+  for (;;) {
+    let end = content.slice(at2).findIndex((l) => l.trim() === '');
+    end = end < 0 ? content.length : at2 + end;
+    const para = content.slice(at2, end);
+    if (!para.length || !para.every((l) => META_LINE.test(l))) break;
+    for (const l of para) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.trim(); }
+    at2 = end;
+    while (at2 < content.length && content[at2]!.trim() === '') at2++;
+  }
+  const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
 
   const { tasks, unparsed } = parseTasks(record.id, tail);
   const card: Record<string, unknown> = {
@@ -236,6 +242,14 @@ const KANBAN_RULES = [
   rule<KanbanRoot, { issueId: string; nodeKey: string; depKey: string }>({
     code: 'done_before_blocker', severity: 'warning', select: (m) => m.graph.completionViolations,
     message: ({ nodeKey, depKey }) => `${nodeKey} is done but ${depKey}, which blocks it, is not.`,
+  }),
+  rule<KanbanRoot, { issueId: string; line: string }>({
+    code: 'card_header_unended',
+    select: (m) => m.root.issues.flatMap((i) => {
+      const first = i.body.split('\n')[0] ?? '';
+      return /^(status|assignee):/i.test(first) ? [{ issueId: i.id, line: first }] : [];
+    }),
+    message: ({ issueId, line }) => `Card ${issueId}: "${line.trim()}" reads as prose, not as the card's lane or assignee — the \`status:\`/\`assignee:\` lines must be followed by a blank line.`,
   }),
   rule<KanbanRoot, { issueId: string; line: string }>({
     code: 'kanban_line_unparsed',
