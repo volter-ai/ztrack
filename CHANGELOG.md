@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.2.2
+
 - `ztrack check` no longer syncs a Hermes-linked board: it only validates, and never writes the file or the board. `ztrack sync hermes` refuses a file that doesn't validate, making no board write and naming each problem. That includes a card whose `status:`/`assignee:` lines run straight into the next line. Those lines were read as prose, so the card read as an unassigned `todo`. The new kanban rule `card_header_unended` reports it in `check`.
 - The kanban preset reads metadata (`Machine:`, `Session:`, …) from every leading paragraph made wholly of metadata lines, not only the first.
 
