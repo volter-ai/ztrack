@@ -57,7 +57,7 @@ const LocalSchema = z.object({
   store: z.string().optional(),
 }).strict();
 
-const SyncSchema = z.object({
+const GithubSyncSchema = z.object({
   provider: z.literal('github'),
   repo: z.string(),
   /** Three-way reconcile policy for the bidirectional sync. Default `merge` (field-level:
@@ -65,6 +65,31 @@ const SyncSchema = z.object({
    *  = GitHub authoritative on collision; `twin-wins` = the local tracker authoritative. */
   policy: z.enum(['hub-wins', 'twin-wins', 'merge']).optional(),
 }).strict();
+
+/** A board FILE kept two-way in step with a Hermes kanban (`ztrack sync hermes`,
+ *  docs/SYNC-HERMES.md). The file is a declared `document` source in the kanban preset's grammar;
+ *  the board is read and written only through `hermes kanban`. */
+const HermesSyncSchema = z.object({
+  provider: z.literal('hermes'),
+  /** The board file, project-root-relative (also declared under `sources` as a document). */
+  file: z.string(),
+  /** HERMES_HOME of the board's profile (`~` expands). Absent: the environment's. */
+  home: z.string().optional(),
+  /** A named Hermes board (`hermes kanban --board <slug>`). Absent: the home's default board. */
+  board: z.string().optional(),
+  /** The `hermes` executable. Default `hermes` on PATH. */
+  bin: z.string().optional(),
+  /** Newest comments shown per open card (default 5); a done card shows only the count. */
+  comments: z.number().int().nonnegative().optional(),
+  /** The command printed for a card's full thread after its earlier-comment count
+   *  (default `hermes kanban show`). */
+  show: z.string().optional(),
+  /** Same-field collision policy. Default `merge` (recorded as a sync conflict, neither side
+   *  applied); `board-wins` / `file-wins` pick a side. */
+  policy: z.enum(['merge', 'board-wins', 'file-wins']).optional(),
+}).strict();
+
+const SyncSchema = z.discriminatedUnion('provider', [GithubSyncSchema, HermesSyncSchema]);
 
 const EvidenceSchema = z.object({
   /**
@@ -274,12 +299,16 @@ function collectKnownKeys(schema: z.ZodTypeAny, path: string, out: Record<string
   const unwrapped = unwrapOptional(schema);
   if (unwrapped instanceof z.ZodObject) {
     const shape = unwrapped.shape as Record<string, z.ZodTypeAny>;
-    out[path] = Object.keys(shape);
+    out[path] = [...new Set([...(out[path] ?? []), ...Object.keys(shape)])];
     for (const [key, field] of Object.entries(shape)) collectKnownKeys(field, path ? `${path}.${key}` : key, out);
     return;
   }
   if (unwrapped instanceof z.ZodArray) {
     collectKnownKeys(unwrapped.element as z.ZodTypeAny, `${path}[]`, out);
+  }
+  // A union (e.g. `sync`, one shape per provider): the keys any of its shapes accepts.
+  if (unwrapped instanceof z.ZodUnion) {
+    for (const option of unwrapped.options as z.ZodTypeAny[]) collectKnownKeys(option, path, out);
   }
   // ZodRecord, ZodEnum, ZodString, ZodNumber, ZodBoolean, ZodLiteral, … : nothing enumerable
   // beneath them — stop.

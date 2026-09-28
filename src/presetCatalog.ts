@@ -73,7 +73,8 @@ export function resolvePresetName(preset: string): string {
 export type InitTrackerProjectOptions = {
   preset?: string;
   /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
-  sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
+  sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' }
+    | { provider: 'hermes'; file: string; home?: string; board?: string };
   /** `shared`: a central, cross-worktree board (for multi-worktree/agent fleets). Default `branch`
    *  (committed, branch-scoped). See TrackerConfig.board. */
   board?: 'branch' | 'shared';
@@ -288,6 +289,8 @@ export function initTrackerProject(
     // author who DOES declare categories still gets `--categories` filtering; init just stops
     // writing this particular dead block.
     ...(options.sync ? { sync: options.sync } : {}),
+    // A Hermes-linked board is one document-source FILE (`ztrack sync hermes`, docs/SYNC-HERMES.md).
+    ...(options.sync?.provider === 'hermes' ? { sources: [{ path: options.sync.file, format: 'document' as const, name: 'board' }] } : {}),
     // Record the board scope explicitly (default 'shared' — a central, cross-worktree board); linked
     // trackers ignore it (they already have one central store), so only record it for an unlinked tracker.
     ...(options.sync ? {} : { board: options.board ?? 'shared' }),

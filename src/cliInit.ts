@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
-import { initTrackerPresets, initTrackerProject, presetManifest } from './presetCatalog.ts';
+import { initTrackerPresets, initTrackerProject, presetManifest, type InitTrackerProjectOptions } from './presetCatalog.ts';
+import * as hermesSync from './sync/hermes/index.ts';
 import { ztrackResolvableFrom } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
@@ -53,11 +54,20 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   if (!initTrackerPresets().includes(preset)) {
     throw new Error(`ztrack init: unknown --preset '${preset}'. Run \`${command} init --list\` to see available presets.`);
   }
-  // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`.
+  // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`, or a
+  // Hermes kanban behind one board file: `ztrack init --preset kanban --sync hermes [--file arcs.md]
+  // [--hermes-home <dir>] [--board <slug>]`.
   const syncProvider = optionValue(args, '--sync');
-  let sync: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' } | undefined;
-  if (syncProvider) {
-    if (syncProvider !== 'github') throw new Error(`ztrack init: --sync only supports 'github' today (got '${syncProvider}')`);
+  let sync: InitTrackerProjectOptions['sync'];
+  if (syncProvider === 'hermes') {
+    if (preset !== 'kanban') throw new Error('ztrack init --sync hermes: a Hermes-backed board uses the kanban preset — add `--preset kanban`.');
+    const file = optionValue(args, '--file') || 'arcs.md';
+    if (!file.endsWith('.md')) throw new Error(`ztrack init --sync hermes: --file must be a .md file (got '${file}')`);
+    const home = optionValue(args, '--hermes-home');
+    const hermesBoard = optionValue(args, '--board');
+    sync = { provider: 'hermes', file, ...(home ? { home } : {}), ...(hermesBoard ? { board: hermesBoard } : {}) };
+  } else if (syncProvider) {
+    if (syncProvider !== 'github') throw new Error(`ztrack init: --sync supports 'github' and 'hermes' (got '${syncProvider}')`);
     const repo = optionValue(args, '--repo');
     if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("ztrack init --sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
     const policy = optionValue(args, '--policy');
@@ -83,6 +93,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
   // a network/auth failure leaves init successful — `ztrack sync` retries later).
   let pulled = false;
+  if (sync?.provider === 'hermes') return initHermesDone(root, result, sync, command);
   if (sync) {
     process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to github ${sync.repo} — pulling issues…`)}\n`);
     try {
@@ -135,6 +146,34 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     ui.dim('Edit the installed validation preset to encode your project rules.'),
     ui.dim('Declare more stores in .volter/tracker-config.json\'s `sources` array — a "document" source is one markdown file holding many issues.'),
     ui.dim('Read next: the Guide (node_modules/@volter/ztrack/docs/GUIDE.md, or github.com/volter-ai/ztrack) — setup → verify → drive an agent to green; agents get docs/AGENT-PLAYBOOK.md.'),
+    presetTrustNotice(),
+    ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
+    '',
+  ].join('\n'));
+  return true;
+}
+
+// `init --sync hermes`: the first sync writes the board file from the board (best-effort, like the
+// github pull — a missing `hermes` leaves init successful and `ztrack sync hermes` retries).
+async function initHermesDone(root: string, result: ReturnType<typeof initTrackerProject>, sync: { file: string; home?: string }, command: string): Promise<boolean> {
+  let synced = false;
+  try {
+    const r = await hermesSync.syncLinkedHermes(root);
+    if (r) process.stdout.write(`${statusMark('pass')} ${ui.dim(`wrote ${sync.file}: ${r.pulled.length} card(s) from the board`)}\n`);
+    synced = true;
+  } catch (e) {
+    process.stdout.write(`${statusMark('warn')} ${ui.yellow(`first sync skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim(`— run \`${command} sync hermes\``)}\n`);
+  }
+  process.stdout.write([
+    `${statusMark('pass')} ${heading('Initialized ztrack', `preset kanban • linked to the Hermes kanban${sync.home ? ` at ${sync.home}` : ''}`)}`,
+    `  ${ui.dim(result.configPath)}`,
+    '',
+    ui.bold('Next steps'),
+    stackedCommand(1, synced ? 'Read the board' : 'Write the board file', synced ? `$EDITOR ${sync.file}` : `${command} sync hermes`, 'One section per card: its lane, dependencies, opening post and newest comments.'),
+    '',
+    stackedCommand(2, 'Edit it, then sync', `${command} sync hermes`, 'Two-way: your edits reach the board, the board\'s changes reach the file; a same-field collision gates `ztrack check`.'),
+    '',
+    ui.dim('The file grammar: docs/SYNC-HERMES.md.'),
     presetTrustNotice(),
     ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
     '',

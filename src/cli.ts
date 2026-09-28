@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { exportTrackerRoot } from './export.ts';
 import { checkTracker } from './check.ts';
 import * as githubSync from './sync/github/index.ts';
+import * as hermesSync from './sync/hermes/index.ts';
 import { loadTrackerConfig, projectRootFrom, trackerConfigPath } from './config.ts';
 import { upgradeTrackerPreset } from './presetCatalog.ts';
 import { migrateLocalToMarkdown } from './migrateLocal.ts';
@@ -320,6 +321,7 @@ async function main(): Promise<void> {
     let root = '';
     try { root = projectRootFrom(); } catch { /* no project: nothing to sync */ }
     if (userCheck && root) await githubSync.syncLinked(root, { pull: true, push: true }).catch(() => {});
+    if (userCheck && root) await hermesSync.syncLinkedHermes(root).catch((e: Error) => { process.stderr.write(`! sync hermes skipped: ${e.message.split('\n')[0]}\n`); });
     if (await handleCheckCommand(args)) return;
   } else if (await handleCheckCommand(args)) return;
 

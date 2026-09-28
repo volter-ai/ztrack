@@ -22,6 +22,7 @@ their workflow becomes more specific.
 | `simple-gh-sdlc` | a GitHub PR-based dev lifecycle (review happens on a PR) | everything `simple-sdlc` enforces, **plus** a PR at in-review and a merged PR for done. *(Stage 2 will also require world annotations + world sources — the mirrored-world adapters in [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world), not declared `sources:`.)* |
 | `spec` | issue bodies are lightweight specs | passed ACs cite commit-backed evidence; cited commits exist; ids unique |
 | `speckit` | repos following GitHub Spec Kit conventions | a multi-file feature bundle with required User Scenarios/Stories, Functional Requirements, and Tasks; task commits exist; foundational tasks gate story completion; Constitution Check gate passes (read-only) |
+| `kanban` | a board of cards, not a dev lifecycle — no ACs, no evidence (e.g. a Hermes kanban kept as one file) | cards sit in Hermes's lanes (triage→done); `Blocked by:` targets exist and never loop; a done card's blockers are done (warning). Pairs with [`ztrack sync hermes`](SYNC-HERMES.md) |
 
 Install one with:
 
@@ -30,6 +31,7 @@ npx @volter/ztrack init --team APP --preset simple-sdlc      # the lean, PR-free
 npx @volter/ztrack init --team APP --preset simple-gh-sdlc   # PR-based GitHub flow
 npx @volter/ztrack init --team APP --preset spec
 npx @volter/ztrack init --team APP --preset speckit
+npx @volter/ztrack init --preset kanban --sync hermes --hermes-home ~/.hermes   # a Hermes kanban as one file
 ```
 
 Omitting `--preset` installs `simple-sdlc` (and `--preset default` is an alias for it).

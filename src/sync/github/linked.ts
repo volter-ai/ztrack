@@ -19,7 +19,7 @@ export function linkedRepo(projectRoot: string): string | null {
 
 /** The configured reconcile policy for the link (default `merge`). */
 export function linkedPolicy(projectRoot: string): ReconcilePolicy {
-  try { return loadTrackerConfig(projectRoot).sync?.policy ?? 'merge'; } catch { return 'merge'; }
+  try { const sync = loadTrackerConfig(projectRoot).sync; return sync?.provider === 'github' ? sync.policy ?? 'merge' : 'merge'; } catch { return 'merge'; }
 }
 
 /** Pull and/or push the linked GitHub repo. No-op when the project has no github link. */
