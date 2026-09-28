@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- `ztrack sync hermes` with no board file starts over from the board: it no longer takes a base left by another checkout (the base is shared across a repo's worktrees) as a file whose every section was deleted, which would have archived every card. The base is now kept per file path. `sync hermes --help` says a card's prose and tasks are its state (never a re-create).
+
 ## 2.2.0
 
 - **A card's work is its tasks.** On a `kanban` board a card is its lane, its dependencies, a few lines of prose (`Done when:`), `Machine:`, `Session:`, and `### Tasks`: `- [ ] c1 …` one line each, ticked when done, with `blocked-by:` naming a task (`c1`, `t-…:c2`) or a card. `ztrack check` validates task ids and blocking (`task_blocker_missing`, `card_block_cycle`, `done_before_blocker`). The file shows open cards only. It no longer renders a comment thread; the `comments` and `show` sync keys are gone.

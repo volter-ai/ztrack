@@ -262,8 +262,11 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
   }
   const policy = opts.policy ?? 'merge';
   const abs = isAbsolute(opts.file) ? opts.file : resolve(opts.projectRoot, opts.file);
-  const bPath = basePath(opts.projectRoot, opts.file);
-  const base = loadBase(bPath);
+  const bPath = basePath(opts.projectRoot, abs); // per file on disk: checkouts share the sync state dir
+  // The base says what file and board last agreed on. With no file there is nothing to agree
+  // with — a fresh checkout, a deleted file, a worktree sharing another checkout's base — so
+  // the sync starts over from the board instead of reading every card as a deleted section.
+  const base = existsSync(abs) ? loadBase(bPath) : {};
   const writer = boardWriter(opts.exec);
   const dry = !!opts.dryRun;
   const res: HermesSyncResult = { pulled: [], pushed: [], created: [], recreated: [], archived: [], conflicts: [], failed: [], actions: [] };
