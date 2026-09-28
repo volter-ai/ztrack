@@ -16,7 +16,7 @@
 //
 // Gated on: visualizer client deps installed (react.e2e convention) AND the package itself
 // having been BUILT (`dist/src/visualizerKit.js` present — a fixture's own `extension.tsx`
-// imports 'ztrack/visualizer-kit', which resolves via THIS repo's `package.json` "exports" map
+// imports '@volter/ztrack/visualizer-kit', which resolves via THIS repo's `package.json` "exports" map
 // to `dist/src/visualizerKit.js` — a `bun test` run without a prior `npm run build` skips here, matching
 // `visualizerKitFixture.e2e.test.ts`'s own gate).
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
@@ -40,7 +40,7 @@ function zt(root: string, ...a: string[]) {
 function initFixture(preset?: string): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-viz13-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // preset.mts imports 'ztrack/preset-kit'; extension.tsx imports 'ztrack/visualizer-kit' — same install requirement, VIZ-13's summary
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // preset.mts imports '@volter/ztrack/preset-kit'; extension.tsx imports '@volter/ztrack/visualizer-kit' — same install requirement, VIZ-13's summary
   const args = preset ? ['init', '--preset', preset, '--team', 'V13'] : ['init', '--team', 'V13'];
   const r = zt(root, ...args);
   if (r.status !== 0) throw new Error(`fixture: ztrack init failed: ${r.stderr || r.stdout}`);
@@ -97,14 +97,14 @@ function writeExtension(root: string, source: string): void {
   writeFileSync(extensionPath(root), source);
 }
 
-// Surgically break ONLY 'ztrack/visualizer-kit' resolution (dev/03's second case), while leaving
-// 'ztrack/preset-kit' (which the INSTALLED preset.mts needs to keep working — the board must stay
+// Surgically break ONLY '@volter/ztrack/visualizer-kit' resolution (dev/03's second case), while leaving
+// '@volter/ztrack/preset-kit' (which the INSTALLED preset.mts needs to keep working — the board must stay
 // genuinely healthy, not fail for an unrelated reason) resolvable. Models a realistic case: an
 // older installed `ztrack` predating this subpath. Real `dist/` is symlinked in (so transitive
 // deps like zod still resolve via the real package's own node_modules), and the stub
 // package.json is a copy of the real one with just the one export key removed.
 function breakVisualizerKitResolution(root: string): void {
-  const link = join(root, 'node_modules', 'ztrack');
+  const link = join(root, 'node_modules', '@volter', 'ztrack');
   rmSync(link, { recursive: true, force: true });
   mkdirSync(link, { recursive: true });
   symlinkSync(join(REPO, 'dist'), join(link, 'dist'));
@@ -177,7 +177,7 @@ suite('VIZ-13 — repo-owned extension.tsx compiled into the served board (happy
     beforeAll(async () => {
       root = initFixture(); // default = simple-sdlc
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({
   issuePanels: (issue) => (
@@ -222,7 +222,7 @@ export default defineVisualizerExtension({
       // speckit's OWN first-party client/presets/speckit.tsx ships an `acText` member
       // (`<strong>{a.id}</strong> {a.text}`) — override it with a distinguishable marker.
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({
   acText: (ac) => 'REPO-OVERRIDE:' + ac.id,
@@ -384,7 +384,7 @@ export default defineVisualizerExtension({
     beforeAll(async () => {
       root = initFixture();
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({
   issuePanels: (issue) => (
@@ -425,10 +425,10 @@ export default defineVisualizerExtension({
     beforeAll(async () => {
       root = initFixture();
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 export default defineVisualizerExtension({ acText: (ac) => ac.id });
 `);
-      breakVisualizerKitResolution(root); // 'ztrack/preset-kit' keeps resolving; ONLY visualizer-kit breaks
+      breakVisualizerKitResolution(root); // '@volter/ztrack/preset-kit' keeps resolving; ONLY visualizer-kit breaks
       createIssue(root, { title: 'Unresolvable kit', state: 'draft', body: scaffoldBody(root, 'Unresolvable kit') });
       proc = startServer(root, port);
       await waitUp(port);
@@ -459,7 +459,7 @@ export default defineVisualizerExtension({ acText: (ac) => ac.id });
     beforeAll(async () => {
       root = initFixture();
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 export default defineVisualizerExtension({
   issuePanels: (issue) => <section className="panel"><div className="panel-title"><h3>Version One</h3></div></section>,
 });
@@ -482,7 +482,7 @@ export default defineVisualizerExtension({
       expect(document.body.textContent ?? '').toContain('Version One');
 
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 export default defineVisualizerExtension({
   issuePanels: (issue) => <section className="panel"><div className="panel-title"><h3>Version Two</h3></div></section>,
 });
@@ -509,7 +509,7 @@ export default defineVisualizerExtension({
 
       external = mkdtempSync(join(tmpdir(), 'ztrk-viz13-external-'));
       writeFileSync(join(external, 'extension.tsx'), `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 export default defineVisualizerExtension({ acText: (ac) => ac.id });
 `);
       // Symlink the `visualizer` DIRECTORY (not the file) to somewhere entirely outside the
@@ -550,7 +550,7 @@ export default defineVisualizerExtension({ acText: (ac) => ac.id });
     beforeAll(async () => {
       root = initFixture();
       writeExtension(root, `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({
   issuePanels: (issue) => (

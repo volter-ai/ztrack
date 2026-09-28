@@ -48,16 +48,16 @@ distilled from an actual game-design repo). It keeps kill-questions in an emoji 
 that must NOT be treated as issues. The bar:
 
 ```
-$ npx ztrack init --team AS
-$ npx ztrack check
+$ npx @volter/ztrack init --team AS
+$ npx @volter/ztrack check
 note: PREPRODUCTION.md parses under the 'emoji-register' dialect: 5 issues (KQ1 … KQ5).
       To track it as-is (read-only, file untouched):
         ztrack import PREPRODUCTION.md --register --dialect emoji-register
 note: S1_BUILD.md parses under the 'checkbox-roster' dialect: 4 issues (WS-A … WS-D). …
-$ npx ztrack import PREPRODUCTION.md --register --dialect emoji-register
-$ npx ztrack import S1_BUILD.md --register --dialect checkbox-roster
-$ npx ztrack issue list        # KQ3 done · KQ2 ready · WS-A done · … — true statuses
-$ npx ztrack check             # structural truth, exit 0
+$ npx @volter/ztrack import PREPRODUCTION.md --register --dialect emoji-register
+$ npx @volter/ztrack import S1_BUILD.md --register --dialect checkbox-roster
+$ npx @volter/ztrack issue list        # KQ3 done · KQ2 ready · WS-A done · … — true statuses
+$ npx @volter/ztrack check             # structural truth, exit 0
 $ git status                   # ONLY .volter/tracker-config.json changed. No file rewritten.
 ```
 

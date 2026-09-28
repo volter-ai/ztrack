@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
+import type { CoreRoot, IssueRecord, Preset } from '@volter/ztrack/preset-kit';
 import { assertAcSubLineFidelity, assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkDefault, DefaultPreset, type DefaultRoot, DefaultRootSchema, parseDefault, serializeIssue } from './simple-sdlc.ts';
 

@@ -1,5 +1,5 @@
 // The twin packages (`@volter/world-core` + `@volter/twin-github`) are an OPTIONAL peer
-// dependency (see package.json `peerDependenciesMeta`) — a plain `npm i -D ztrack` must not pull
+// dependency (see package.json `peerDependenciesMeta`) — a plain `npm i -D @volter/ztrack` must not pull
 // in their transitive tree. So sync.ts (the only runtime user of the twin outside this file) must
 // never statically import them: a static `import … from '@volter/world-core'` at the top of any
 // module reachable from cli.ts would fail to RESOLVE — and crash the whole CLI, not just `sync

@@ -17,7 +17,7 @@ describe('findings are self-documenting AND self-closing', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-selfdoc-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     git('init', '-q'); git('config', 'user.email', 't@t.co'); git('config', 'user.name', 't');
     zt('init', '--team', 'APP');
   }, 30_000);

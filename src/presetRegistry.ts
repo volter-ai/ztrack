@@ -38,7 +38,7 @@ function typeStrippingFix(): string {
 export function ztrackResolvableFrom(root: string): boolean {
   let dir = resolve(root);
   for (;;) {
-    if (existsSync(join(dir, 'node_modules', 'ztrack'))) return true;
+    if (existsSync(join(dir, 'node_modules', '@volter', 'ztrack'))) return true;
     const parent = dirname(dir);
     if (parent === dir) return false;
     dir = parent;
@@ -64,7 +64,7 @@ export function oracleUnavailableReason(projectRoot: string): string | null {
     return `the ${entrypoint.split('.').pop()} validation preset can't load: ${typeStrippingFix()}`;
   }
   if (!ztrackResolvableFrom(projectRoot)) {
-    return "the preset imports 'ztrack/preset-kit' but ztrack isn't installed as a project dependency — run `npm install -D ztrack`";
+    return "the preset imports '@volter/ztrack/preset-kit' but ztrack isn't installed as a project dependency — run `npm install -D @volter/ztrack`";
   }
   return null;
 }
@@ -90,7 +90,7 @@ async function importPresetModule(absolutePath: string, describeSource: string):
   try {
     loaded = await import(pathToFileURL(absolutePath).href) as { default?: unknown; preset?: unknown };
   } catch (err) {
-    // The installed preset imports `ztrack/preset-kit`; that bare specifier resolves from the
+    // The installed preset imports `@volter/ztrack/preset-kit`; that bare specifier resolves from the
     // PROJECT's node_modules. If ztrack isn't a dependency there (e.g. it was run via `npx`
     // without being installed), the import fails — turn the raw resolver error into a fix.
     const msg = err instanceof Error ? err.message : String(err);
@@ -107,10 +107,10 @@ async function importPresetModule(absolutePath: string, describeSource: string):
         + `stripping — which failed here: ${typeStrippingFix()}, then re-run.`,
       );
     }
-    if (/Cannot find package 'ztrack'|Cannot find module 'ztrack/.test(msg)) {
+    if (/Cannot find package '@volter\/ztrack'|Cannot find module '@volter\/ztrack/.test(msg)) {
       throw new Error(
-        `The validation preset (${describeSource}) imports 'ztrack/preset-kit', but the 'ztrack' package isn't resolvable from this project. `
-        + `Install it as a dependency so the preset can load it:\n\n    npm install -D ztrack\n\n`
+        `The validation preset (${describeSource}) imports '@volter/ztrack/preset-kit', but the '@volter/ztrack' package isn't resolvable from this project. `
+        + `Install it as a dependency so the preset can load it:\n\n    npm install -D @volter/ztrack\n\n`
         + `(ztrack works like eslint — the preset is your config and imports the mechanism from the installed package; a global or one-off 'npx' install is not enough.)`,
       );
     }

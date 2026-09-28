@@ -24,7 +24,7 @@ suite('visualizer — verified artifact serving', () => {
   beforeAll(async () => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-artifacts-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     const zt = (...args: string[]) => spawnSync('bun', ['run', CLI, ...args], { cwd: root, encoding: 'utf8' });
     const init = zt('init');
     if (init.status !== 0) throw new Error(init.stderr || init.stdout);

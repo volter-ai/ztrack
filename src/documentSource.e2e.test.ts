@@ -54,7 +54,7 @@ describe('document source (ZTB-4 dev/08): read path alongside the default issue-
     root = mkdtempSync(join(tmpdir(), 'ztrk-docsrc-'));
     rootReal = realpathSync(root);
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     expect(ztIn(root, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(docPath(), DOC);
@@ -206,7 +206,7 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     wbRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-'));
     wbRootReal = realpathSync(wbRoot);
     mkdirSync(join(wbRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(wbRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(wbRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(wbRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(wbRoot, 'init', '-q'); gitIn(wbRoot, 'config', 'user.email', 't@t.co'); gitIn(wbRoot, 'config', 'user.name', 't');
     expect(ztIn(wbRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(wbDocPath(), WB_DOC);
@@ -331,7 +331,7 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     const unassignedRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-assignee-'));
     try {
       mkdirSync(join(unassignedRoot, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(unassignedRoot, 'node_modules', 'ztrack'));
+      mkdirSync(join(unassignedRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(unassignedRoot, 'node_modules', '@volter', 'ztrack'));
       gitIn(unassignedRoot, 'init', '-q');
       gitIn(unassignedRoot, 'config', 'user.email', 't@t.co');
       gitIn(unassignedRoot, 'config', 'user.name', 't');
@@ -362,7 +362,7 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     const noHeaderRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-noheader-'));
     try {
       mkdirSync(join(noHeaderRoot, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(noHeaderRoot, 'node_modules', 'ztrack'));
+      mkdirSync(join(noHeaderRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(noHeaderRoot, 'node_modules', '@volter', 'ztrack'));
       gitIn(noHeaderRoot, 'init', '-q'); gitIn(noHeaderRoot, 'config', 'user.email', 't@t.co'); gitIn(noHeaderRoot, 'config', 'user.name', 't');
       expect(ztIn(noHeaderRoot, 'init', '--team', 'APP').code).toBe(0);
       const noHeaderDoc = [
@@ -402,7 +402,7 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     const umbrellaRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-umbrella-'));
     try {
       mkdirSync(join(umbrellaRoot, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(umbrellaRoot, 'node_modules', 'ztrack'));
+      mkdirSync(join(umbrellaRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(umbrellaRoot, 'node_modules', '@volter', 'ztrack'));
       gitIn(umbrellaRoot, 'init', '-q'); gitIn(umbrellaRoot, 'config', 'user.email', 't@t.co'); gitIn(umbrellaRoot, 'config', 'user.name', 't');
       expect(ztIn(umbrellaRoot, 'init', '--team', 'APP').code).toBe(0);
       const umbrellaDoc = [
@@ -521,7 +521,7 @@ describe('document source write-back (ZTB-9 dev/21): splices land on LEAF items 
     nRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-nest-'));
     nRootReal = realpathSync(nRoot);
     mkdirSync(join(nRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(nRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(nRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(nRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(nRoot, 'init', '-q'); gitIn(nRoot, 'config', 'user.email', 't@t.co'); gitIn(nRoot, 'config', 'user.name', 't');
     expect(ztIn(nRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(nDocPath(), NEST_DOC);
@@ -668,7 +668,7 @@ describe('document source write-back (ZTB-10): bare leading prose survives a rea
     pRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-prose-'));
     pRootReal = realpathSync(pRoot);
     mkdirSync(join(pRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(pRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(pRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(pRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(pRoot, 'init', '-q'); gitIn(pRoot, 'config', 'user.email', 't@t.co'); gitIn(pRoot, 'config', 'user.name', 't');
     expect(ztIn(pRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(pDocPath(), PROSE_DOC);
@@ -780,7 +780,7 @@ describe('document source write-back (ZTB-15 dev/36): prose INSIDE the AC sectio
     qRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-acprose-'));
     qRootReal = realpathSync(qRoot);
     mkdirSync(join(qRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(qRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(qRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(qRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(qRoot, 'init', '-q'); gitIn(qRoot, 'config', 'user.email', 't@t.co'); gitIn(qRoot, 'config', 'user.name', 't');
     expect(ztIn(qRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(qDocPath(), AC_PROSE_DOC);
@@ -878,7 +878,7 @@ describe('document source (ZTB-23): missing-assignee fix hint + silently-discard
     zRoot = mkdtempSync(join(tmpdir(), 'ztrk-docsrc-hdr-'));
     zRootReal = realpathSync(zRoot);
     mkdirSync(join(zRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(zRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(zRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(zRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(zRoot, 'init', '-q'); gitIn(zRoot, 'config', 'user.email', 't@t.co'); gitIn(zRoot, 'config', 'user.name', 't');
     expect(ztIn(zRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(zDocPath(), ZDOC);

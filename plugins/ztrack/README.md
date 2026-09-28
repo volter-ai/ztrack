@@ -30,7 +30,7 @@ always-on, so it leaves interactive work alone.
 
 Deliberately **not** bundled: an MCP server config (ztrack has one — `ztrack mcp serve` — but
 the CLI-plus-skill path costs no context when idle; add MCP yourself via
-`claude mcp add ztrack -- npx ztrack mcp serve` if your host has no shell), and slash
+`claude mcp add ztrack -- npx @volter/ztrack mcp serve` if your host has no shell), and slash
 commands (`ztrack loop start` is already the human entry point).
 
 ## Use it
@@ -152,7 +152,7 @@ the tracker, a capped breadcrumb in `loop status`) rather than silent.
 
 ## Requirements
 
-The repo must have `ztrack` installed as a dependency (`npm i -D ztrack`) and a tracker
+The repo must have `ztrack` installed as a dependency (`npm i -D @volter/ztrack`) and a tracker
 (`ztrack init`). The hook runs that **local** ztrack — the same engine the repo-local preset
 imports (binary == library) — so "done" only moves on a reviewed lockfile bump. Override the
 binary with `ZTRACK_BIN`.

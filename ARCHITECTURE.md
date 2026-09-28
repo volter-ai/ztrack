@@ -144,7 +144,7 @@ real, editable source.
 
 ```ts
 // A standalone preset imports ONLY the engine mechanism + dev utilities — never a shared model.
-import { z, rule, gitWorld, type Preset } from 'ztrack/preset-kit';
+import { z, rule, gitWorld, type Preset } from '@volter/ztrack/preset-kit';
 const MyRootSchema = z.object({ issues: z.array(MyIssueSchema) }).strict(); // this preset's OWN schema
 function parseMine(bundle: string): unknown { /* this preset's OWN mdast parser → MyRootSchema shape */ }
 function serializeMine(root): string { /* the declared inverse of parseMine */ }
@@ -161,7 +161,7 @@ parser, serialize, and rules.
 
 | file | role |
 |---|---|
-| `presetKit.ts` | the public `ztrack/preset-kit` mechanism a standalone preset imports (engine `check`/`rule`, mdast helpers, `gitWorld`, root-schema constructor, types) — no shared model |
+| `presetKit.ts` | the public `@volter/ztrack/preset-kit` mechanism a standalone preset imports (engine `check`/`rule`, mdast helpers, `gitWorld`, root-schema constructor, types) — no shared model |
 | `presetRegistry.ts` | `resolveTrackerValidation(config)` loads the repo-local `validation.entrypoint` file (the installed `preset.mts`) and returns its `Preset`; missing or legacy-only configs fail with init guidance |
 | `core/loader.ts` | the pipeline's impure boundary: builds the typed `Context` from backend + world + git + time — the schema/rules stage downstream of it stays pure. (The I/O itself is done by the modules it calls into, e.g. `core/gitWorld.ts`, `worldAnnotations.ts`, `worldSourceBooks.ts` — real impure surfaces of their own, upstream of the pure pipeline; see §2's TL;DR and §5.) |
 | `core/bundle.ts` | `buildIssueBundle` — frames issues into the `===ISSUE <id>===` markdown bundle |
@@ -236,15 +236,15 @@ parser, serialize, rules) installed as an editable repo-local `preset.mts`.
 ### Module format (ESM-first)
 
 ztrack is published as **ESM** (`"type": "module"`); every library subpath
-(`ztrack/check`, `ztrack/sdk`, `ztrack/export`, `ztrack/mcp`, …) is an ES
+(`@volter/ztrack/check`, `@volter/ztrack/sdk`, `ztrack/export`, `ztrack/mcp`, …) is an ES
 module. Consume it with `import`, or — from a CommonJS file — with **dynamic
-`await import('ztrack/check')`**, which works on every Node ≥ 12 (including under Yarn PnP).
+`await import('@volter/ztrack/check')`**, which works on every Node ≥ 12 (including under Yarn PnP).
 We deliberately do **not** ship a CommonJS build of the whole library: ztrack's parser deps
 (`mdast-*`) are ESM-only, so a CJS build would have to *bundle* each subpath self-contained
 (~17× the package), and `import()` already covers CJS callers correctly.
 
 The installed preset is `.volter/tracker/validation/preset.mts` — an ES module that imports
-`ztrack/preset-kit`. The `.mts` extension means it loads under Node's type-stripping even
+`@volter/ztrack/preset-kit`. The `.mts` extension means it loads under Node's type-stripping even
 inside a CommonJS consumer repo, so it works on Node ≥ 24 across npm, pnpm, yarn (classic +
 Berry + PnP), and bun with no build step.
 
@@ -269,7 +269,7 @@ explicitly. Sync and world-backed validation need that install; see the canonica
 recipe at [docs/GUIDE.md § GitHub sync](docs/GUIDE.md#github-sync-install-the-peers).
 World integration is still opt-in by *policy* on top of that: a baseline tracker
 validates over the store + git and never consults the world. The adapters are
-reachable from the `ztrack/world-annotations` / `ztrack/world-source-books`
+reachable from the `@volter/ztrack/world-annotations` / `@volter/ztrack/world-source-books`
 subpaths; see
 [docs/EVIDENCE.md § Advanced: validating against a mirrored world](docs/EVIDENCE.md#advanced-validating-against-a-mirrored-world).
 

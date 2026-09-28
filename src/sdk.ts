@@ -5,7 +5,7 @@ import { executeTrackerGraphql } from './graphql.ts';
 import { resolveSources } from './sources.ts';
 import type { TrackerClient, TrackerIssueInput, TrackerIssueUpdate } from './types.ts';
 
-// Re-exported for the public `ztrack/sdk` API (unchanged) — the implementation is the ONE shared
+// Re-exported for the public `@volter/ztrack/sdk` API (unchanged) — the implementation is the ONE shared
 // copy in createOutputId.ts (also used by graphql.ts; see that file's top comment for why it's a
 // standalone module rather than living here).
 export { identifierFromCreateOutput };

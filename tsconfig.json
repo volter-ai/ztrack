@@ -6,7 +6,7 @@
     "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
-      "ztrack/preset-kit": ["./src/presetKit.ts"]
+      "@volter/ztrack/preset-kit": ["./src/presetKit.ts"]
     },
     "strict": true,
     "skipLibCheck": true,

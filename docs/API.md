@@ -5,9 +5,9 @@ validated model, or drive issue CRUD from a script or dashboard.
 
 > Stability: since **1.0.0** ztrack follows semver — the surfaces documented here break only at a
 > major version (see README.md's Stability & dependencies for the full story).
-> The package **root** (`import … from 'ztrack'`) is the
+> The package **root** (`import … from '@volter/ztrack'`) is the
 > supported surface — it is a hand-curated subset, not a blanket re-export. Other `ztrack/*`
-> subpaths are deeper building blocks (documented below) and may change; `ztrack/preset-kit` is the
+> subpaths are deeper building blocks (documented below) and may change; `@volter/ztrack/preset-kit` is the
 > one stable deep subpath (see [Preset reference](PRESETS.md)).
 
 ## Run a check from code
@@ -16,7 +16,7 @@ validated model, or drive issue CRUD from a script or dashboard.
 as `ztrack check`.
 
 ```js
-import { checkTracker } from 'ztrack';
+import { checkTracker } from '@volter/ztrack';
 
 const result = await checkTracker({ projectRoot: process.cwd() });
 // result.ok             → boolean (no error-severity findings)
@@ -81,7 +81,7 @@ sets `result.loadedIssueIds` from the ids it can read off `root.issues`, same co
 `createTrackerClient` is the programmatic form of the issue CLI.
 
 ```js
-import { createTrackerClient } from 'ztrack';
+import { createTrackerClient } from '@volter/ztrack';
 
 const client = createTrackerClient({ projectRoot: process.cwd() });
 const list = await client.issue.list({ state: 'open' });
@@ -94,8 +94,8 @@ A runnable example ships at [`demos/sdk-api/run.mjs`](../demos/sdk-api/run.mjs).
 ## Export and parse
 
 ```js
-import { exportTrackerRoot } from 'ztrack';                 // validated root, no findings
-import { parseRawIssueMarkdown, renderPresetCanonicalIssueMarkdown } from 'ztrack';
+import { exportTrackerRoot } from '@volter/ztrack';                 // validated root, no findings
+import { parseRawIssueMarkdown, renderPresetCanonicalIssueMarkdown } from '@volter/ztrack';
 
 const root = await exportTrackerRoot({ projectRoot });
 ```
@@ -109,11 +109,11 @@ mechanism, two demoed narrow imports, and the world-integration extension).
 | Import | Purpose | Audience |
 |---|---|---|
 | `ztrack` (root) | **The supported public API**: `checkTracker`, `checkTrackerRoot`, `createTrackerClient`, `exportTrackerRoot`, `serveTrackerApi`, `parseRawIssueMarkdown`/`renderPresetCanonicalIssueMarkdown`, config helpers (`loadTrackerConfig`, `projectRootFrom`, `trackerConfigPath`, …), and types (`TrackerCheckResult`, `Finding`, `CoreRoot`, `Preset`, …) | app / tooling authors |
-| `ztrack/preset-kit` | Mechanism to author a **standalone preset** (schema/parse/rules) | preset authors → [PRESETS.md](PRESETS.md) |
-| `ztrack/visualizer-kit` | `VisualizerExtension` (bounded dashboard render slots + operational-block policy) + `Payload` (the `/api/board` wire shape) for a repo-owned `extension.tsx` | dashboard extension authors → VISUALIZER.md |
-| `ztrack/check` | `checkTracker` / `checkFile` directly (also on the root) | tooling |
-| `ztrack/sdk` | `createTrackerClient` directly (also on the root) | tooling |
-| `ztrack/world-annotations`, `ztrack/world-source-books` | the world-integration extension a world-using preset imports | [EVIDENCE.md § mirrored world](EVIDENCE.md#advanced-validating-against-a-mirrored-world) |
+| `@volter/ztrack/preset-kit` | Mechanism to author a **standalone preset** (schema/parse/rules) | preset authors → [PRESETS.md](PRESETS.md) |
+| `@volter/ztrack/visualizer-kit` | `VisualizerExtension` (bounded dashboard render slots + operational-block policy) + `Payload` (the `/api/board` wire shape) for a repo-owned `extension.tsx` | dashboard extension authors → VISUALIZER.md |
+| `@volter/ztrack/check` | `checkTracker` / `checkFile` directly (also on the root) | tooling |
+| `@volter/ztrack/sdk` | `createTrackerClient` directly (also on the root) | tooling |
+| `@volter/ztrack/world-annotations`, `@volter/ztrack/world-source-books` | the world-integration extension a world-using preset imports | [EVIDENCE.md § mirrored world](EVIDENCE.md#advanced-validating-against-a-mirrored-world) |
 
 Prefer the package **root**. Everything else a CLI subcommand needs (mcp, lint, tx, attest, dsse, …)
 is an internal module, intentionally **not** a published entry point.
@@ -123,7 +123,7 @@ is an internal module, intentionally **not** a published entry point.
 The package is ESM. From a CommonJS module, use a dynamic import:
 
 ```js
-const { checkTracker } = await import('ztrack');
+const { checkTracker } = await import('@volter/ztrack');
 ```
 
 ## GraphQL API server

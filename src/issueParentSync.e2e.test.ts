@@ -23,7 +23,7 @@ describe('issue edit --parent/--remove-parent syncs children through the CLI (ma
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-parent-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     expect(ztrackIn(root, ['init', '--team', 'ZT']).code).toBe(0);
     expect(ztrackIn(root, ['issue', 'create', '--title', 'Epic']).code).toBe(0);  // ZT-1
     expect(ztrackIn(root, ['issue', 'create', '--title', 'Task']).code).toBe(0);  // ZT-2

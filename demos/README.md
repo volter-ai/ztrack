@@ -93,7 +93,7 @@ only shows up after many iterations against a growing project.
 
 ## SDK API
 
-From a repo that already ran `npx ztrack init`:
+From a repo that already ran `npx @volter/ztrack init`:
 
 ```bash
 cp /path/to/ztrack/demos/sdk-api/run.mjs ./ztrack-sdk-demo.mjs

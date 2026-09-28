@@ -1319,9 +1319,9 @@ button { cursor: pointer; }
   color: var(--amber);
   background: var(--volter-status-attention-soft);
 }
-/* VIZ-13: the repo extension.tsx failed to compile (or its own `ztrack/visualizer-kit` import
+/* VIZ-13: the repo extension.tsx failed to compile (or its own `@volter/ztrack/visualizer-kit` import
    didn't resolve) — the board still renders (failure isolation), this just names the error. The
-   translated message can be multi-line (the `npm install -D ztrack` fix block), so preserve it. */
+   translated message can be multi-line (the `npm install -D @volter/ztrack` fix block), so preserve it. */
 .visualizer-notice.extension-error { white-space: pre-wrap; font-family: var(--volter-font-data); }
 /* acknowledged: a real error a fresh waiver has accepted — visible but non-gating. */
 .finding.acknowledged { color: var(--volter-data-base); background: var(--volter-data-soft); border-color: color-mix(in srgb, var(--volter-data-base) 30%, transparent); }

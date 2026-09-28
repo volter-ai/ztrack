@@ -21,9 +21,9 @@ const plugin = {
     build.onResolve({ filter: /^react(?:-dom)?(?:\/.*)?$/ }, (args) => {
       return { path: args.path, namespace: runtimeNamespace };
     });
-    build.onResolve({ filter: /^ztrack\/visualizer-kit$/ }, () => ({ path: 'kit', namespace: kitNamespace }));
+    build.onResolve({ filter: /^@volter\/ztrack\/visualizer-kit$/ }, () => ({ path: 'kit', namespace: kitNamespace }));
     build.onResolve({ filter: /^[A-Za-z@]/ }, (args) => {
-      throw new Error(`Visualizer extensions may import only local modules and 'ztrack/visualizer-kit' (received '${args.path}').`);
+      throw new Error(`Visualizer extensions may import only local modules and '@volter/ztrack/visualizer-kit' (received '${args.path}').`);
     });
     build.onLoad({ filter: /.*/, namespace: runtimeNamespace }, (args) => {
       if (args.path === 'react/jsx-runtime' || args.path === 'react/jsx-dev-runtime') {

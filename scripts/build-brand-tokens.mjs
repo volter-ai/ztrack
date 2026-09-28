@@ -2,7 +2,7 @@
 // the faces it names, fetched from brand.volter.ai at build time (company decision 0018). The
 // visualizer's stylesheets read the brand's semantic roles (var(--volter-*)); `ztrack visualizer`
 // serves this file at /assets/brand/tokens.css, and an embedding host imports
-// `ztrack/visualizer-react/tokens.css` beside `ztrack/visualizer-react/styles.css`. Font URLs are
+// `@volter/ztrack/visualizer-react/tokens.css` beside `@volter/ztrack/visualizer-react/styles.css`. Font URLs are
 // rewritten relative to the file, so they resolve wherever it is served or bundled. Nothing is
 // fetched at runtime; a failed fetch fails the build.
 import { mkdir, rm, writeFile } from 'node:fs/promises';

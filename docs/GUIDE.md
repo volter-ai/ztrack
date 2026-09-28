@@ -20,8 +20,8 @@ is expanded below.
 **Route yourself first** — two questions, and every combination is a supported path:
 
 1. *Where does the work live today?* Already in **GitHub Issues** → init linked
-   (`npx ztrack init --sync github --repo owner/name`; [how linked sync works](#how-linked-sync-works)).
-   Just **a pile of tasks and no tracker** → init local (`npx ztrack init`), write the tasks down as
+   (`npx @volter/ztrack init --sync github --repo owner/name`; [how linked sync works](#how-linked-sync-works)).
+   Just **a pile of tasks and no tracker** → init local (`npx @volter/ztrack init`), write the tasks down as
    freeform markdown, then `ztrack import notes/tasks.md --register` materializes them into issues
    ([importing a freeform backlog](#importing-a-freeform-backlog)).
 2. *How will you drive it?* **One issue at a time** → arm a loop, `ztrack loop start <id> --until
@@ -33,10 +33,10 @@ is expanded below.
 ## 1. Setup
 
 ```bash
-npx ztrack init                       # installs the recommended preset + config (run `ztrack init --list` to choose)
-npx ztrack issue scaffold --title "First verified task" > body.md
-npx ztrack issue create --title "First verified task" --label type:case --state ready --assignee "$USER" --body-file body.md
-npx ztrack check
+npx @volter/ztrack init                       # installs the recommended preset + config (run `ztrack init --list` to choose)
+npx @volter/ztrack issue scaffold --title "First verified task" > body.md
+npx @volter/ztrack issue create --title "First verified task" --label type:case --state ready --assignee "$USER" --body-file body.md
+npx @volter/ztrack check
 ```
 
 `init` writes `.volter/tracker-config.json`, a markdown issue store under `.volter/tracker/`, and the
@@ -46,7 +46,7 @@ repo (the store is plain markdown — no database). Pick a preset with
 
 **Local or linked.** The default is a local tracker (issues committed as markdown in your repo). To
 make your issues *be* GitHub Issues, synced both ways, init with a link:
-`npx ztrack init --sync github --repo owner/name` (see [How linked sync works](#how-linked-sync-works)).
+`npx @volter/ztrack init --sync github --repo owner/name` (see [How linked sync works](#how-linked-sync-works)).
 
 **Sources.** The default is one implicit store, `.volter/tracker/markdown/` (one file per issue).
 Declare `sources:` in `.volter/tracker-config.json` to add more, including a `document` source —
@@ -58,7 +58,7 @@ scope to just that source. See [Sources](SOURCES.md).
 
 1. Mark one acceptance criterion passed (`[x]` + `status: passed`).
 2. Cite a **fake** commit: `evidence ev1: commit=deadbeef acv=1`, plus a `proof:` line.
-3. `npx ztrack check` → `evidence_commit_not_found`, **exit 1**.
+3. `npx @volter/ztrack check` → `evidence_commit_not_found`, **exit 1**.
 4. Replace the fake SHA with a real commit reachable in the repo → **exit 0**.
 
 That red→green is the whole idea. Run it end-to-end from this repo with `bash demos/local-red-green.sh`.
@@ -101,7 +101,7 @@ matched. `--source` is refused loudly where there is nothing to scope: `check --
 A fresh CI checkout doesn't contain your local store, so commit a **validated root** and gate that:
 
 ```bash
-npx ztrack export --out .volter/root.json
+npx @volter/ztrack export --out .volter/root.json
 git add .volter/tracker-config.json .volter/tracker/validation/preset.mts .volter/root.json
 ```
 
@@ -114,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
-      - uses: volter-ai/ztrack@v1
+      - uses: volter-ai/ztrack@v2
         with:
           root: .volter/root.json
 ```
@@ -123,7 +123,7 @@ jobs:
 transitions). For an ongoing PR gate you usually want only the continuous rules:
 
 ```bash
-npx ztrack check --phase gate    # skip promotion/transition checks on already-landed issues
+npx @volter/ztrack check --phase gate    # skip promotion/transition checks on already-landed issues
 ```
 
 **GitHub-linked tracker.** In linked mode your issues live on GitHub (the local store is gitignored),
@@ -138,7 +138,7 @@ Everything else — `check`, `evidence`, `issue *`, every preset — works with 
 only `sync github` (and a preset that opts into world-backed evidence, see
 [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world)) needs them.
 
-1. **Install the peers explicitly** — a plain `npm install ztrack` does not pull them in:
+1. **Install the peers explicitly** — a plain `npm install @volter/ztrack` does not pull them in:
 
    ```bash
    npm install -D @volter/world-core @volter/twin-github
@@ -160,8 +160,8 @@ only `sync github` (and a preset that opts into world-backed evidence, see
          - uses: actions/checkout@v6
            with: { fetch-depth: 0 }
          - run: npm install -D @volter/world-core @volter/twin-github
-         - run: npx ztrack sync github --pull
-         - run: npx ztrack check --phase gate
+         - run: npx @volter/ztrack sync github --pull
+         - run: npx @volter/ztrack check --phase gate
    ```
 
 Auth uses the `gh` CLI or `GITHUB_TOKEN` (never a prompted PAT).
@@ -290,19 +290,19 @@ it's safe to leave enabled globally:
 For a non-plugin / custom harness, wire the hook into both your `Stop` **and** `SubagentStop` hooks
 directly (the same script, registered under both events — it reads `hook_event_name` from
 neither; a subagent's turn ends via `SubagentStop`, never `Stop`, so skipping it leaves subagent
-turns ungated) — it ships at `node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh`
+turns ungated) — it ships at `node_modules/@volter/ztrack/plugins/ztrack/hooks/stop-loop.sh`
 (armed-only). In a Claude Code `settings.json`:
 
 ```json
 {
   "hooks": {
-    "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh" } ] } ],
-    "SubagentStop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh" } ] } ]
+    "Stop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/@volter/ztrack/plugins/ztrack/hooks/stop-loop.sh" } ] } ],
+    "SubagentStop": [ { "hooks": [ { "type": "command", "command": "bash node_modules/@volter/ztrack/plugins/ztrack/hooks/stop-loop.sh" } ] } ]
   }
 }
 ```
 
-The package also ships `node_modules/ztrack/hooks/stop-check.sh`, an **always-on** gate (same `Stop`
+The package also ships `node_modules/@volter/ztrack/hooks/stop-check.sh`, an **always-on** gate (same `Stop`
 wiring) that auto-scopes to the branch/worktree issue every turn — use it for continuous gating
 without arming a loop.
 
@@ -398,7 +398,7 @@ An MCP-capable agent can drive ztrack directly (and self-gate without the loop b
 `tracker_check` before finishing):
 
 ```bash
-claude mcp add ztrack -- npx ztrack mcp serve
+claude mcp add ztrack -- npx @volter/ztrack mcp serve
 ```
 
 `ztrack mcp serve` (over stdio) exposes seven agent-facing tools:
@@ -414,7 +414,7 @@ claude mcp add ztrack -- npx ztrack mcp serve
 Tell the agent: *call `tracker_check` before finishing; if it's red, produce the missing evidence
 rather than marking the task done.* The copy-paste one-shot adoption prompt and driving rules live in
 the [AI agent playbook](AGENT-PLAYBOOK.md). For a non-MCP harness with no hook system, run
-`npx ztrack check` as a final command and treat a non-zero exit as incomplete work.
+`npx @volter/ztrack check` as a final command and treat a non-zero exit as incomplete work.
 
 ## When the checker is wrong
 
@@ -532,7 +532,7 @@ Every flow above is exercised by a script in [`demos/`](../demos/):
 
 ## Adoption checklist
 
-- [ ] `npx ztrack init` (or `--preset <name>`; `ztrack init --list` to choose).
+- [ ] `npx @volter/ztrack init` (or `--preset <name>`; `ztrack init --list` to choose).
 - [ ] Create one issue from `ztrack issue scaffold`, run `ztrack check`.
 - [ ] Demonstrate one fake-SHA failure and one real-SHA pass.
 - [ ] Add a CI validated-root gate (or the linked-tracker variant).

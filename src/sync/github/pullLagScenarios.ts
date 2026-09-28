@@ -22,7 +22,7 @@ async function withProject<T>(fn: (ctx: { root: string; client: ReturnType<typeo
   try {
     initTrackerProject(root, 'ZT');
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     const client = createTrackerClient({ projectRoot: root });
     const gh = fakeGithub({ lagCalls });
     const opts = (): SyncOpts => ({ projectRoot: root, owner: 'o', repo: 'r', execute: gh.execute, client, occurredAt: '2026-01-01T00:00:00Z' });

@@ -91,7 +91,7 @@ fi
 ztrack_bin="${ZTRACK_BIN:-$root/node_modules/.bin/ztrack}"
 if [ ! -x "$ztrack_bin" ]; then
   # The oracle can't run, so the turn is held — but say how to get out, or it's a trap.
-  echo "ztrack loop: armed for $issue but ztrack isn't installed at $root. Run 'npm i -D ztrack' (or set ZTRACK_BIN); to stop the loop, 'ztrack loop stop', or to end just this turn create the empty file $state_dir/.ztrack-loop-exempt-$actor." >&2
+  echo "ztrack loop: armed for $issue but ztrack isn't installed at $root. Run 'npm i -D @volter/ztrack' (or set ZTRACK_BIN); to stop the loop, 'ztrack loop stop', or to end just this turn create the empty file $state_dir/.ztrack-loop-exempt-$actor." >&2
   exit 2
 fi
 

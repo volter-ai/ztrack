@@ -1,5 +1,5 @@
-// ZTB-27 dev/01: `@volter/world-core` is an OPTIONAL peer, and `ztrack/world-annotations` +
-// `ztrack/world-source-books` are PUBLIC subpath exports — importing either one, and calling
+// ZTB-27 dev/01: `@volter/world-core` is an OPTIONAL peer, and `@volter/ztrack/world-annotations` +
+// `@volter/ztrack/world-source-books` are PUBLIC subpath exports — importing either one, and calling
 // any function that touches the world, must surface MISSING_WORLD_TWIN_MESSAGE (never a raw
 // MODULE_NOT_FOUND/resolution crash) when the peer isn't installed. `importTwinModule` is the
 // injectable seam (mirrors src/sync/github/twinRuntime.test.ts): swapping it to a rejecting stub

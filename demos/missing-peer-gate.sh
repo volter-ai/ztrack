@@ -7,7 +7,7 @@
 # Two consumer projects:
 #   1. peers ABSENT  — `ztrack sync github` must fail closed with MISSING_TWIN_MESSAGE (never a
 #      raw MODULE_NOT_FOUND resolution crash), and every other command must keep working. ZTB-31
-#      dev/01 adds the sibling WORLD seam here too: the public `ztrack/world-annotations` subpath
+#      dev/01 adds the sibling WORLD seam here too: the public `@volter/ztrack/world-annotations` subpath
 #      export (src/worldTwinRuntime.ts:25's MISSING_WORLD_TWIN_MESSAGE) must fail the same way —
 #      no CLI command path touches the world adapters, so this is a plain node ESM script calling
 #      the subpath directly, mirroring src/worldTwinRuntime.test.ts's shape.
@@ -38,17 +38,17 @@ new_consumer() {
   ( cd "$dir" \
     && npm init -y >/dev/null 2>&1 \
     && npm install "$tarball" ${2:-} --no-save >/dev/null 2>&1 \
-    && npx ztrack init --team APP --preset default >/dev/null 2>&1 )
+    && npx @volter/ztrack init --team APP --preset default >/dev/null 2>&1 )
   printf '%s' "$dir"
 }
 
 # Writes a plain node ESM script at $1/probe-world.mjs that imports the packed
-# `ztrack/world-annotations` subpath and calls listAnnotations (same call shape as
+# `@volter/ztrack/world-annotations` subpath and calls listAnnotations (same call shape as
 # src/worldTwinRuntime.test.ts:50) against a path that doesn't exist — the adapter loads twin
 # BEFORE touching any path, so the outcome only depends on whether the peer is installed.
 write_world_probe() {
   cat > "$1/probe-world.mjs" <<'EOF'
-import { listAnnotations } from 'ztrack/world-annotations';
+import { listAnnotations } from '@volter/ztrack/world-annotations';
 try {
   await listAnnotations('slack', '/does/not/matter');
   process.stdout.write('RESULT: resolved\n');
@@ -60,15 +60,15 @@ EOF
 
 echo "## peers ABSENT — sync github fails closed with the install hint; everything else still works"
 d="$(new_consumer no-peers)"
-out="$( cd "$d" && npx ztrack sync github --repo test-owner/test-repo --pull 2>&1 )"; rc=$?
+out="$( cd "$d" && npx @volter/ztrack sync github --repo test-owner/test-repo --pull 2>&1 )"; rc=$?
 ok "$rc" "1" "sync github exits nonzero when the optional peers are absent"
 ok "$(yn "$(has "$out" 'requires the optional sync packages')")" Y "surfaces MISSING_TWIN_MESSAGE's install hint"
 ok "$(yn "$(has "$out" 'MODULE_NOT_FOUND')")" N "no raw MODULE_NOT_FOUND leaks to the user"
 
-help_rc="$( ( cd "$d" && npx ztrack --help >/dev/null 2>&1 ); echo $? )"
+help_rc="$( ( cd "$d" && npx @volter/ztrack --help >/dev/null 2>&1 ); echo $? )"
 ok "$help_rc" "0" "ztrack --help still works with peers absent (the CLI doesn't crash at startup)"
 
-check_out="$( cd "$d" && npx ztrack check 2>&1 )"
+check_out="$( cd "$d" && npx @volter/ztrack check 2>&1 )"
 ok "$(yn "$(has "$check_out" 'MODULE_NOT_FOUND')")" N "ztrack check doesn't crash on twin resolution either"
 
 write_world_probe "$d"
@@ -79,7 +79,7 @@ ok "$(yn "$(has "$world_out" 'MODULE_NOT_FOUND')")" N "world-annotations subpath
 echo
 echo "## peers PRESENT (real npm packages, pinned to this repo's declared peerDependencies range), under plain node/npx"
 d2="$(new_consumer with-peers "@volter/world-core@$core_range @volter/twin-github@$twin_github_range")"
-out2="$( cd "$d2" && npx ztrack sync github --repo test-owner/test-repo --pull 2>&1 )"
+out2="$( cd "$d2" && npx @volter/ztrack sync github --repo test-owner/test-repo --pull 2>&1 )"
 ok "$(yn "$(has "$out2" 'requires the optional sync packages')")" N "sync github loads the installed peers under node — no install hint"
 ok "$(yn "$(has "$out2" 'MODULE_NOT_FOUND')")" N "no raw MODULE_NOT_FOUND with the peers present"
 

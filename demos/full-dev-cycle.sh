@@ -226,7 +226,7 @@ git commit -q -m "document reporting"
 docs_sha="$(git rev-parse --short HEAD)"
 
 npm install -D "$tarball" >/dev/null
-npx ztrack init --team OSS --preset default >/dev/null
+npx @volter/ztrack init --team OSS --preset default >/dev/null
 
 write_body rename.md \
   "Rename existing tasks" OSS-1 \
@@ -234,7 +234,7 @@ write_body rename.md \
   "Renaming rejects blank titles." \
   "$rename_sha" \
   "Task maintainers need to correct task titles after import."
-npx ztrack issue create --title "Rename existing tasks" --label type:case --label area:store --state in-progress --assignee maintainer --body-file rename.md >/dev/null
+npx @volter/ztrack issue create --title "Rename existing tasks" --label type:case --label area:store --state in-progress --assignee maintainer --body-file rename.md >/dev/null
 
 write_body report.md \
   "Report completion rate" OSS-2 \
@@ -242,7 +242,7 @@ write_body report.md \
   "Documentation explains the reporting fields." \
   "$report_sha" \
   "Project dashboards need a completion-rate summary."
-npx ztrack issue create --title "Report completion rate" --label type:case --label area:reporting --state in-progress --assignee maintainer --body-file report.md >/dev/null
+npx @volter/ztrack issue create --title "Report completion rate" --label type:case --label area:reporting --state in-progress --assignee maintainer --body-file report.md >/dev/null
 
 write_body docs.md \
   "Document reporting API" OSS-3 \
@@ -250,7 +250,7 @@ write_body docs.md \
   "Examples show the reporting helper." \
   "$docs_sha" \
   "New OSS users need examples for the reporting API."
-npx ztrack issue create --title "Document reporting API" --label type:case --label area:docs --state in-progress --assignee maintainer --body-file docs.md >/dev/null
+npx @volter/ztrack issue create --title "Document reporting API" --label type:case --label area:docs --state in-progress --assignee maintainer --body-file docs.md >/dev/null
 
 # Review gate: a maintainer tries to advance an issue to in-review while one AC is still
 # pending. The default lifecycle blocks in-review until every AC is passed.
@@ -259,9 +259,9 @@ from pathlib import Path
 p = Path("rename.md")
 p.write_text(p.read_text().replace("Status: in-progress", "Status: in-review"))
 PY
-npx ztrack issue edit OSS-1 --state in-review --body-file rename.md >/dev/null
+npx @volter/ztrack issue edit OSS-1 --state in-review --body-file rename.md >/dev/null
 set +e
-npx ztrack check --json > done-red.json
+npx @volter/ztrack check --json > done-red.json
 done_red_exit=$?
 set -e
 test "$done_red_exit" -eq 1
@@ -286,8 +286,8 @@ text = text.replace(
 )
 p.write_text(text)
 PY
-npx ztrack issue edit OSS-1 --state in-progress --body-file rename.md >/dev/null
-npx ztrack check --json > done-green.json
+npx @volter/ztrack issue edit OSS-1 --state in-progress --body-file rename.md >/dev/null
+npx @volter/ztrack check --json > done-green.json
 test "$(json_field done-green.json summary.status)" = "pass"
 
 # A realistic red proof: one issue cites a fabricated commit, then gets fixed.
@@ -297,10 +297,10 @@ write_body broken.md \
   "The error message stays stable for callers." \
   "deadbee" \
   "Imported data can contain blank task titles."
-npx ztrack issue create --title "Reject empty task titles" --label type:bug --label area:store --state in-progress --assignee maintainer --body-file broken.md >/dev/null
+npx @volter/ztrack issue create --title "Reject empty task titles" --label type:bug --label area:store --state in-progress --assignee maintainer --body-file broken.md >/dev/null
 
 set +e
-npx ztrack check --json > red.json
+npx @volter/ztrack check --json > red.json
 red_exit=$?
 set -e
 test "$red_exit" -eq 1
@@ -313,20 +313,20 @@ import sys
 p = Path("broken.md")
 p.write_text(p.read_text().replace("deadbee", sys.argv[1]))
 PY
-npx ztrack issue edit OSS-4 --body-file broken.md >/dev/null
-npx ztrack check --json > green.json
+npx @volter/ztrack issue edit OSS-4 --body-file broken.md >/dev/null
+npx @volter/ztrack check --json > green.json
 test "$(json_field green.json summary.status)" = "pass"
 test "$(json_field green.json summary.issues)" -eq 4
 
-npx ztrack issue list --label type:case --limit 10 --json identifier,title,state > issue-list.json
+npx @volter/ztrack issue list --label type:case --limit 10 --json identifier,title,state > issue-list.json
 test "$(python3 - <<'PY'
 import json
 print(len(json.load(open("issue-list.json"))))
 PY
 )" -ge 3
 
-npx ztrack export --out .volter/root.json >/dev/null
-npx ztrack check --input .volter/root.json --json > root-check.json
+npx @volter/ztrack export --out .volter/root.json >/dev/null
+npx @volter/ztrack check --input .volter/root.json --json > root-check.json
 test "$(json_field root-check.json summary.status)" = "pass"
 
 mkdir -p .github/workflows
@@ -343,13 +343,13 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: volter-ai/ztrack@v1
+      - uses: volter-ai/ztrack@v2
         with:
           root: .volter/root.json
 EOF
 
 cat > sdk-cycle.mjs <<'EOF'
-import { createTrackerClient } from 'ztrack';
+import { createTrackerClient } from '@volter/ztrack';
 
 const client = createTrackerClient();
 const openCases = await client.issue.list({ label: 'type:case', limit: 20, json: 'identifier,title,state' });
@@ -370,7 +370,7 @@ printf '%s\n' \
   '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
   '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tracker_issue_list","arguments":{"limit":10}}}' \
   '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tracker_check","arguments":{}}}' \
-  | npx ztrack mcp serve > mcp-cycle.jsonl
+  | npx @volter/ztrack mcp serve > mcp-cycle.jsonl
 python3 - <<'PY'
 import json
 responses = [json.loads(line) for line in open("mcp-cycle.jsonl") if line.strip()]
@@ -406,7 +406,7 @@ git clone -q "$app" "$clone"
 cd "$clone"
 npm ci >/dev/null
 npm test >/dev/null
-npx ztrack check --input .volter/root.json --json > clone-check.json
+npx @volter/ztrack check --input .volter/root.json --json > clone-check.json
 test "$(json_field clone-check.json summary.status)" = "pass"
 
 printf 'full dev cycle ok\n'

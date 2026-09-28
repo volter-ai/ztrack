@@ -27,7 +27,7 @@ const FAILING_AC = `## Acceptance Criteria
 
 function initProjectWithZtrack(dir: string): void {
   mkdirSync(join(dir, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(dir, 'node_modules', 'ztrack')); // the installed preset imports 'ztrack/preset-kit'
+  mkdirSync(join(dir, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(dir, 'node_modules', '@volter', 'ztrack')); // the installed preset imports '@volter/ztrack/preset-kit'
 }
 
 // ── (a) identical gating through --preset and the entrypoint route, both --input and live-tracker ──
@@ -45,7 +45,7 @@ describe('check --preset — identical gating to the entrypoint route (ZTB-13 de
 
     // A trusted copy of the SAME preset, OUTSIDE this project — mirrors the real fork-PR
     // pattern (a base-ref checkout, its own installed 'ztrack', a preset.mts that is a plain
-    // copy of the repo's own). It needs its own node_modules/ztrack for 'ztrack/preset-kit' to
+    // copy of the repo's own). It needs its own node_modules/@volter/ztrack for '@volter/ztrack/preset-kit' to
     // resolve when Node walks up from ITS location, not the project's.
     trustedDir = mkdtempSync(join(tmpdir(), 'ztrk-preset-trusted-'));
     initProjectWithZtrack(trustedDir);

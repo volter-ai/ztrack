@@ -40,7 +40,7 @@ describe('`--source` scoping (ZTB-33): list/check by source name, basename, and 
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-srcscope-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     expect(ztIn(root, 'init', '--team', 'APP').code).toBe(0);
     // Two issue-per-file sources: `store-a` carries the friendly name `alpha`; `store-b` is unnamed

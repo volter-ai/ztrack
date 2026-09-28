@@ -22,7 +22,7 @@ suite('visualizer — boots and serves', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-viz-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     const zt = (...a: string[]) => spawnSync('bun', ['run', CLI, ...a], { cwd: root, encoding: 'utf8' });
     zt('init');
     writeFileSync(join(root, 'b.md'), zt('issue', 'scaffold', '--title', 'V').stdout);

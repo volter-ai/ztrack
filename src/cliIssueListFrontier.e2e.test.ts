@@ -29,7 +29,7 @@ const gitIn = (cwd: string, ...a: string[]) => spawnSync('git', a, { cwd, encodi
 function freshRepo(prefix: string): string {
   const root = mkdtempSync(join(tmpdir(), prefix));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the installed preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the installed preset imports '@volter/ztrack/preset-kit'
   gitIn(root, 'init', '-q');
   gitIn(root, 'config', 'user.email', 't@t.co');
   gitIn(root, 'config', 'user.name', 't');

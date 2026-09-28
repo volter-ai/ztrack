@@ -44,7 +44,7 @@ The board's entire palette is a small set of CSS custom properties declared once
 (`visualizer/client/styles.css:1-17`). Each defaults to a Volter brand role (brand.volter.ai/tokens,
 company decision 0018), from the brand's tokens.css, which `npm run build:brand-tokens` fetches into the package
 at build and the server serves at `/assets/brand/tokens.css`; an embedding host imports it as
-`ztrack/visualizer-react/tokens.css`:
+`@volter/ztrack/visualizer-react/tokens.css`:
 
 | Token | Default | Meaning |
 |---|---|---|
@@ -135,7 +135,7 @@ const DEFAULT_VISUALIZER: VisualizerSpec = {
 enum (`DefaultIssueStatusSchema`, `boilerplates/presets/simple-sdlc.ts:69`), never a second,
 drift-prone list. Every other member is a **field reference**, not a function: `acText`/`acProof`/
 `acEvidence` name which keys on your OWN `AcceptanceCriteria`/`Evidence`/`Proof` schema hold what —
-literal data only, matching `VisualizerSpec`'s hard boundary (`ztrack/preset-kit`, re-exported from
+literal data only, matching `VisualizerSpec`'s hard boundary (`@volter/ztrack/preset-kit`, re-exported from
 `src/core/engine.ts`): no functions, no markup, ever, in this block.
 
 ### Worked example: add a status to the enum AND the block
@@ -208,7 +208,7 @@ custom panel, a bespoke evidence renderer), the board has a second, narrower ext
 repo-owned `extension.tsx`, compiled into the served bundle by the SAME process that builds the
 rest of the board — no separate build step, no restart on edit.
 
-### The contract (`ztrack/visualizer-kit`)
+### The contract (`@volter/ztrack/visualizer-kit`)
 
 `VisualizerExtension` exposes bounded render slots plus one bounded board policy: a repo may add
 an operational-block predicate/reason and rename the built-in operationally-blocked view. It
@@ -236,7 +236,7 @@ Construct one with the blessed identity helper, mirroring `definePreset`'s conve
 (`src/visualizerKit.ts:20-22`):
 
 ```ts
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({ /* … */ });
 ```
@@ -289,7 +289,7 @@ verbatim:
 
 ```bash
 ztrack init --team APP                                    # scaffolds the no-op starter
-cp node_modules/ztrack/boilerplates/visualizer/extension.tsx \
+cp node_modules/@volter/ztrack/boilerplates/visualizer/extension.tsx \
    .volter/tracker/visualizer/extension.tsx
 ```
 

@@ -11,7 +11,7 @@
 # gitignores the store, so run `ztrack sync` in the worktree first to populate it.)
 #
 # IMPORTANT: the repo-local preset (.volter/tracker/validation/preset.mts) imports ztrack
-# via `import 'ztrack/preset-kit'`, so ztrack must be an INSTALLED dependency of this
+# via `import '@volter/ztrack/preset-kit'`, so ztrack must be an INSTALLED dependency of this
 # repo — and the check must run THAT installed copy, the same engine the preset imports
 # (binary == library). This hook invokes the LOCAL binary and never `npx --yes ztrack`,
 # which could fetch a different "latest" version and then fail the preset's require.
@@ -20,15 +20,15 @@
 #
 # Wire in .claude/settings.json:
 #   {"hooks": {"Stop": [{"hooks": [{"type": "command",
-#     "command": "bash node_modules/ztrack/hooks/stop-check.sh"}]}]}}
+#     "command": "bash node_modules/@volter/ztrack/hooks/stop-check.sh"}]}]}}
 # Exit 0 = allow turn end; exit 2 = block (stderr is shown to the agent).
 set -uo pipefail
 
 ztrack_bin="${ZTRACK_BIN:-node_modules/.bin/ztrack}"
 if [ ! -x "$ztrack_bin" ]; then
   {
-    echo "ztrack is not installed in this repo, but the repo-local preset imports it (require('ztrack/preset-kit'))."
-    echo "Add it as a dependency — npm i -D ztrack  (or pnpm add -D ztrack / yarn add -D ztrack) — or set ZTRACK_BIN to its path."
+    echo "ztrack is not installed in this repo, but the repo-local preset imports it (require('@volter/ztrack/preset-kit'))."
+    echo "Add it as a dependency — npm i -D @volter/ztrack  (or pnpm add -D @volter/ztrack / yarn add -D @volter/ztrack) — or set ZTRACK_BIN to its path."
     echo "The Stop gate cannot run without it."
   } >&2
   exit 2

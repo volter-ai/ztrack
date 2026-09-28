@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
+import type { CoreRoot, IssueRecord, Preset } from '@volter/ztrack/preset-kit';
 import { assertRoundTripFidelity, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkSpec, parseSpec, serializeSpecIssue, SpecPreset, SpecRootSchema } from './spec.ts';
 

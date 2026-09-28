@@ -2,8 +2,8 @@
 
 ztrack has two public distribution surfaces:
 
-- the npm package, installed with `npx ztrack`
-- the GitHub Action, used as `volter-ai/ztrack@v1`
+- the npm package, installed with `npx @volter/ztrack`
+- the GitHub Action, used as `volter-ai/ztrack@v2`
 
 Keep package versions, git tags, and action tags aligned. A release is not complete
 until all three surfaces point at the intended code.
@@ -14,7 +14,7 @@ Every push to `main` publishes (`.github/workflows/publish.yml`). When anything 
 changed since its last release, the workflow moves `package.json` to the next patch version,
 turns the changelog's `## Unreleased` notes into that version's section, builds and publishes
 with provenance, commits the release back to `main`, tags `vX.Y.Z`, moves the major Action tag
-(`v1`) to it, and creates the GitHub release from the section. A push that changes nothing
+(`v2`) to it, and creates the GitHub release from the section. A push that changes nothing
 shipped (a workflow edit, say) publishes nothing.
 
 A change lands with its user-facing note under `## Unreleased` in `CHANGELOG.md`. A minor or
@@ -30,8 +30,8 @@ other Volter package repositories share; it is re-set in every repository when i
 
 - Never move an exact version tag such as `v0.1.2` after publishing.
 - Never tag code that differs from the npm package with the same version.
-- Move the current major tag (`v1`) only to a release commit that has already been published
-  and exact-tagged; never move a retired major's tag (`v0`).
+- Move the current major tag (`v2`) only to a release commit that has already been published
+  and exact-tagged; never move a retired major's tag (`v0`, `v1`).
 - If a publish fails after the commit lands, the next push releases a new patch version; a
   version number is never reused.
 
@@ -40,7 +40,7 @@ other Volter package repositories share; it is re-set in every repository when i
 Before making the repository public, verify:
 
 - the README publish badge resolves
-- `npx ztrack --help` runs from a clean shell
-- `volter-ai/ztrack@v1` resolves in a throwaway GitHub Actions workflow
+- `npx @volter/ztrack --help` runs from a clean shell
+- `volter-ai/ztrack@v2` resolves in a throwaway GitHub Actions workflow
 - GitHub Security Advisories are enabled
 - Dependabot is quiet except for expected patch/minor updates

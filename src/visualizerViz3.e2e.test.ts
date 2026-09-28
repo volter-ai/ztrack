@@ -2,7 +2,7 @@
 // re-resolution loop (no restart needed after editing preset.mts). Boots the real
 // `ztrack visualizer` against fixture repos whose INSTALLED preset.mts (post-`ztrack init`) is
 // patched to carry a visualizer block — same fixture pattern as src/visualizer.e2e.test.ts
-// (symlink node_modules/ztrack -> this checkout, run the real CLI, spawn the real server), and
+// (symlink node_modules/@volter/ztrack -> this checkout, run the real CLI, spawn the real server), and
 // the same dep-gate (visualizer/node_modules/react present) so a clean checkout — where the
 // visualizer's one-time `bun install` hasn't run yet — skips rather than flaking.
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
@@ -25,7 +25,7 @@ const INVALID_VISUALIZER = "{ statusOrder: 'draft', acUnitLabel: 'Dev ACs' }";
 function initFixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-viz3-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the installed preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the installed preset imports '@volter/ztrack/preset-kit'
   const zt = (...a: string[]) => spawnSync('bun', ['run', CLI, ...a], { cwd: root, encoding: 'utf8' });
   const init = zt('init');
   if (init.status !== 0) throw new Error(`fixture: ztrack init failed: ${init.stderr || init.stdout}`);

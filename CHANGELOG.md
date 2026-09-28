@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **ztrack is `@volter/ztrack`** (2.0.0, breaking). Install it with `npm install -D @volter/ztrack`; the command is still `ztrack`. An installed preset imports `@volter/ztrack/preset-kit` (and a dashboard extension `@volter/ztrack/visualizer-kit`), so a project moving to 2.0 changes those imports in `.volter/tracker/` and any hook command that names `node_modules/ztrack/…` (now `node_modules/@volter/ztrack/…`). The Action is `volter-ai/ztrack@v2`.
+
 ## 1.5.10
 
 - GitHub sync runs on `@volter/world-core` and `@volter/twin-github` 2.x (the optional peers are now `^2.0.5`). A pull reads the repo's issues into the World; a push settles ztrack's writes against GitHub through `performEntries`, and the created issue's number binds back to the ztrack issue. A two-sided edit merges three-way as before.

@@ -159,7 +159,7 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
 > ground claims against. That is a wholly different concept from a **declared source** in
 > `.volter/tracker-config.json`'s `sources: [...]` — where your issues themselves actually live
 > (one or more markdown directories/files; see `docs/SOURCES.md`). The exported package path
-> `ztrack/world-source-books` keeps its name unchanged; only the plain-English term "source" now
+> `@volter/ztrack/world-source-books` keeps its name unchanged; only the plain-English term "source" now
 > also means the tracker-config concept, so read "world source(s)" below as the former, never the
 > latter.
 
@@ -186,9 +186,9 @@ touches none of it, and needs neither peer installed.
 ztrack's published world subpaths in its `loadContext`:
 
 ```ts
-import { loadWorldSourceBooks } from 'ztrack/world-source-books';
+import { loadWorldSourceBooks } from '@volter/ztrack/world-source-books';
 // or the annotation adapter:
-import { listAnnotations, isAnnotationExemptEvent } from 'ztrack/world-annotations';
+import { listAnnotations, isAnnotationExemptEvent } from '@volter/ztrack/world-annotations';
 ```
 
 These resolve against `@volter/world-core` at runtime, so it must be installed (see above) wherever

@@ -1,10 +1,10 @@
 // boilerplates/visualizer/extension.tsx — VIZ-16: a worked, copy-paste-ready example of a
 // repo-owned dashboard extension. The code-seam analog of `boilerplates/presets/*.ts`: where a
-// preset is the DATA extension point (schema/parser/rules, `ztrack/preset-kit`), this file is the
-// CODE extension point (render-only dashboard panels, `ztrack/visualizer-kit`) — see
+// preset is the DATA extension point (schema/parser/rules, `@volter/ztrack/preset-kit`), this file is the
+// CODE extension point (render-only dashboard panels, `@volter/ztrack/visualizer-kit`) — see
 // `boilerplates/README.md` for how to copy it into a real repo.
 //
-// It imports ONLY `ztrack/visualizer-kit` — the ONE stable seam a dashboard extension author
+// It imports ONLY `@volter/ztrack/visualizer-kit` — the ONE stable seam a dashboard extension author
 // should ever depend on. Nothing here reaches into `src/core/engine.ts`, a preset's own schema
 // module, or the visualizer client's internals — a grep over this file's import lines must hit
 // only that one package (`boilerplates/visualizer/extension.e2e.test.tsx` enforces it).
@@ -39,8 +39,8 @@
 //      version it was recorded against, and — when the entry attaches a screenshot/artifact — a
 //      real link built via `projectUrl` (the same project-relative URL mapper `issuePanels`
 //      receives, so evidence files resolve under the project root).
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
-import type { CoreAC, CoreIssue } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
+import type { CoreAC, CoreIssue } from '@volter/ztrack/visualizer-kit';
 
 // `CoreAC.evidence` is typed as `CoreEvidence[]` (`{ id: string; [k: string]: unknown }` — only
 // `id` is guaranteed). simple-sdlc's own evidence mapping (`DEFAULT_VISUALIZER.acEvidence` in

@@ -42,7 +42,7 @@ export type ScaffoldOpts = { team?: string; issues: IssueSpec[]; commit?: boolea
 export function scaffoldProject(opts: ScaffoldOpts): ScaffoldedProject {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-fixture-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));     // so the preset resolves 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));     // so the preset resolves '@volter/ztrack/preset-kit'
   const zt = (...a: string[]) => { const r = spawnSync('bun', ['run', CLI, ...a], { cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };
   const git = (...a: string[]) => { const r = spawnSync('git', a, { cwd: root, encoding: 'utf8' }); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };
 

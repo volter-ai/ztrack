@@ -15,7 +15,7 @@ function project(): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrack-visualizer-payload-'));
   roots.push(root);
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(repo, join(root, 'node_modules', 'ztrack'));
+  symlinkSync(repo, join(root, 'node_modules', '@volter', 'ztrack'));
   initTrackerProject(root, 'ZT', { board: 'branch' });
   return root;
 }

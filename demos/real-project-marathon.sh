@@ -213,7 +213,7 @@ git add .
 git commit -q -m "bootstrap atlas commerce workspace"
 
 npm install -D "$tarball" >/dev/null
-npx ztrack init --team AC --preset default >/dev/null
+npx @volter/ztrack init --team AC --preset default >/dev/null
 
 # Project-specific policy: an API case (label area:api) that advances to in-review must carry
 # the `rollout-plan` label. Append the rule to the installed ESM preset (mutating
@@ -243,7 +243,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: volter-ai/ztrack@v1
+      - uses: volter-ai/ztrack@v2
         with:
           root: .volter/root.json
 EOF
@@ -320,18 +320,18 @@ EOF
   write_case_body "$body_file" "Deliver $capability" \
     "The $area team needs $capability to support the staged commerce rollout." \
     "$capability" "$issue_id" "$area"
-  npx ztrack issue create --title "Deliver $capability" --label type:case --label "area:$area" --state in-progress --assignee "dev-$area" --body-file "$body_file" >/dev/null
+  npx @volter/ztrack issue create --title "Deliver $capability" --label type:case --label "area:$area" --state in-progress --assignee "dev-$area" --body-file "$body_file" >/dev/null
 
-  npx ztrack check --json > "planning-$cycle.json"
+  npx @volter/ztrack check --json > "planning-$cycle.json"
   test "$(json_field "planning-$cycle.json" summary.status)" = "pass"
 
   # Review gate: advancing to in-review with proc/01 still pending must be blocked.
   pass_ac "$body_file" dev/01 "Implement the $capability capability." "$feature_sha" E1
   pass_ac "$body_file" dev/02 "Cover $capability with automated tests." "$feature_sha" E2
   python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('Status: in-progress','Status: in-review'))"
-  npx ztrack issue edit "$issue_id" --state in-review --body-file "$body_file" >/dev/null
+  npx @volter/ztrack issue edit "$issue_id" --state in-review --body-file "$body_file" >/dev/null
   set +e
-  npx ztrack check --json > "done-red-$cycle.json"
+  npx @volter/ztrack check --json > "done-red-$cycle.json"
   done_exit=$?
   set -e
   test "$done_exit" -eq 1
@@ -339,9 +339,9 @@ EOF
   pass_ac "$body_file" proc/01 "Document operational behavior for $capability." "$feature_sha" E3
   if [[ "$area" == "api" ]]; then
     # Still in-review and still missing the rollout-plan label -> the project policy fires.
-    npx ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
+    npx @volter/ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
     set +e
-    npx ztrack check --json > "rollout-red-$cycle.json"
+    npx @volter/ztrack check --json > "rollout-red-$cycle.json"
     rollout_exit=$?
     set -e
     test "$rollout_exit" -eq 1
@@ -351,9 +351,9 @@ EOF
 
   if (( cycle % 7 == 0 )); then
     python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('commit=$feature_sha','commit=deadbeef',1))"
-    npx ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
+    npx @volter/ztrack issue edit "$issue_id" --body-file "$body_file" >/dev/null
     set +e
-    npx ztrack check --json > "sha-red-$cycle.json"
+    npx @volter/ztrack check --json > "sha-red-$cycle.json"
     sha_exit=$?
     set -e
     test "$sha_exit" -eq 1
@@ -363,19 +363,19 @@ EOF
   # Settle the issue back to in-progress (all ACs passed, no PR pin) so the committed root
   # re-checks cleanly from a fresh clone.
   python3 -c "from pathlib import Path;p=Path('$body_file');p.write_text(p.read_text().replace('Status: in-review','Status: in-progress'))"
-  npx ztrack issue edit "$issue_id" --state in-progress --body-file "$body_file" >/dev/null
-  npx ztrack check --json > "green-$cycle.json"
+  npx @volter/ztrack issue edit "$issue_id" --state in-progress --body-file "$body_file" >/dev/null
+  npx @volter/ztrack check --json > "green-$cycle.json"
   test "$(json_field "green-$cycle.json" summary.status)" = "pass"
 
   if (( cycle % 4 == 0 )); then
-    npx ztrack export --out .volter/root.json >/dev/null
-    npx ztrack check --input .volter/root.json --json > "root-$cycle.json"
+    npx @volter/ztrack export --out .volter/root.json >/dev/null
+    npx @volter/ztrack check --input .volter/root.json --json > "root-$cycle.json"
     test "$(json_field "root-$cycle.json" summary.status)" = "pass"
   fi
 
   if (( cycle % 6 == 0 )); then
     cat > sdk-cycle.mjs <<'EOF'
-import { createTrackerClient } from 'ztrack';
+import { createTrackerClient } from '@volter/ztrack';
 const client = createTrackerClient();
 const issues = await client.issue.list({ label: 'type:case', limit: 500, json: 'identifier,title,state' });
 if (!Array.isArray(issues) || issues.length === 0) throw new Error('no ztrack cases');
@@ -389,7 +389,7 @@ EOF
     printf '%s\n' \
       '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}' \
       '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tracker_check","arguments":{}}}' \
-      | npx ztrack mcp serve > "mcp-$cycle.jsonl"
+      | npx @volter/ztrack mcp serve > "mcp-$cycle.jsonl"
     python3 - "$cycle" <<'PY'
 import json
 import sys
@@ -402,18 +402,18 @@ PY
 
   if (( cycle % 10 == 0 )); then
     rm -rf "$clone"
-    npx ztrack export --out .volter/root.json >/dev/null
+    npx @volter/ztrack export --out .volter/root.json >/dev/null
     git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages test docs scripts README.md
     git diff --cached --quiet || git commit -q -m "cycle $cycle adopt verified $capability"
     git clone -q "$app" "$clone"
-    (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx ztrack check --input .volter/root.json --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
+    (cd "$clone" && npm ci >/dev/null && npm test >/dev/null && npm run lint >/dev/null && npx @volter/ztrack check --input .volter/root.json --json > clone-check.json && test "$(json_field clone-check.json summary.status)" = "pass")
   fi
 
   note "cycle $cycle complete area=$area issue=$issue_id"
 done
 
-npx ztrack export --out .volter/root.json >/dev/null
-npx ztrack check --input .volter/root.json --json > final-root.json
+npx @volter/ztrack export --out .volter/root.json >/dev/null
+npx @volter/ztrack check --input .volter/root.json --json > final-root.json
 test "$(json_field final-root.json summary.status)" = "pass"
 git add .gitignore .github/workflows/ztrack.yml .volter/tracker-config.json .volter/tracker/validation .volter/root.json package.json package-lock.json packages test docs scripts README.md
 git diff --cached --quiet || git commit -q -m "complete marathon verified lifecycle"

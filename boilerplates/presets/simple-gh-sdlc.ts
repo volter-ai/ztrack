@@ -16,7 +16,7 @@
 //   in-review    — PR exists; every AC passed; every passed AC has fresh evidence
 //   done         — the PR is merged (review gates still hold)
 
-// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`
+// A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`
 // (no `../core/*`, no `mdast-*`, no `zod`). Its OWN schema, parser, and rules live here.
 import {
   z, toMdast, nodeText, type MdNode,
@@ -25,7 +25,7 @@ import {
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type ParseDiagnostic, type Preset, type PresetContextInput, type RawBlockRef,
   type VisualizerSpec,
-} from 'ztrack/preset-kit';
+} from '@volter/ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
@@ -776,7 +776,7 @@ function defaultFixHint(f: Finding): string | undefined {
 // This block is what the visualizer board renders FROM — status columns, what an AC is called,
 // and which fields (above, on DefaultIssueSchema/DefaultAcSchema) hold the assignee, the PR
 // link, the AC's own id/text/version, its proof, and its evidence entries. Field references and
-// literal labels ONLY (see `VisualizerSpec`, `ztrack/preset-kit`) — no functions, no markup. It
+// literal labels ONLY (see `VisualizerSpec`, `@volter/ztrack/preset-kit`) — no functions, no markup. It
 // is installed into your repo verbatim, same as the rest of this file: edit it freely to match a
 // schema change (e.g. renaming a status here AND above keeps them in sync; `ztrack test`/CI
 // catches a drift between the two — see `boilerplates/presets/visualizerVocabulary.test.ts`).

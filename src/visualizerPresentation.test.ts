@@ -53,7 +53,7 @@ describe('buildVisualizerExtensionModule', () => {
     const helper = join(dirname(extension), 'helper.tsx');
     mkdirSync(dirname(extension), { recursive: true });
     writeFileSync(helper, `export const Label = ({ text }: { text: string }) => <strong>{text}</strong>;`);
-    writeFileSync(extension, `import { defineVisualizerExtension } from 'ztrack/visualizer-kit';\nimport { Label } from './helper.tsx';\nexport default defineVisualizerExtension({ acText: (ac) => <Label text={ac.id} /> });\n`);
+    writeFileSync(extension, `import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';\nimport { Label } from './helper.tsx';\nexport default defineVisualizerExtension({ acText: (ac) => <Label text={ac.id} /> });\n`);
     const result = await buildVisualizerExtensionModule({ projectRoot });
     expect(result.error).toBeNull();
     expect(result.code).toContain("ztrack.visualizer-react.v1");

@@ -19,7 +19,7 @@
 // NOTE: `@volter/world-core`/`@volter/twin-github` are an OPTIONAL peer (package.json
 // `peerDependenciesMeta`) — only TYPES are imported statically here (erased at build time, so
 // they impose no runtime resolution). The actual runtime bindings come from `loadTwinRuntime()`
-// (twinRuntime.ts), a lazy `import()` so a plain `npm i -D ztrack` (peers absent) never fails to
+// (twinRuntime.ts), a lazy `import()` so a plain `npm i -D @volter/ztrack` (peers absent) never fails to
 // even LOAD this module — see twinRuntime.ts for why a static value import here would be fatal.
 import type { DeployReport, RemoteExecute } from '@volter/world-core';
 import { reconcile, type ReconcilePolicy, type TwinResource } from './reconcile.ts';

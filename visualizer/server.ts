@@ -683,10 +683,10 @@ async function runBuild(repoExt: { path: string; presetName: string } | null): P
 }
 
 // Turn a raw Bun.build failure (thrown AggregateError, or the defensive `{success:false}` Error
-// above) into the SAME `npm install -D ztrack` translation the preset loader gives
+// above) into the SAME `npm install -D @volter/ztrack` translation the preset loader gives
 // (presetRegistry.ts:110-115) when the failure is specifically an unresolvable
-// 'ztrack/visualizer-kit' — Bun's own resolver message is
-// `Could not resolve: "ztrack/visualizer-kit". Maybe you need to "bun install"?` (verified
+// '@volter/ztrack/visualizer-kit' — Bun's own resolver message is
+// `Could not resolve: "@volter/ztrack/visualizer-kit". Maybe you need to "bun install"?` (verified
 // empirically). Any other build failure (a syntax error, a bad JSX tag, …) is reported as-is,
 // prefixed with which file it came from.
 function translateExtensionBuildError(err: unknown, extPath: string): string {
@@ -694,10 +694,10 @@ function translateExtensionBuildError(err: unknown, extPath: string): string {
   const messages = (err && typeof err === 'object' && Array.isArray((err as { errors?: unknown }).errors))
     ? (err as { errors: Array<{ message?: string }> }).errors.map((e) => e.message ?? '').join('\n')
     : raw;
-  if (/Could not resolve:\s*"ztrack\/visualizer-kit"|Cannot find package ['"]ztrack['"]|Cannot find module ['"]ztrack/.test(messages)) {
+  if (/Could not resolve:\s*"@volter\/ztrack\/visualizer-kit"|Cannot find package ['"]@volter\/ztrack['"]|Cannot find module ['"]@volter\/ztrack/.test(messages)) {
     return (
-      `The visualizer extension (${extPath}) imports 'ztrack/visualizer-kit', but the 'ztrack' package isn't resolvable from this project. `
-      + `Install it as a dependency so the extension can load it:\n\n    npm install -D ztrack\n\n`
+      `The visualizer extension (${extPath}) imports '@volter/ztrack/visualizer-kit', but the '@volter/ztrack' package isn't resolvable from this project. `
+      + `Install it as a dependency so the extension can load it:\n\n    npm install -D @volter/ztrack\n\n`
       + `(ztrack works like eslint — the extension is your dashboard mod and imports the mechanism from the installed package; a global or one-off 'npx' install is not enough.)`
     );
   }

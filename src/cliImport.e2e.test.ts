@@ -28,7 +28,7 @@ describe('ztrack import (ZTB-14 dev/33): the real CLI, a mktemp project, first-c
     root = mkdtempSync(join(tmpdir(), 'ztrk-import-e2e-'));
     rootReal = realpathSync(root);
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     expect(ztIn(root, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(backlogPath(), MESSY_BACKLOG);
@@ -154,7 +154,7 @@ describe('ztrack import: headingless multi-list file with interleaved prose is w
     mlRoot = mkdtempSync(join(tmpdir(), 'ztrk-import-ml-'));
     mlRootReal = realpathSync(mlRoot);
     mkdirSync(join(mlRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(mlRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(mlRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(mlRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(mlRoot, 'init', '-q'); gitIn(mlRoot, 'config', 'user.email', 't@t.co'); gitIn(mlRoot, 'config', 'user.name', 't');
     expect(ztIn(mlRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(p2Path(), P2);
@@ -245,7 +245,7 @@ describe('ztrack import: end-to-end waiver survival on a document source (ZTB-37
     wvRoot = mkdtempSync(join(tmpdir(), 'ztrk-import-waivers-e2e-'));
     wvRootReal = realpathSync(wvRoot);
     mkdirSync(join(wvRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(wvRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(wvRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(wvRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(wvRoot, 'init', '-q'); gitIn(wvRoot, 'config', 'user.email', 't@t.co'); gitIn(wvRoot, 'config', 'user.name', 't');
     expect(ztIn(wvRoot, 'init', '--team', 'ZT').code).toBe(0);
     writeFileSync(boardPath(), BOARD);

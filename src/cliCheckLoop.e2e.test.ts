@@ -29,7 +29,7 @@ const FAILING_AC = `## Acceptance Criteria
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'ztrk-cl-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the preset imports '@volter/ztrack/preset-kit'
   ztrack(['init', '--team', 'ZT']);
   ztrack(['issue', 'create', '--title', 'Clean', '--label', 'type:case', '--state', 'draft', '--assignee', 'me', '--body', '# Clean\n\n## Summary\n\nok']); // ZT-1, green
   ztrack(['issue', 'create', '--title', 'Bad', '--label', 'type:case', '--state', 'ready', '--assignee', 'me', '--body', FAILING_AC]); // ZT-2, red (fake commit)
@@ -229,7 +229,7 @@ describe('CLI footguns: --help/--version never have side effects, and delete wor
   beforeAll(() => {
     fresh = mkdtempSync(join(tmpdir(), 'ztrk-footgun-'));
     mkdirSync(join(fresh, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(fresh, 'node_modules', 'ztrack'));
+    mkdirSync(join(fresh, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(fresh, 'node_modules', '@volter', 'ztrack'));
   });
   afterAll(() => { if (fresh) rmSync(fresh, { recursive: true, force: true }); });
   const zf = (args: string[]) => { const r = spawnSync('bun', ['run', CLI, ...args], { cwd: fresh, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }); return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }; };

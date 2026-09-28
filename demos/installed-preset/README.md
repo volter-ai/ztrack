@@ -17,7 +17,7 @@ rules select facts off that model. The validated root (`{ issues: [...] }`) is
 the artifact `ztrack check`, the visualizer, and the SDK all read.
 
 An installed preset is a REAL, standalone, editable module: it imports the
-engine, mdast helpers, and root-schema constructor from `ztrack/preset-kit`, and
+engine, mdast helpers, and root-schema constructor from `@volter/ztrack/preset-kit`, and
 brings its OWN strict schema, parser, and `serialize`. It declares its `rules` as
 **records**, not imperative functions. A rule is
 `{ code, severity?, category?, depth?, select, when?, message }` —
@@ -40,7 +40,7 @@ rules as records in the `rules` array.
 ## Install In A Test Repo
 
 ```bash
-npx ztrack init --team APP --preset default
+npx @volter/ztrack init --team APP --preset default
 ```
 
 This installs `.volter/tracker/validation/preset.mts`. The demo file in this
@@ -62,8 +62,8 @@ The config shape is:
 Export the validated root and check it:
 
 ```bash
-npx ztrack export --out .volter/root.json
-npx ztrack check --input .volter/root.json
+npx @volter/ztrack export --out .volter/root.json
+npx @volter/ztrack check --input .volter/root.json
 ```
 
 Each issue a rule reads (via `m.issues`) exposes whatever this preset's schema

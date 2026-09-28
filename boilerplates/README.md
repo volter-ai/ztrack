@@ -22,11 +22,11 @@ A preset is **two co-located files** in `boilerplates/presets/`, and the `.ts` f
 presets by scanning this directory.
 
 1. **`<name>.ts`** — the standalone preset (schema/parser/serialize/rules), importing
-   only `ztrack/preset-kit`. Its exported `name` field **must equal the filename**
+   only `@volter/ztrack/preset-kit`. Its exported `name` field **must equal the filename**
    `<name>`. See [docs/PRESETS.md § Building or extending a preset](../docs/PRESETS.md#building-or-extending-a-preset-maintainers) and the existing presets as the bar to copy.
 
    Its default export **must also carry a `visualizer` block** (typed `VisualizerSpec`,
-   `ztrack/preset-kit`) — the dashboard's vocabulary as plain data: status order, what an
+   `@volter/ztrack/preset-kit`) — the dashboard's vocabulary as plain data: status order, what an
    AC is called, and which fields hold the assignee/PR/AC text/proof/evidence. Map only
    the fields your schema actually has (see the shipped presets — `spec.ts`, `speckit.ts` —
    for how a smaller schema maps a smaller subset). `statusOrder` must equal your schema's
@@ -68,7 +68,7 @@ not reintroduce one (a hardcoded enum/array/map is the bug this design removes).
 Presets (above) are the dashboard's DATA extension point — status order, AC vocabulary,
 and which fields hold what. `boilerplates/visualizer/extension.tsx` is the matching CODE
 extension point: a complete, heavily-commented, worked example of a repo-owned dashboard
-extension, importing only `ztrack/visualizer-kit` (the render-only `VisualizerExtension`
+extension, importing only `@volter/ztrack/visualizer-kit` (the render-only `VisualizerExtension`
 contract — `issuePanels`/`acText`/`acProof`/`acEvidence`/`statusClass`; see
 [docs/API.md](../docs/API.md) and `src/visualizerKit.ts`).
 
@@ -86,7 +86,7 @@ for the default state dir):
 
 ```bash
 mkdir -p .volter/tracker/visualizer
-cp node_modules/ztrack/boilerplates/visualizer/extension.tsx .volter/tracker/visualizer/extension.tsx
+cp node_modules/@volter/ztrack/boilerplates/visualizer/extension.tsx .volter/tracker/visualizer/extension.tsx
 ```
 
 The running visualizer board picks it up on the very next `/assets/app.js` fetch — no

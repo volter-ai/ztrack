@@ -50,7 +50,7 @@ async function main() {
 
     const root = mkdtempSync(join(tmpdir(), 'ztrk-linksim-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     git(root, 'init', '-q'); git(root, 'config', 'user.email', 's@s.co'); git(root, 'config', 'user.name', 's');
     writeFileSync(join(root, 'README.md'), '# proj\n'); git(root, 'add', '-A'); git(root, 'commit', '-q', '-m', 'base');
     zt(root, 'init', '--team', 'PROJ', '--sync', 'github', '--repo', repo);

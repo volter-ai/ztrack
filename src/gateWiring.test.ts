@@ -63,8 +63,8 @@ describe('detectGateWiring', () => {
     mkdirSync(join(projectRoot, '.claude'), { recursive: true });
     writeFileSync(join(projectRoot, '.claude', 'settings.json'), JSON.stringify({
       hooks: {
-        Stop: [{ hooks: [{ type: 'command', command: 'bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh' }] }],
-        SubagentStop: [{ hooks: [{ type: 'command', command: 'bash node_modules/ztrack/plugins/ztrack/hooks/stop-loop.sh' }] }],
+        Stop: [{ hooks: [{ type: 'command', command: 'bash node_modules/@volter/ztrack/plugins/ztrack/hooks/stop-loop.sh' }] }],
+        SubagentStop: [{ hooks: [{ type: 'command', command: 'bash node_modules/@volter/ztrack/plugins/ztrack/hooks/stop-loop.sh' }] }],
       },
     }));
     expect(detect(projectRoot).wired).toBe(true);

@@ -81,8 +81,8 @@ if (vizCore.status !== 0) {
 }
 
 // A self-contained CommonJS bundle of preset-kit. The installed preset is ESM
-// (preset.mts, `import 'ztrack/preset-kit'`), but a CommonJS consumer that does
-// `require('ztrack/preset-kit')` still needs a real-CJS target: the package is ESM
+// (preset.mts, `import '@volter/ztrack/preset-kit'`), but a CommonJS consumer that does
+// `require('@volter/ztrack/preset-kit')` still needs a real-CJS target: the package is ESM
 // (`"type": "module"`), so the `./preset-kit` export's `require` condition points here
 // rather than at a `require()` of an ES module. Bundling zod/mdast in keeps it free of
 // external ESM.

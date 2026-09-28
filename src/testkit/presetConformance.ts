@@ -2,12 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
-import { VisualizerSpecSchema } from 'ztrack/preset-kit';
+import type { CoreRoot, IssueRecord, Preset } from '@volter/ztrack/preset-kit';
+import { VisualizerSpecSchema } from '@volter/ztrack/preset-kit';
 import { applyModelPatch, canonicalizeBody } from '../modelEdit.ts';
 import { createMarkdownBackend } from '../backends/markdownBackend.ts';
 import { viewToRecord } from '../core/loader.ts';
-// NOT re-exported via `ztrack/preset-kit` (it's a write-time-validation internal, not preset-authoring
+// NOT re-exported via `@volter/ztrack/preset-kit` (it's a write-time-validation internal, not preset-authoring
 // mechanism) — this file lives IN the repo (src/testkit/), so it rents it the same way every other
 // src/* module does, via a relative import (see the VIZ-2 export note on issueStatusEnumOf itself).
 import { issueStatusEnumOf } from '../presetRegistry.ts';

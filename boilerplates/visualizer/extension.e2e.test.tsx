@@ -16,7 +16,7 @@
 // visualizer client deps installed (`visualizer/node_modules/react` present — CI's "Typecheck
 // visualizer client" step runs `cd visualizer && bun install --silent` first) AND the package
 // itself built (`dist/src/visualizerKit.js` present — a fixture's extension.tsx imports
-// 'ztrack/visualizer-kit', which resolves via THIS repo's package.json "exports" map to that
+// '@volter/ztrack/visualizer-kit', which resolves via THIS repo's package.json "exports" map to that
 // file; CI's "Build package" step precedes "Test"). A local `bun test` run without that
 // provisioning skips here rather than failing on an environment precondition — run `bun install`
 // (repo root) + `cd visualizer && bun install` + `npm run build` first to make it RUN.
@@ -41,7 +41,7 @@ function zt(root: string, ...a: string[]) {
 function initFixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-viz16-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // extension.tsx imports 'ztrack/visualizer-kit' — same install requirement as a preset.mts's 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // extension.tsx imports '@volter/ztrack/visualizer-kit' — same install requirement as a preset.mts's '@volter/ztrack/preset-kit'
   const r = zt(root, 'init', '--team', 'V16'); // no --preset -> default -> simple-sdlc
   if (r.status !== 0) throw new Error(`fixture: ztrack init failed: ${r.stderr || r.stdout}`);
   return root;
@@ -151,13 +151,13 @@ async function bootBundle(port: number, path = '/'): Promise<void> {
 
 const BASE_PORT = 8420 + (process.pid % 200) * 2;
 
-describe('VIZ-16 dev/01 — boilerplates/visualizer/extension.tsx imports ONLY ztrack/visualizer-kit', () => {
+describe('VIZ-16 dev/01 — boilerplates/visualizer/extension.tsx imports ONLY @volter/ztrack/visualizer-kit', () => {
   // The literal grep the task's acceptance criterion names, run for real and asserted on.
-  test('every import line resolves to ztrack/visualizer-kit, and nothing else', () => {
+  test('every import line resolves to @volter/ztrack/visualizer-kit, and nothing else', () => {
     const source = readFileSync(EXTENSION_SOURCE_PATH, 'utf8');
     const importLines = source.split('\n').filter((line) => /^import\b/.test(line) || /from '/.test(line));
     expect(importLines.length).toBeGreaterThan(0); // sanity: the file does import something
-    for (const line of importLines) expect(line).toContain("'ztrack/visualizer-kit'");
+    for (const line of importLines) expect(line).toContain("'@volter/ztrack/visualizer-kit'");
   });
 });
 

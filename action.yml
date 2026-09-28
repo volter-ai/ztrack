@@ -1,5 +1,5 @@
 # Consumers:
-#   - uses: volter-ai/ztrack@v1      (moving major tag; or pin an exact vX.Y.Z)
+#   - uses: volter-ai/ztrack@v2      (moving major tag; or pin an exact vX.Y.Z)
 # Runs `ztrack check` as a PR gate: checked ACs must cite evidence that verifies,
 # or the job fails.
 #
@@ -69,7 +69,7 @@ runs:
           "${ZTRACK[@]}" check --input "$ROOT" ${PRESET_ARGS[@]+"${PRESET_ARGS[@]}"}
         else
           if [ ! -f .volter/tracker-config.json ]; then
-            echo "No .volter/tracker-config.json found. Run 'npx ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2
+            echo "No .volter/tracker-config.json found. Run 'npx @volter/ztrack init' locally, commit the config, and prefer a committed validated root (ztrack export) for CI." >&2
             exit 2
           fi
           if [ -z "$PRESET" ]; then

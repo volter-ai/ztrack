@@ -303,7 +303,7 @@ Plan or apply a batch of model edits (tx.json: {"edits": [{"issue": "A-1", "op":
     process.stdout.write(`Usage: ${command} mcp serve
 
 Starts the MCP server (agent-facing task/evidence tools — check, patch, etc. — over stdio).
-Wire it into an agent with e.g. \`claude mcp add ztrack -- npx ztrack mcp serve\`.
+Wire it into an agent with e.g. \`claude mcp add ztrack -- npx @volter/ztrack mcp serve\`.
 `);
     return true;
   }

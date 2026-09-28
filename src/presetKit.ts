@@ -11,7 +11,7 @@ import { gfmFromMarkdown } from 'mdast-util-gfm';
 
 // ── engine + authoring API ───────────────────────────────────────────────────
 export { rule, definePreset, check, checkRoot, deriveCoreModel, VisualizerSpecSchema } from './core/engine.ts';
-// Re-exported so an installed preset imports ONLY `ztrack/preset-kit` — `zod` and the
+// Re-exported so an installed preset imports ONLY `@volter/ztrack/preset-kit` — `zod` and the
 // `mdast-*` parsers are the kit's deps, not something a consuming repo must install.
 export { z } from 'zod';
 export type {
@@ -31,7 +31,7 @@ export type { RawBlockRef } from './core/blocking.ts';
 // World annotations pull in `@volter/world-core`, so they are deliberately NOT re-exported
 // here — keeping preset-kit (and thus every baseline installed preset) from loading twin's
 // world runtime just to parse. A preset whose loadContext uses them imports the dedicated
-// `ztrack/world-annotations` / `ztrack/world-source-books` subpaths instead (twin is an OPTIONAL
+// `@volter/ztrack/world-annotations` / `@volter/ztrack/world-source-books` subpaths instead (twin is an OPTIONAL
 // peer dependency, lazily loaded via src/worldTwinRuntime.ts — the same dynamic-import seam
 // src/sync/github/twinRuntime.ts established for `ztrack sync github` — and NOT present unless
 // the consumer installs it explicitly; see docs/GUIDE.md's GitHub-sync recipe).

@@ -1,7 +1,7 @@
 // Optional tracker-side world adapter (requires the @volter/world-core peer): maps world
 // events/annotations to "source books" that a world-backed preset's loader can fold
 // into `Context.world` for its rules. Standalone source-level code — not wired into
-// the default loader; a PUBLIC subpath export (`ztrack/world-source-books`, documented in
+// the default loader; a PUBLIC subpath export (`@volter/ztrack/world-source-books`, documented in
 // docs/EVIDENCE.md's "Advanced: validating against a mirrored world" section) that a
 // world-backed preset's loadContext imports directly; ztrack reads only twin's public
 // event API.

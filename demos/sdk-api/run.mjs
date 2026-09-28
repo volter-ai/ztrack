@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createTrackerClient } from 'ztrack';
+import { createTrackerClient } from '@volter/ztrack';
 
 const client = createTrackerClient();
 

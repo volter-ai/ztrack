@@ -27,7 +27,7 @@ describe('initTrackerProject — no dead categories block (ZL-E4)', () => {
 // (installPreset, presetCatalog.ts) into `.volter/tracker/validation/preset.mts`, so the
 // installed file must carry the same `visualizer` block the source boilerplate declares
 // (guarded at the source by `boilerplates/presets/visualizerVocabulary.test.ts`). String
-// assertions on the installed file's source text (not a dynamic import — `ztrack/preset-kit`
+// assertions on the installed file's source text (not a dynamic import — `@volter/ztrack/preset-kit`
 // does not resolve from a temp-project subprocess in this sandbox, and in-process `import()` of
 // an arbitrary temp path is unnecessary when the file is a verbatim copy checkable as text).
 describe('installed preset.mts carries the visualizer block (VIZ-2 install parity)', () => {
@@ -72,7 +72,7 @@ describe('initTrackerProject — starter dashboard extension installed at init (
       expect(existsSync(basePath)).toBe(true);
       const installed = readFileSync(extPath, 'utf8');
       expect(installed).toBe(readFileSync(basePath, 'utf8')); // pristine base matches the installed copy
-      expect(installed).toContain("import { defineVisualizerExtension } from 'ztrack/visualizer-kit';"); // importing ONLY visualizer-kit
+      expect(installed).toContain("import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';"); // importing ONLY visualizer-kit
       expect(installed).toContain('export default defineVisualizerExtension({});'); // a genuine no-op — no members to merge
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

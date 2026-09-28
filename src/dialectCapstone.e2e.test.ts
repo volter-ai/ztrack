@@ -51,7 +51,7 @@ const BUILD_CHECKLIST = `# Build checklist
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'ztrk-capstone-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
   mkdirSync(join(root, 'stories'));
   writeFileSync(join(root, 'stories', 'KILL-QUESTIONS.md'), KILL_QUESTIONS);
   writeFileSync(join(root, 'stories', 'BUILD-CHECKLIST.md'), BUILD_CHECKLIST);

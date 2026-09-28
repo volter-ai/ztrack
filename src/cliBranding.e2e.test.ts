@@ -21,7 +21,7 @@ describe('branding: "tracker" error strings say "ztrack" (ZTB-18 dev/39)', () =>
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-branding-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q');
     gitIn(root, 'config', 'user.email', 't@t.co');
     gitIn(root, 'config', 'user.name', 't');

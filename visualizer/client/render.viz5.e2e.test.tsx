@@ -59,7 +59,7 @@ function zt(root: string, ...a: string[]) {
 function initFixture(preset?: string, prefix = 'viz5'): string {
   const root = mkdtempSync(join(tmpdir(), `ztrk-${prefix}-`));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the installed preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the installed preset imports '@volter/ztrack/preset-kit'
   const args = preset ? ['init', '--preset', preset, '--team', 'V5'] : ['init', '--team', 'V5'];
   const r = zt(root, ...args);
   if (r.status !== 0) throw new Error(`fixture: ztrack init failed: ${r.stderr || r.stdout}`);
@@ -294,7 +294,7 @@ suite('VIZ-5 — per-preset rendered-fact drift guard (manifest-driven)', () => 
     beforeAll(async () => {
       root = initFixture(undefined, 'viz5-neg'); // scaffolding/config only — the preset.mts below is a full replacement, never an edit of what init installed
       const presetPath = join(root, '.volter', 'tracker', 'validation', 'preset.mts');
-      writeFileSync(presetPath, `import { z, type Preset } from 'ztrack/preset-kit';
+      writeFileSync(presetPath, `import { z, type Preset } from '@volter/ztrack/preset-kit';
 
 // A minimal, standalone, hand-authored fixture preset — deliberately NOT one of the shipped
 // boilerplates and NOT derived from one. It declares a valid CoreRoot-shaped schema so

@@ -1,9 +1,9 @@
-// VIZ-14 dev/02: a consuming fixture `extension.tsx` that imports ONLY 'ztrack/visualizer-kit'
+// VIZ-14 dev/02: a consuming fixture `extension.tsx` that imports ONLY '@volter/ztrack/visualizer-kit'
 // (a) typechecks against the BUILT .d.ts, and (b) loads at runtime through a plain import.
 //
-// Method for (a): a temp dir with `node_modules/ztrack` symlinked to the repo root (so Node/TS
+// Method for (a): a temp dir with `node_modules/@volter/ztrack` symlinked to the repo root (so Node/TS
 // package-exports resolution — the SAME mechanism a real install uses — resolves
-// `ztrack/visualizer-kit` to `dist/src/visualizerKit.{js,d.ts}` via this package's own
+// `@volter/ztrack/visualizer-kit` to `dist/src/visualizerKit.{js,d.ts}` via this package's own
 // `exports` map, package.json:41-45-ish) and `node_modules/@types/react` symlinked to the
 // repo's own (so the fixture's `import type { ReactNode }` chain — pulled in transitively by
 // `VisualizerExtension` — resolves without a separate react install, per the optional-peer
@@ -31,8 +31,8 @@ const TYPES_REACT = existsSync(join(REPO, 'node_modules', '@types', 'react'));
 const suite = KIT_BUILT && TYPES_REACT ? describe : describe.skip;
 
 const EXTENSION_SOURCE = `
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
-import type { VisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
+import type { VisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 const ext: VisualizerExtension = {
   statusClass: (status) => \`state-\${status}\`,
@@ -48,7 +48,7 @@ export default defineVisualizerExtension(ext);
 function makeFixture(): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-vizkit-fixture-'));
   mkdirSync(join(root, 'node_modules', '@types'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
   symlinkSync(join(REPO, 'node_modules', '@types', 'react'), join(root, 'node_modules', '@types', 'react'));
   writeFileSync(join(root, 'extension.tsx'), EXTENSION_SOURCE);
   writeFileSync(join(root, 'tsconfig.json'), JSON.stringify({
@@ -61,8 +61,8 @@ function makeFixture(): string {
   return root;
 }
 
-suite('ztrack/visualizer-kit — consuming fixture (VIZ-14 dev/02)', () => {
-  test('a fixture extension.tsx importing ONLY ztrack/visualizer-kit typechecks against the built .d.ts', () => {
+suite('@volter/ztrack/visualizer-kit — consuming fixture (VIZ-14 dev/02)', () => {
+  test('a fixture extension.tsx importing ONLY @volter/ztrack/visualizer-kit typechecks against the built .d.ts', () => {
     const root = makeFixture();
     try {
       const result = spawnSync('bunx', ['tsc', '--noEmit', '-p', root], { cwd: root, encoding: 'utf8' });

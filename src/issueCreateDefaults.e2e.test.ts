@@ -24,7 +24,7 @@ describe('issue create defaults conform to the installed preset (markdown backen
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-create-defaults-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the preset imports '@volter/ztrack/preset-kit'
     // The default assignee IS `git config user.name` (markdownBackend.defaultAssignee), so the
     // fixture must pin its own repo-local identity — otherwise the test silently depends on the
     // runner's GLOBAL git config (present on a dev machine, absent on a CI runner, where the
@@ -61,7 +61,7 @@ describe('issue create: title derivation / refusal when --title is omitted (ZTB-
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-create-title-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q');
     gitIn(root, 'config', 'user.email', 't@t.co');
     gitIn(root, 'config', 'user.name', 't');

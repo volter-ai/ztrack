@@ -10,7 +10,7 @@ always installs one editable, **standalone** preset at:
 After installation, that file belongs to the target repository. It is real,
 editable code — its OWN strict schema, its OWN markdown parser, its OWN
 `serialize`, and its OWN rules, importing only the mechanism from
-`ztrack/preset-kit`. There is no shared/generic model: the three presets share
+`@volter/ztrack/preset-kit`. There is no shared/generic model: the three presets share
 nothing with each other except the engine. Teams edit the installed preset as
 their workflow becomes more specific.
 
@@ -26,10 +26,10 @@ their workflow becomes more specific.
 Install one with:
 
 ```bash
-npx ztrack init --team APP --preset simple-sdlc      # the lean, PR-free baseline
-npx ztrack init --team APP --preset simple-gh-sdlc   # PR-based GitHub flow
-npx ztrack init --team APP --preset spec
-npx ztrack init --team APP --preset speckit
+npx @volter/ztrack init --team APP --preset simple-sdlc      # the lean, PR-free baseline
+npx @volter/ztrack init --team APP --preset simple-gh-sdlc   # PR-based GitHub flow
+npx @volter/ztrack init --team APP --preset spec
+npx @volter/ztrack init --team APP --preset speckit
 ```
 
 Omitting `--preset` installs `simple-sdlc` (and `--preset default` is an alias for it).
@@ -58,7 +58,7 @@ feature records. It is **read-only** (it defines no `serialize`, so it cannot be
 The installed file is an editable ES module (`.mts`) so a fresh repo can edit it
 without a build step, and so it loads in CommonJS consumer repos under Node
 type-stripping. It is REAL editable code: it imports the engine, the mdast
-mechanism, and the root schema constructor from `ztrack/preset-kit`, and declares
+mechanism, and the root schema constructor from `@volter/ztrack/preset-kit`, and declares
 its rules as records over the derived model.
 
 A preset is a self-contained `Preset { name, schema, parse, serialize?, rules,
@@ -67,12 +67,12 @@ loadContext?, derive?, primitives?, scaffold? }`. Here is the minimal real shape
 (the declared inverse of `parse`), and its own rules:
 
 ```ts
-// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
+// A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
   z, toMdast, nodeText, type MdNode,
   rule, gitWorld,
   type Context, type Preset, type IssueRecord, type IssueColumns,
-} from 'ztrack/preset-kit';
+} from '@volter/ztrack/preset-kit';
 
 // ── this preset's OWN strict schema (core fields + preset-specific, all .strict()) ──
 const SpecEvidenceSchema = z.object({
@@ -488,7 +488,7 @@ The sections above cover editing an installed preset. This section is for buildi
 preset system should read it first. Reference standalone presets (the bar to copy):
 `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` — each its own schema,
 parser, serialize, rules. The shared mechanism is the core engine (`src/core/engine.ts`); a
-new preset imports only `ztrack/preset-kit`.
+new preset imports only `@volter/ztrack/preset-kit`.
 
 > **Presets are standalone — there is NO universal model.** Each preset is a self-contained
 > `Preset { name, schema, parse, rules, ... }` with its OWN strict schema, its OWN mdast parser,

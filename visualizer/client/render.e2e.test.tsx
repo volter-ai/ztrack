@@ -2,7 +2,7 @@
 // static SHELL, `server.ts:209-214`-ish), so a plain `curl /` cannot see what actually renders —
 // this suite adds the DOM runtime (happy-dom, root devDependency) `bun test` was missing and
 // boots the REAL `ztrack visualizer` server against REAL `ztrack init` fixtures (same pattern as
-// `src/visualizer.e2e.test.ts` / `src/visualizerViz3.e2e.test.ts`: symlink node_modules/ztrack ->
+// `src/visualizer.e2e.test.ts` / `src/visualizerViz3.e2e.test.ts`: symlink node_modules/@volter/ztrack ->
 // this checkout, run the real CLI, spawn the real server). `main.tsx` is imported directly from
 // SOURCE (Bun transpiles TSX on the fly) rather than by executing the built `/assets/app.js`
 // bundle — it is "the React tree directly ... against a fetched ... payload" (the task's second
@@ -35,7 +35,7 @@ function zt(root: string, ...a: string[]) {
 function initFixture(preset?: string): string {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-viz4-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the installed preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the installed preset imports '@volter/ztrack/preset-kit'
   const args = preset ? ['init', '--preset', preset, '--team', 'V4'] : ['init', '--team', 'V4'];
   const r = zt(root, ...args);
   if (r.status !== 0) throw new Error(`fixture: ztrack init failed: ${r.stderr || r.stdout}`);

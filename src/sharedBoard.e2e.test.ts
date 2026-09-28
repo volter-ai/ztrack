@@ -49,7 +49,7 @@ describe('shared-local board: real lifecycle across git worktrees', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-shared-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     writeFileSync(join(root, '.gitignore'), 'node_modules/\n'); // never commit/clone deps
     gitIn(root, 'commit', '-q', '--allow-empty', '-m', 'root');
@@ -132,7 +132,7 @@ describe('shared-local board: real lifecycle across git worktrees', () => {
     rmSync(clone, { recursive: true, force: true });
     expect(spawnSync('git', ['clone', '-q', root, clone], { encoding: 'utf8' }).status).toBe(0);
     mkdirSync(join(clone, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(clone, 'node_modules', 'ztrack'));
+    mkdirSync(join(clone, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(clone, 'node_modules', '@volter', 'ztrack'));
     expect(existsSync(join(clone, '.git', 'ztrack', 'board'))).toBe(false); // index not cloned (it's in .git)
     expect(ids(clone)).toEqual(['LOCAL-1', 'LOCAL-2']);    // …yet the committed board is fully readable
     rmSync(clone, { recursive: true, force: true });
@@ -145,7 +145,7 @@ describe('branch-scoped board (default) is unchanged — regression guard', () =
   test('default mode keeps the board branch-scoped (an edit on a branch is NOT visible on trunk until merge)', () => {
     r = mkdtempSync(join(tmpdir(), 'ztrk-branch-'));
     mkdirSync(join(r, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(r, 'node_modules', 'ztrack'));
+    mkdirSync(join(r, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(r, 'node_modules', '@volter', 'ztrack'));
     gitIn(r, 'init', '-q'); gitIn(r, 'config', 'user.email', 't@t.co'); gitIn(r, 'config', 'user.name', 't');
     gitIn(r, 'commit', '-q', '--allow-empty', '-m', 'root');
     ztIn(r, 'init', '--branch'); // opt OUT of the shared default → strict branch-scoped board

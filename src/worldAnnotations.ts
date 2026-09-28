@@ -10,7 +10,7 @@
 //
 // `@volter/world-core` is loaded LAZILY (dynamic import, only when a function here actually
 // runs) via `./worldTwinRuntime.ts` — this module is a PUBLIC subpath export
-// (`ztrack/world-annotations`), so a consumer without the optional twin peer installed must get
+// (`@volter/ztrack/world-annotations`), so a consumer without the optional twin peer installed must get
 // a friendly error, not a raw ESM resolution crash. See worldTwinRuntime.ts for the full
 // rationale (mirrors src/sync/github/twinRuntime.ts's seam for `ztrack sync github`).
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
