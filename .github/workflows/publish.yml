@@ -1,98 +1,82 @@
-name: Publish
-
-# Publishes ztrack to npm when an exact version tag (vX.Y.Z) is pushed.
-# The npm token lives once as the repo secret NPM_TOKEN — no local token needed.
-# Release flow: bump package.json + CHANGELOG, commit, then
-#   git tag v0.2.1 && git push origin v0.2.1
+# Autopublish: every push to main releases what it changed. autorelease.mjs moves ztrack to its
+# next patch version when anything it ships changed since its last release; the changelog's
+# Unreleased notes become that version's section, the package is built and published, and the
+# release commit, the tag and the GitHub release go back. Auth is the repository secret NPM_TOKEN.
+name: publish
 on:
   push:
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
-
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: publish
+  cancel-in-progress: false
 permissions:
-  contents: read
-  id-token: write # enables npm provenance
-
+  contents: write
+  id-token: write
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      PACKAGES: .
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.20
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
-      - run: bun install --frozen-lockfile
-      - name: Verify tag matches package.json version
+          registry-url: https://registry.npmjs.org
+      - run: git config core.fileMode false
+      - name: Version what changed since its last release
+        id: release
+        run: node .github/autorelease.mjs
+      - name: Is this version on npm yet
+        id: check
         run: |
-          PKG=$(node -p "require('./package.json').version")
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ "$PKG" != "$TAG" ]; then
-            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${PKG}"
-            exit 1
+          v="$(node -p "require('./package.json').version")"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if [ -n "$(npm view "ztrack@$v" version 2>/dev/null)" ]; then echo "$v is published"; else echo "$v is new"; echo new=1 >> "$GITHUB_OUTPUT"; fi
+      - if: steps.check.outputs.new
+        name: The lockfile and the changelog's section follow the version
+        env:
+          V: ${{ steps.check.outputs.version }}
+        run: |
+          bun install
+          if ! grep -q "^## $V$" CHANGELOG.md; then
+            awk -v v="$V" '!done && /^## Unreleased$/ { print; print ""; print "## " v; done = 1; next } { print }' CHANGELOG.md > "$RUNNER_TEMP/changelog" && mv "$RUNNER_TEMP/changelog" CHANGELOG.md
           fi
-      - name: Typecheck
-        run: bun run typecheck
-      - name: Build package
-        # Build BEFORE tests: the black-box e2e tests symlink the repo as node_modules/ztrack and
-        # the installed preset resolves `ztrack/preset-kit` to dist/, so dist must exist first.
-        run: npm run build:node-cli
-      - name: Test
-        run: bun test
-      - name: Fresh project dry run
-        # Gate the release on the REAL consumer path: pack, install into fresh repos, and
-        # run init -> check across every preset (plus MCP/SDK/autonomy). typecheck + bun
-        # test above never exercise an INSTALLED package, so they can't catch an install
-        # that fails to load — which is exactly how 0.3.0 shipped broken. This can.
-        run: bash demos/fresh-project-dry-run.sh
-      - name: Check rule behaviors (real CLI e2e)
-        # The shipped check path: the generic preset's rules fire (and stay quiet) correctly
-        # through the installed CLI — the behaviors presetKit.test.ts used to assert in-process.
-        run: bash demos/check-e2e.sh
-      - name: Missing-peer gate (real, non-mocked CLI e2e for the optional twin peers)
-        # Gate the release on #13's optional-peer contract through the REAL installed CLI:
-        # sync github fails closed with the install hint when the twin peers are absent, and
-        # with the bun-hint when they're installed but run under plain node — never a raw
-        # module-resolution crash either way.
-        run: bash demos/missing-peer-gate.sh
-      - name: Loop gate (Stop hook + waiver, no live agent)
-        # Also on the release gate: the installed package's Stop hook + `ztrack waiver`
-        # CLI round-trip, driven deterministically (no model calls).
-        run: bash demos/loop-gate-ci.sh
-      - name: Import backlog (freeform -> native document source e2e)
-        # The 0.37.0 headline feature through the real CLI: materialize a freeform
-        # backlog, re-import is a byte-identical no-op, output checks green and accepts
-        # a real ac patch.
-        run: bash demos/import-backlog-demo.sh
-      - name: Package-manager matrix (pnpm / yarn / PnP / bun)
-        # Gate the release on the resolution layouts npm doesn't exercise — this is how the
-        # require(esm) break (Node 20 / PnP) and the unexported package.json would be caught.
-        run: bash demos/pm-matrix.sh
-      - name: "Visualizer mod (DOM-rendered custom board: status column + AC-unit label + theme + code panel)"
-        # Gate the release on the dashboard analog of the custom-rule demo above: a modded
-        # installed preset (new status + AC-unit label), a theme.css override, and the shipped
-        # VIZ-16 boilerplate code panel — asserted RENDERED (not just present on disk) by actually
-        # running the served client bundle in a DOM runtime (demos/visualizer-mod/dom-check.mjs).
-        run: |
-          (cd visualizer && bun install --silent)
-          bash demos/visualizer-mod.sh
-      - name: Publish to npm
-        # --provenance uses the id-token permission above; without the flag the
-        # OIDC grant is dead weight and npm ships no attestation (ZL-E10).
-        # When the version being published is LOWER than npm's current `latest`
-        # (a fix cut while a higher version holds latest — e.g. an out-of-band
-        # release), npm refuses the implicit latest tag outright; publish under
-        # the `backport` dist-tag instead and leave `latest` untouched.
-        run: |
-          PKG=$(node -p "require('./package.json').version")
-          LATEST=$(npm view ztrack version 2>/dev/null || echo '0.0.0')
-          TAG_ARGS=""
-          if [ "$(printf '%s\n%s\n' "$LATEST" "$PKG" | sort -V | tail -1)" != "$PKG" ]; then
-            echo "::notice::version ${PKG} is below npm latest ${LATEST} — publishing under dist-tag 'backport'"
-            TAG_ARGS="--tag backport"
-          fi
-          npm publish --access public --provenance $TAG_ARGS
+      - if: steps.check.outputs.new
+        run: cd visualizer && bun install
+      - if: steps.check.outputs.new
+        name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if ! npm publish --provenance --access public 2>"$RUNNER_TEMP/err"; then
+            cat "$RUNNER_TEMP/err"; grep -qi 'cannot publish over' "$RUNNER_TEMP/err" || exit 1
+          fi
+      - if: steps.check.outputs.new
+        name: The release commit, the tag and the GitHub release
+        env:
+          V: ${{ steps.check.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json bun.lock CHANGELOG.md
+          git diff --cached --quiet || git commit -qm "Release $V"
+          git reset -q --hard HEAD
+          for attempt in 1 2 3 4 5; do
+            if git pull -q --rebase origin main; then git push -q origin HEAD:main && break; else git rebase --abort; fi
+            [ "$attempt" = 5 ] && exit 1; sleep 5
+          done
+          git rev-parse -q --verify "refs/tags/v$V" >/dev/null || { git tag -a "v$V" -m "v$V" && git push -q origin "v$V"; }
+          # The Action's major tag (volter-ai/ztrack@v1) follows the release it belongs to.
+          git tag -f "v${V%%.*}" "v$V^{}" && git push -q -f origin "v${V%%.*}"
+          notes=$(awk -v h="## $V" '$0 == h { p = 1; next } p && /^## / { exit } p' CHANGELOG.md | sed '/^$/d')
+          gh release view "v$V" >/dev/null 2>&1 || gh release create "v$V" --title "v$V" --notes "${notes:-v$V}"

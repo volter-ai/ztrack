@@ -8,75 +8,23 @@ ztrack has two public distribution surfaces:
 Keep package versions, git tags, and action tags aligned. A release is not complete
 until all three surfaces point at the intended code.
 
-## Before releasing
-
-1. Confirm `main` is green in CI.
-2. Run the local checks — this is the exact CI + Publish gate set (`.github/workflows/ci.yml`'s
-   `test`/`compat` jobs and `publish.yml`; CI also repeats `bun test` under the pinned bun 1.2.20):
-
-   ```bash
-   bun install --frozen-lockfile
-   bun run typecheck
-   npm run build:node-cli                # build before tests: e2e tests symlink the repo as
-                                          # node_modules/ztrack and resolve ztrack/preset-kit to dist/
-   bun test
-   npm pack --dry-run
-   bash demos/fresh-project-dry-run.sh
-   bash demos/check-e2e.sh
-   bash demos/missing-peer-gate.sh
-   bash demos/loop-gate-ci.sh
-   bash demos/import-backlog-demo.sh
-   bash demos/pm-matrix.sh
-   ```
-
-   `demos/full-dev-cycle.sh`, `demos/real-project-cycle.sh`, `demos/real-project-marathon.sh`, and
-   `demos/loop-e2e.sh` are heavier adoption/endurance/live-agent exercises worth running for a
-   larger change, but they are **not** CI/Publish gates — see [demos/README.md](../demos/README.md).
-
-3. Update `package.json` with the new semver version.
-4. Update `CHANGELOG.md` with user-facing changes.
-
 ## Publish
 
-Publishing is automated. Pushing an exact version tag (`vX.Y.Z`) triggers the
-`Publish` workflow (`.github/workflows/publish.yml`), which verifies the tag
-matches `package.json`, runs typecheck + tests, then `npm publish` with
-provenance using the repo secret `NPM_TOKEN`. **No local npm token is needed** —
-do not run `npm publish` by hand.
+Every push to `main` publishes (`.github/workflows/publish.yml`). When anything ztrack ships
+changed since its last release, the workflow moves `package.json` to the next patch version,
+turns the changelog's `## Unreleased` notes into that version's section, builds and publishes
+with provenance, commits the release back to `main`, tags `vX.Y.Z`, moves the major Action tag
+(`v1`) to it, and creates the GitHub release from the section. A push that changes nothing
+shipped (a workflow edit, say) publishes nothing.
 
-1. Commit the version and changelog update, and push `main`.
-2. Create and push the exact version tag on that commit — this publishes:
-
-   ```bash
-   git tag v1.2.3
-   git push origin v1.2.3
-   ```
-
-3. Watch it: `gh run watch` (or the Actions tab). On success the version is live on npm.
-4. Move the major action tag only after the exact version tag exists:
-
-   ```bash
-   git tag -f v1 v1.2.3
-   git push origin v1 --force
-   ```
-
-   The moving tag always matches the current major (`v1` for 1.x). Retired majors' moving
-   tags stay frozen at that line's last release and never move again (`v0` is frozen at
-   v0.51.0 for consumers still pinned to `ztrack@v0`).
+A change lands with its user-facing note under `## Unreleased` in `CHANGELOG.md`. A minor or
+major version is set by hand in `package.json` in the change that needs it; the workflow
+publishes that version as it stands.
 
 ## Credentials (one-time / rotation)
 
-The `Publish` workflow authenticates with the repo secret `NPM_TOKEN`
-(Settings → Secrets and variables → Actions). It must be an npm token with
-publish access and 2FA bypass (Granular or Automation token). Rotate it on
-npmjs.com → Access Tokens before it expires and update the secret:
-
-```bash
-gh secret set NPM_TOKEN --repo volter-ai/ztrack   # paste the new token when prompted
-```
-
-Prefer a Granular token scoped to just the `ztrack` package over a broad
-account-wide token.
+The workflow authenticates with the repo secret `NPM_TOKEN`, the npm publish token the
+other Volter package repositories share; it is re-set in every repository when it rotates.
 
 ## Rules
 
@@ -84,14 +32,14 @@ account-wide token.
 - Never tag code that differs from the npm package with the same version.
 - Move the current major tag (`v1`) only to a release commit that has already been published
   and exact-tagged; never move a retired major's tag (`v0`).
-- If a publish fails after the commit lands, release a new patch version instead of
-  reusing a version number.
+- If a publish fails after the commit lands, the next push releases a new patch version; a
+  version number is never reused.
 
 ## Public launch check
 
 Before making the repository public, verify:
 
-- the README CI badge resolves
+- the README publish badge resolves
 - `npx ztrack --help` runs from a clean shell
 - `volter-ai/ztrack@v1` resolves in a throwaway GitHub Actions workflow
 - GitHub Security Advisories are enabled

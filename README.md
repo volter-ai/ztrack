@@ -5,7 +5,7 @@
 <p align="center"><strong>Done is earned, not declared.</strong> A verification gate for AI coding agents — every &ldquo;done&rdquo; backed by a real commit and proof, or it doesn&rsquo;t pass.</p>
 
 <p align="center">
-  <a href="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml"><img src="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/volter-ai/ztrack/actions/workflows/publish.yml"><img src="https://github.com/volter-ai/ztrack/actions/workflows/publish.yml/badge.svg?branch=main" alt="publish"></a>
   <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/v/ztrack.svg" alt="npm"></a>
   <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/dm/ztrack.svg" alt="npm downloads"></a>
   <a href="https://github.com/volter-ai/ztrack/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0"></a>

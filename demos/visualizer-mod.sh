@@ -18,7 +18,7 @@
 #      panel's own heading/content — via the DOM-runtime harness (payload + extension-module checks stand
 #      in as its named fallback, not a substitute; see that file's header).
 #
-# Deterministic, no live agent; CI + publish gate (see .github/workflows/ci.yml, publish.yml).
+# Deterministic, no live agent.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

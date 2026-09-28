@@ -16,9 +16,8 @@
 // `defineVisualizerExtension` returns the object unchanged, is the runtime proof this dev/02
 // asks for — stated explicitly, not silently substituted.
 //
-// Gated on the package actually being built (dist/src/visualizerKit.* present) — CI builds
-// before testing (ci.yml: "Build package" precedes "Test"); a local `bun test` run without a
-// prior `npm run build` skips rather than failing on an environment precondition, matching this
+// Gated on the package actually being built (dist/src/visualizerKit.* present); a `bun test`
+// run without a prior `npm run build` skips rather than failing on an environment precondition, matching this
 // suite's existing HAS_DEPS convention (visualizer.e2e.test.ts).
 import { describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';

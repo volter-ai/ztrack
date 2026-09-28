@@ -1,8 +1,12 @@
 # Changelog
 
+All notable ztrack release changes are recorded here.
+
 ## Unreleased
 
-All notable ztrack release changes are recorded here.
+- GitHub sync runs on `@volter/world-core` and `@volter/twin-github` 2.x (the optional peers are now `^2.0.5`). A pull reads the repo's issues into the World; a push settles ztrack's writes against GitHub through `performEntries`, and the created issue's number binds back to the ztrack issue. A two-sided edit merges three-way as before.
+- An issue with no body on GitHub is the tracker's empty body, so the sync after a first pull no longer re-sends it.
+- Every push to main publishes: the next patch version, its changelog section, the tag and the GitHub release.
 
 ## 1.5.9
 

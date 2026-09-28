@@ -77,8 +77,9 @@ function issueResources(projectRoot: string, twin: TwinRuntime): IssueResource[]
   return (twin.twinResources('github', projectRoot) as Array<Record<string, unknown>>)
     .filter((r) => r.type === 'issue')
     // GitHub's body in the tracker's canonical form (what stripConflictSection leaves: no trailing
-    // whitespace, no run of blank lines), so pull, push and the merge compare like with like.
-    .map((r) => ({ id: String(r.id), number: Number(r.number), title: opt(r.title), body: r.body == null ? undefined : stripConflictSection(String(r.body)), state: opt(r.state) }));
+    // whitespace, no run of blank lines), so pull, push and the merge compare like with like. An
+    // issue with no body has GitHub's null, which is the tracker's empty body.
+    .map((r) => ({ id: String(r.id), number: Number(r.number), title: opt(r.title), body: stripConflictSection(String(r.body ?? '')), state: opt(r.state) }));
 }
 const asSyncResource = (r: IssueResource) => ({ type: 'issue', id: r.id, fields: { title: r.title, body: r.body, state: r.state } });
 

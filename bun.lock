@@ -16,15 +16,15 @@
         "@types/node": "^24.0.0",
         "@types/react": "^18.3.0",
         "@types/react-dom": "^18.3.0",
-        "@volter/twin-github": "^2.0.4",
-        "@volter/world-core": "^2.0.4",
+        "@volter/twin-github": "^2.0.5",
+        "@volter/world-core": "^2.0.5",
         "happy-dom": "^20.10.6",
         "typescript": "^5.9.0",
       },
       "peerDependencies": {
         "@volter/supercode-client": "^0.3.60",
-        "@volter/twin-github": "^2.0.4",
-        "@volter/world-core": "^2.0.4",
+        "@volter/twin-github": "^2.0.5",
+        "@volter/world-core": "^2.0.5",
         "react": "^18.3.1 || ^19.0.0",
       },
       "optionalPeers": [
@@ -58,11 +58,11 @@
 
     "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
-    "@volter/twin-github": ["@volter/twin-github@2.0.4", "", { "dependencies": { "@volter/world-ui": "0.1.4", "graphql": "16.14.2", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.4" }, "bin": { "world-github": "dist/src/cli.js" } }, "sha512-eUapeDpXW/rMp6/P1ndJBq8c9yoiKGGhfaY3FdNfQv9uDznfIl8pCHS9yrEH2GGuS2viXhQy/91T/AF4OCKQUA=="],
+    "@volter/twin-github": ["@volter/twin-github@2.0.5", "", { "dependencies": { "@volter/world-ui": "0.1.5", "graphql": "16.14.2", "react": "^19.2.7", "react-dom": "^19.2.7" }, "peerDependencies": { "@volter/world-core": "2.0.5" }, "bin": { "world-github": "dist/src/cli.js" } }, "sha512-SYeD80Ph/Kqxn+T7ZvxfwBMS/NEWy4YZKfIUDL+madaTUTnWc8XLbv8apQAi3wYGKnAiG/I/H7zxiDlPQFQxHw=="],
 
-    "@volter/world-core": ["@volter/world-core@2.0.4", "", { "dependencies": { "ws": "^8.18.0", "zod": "^4.4.2" } }, "sha512-9YrhVaYm7qs3hHiFoWQV2etUfx2CChJlYi5tipisB+XQDbpd/Yxau1K56k4IfQDzrTi1q2FefGVAAIFsdZULJg=="],
+    "@volter/world-core": ["@volter/world-core@2.0.5", "", { "dependencies": { "ws": "^8.18.0", "zod": "^4.4.2" } }, "sha512-HGuEyw5wdaqb2Q/2JvoAARftwzQmjMyy4i0UXe6sqYWjkYSiPAjGcKFTTaf2daDZaPZPXxbHBIOhvDw096TVig=="],
 
-    "@volter/world-ui": ["@volter/world-ui@0.1.4", "", { "peerDependencies": { "@volter/world-core": "2.0.4", "react": "^19.2.7", "react-dom": "^19.2.7" } }, "sha512-ni7LONWFFYFQu0bMH29AC0WPn9XMY+GRCdst1+ljGIt2Y9FJR4aoyISUacfqOtxdhLBL0S+/6b6G+3NOEPm9GA=="],
+    "@volter/world-ui": ["@volter/world-ui@0.1.5", "", { "peerDependencies": { "@volter/world-core": "2.0.5", "react": "^19.2.7", "react-dom": "^19.2.7" } }, "sha512-TtHw/H5oOlRMyFiQ5ul4E1C1PSYwGQdgtI3mlfM9lJBZ7N49PIBAhRA5q/tFkZOd3RGL6UTBixdXBgMrG6wySQ=="],
 
     "buffer-image-size": ["buffer-image-size@0.6.4", "", { "dependencies": { "@types/node": "*" } }, "sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ=="],
 

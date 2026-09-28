@@ -17,8 +17,7 @@
 // Gated on: visualizer client deps installed (react.e2e convention) AND the package itself
 // having been BUILT (`dist/src/visualizerKit.js` present — a fixture's own `extension.tsx`
 // imports 'ztrack/visualizer-kit', which resolves via THIS repo's `package.json` "exports" map
-// to `dist/src/visualizerKit.js`; CI builds before testing, ci.yml "Build package" precedes
-// "Test" — a local `bun test` run without a prior `npm run build` skips here, matching
+// to `dist/src/visualizerKit.js` — a `bun test` run without a prior `npm run build` skips here, matching
 // `visualizerKitFixture.e2e.test.ts`'s own gate).
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
