@@ -325,8 +325,10 @@ kanban, through \`hermes kanban\` only. A three-way merge per card field against
 last agreed state: file edits reach the board, board changes reach the file, and a
 same-field collision is a \`sync_conflict\` that gates check (--policy picks a side).
 A new section (any id that isn't a board id) creates a card; a deleted section
-archives it; an edited title/body/workspace/branch/priority, or a done card moved
-back, re-creates the card. --dry-run prints the board writes it would make.
+archives it. A card's prose, Machine:, Session: and ### Tasks are its state: a
+change posts one comment authored \`arcs\`, never a new card. An edited title,
+workspace, branch or priority, or a done card moved back, re-creates the card.
+--dry-run prints the board writes it would make.
 The grammar: docs/SYNC-HERMES.md.
 `);
     return true;
