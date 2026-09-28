@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.2.0
+
 - **A card's work is its tasks.** On a `kanban` board a card is its lane, its dependencies, a few lines of prose (`Done when:`), `Machine:`, `Session:`, and `### Tasks`: `- [ ] c1 …` one line each, ticked when done, with `blocked-by:` naming a task (`c1`, `t-…:c2`) or a card. `ztrack check` validates task ids and blocking (`task_blocker_missing`, `card_block_cycle`, `done_before_blocker`). The file shows open cards only. It no longer renders a comment thread; the `comments` and `show` sync keys are gone.
 - **Editing a card in place no longer re-creates it.** With `ztrack sync hermes`, a change to a card's prose, `Machine:`, `Session:` or tasks posts one comment authored `arcs` carrying the card's new state, and the latest such comment is what the file shows. Only a title, workspace, branch or priority edit (or reopening a done card) re-creates a card.
 - A sync verifies that the file it rendered reads back as the board it came from before replacing the file. A card whose opening post starts like a metadata line (`Session: …`) is escaped (`\Session: …`), so it no longer reads back as metadata.
