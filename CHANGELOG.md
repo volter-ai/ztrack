@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.1.1
+
 - A card on a Hermes-backed board shows its open run as a read-only `Run:` line: the run id, status, start time and the session the dispatcher started or adopted (`metadata.supercode.address`, else a session id or worker pid).
 
 ## 2.1.0
