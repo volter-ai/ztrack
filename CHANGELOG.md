@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.3.0
+
 - **The board syncs itself.** `ztrack sync hermes --watch` keeps running and syncs whenever the board file is saved or the board changes. The board side is Hermes's own event stream (`hermes kanban watch`), so a dispatcher's claim, a lane move or a new card reaches the file without anyone running a sync. Events that change nothing the file shows (a claim's lease renewal, a goal loop's turn, a comment not authored `arcs`) don't trigger one. A sync that changes nothing no longer rewrites the file, and syncs of one board file take turns: a manual `sync hermes` waits for the watcher's.
 
 ## 2.2.2
