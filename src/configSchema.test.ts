@@ -53,7 +53,7 @@ describe('KNOWN_KEYS — generated from TrackerConfigSchema (ZTB-26 dev/02)', ()
     '': ['backend', 'local', 'sources', 'board', 'sync', 'evidence', 'relevance', 'validation', 'organization'],
     local: ['teamKey', 'database', 'store'],
     'sources[]': ['path', 'format', 'readonly', 'dialect', 'aliases', 'name'],
-    sync: ['provider', 'repo', 'policy', 'file', 'home', 'board', 'bin', 'comments', 'show'],
+    sync: ['provider', 'repo', 'policy', 'file', 'home', 'board', 'bin'],
     evidence: ['store', 'dir'],
     validation: ['entrypoint', 'installedFrom'],
     organization: ['validationPreset', 'externalBrowseUrls', 'caseTypeLabels', 'grammar', 'check', 'lint'],

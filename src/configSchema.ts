@@ -79,11 +79,6 @@ const HermesSyncSchema = z.object({
   board: z.string().optional(),
   /** The `hermes` executable. Default `hermes` on PATH. */
   bin: z.string().optional(),
-  /** Newest comments shown per open card (default 5); a done card shows only the count. */
-  comments: z.number().int().nonnegative().optional(),
-  /** The command printed for a card's full thread after its earlier-comment count
-   *  (default `hermes kanban show`). */
-  show: z.string().optional(),
   /** Same-field collision policy. Default `merge` (recorded as a sync conflict, neither side
    *  applied); `board-wins` / `file-wins` pick a side. */
   policy: z.enum(['merge', 'board-wins', 'file-wins']).optional(),

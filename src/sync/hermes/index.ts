@@ -7,7 +7,7 @@ import { resolveTrackerValidation } from '../../presetRegistry.ts';
 import { hermesExec, type HermesExec } from './board.ts';
 import { syncHermes, type HermesPolicy, type HermesSyncResult } from './sync.ts';
 
-export { syncHermes, toFileId, toHermesId, type HermesPolicy, type HermesSyncOpts, type HermesSyncResult } from './sync.ts';
+export { syncHermes, toFileId, toHermesId, STATE_AUTHOR, type HermesPolicy, type HermesSyncOpts, type HermesSyncResult } from './sync.ts';
 export { hermesExec, readBoard, boardWriter, type HermesCard, type HermesExec, type HermesTarget } from './board.ts';
 
 /** The project's Hermes link, or null when it has none. */
@@ -31,8 +31,6 @@ export async function syncLinkedHermes(projectRoot: string, o: { policy?: Hermes
     exec: o.exec ?? hermesExec({ ...(link.home ? { home: link.home } : {}), ...(link.board ? { board: link.board } : {}), ...(link.bin ? { bin: link.bin } : {}) }),
     preset,
     policy: o.policy ?? link.policy ?? 'merge',
-    ...(link.comments !== undefined ? { comments: link.comments } : {}),
-    ...(link.show ? { showCommand: link.show } : {}),
     ...(o.dryRun ? { dryRun: true } : {}),
   });
 }

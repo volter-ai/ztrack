@@ -1,48 +1,56 @@
 // An evidence-free kanban preset: each issue is a CARD on a board whose lanes are the Hermes
-// kanban's own statuses. There are no acceptance criteria and no evidence — a card's state is its
-// lane, its dependencies, its opening post and its comment thread. Written for a board kept as
-// ONE document-source markdown file (docs/SOURCES.md), optionally backed by a Hermes kanban
-// through `ztrack sync hermes` (docs/SYNC-HERMES.md), but it validates any card file on its own.
+// kanban's own statuses, and a card's work is its TASKS: one line each, with ids, ticked when done,
+// optionally blocked by other tasks or cards. There is no evidence and no comment thread. Written
+// for a board kept as ONE document-source markdown file (docs/SOURCES.md), optionally backed by a
+// Hermes kanban through `ztrack sync hermes` (docs/SYNC-HERMES.md), but it validates any card file
+// on its own.
 //
 // One card, as the document presents it to this preset (the `status:`/`assignee:` header block
 // and the `## <id> — <title>` heading are the document grammar's; everything below is this
-// preset's, level-shifted so the card's `### Comments` reads as `## Comments` here):
+// preset's, level-shifted so the card's `### Tasks` reads as `## Tasks` here):
 //
-//   Blocked by: t-954aa1da, t-12ab34cd     optional: cards that must be done first
-//   Workspace: dir:/Users/me/repo          optional: scratch | worktree | worktree:<path> | dir:<path>
-//   Branch: wt/t6-wire                     optional
-//   Priority: 2                            optional integer
-//   Run: 64 running since 2026-09-28 21:02:55Z, sc:mac:claude-code:1a03…   the board's open run (read-only)
+//   Blocked by: t-954aa1da                  optional: cards that must be done first
+//   Workspace: dir:/Users/me/repo           optional: scratch | worktree | worktree:<path> | dir:<path>
+//   Branch: wt/t6-wire                      optional
+//   Priority: 2                             optional integer
+//   Run: 64 running since …, sc:…           the board's open run (a dispatcher writes it)
+//   Machine: aarons-mac-mini                optional
+//   Session: sc:aarons-mac-mini:claude-code:1a03…   optional
 //
-//   The card's opening post, verbatim prose. A line of it that starts with `#` is written
-//   `\#` so it can never read as a heading.
+//   Done when: the card's opening post, verbatim. A line of it that starts with `#` is
+//   written `\#` so it can never read as a heading, and a first line that starts like a
+//   metadata key is written `\Key:` so it can never read as metadata.
 //
-//   ## Comments
+//   ## Tasks
 //
-//   3 earlier comments: hermes kanban show t_65a8d101
-//   - 2026-09-28 20:58:37Z default: a comment already on the board
-//     a continuation line of the same comment
-//   - a new comment (no stamp): posted by the next sync
+//   - [ ] c1 merge the lowering lane
+//   - [x] c2 studio lights fix on main
+//   - [ ] c3 release
+//     - blocked-by: c1, t-954aa1da:c2
 //
-// The metadata block is the body's FIRST paragraph and only when every line of it is one of the
-// five keys above; anything else is the opening post.
+// The metadata block is the body's FIRST paragraph, and only when every line of it is one of the
+// keys above; anything else is the opening post. A task is `- [ ] <id> <text>`: the id is `c<N>`,
+// and a task written without one gets the next free `c<N>` of its card. `blocked-by` names tasks
+// (`c1` in this card, `<card>:<task>` in another) or whole cards.
 
 // A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
-  z, check as runCheck, rule,
-  type Context, type IssueColumns, type IssueRecord, type Preset, type VisualizerSpec,
+  z, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
+  type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ─────────────────────────────────────
 // The lanes, in board order. `archived` is a lane too: a card moved there leaves the board.
 export const KanbanStatusSchema = z.enum(['triage', 'todo', 'ready', 'running', 'review', 'blocked', 'scheduled', 'done', 'archived']);
 
-export const KanbanCommentSchema = z.object({
-  /** When the comment was posted, `YYYY-MM-DD HH:MM:SSZ` (UTC). Absent on a comment written in
-   *  the file and not yet posted. */
-  at: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z$/).optional(),
-  author: z.string().min(1).optional(),
+// A task is the core's AC shape (so the engine's blocking graph covers it) with no evidence:
+// `passed` is a ticked task, `pending` an open one.
+export const KanbanTaskSchema = z.object({
+  id: z.string().regex(/^c\d+$/),                        // core
+  status: z.enum(['pending', 'passed']),                 // core
+  evidence: z.array(z.never()),                          // core: a task carries no evidence, ever
   text: z.string().min(1),
+  blockedBy: z.array(BlockRefSchema).optional(),         // primitive
 }).strict();
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
@@ -52,7 +60,7 @@ export const KanbanCardSchema = z.object({
   title: z.string().min(1),                              // core
   summary: z.string(),                                   // core (unused: the opening post is `body`)
   status: KanbanStatusSchema,                            // core (narrowed to the lanes)
-  acceptanceCriteria: z.array(z.never()),                // core: a card has no ACs, ever
+  acceptanceCriteria: z.array(KanbanTaskSchema),         // core: the card's tasks
   assignee: z.string().min(1).optional(),
   relations: z.array(KanbanRelationSchema).optional(),   // primitive: `Blocked by:`
   workspace: z.string().regex(/^(scratch|worktree|worktree:.+|dir:.+)$/).optional(),
@@ -61,14 +69,10 @@ export const KanbanCardSchema = z.object({
   /** The board's open run: a worker's claim and the session it names. Written by the board's
    *  dispatcher, never by the file (a sync overwrites it). */
   run: z.string().min(1).optional(),
+  machine: z.string().min(1).optional(),
+  session: z.string().min(1).optional(),
   body: z.string(),
-  comments: z.array(KanbanCommentSchema),
-  /** How many older comments the file leaves out (the board keeps them). */
-  earlierComments: z.number().int().nonnegative(),
-  /** Where the full thread lives, as printed after the count. */
-  earlierWhere: z.string().optional(),
-  /** Lines under Comments that are neither a comment nor the earlier-count line; kept verbatim
-   *  and reported by `kanban_line_unparsed`. */
+  /** Lines under Tasks that are not a task; kept verbatim and reported by `kanban_line_unparsed`. */
   unparsed: z.array(z.string()).min(1).optional(),
 }).strict();
 
@@ -77,10 +81,16 @@ export type KanbanRoot = z.infer<typeof KanbanRootSchema>;
 export type KanbanCard = KanbanRoot['issues'][number];
 
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
-const META_LINE = /^(Blocked by|Workspace|Branch|Priority|Run):\s*(.*)$/i;
-const COMMENTS_HEADING = /^##\s+Comments\s*$/i;
-const STAMPED = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z) ([^:\s][^:]*?): ([\s\S]*)$/;
-const EARLIER = /^(\d+) earlier comments?(?::\s*(.*))?$/i;
+const META_KEYS: Record<string, string> = {
+  'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
+  run: 'run', machine: 'machine', session: 'session',
+};
+const META_LINE = /^(Blocked by|Workspace|Branch|Priority|Run|Machine|Session):\s*(.*)$/i;
+const TASKS_HEADING = /^##\s+Tasks\s*$/i;
+// The escape a body line carries so it can't read as a heading or as a metadata line.
+const ESCAPED = /^\\(?=#|(?:Blocked by|Workspace|Branch|Priority|Run|Machine|Session):)/i;
+const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(c\d+)\s+)?(.+)$/;
+const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 
 const splitList = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
 const trimBlankLines = (lines: string[]) => {
@@ -90,35 +100,37 @@ const trimBlankLines = (lines: string[]) => {
   return lines.slice(a, b);
 };
 
-function parseComments(lines: string[]): { comments: unknown[]; earlier: number; where?: string; unparsed: string[] } {
-  const comments: Array<{ at?: string; author?: string; text: string }> = [];
-  let earlier = 0; let where: string | undefined;
+type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[] };
+
+function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
+  const tasks: ParsedTask[] = [];
   const unparsed: string[] = [];
-  let cur: string[] | null = null;
-  const flush = () => {
-    if (!cur) return;
-    const raw = cur.join('\n').trim();
-    cur = null;
-    if (!raw) return;
-    const m = STAMPED.exec(raw);
-    comments.push(m ? { at: m[1]!, author: m[2]!.trim(), text: m[3]!.trim() || '(empty)' } : { text: raw });
-  };
+  const unnamed: ParsedTask[] = [];
   for (const line of lines) {
-    if (/^[-*] /.test(line)) { flush(); cur = [line.slice(2)]; continue; }
-    if (cur && (/^ {2,}\S/.test(line) || line.trim() === '')) { cur.push(line.replace(/^ {2}/, '')); continue; }
-    flush();
-    if (line.trim() === '') continue;
-    const e = EARLIER.exec(line.trim());
-    if (e) { earlier = Number(e[1]); where = e[2]?.trim() || undefined; continue; }
-    unparsed.push(line);
+    const t = TASK_LINE.exec(line);
+    if (t) {
+      const task: ParsedTask = { id: t[2] ?? '', status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[3]!.trim() };
+      tasks.push(task);
+      if (!task.id) unnamed.push(task);
+      continue;
+    }
+    const b = BLOCKED_LINE.exec(line);
+    if (b && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      last.blockedBy = [...(last.blockedBy ?? []), ...splitList(b[1]!).map((tok) => parseBlockToken(tok, cardId)).filter((r): r is RawBlockRef => r !== null)];
+      continue;
+    }
+    if (line.trim() !== '') unparsed.push(line);
   }
-  flush();
-  return { comments, earlier, ...(where ? { where } : {}), unparsed };
+  // A task written without an id takes the card's next free `c<N>`, in line order.
+  let next = tasks.reduce((m, t) => Math.max(m, t.id ? Number(t.id.slice(1)) : 0), 0);
+  for (const t of unnamed) t.id = `c${++next}`;
+  return { tasks, unparsed };
 }
 
 function parseCard(record: IssueRecord): Record<string, unknown> {
   const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
-  const at = lines.findIndex((l) => COMMENTS_HEADING.test(l));
+  const at = lines.findIndex((l) => TASKS_HEADING.test(l));
   const head = at < 0 ? lines : lines.slice(0, at);
   const tail = at < 0 ? [] : lines.slice(at + 1);
 
@@ -129,9 +141,10 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   const first = content.slice(0, end);
   const isMeta = first.length > 0 && first.every((l) => META_LINE.test(l));
   const meta: Record<string, string> = {};
-  if (isMeta) for (const l of first) { const m = META_LINE.exec(l)!; meta[m[1]!.toLowerCase()] = m[2]!.trim(); }
-  const bodyLines = trimBlankLines(isMeta ? content.slice(end) : content).map((l) => l.replace(/^\\#/, '#'));
+  if (isMeta) for (const l of first) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.trim(); }
+  const bodyLines = trimBlankLines(isMeta ? content.slice(end) : content).map((l) => l.replace(ESCAPED, ''));
 
+  const { tasks, unparsed } = parseTasks(record.id, tail);
   const card: Record<string, unknown> = {
     id: record.id,
     title: record.title,
@@ -139,26 +152,23 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
     // A document item with no `status:` line reads as `draft`; on a board that is a card not yet
     // started — `todo`.
     status: !record.status || record.status === 'draft' ? 'todo' : record.status,
-    acceptanceCriteria: [],
+    acceptanceCriteria: tasks,
     body: bodyLines.join('\n'),
   };
   if (record.assignee) card.assignee = record.assignee;
-  const blockers = splitList(meta['blocked by'] ?? '');
+  const blockers = splitList(meta.blockedBy ?? '');
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
-  if (meta.workspace) card.workspace = meta.workspace;
-  if (meta.branch) card.branch = meta.branch;
-  if (meta.run) card.run = meta.run;
-  if (meta.priority !== undefined && meta.priority !== '') card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
-  const c = parseComments(tail);
-  card.comments = c.comments;
-  card.earlierComments = c.earlier;
-  if (c.where) card.earlierWhere = c.where;
-  if (c.unparsed.length) card.unparsed = c.unparsed;
+  for (const k of ['workspace', 'branch', 'run', 'machine', 'session'] as const) if (meta[k]) card[k] = meta[k];
+  if (meta.priority) card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
+  if (unparsed.length) card.unparsed = unparsed;
   return card;
 }
 
 export function parseKanban(records: IssueRecord[]): unknown {
-  return { issues: records.map(parseCard) };
+  const issues = records.map(parseCard);
+  // Bare task refs resolve now that every card and task is known: a task of this card, else a card.
+  normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]);
+  return { issues };
 }
 
 // ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
@@ -170,23 +180,22 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.branch) out.push(`Branch: ${card.branch}`);
   if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);
   if (card.run) out.push(`Run: ${card.run}`);
+  if (card.machine) out.push(`Machine: ${card.machine}`);
+  if (card.session) out.push(`Session: ${card.session}`);
   if (card.body) {
     if (out.length) out.push('');
-    out.push(...card.body.split('\n').map((l) => (/^\s{0,3}#/.test(l) ? `\\${l.trimStart()}` : l)));
+    out.push(...card.body.split('\n').map((l, i) => (/^\s{0,3}#/.test(l) ? `\\${l.trimStart()}` : i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
   }
-  if (card.comments.length || card.earlierComments) {
+  if (card.acceptanceCriteria.length || card.unparsed?.length) {
     if (out.length) out.push('');
-    out.push('## Comments', '');
-    if (card.earlierComments) out.push(`${card.earlierComments} earlier comment${card.earlierComments === 1 ? '' : 's'}${card.earlierWhere ? `: ${card.earlierWhere}` : ''}`);
-    for (const cm of card.comments) {
-      const [firstLine, ...rest] = cm.text.split('\n');
-      out.push(`- ${cm.at ? `${cm.at} ${cm.author ?? 'unknown'}: ` : ''}${firstLine}`);
-      for (const r of rest) out.push(r.trim() === '' ? '' : `  ${r}`);
+    out.push('## Tasks', '');
+    // a ref into this card is written bare (`c1`), anything else in full (`t-…:c2`, `t-…`)
+    const renderRef = (r: BlockRef) => (r.ac !== undefined && r.issue === card.id ? r.ac : formatRef(r));
+    for (const t of card.acceptanceCriteria) {
+      out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.id} ${t.text}`);
+      if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
     }
-  }
-  if (card.unparsed?.length) {
-    if (!card.comments.length && !card.earlierComments) { if (out.length) out.push(''); out.push('## Comments', ''); }
-    out.push(...card.unparsed);
+    out.push(...(card.unparsed ?? []));
   }
   return {
     body: out.length ? `${out.join('\n')}\n` : '',
@@ -196,14 +205,17 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
 
 // ── rules: declarative records over the engine's derived model ───────────────────────────────
 type Relation = NonNullable<KanbanCard['relations']>[number];
-interface RelationFact { issueId: string; target: string }
 
 const KANBAN_RULES = [
   rule<KanbanRoot, { issueId: string }>({
     code: 'duplicate_issue_id', select: (m) => m.duplicateIssueIds,
     message: ({ issueId }) => `Card ${issueId} appears more than once.`,
   }),
-  rule<KanbanRoot, RelationFact>({
+  rule<KanbanRoot, { issueId: string; acId: string }>({
+    code: 'duplicate_task_id', select: (m) => m.duplicateAcIds,
+    message: ({ issueId, acId }) => `Card ${issueId} has two tasks ${acId}.`,
+  }),
+  rule<KanbanRoot, { issueId: string; target: string }>({
     code: 'card_blocker_missing',
     select: (m) => {
       const ids = new Set(m.root.issues.map((i) => i.id));
@@ -211,26 +223,33 @@ const KANBAN_RULES = [
     },
     message: ({ issueId, target }) => `Card ${issueId} is blocked by ${target}, which is not on the board.`,
   }),
+  rule<KanbanRoot, { issueId: string; acId?: string; kind: string; refText: string }>({
+    code: 'task_blocker_missing', select: (m) => m.graph.blockerProblems,
+    message: ({ issueId, acId, kind, refText }) => kind === 'self'
+      ? `Task ${issueId}:${acId} is blocked by itself.`
+      : `Task ${issueId}:${acId} is blocked by ${refText}, which is not on the board.`,
+  }),
   rule<KanbanRoot, { issueId: string; cycle: string[] }>({
     code: 'card_block_cycle', select: (m) => m.graph.cycles,
-    message: ({ cycle }) => `Cards block each other in a loop: ${cycle.join(' -> ')}.`,
+    message: ({ cycle }) => `Cards or tasks block each other in a loop: ${cycle.join(' -> ')}.`,
   }),
-  rule<KanbanRoot, { issueId: string; depKey: string }>({
-    code: 'card_done_before_blocker', severity: 'warning', select: (m) => m.graph.completionViolations,
-    message: ({ issueId, depKey }) => `Card ${issueId} is done but ${depKey}, which blocks it, is not.`,
+  rule<KanbanRoot, { issueId: string; nodeKey: string; depKey: string }>({
+    code: 'done_before_blocker', severity: 'warning', select: (m) => m.graph.completionViolations,
+    message: ({ nodeKey, depKey }) => `${nodeKey} is done but ${depKey}, which blocks it, is not.`,
   }),
   rule<KanbanRoot, { issueId: string; line: string }>({
     code: 'kanban_line_unparsed',
     select: (m) => m.root.issues.flatMap((i) => (i.unparsed ?? []).map((line) => ({ issueId: i.id, line }))),
-    message: ({ issueId, line }) => `Card ${issueId}: "${line.trim()}" under Comments is neither a "- " comment nor the "N earlier comments" line.`,
+    message: ({ issueId, line }) => `Card ${issueId}: "${line.trim()}" under Tasks is not a task (\`- [ ] c<N> <text>\`, or its \`  - blocked-by:\` line).`,
   }),
 ];
 
 // ── the dashboard's vocabulary, as plain data ──────────────────────────────────────────────
 const KANBAN_VISUALIZER: VisualizerSpec = {
   statusOrder: ['triage', 'todo', 'ready', 'running', 'review', 'blocked', 'scheduled', 'done', 'archived'], // must equal KanbanStatusSchema above
-  acUnitLabel: 'Subtasks',
+  acUnitLabel: 'Tasks',
   assignee: 'assignee',
+  acText: { id: 'id', text: 'text' },
 };
 
 export const KanbanPreset: Preset<KanbanRoot> = {
@@ -240,10 +259,11 @@ export const KanbanPreset: Preset<KanbanRoot> = {
   parse: parseKanban,
   serialize: serializeKanbanCard, // card -> { body, columns }; the inverse of parse
   rules: KANBAN_RULES,
-  // a card is done (for the block graph) when it is in the done or archived lane.
+  // a task-less card is done (for the block graph) in the done or archived lane; a card with
+  // tasks, when every task is ticked.
   isIssueDone: (i) => i.status === 'done' || i.status === 'archived',
   primitives: { relations: true, blocking: true, labels: false, children: false, proof: false, sources: false, category: false },
-  scaffold: (_title) => `Workspace: scratch\n\nWhat the card is for, and its done state.\n`,
+  scaffold: (_title) => `Machine: <machine>\n\nDone when: the outcome, in one to three lines.\n\n## Tasks\n\n- [ ] c1 the first open item\n`,
 };
 
 export function checkKanban(records: IssueRecord[], ctx?: Context) {

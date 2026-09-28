@@ -7,8 +7,10 @@ other one), `hermes kanban` and anyone else on it keep working as before. Their 
 file on the next sync, and the file's edits reach the board.
 
 The file is a [document source](SOURCES.md#the-document-format) in the `kanban` preset's grammar.
-The preset has no acceptance criteria and no evidence. A card is its lane, its dependencies, its
-opening post and its comment thread.
+The preset has no acceptance criteria, no evidence and no comment thread. A card is its lane, its
+dependencies, a few lines of prose, and its **tasks**: one line each, with ids, ticked when done,
+optionally blocked by other tasks or cards. The file holds the open cards only. Done and archived
+cards stay on the board.
 
 ## Set up
 
@@ -33,8 +35,6 @@ npx ztrack init --preset kanban --sync hermes --hermes-home ~/.hermes   # writes
 | `home` | `HERMES_HOME` of the board's profile (`init --hermes-home`). Absent: the environment's. |
 | `board` | A named Hermes board (`hermes kanban --board <slug>`, `init --board`). Absent: the home's default board. |
 | `bin` | The `hermes` executable. Default `hermes` on `PATH`. |
-| `comments` | Newest comments shown per open card. Default 5. A done card shows only the count. |
-| `show` | The command printed for a card's full thread. Default `hermes kanban show`. |
 | `policy` | Same-field collisions: `merge` (default), `board-wins` or `file-wins`. |
 
 The board is read and written only through `hermes kanban` (its `list`, `show`, `create`,
@@ -46,30 +46,29 @@ events, notifications and dispatcher see a sync's writes the same way they see a
 ```markdown
 Any prose before the first card is kept as it is.
 
-## t-65a8d101 — ztrack-board: the manager works its arc board as one ztrack md
+## t-65a8d101 — ztrack-board: the manager's arcs live in one ztrack md
 
-status: ready
-assignee: manager
+status: running
+assignee: default
 
 Blocked by: t-954aa1da
 Workspace: dir:/Users/me/volter/ztrack
-Branch: wt/board
-Priority: 2
-Run: 64 running since 2026-09-28 21:22:55Z, sc:mac-mini:claude-code:1a03c457-…
+Run: 78 running since 2026-09-28 21:26:06Z, sc:yuerans-macbook-pro:claude-code:b2b278cf-…
+Machine: yuerans-macbook-pro
+Session: sc:yuerans-macbook-pro:claude-code:b2b278cf-…
 
-Done when: the manager reads and writes one ztrack md that parses into task state.
-A line of the opening post that starts with `#` is written \# so it is never a heading.
+Done when: the manager's arcs live in arcs.md backed by its Hermes kanban; released.
 
-### Comments
+### Tasks
 
-12 earlier comments: hermes kanban show t_65a8d101
-- 2026-09-28 20:58:37Z default: a comment already on the board
-  a second line of the same comment
-- a new comment, not yet posted
+- [x] c1 kanban preset and sync hermes on main
+- [ ] c2 the manager's repo runs from arcs.md
+  - blocked-by: c1, t-954aa1da:c3
 ```
 
 - **A card** is a level-2 heading `## <id> — <title>`. The id of a card on the board is its
-  Hermes id with `-` for `_` (`t_65a8d101` is `t-65a8d101`). The title is the card's whole title.
+  Hermes id with `-` for `_` (`t_65a8d101` is `t-65a8d101`). The title is the card's whole title:
+  the outcome.
 - **Its header block** follows the heading after one blank line: `status: <lane>` and, when the card
   has one, `assignee: <profile>`, one per line, ending at a blank line. The lanes are Hermes's:
   `triage`, `todo`, `ready`, `running`, `review`, `blocked`, `scheduled`, `done`, `archived`.
@@ -85,13 +84,15 @@ A line of the opening post that starts with `#` is written \# so it is never a h
     session it names. A dispatcher writes it when it claims the card, so this line is read-only. A
     sync writes the board's value and ignores an edit to it. The session is the run metadata's
     `address` (else `session_id`), top-level or one level down (supercode's dispatcher records
-    `metadata.supercode.address`); Hermes's own dispatcher records a worker pid (`pid <n>`).
-- **The opening post** is everything after that, up to `### Comments`. It is the card's body,
-  verbatim.
-- **`### Comments`** holds the newest comments, oldest first. A comment on the board is
-  `- <YYYY-MM-DD HH:MM:SS>Z <author>: <text>` in UTC, with further lines indented two spaces. A
-  `- <text>` line with no stamp is a new comment. The `<N> earlier comments: <command>` line counts
-  the comments the file leaves out.
+    `metadata.supercode.address`).
+  - `Machine:` and `Session:` are free text: the machine the arc runs on and its session's address.
+- **The prose** is everything after that, up to `### Tasks`: a few lines, such as `Done when:`.
+  A line of it that starts with `#` is written `\#`. A first line that starts like a metadata key
+  is written `\Key:`. Either way, it can't read as a heading or as metadata.
+- **`### Tasks`** holds the card's tasks, one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
+  done. The id is `c<N>`. A task written without one gets the card's next free `c<N>` on the next
+  sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
+  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card).
 - **No other heading** may appear anywhere in the file, the prose before the first card included.
   The sync renders the file whole, and it refuses a file with any other heading rather than drop
   or move it. The refusal names the line.
@@ -102,10 +103,12 @@ lane or a malformed field, and it reports these rules:
 | Code | Severity | Fires when |
 |---|---|---|
 | `card_blocker_missing` | error | `Blocked by:` names a card that isn't in the file |
-| `card_block_cycle` | error | cards block each other in a loop |
+| `task_blocker_missing` | error | a task's `blocked-by` names a task or card that isn't in the file, or itself |
+| `card_block_cycle` | error | cards or tasks block each other in a loop |
 | `duplicate_issue_id` | error | two sections carry the same id |
-| `card_done_before_blocker` | warning | a done card is blocked by a card that isn't done |
-| `kanban_line_unparsed` | error | a line under Comments is neither a comment nor the count line |
+| `duplicate_task_id` | error | a card has two tasks with one id |
+| `done_before_blocker` | warning | a ticked task (or a done card) waits on something that isn't done |
+| `kanban_line_unparsed` | error | a line under Tasks is neither a task nor its `blocked-by` line |
 | `sync_conflict` | error | the last sync found a collision, a refused edit, or a section with no card behind it |
 
 ## What a sync does
@@ -118,26 +121,34 @@ board, reads the board again, and writes the file whole from it.
 
 | In the file | On the board |
 |---|---|
-| a section whose id isn't a board id (`## new-1 — …`) | `create`. The section's id becomes the new card's. `Blocked by:` may name another new section. |
+| a section whose id isn't a board id (`## new-1 — …`) | `create`, with the prose as its body. The section's id becomes the new card's. `Blocked by:` may name another new section. |
 | `status:` changed | `complete`, `block`, `schedule`, `request-review`, `unblock`, `promote` or `reopen-review`, whichever makes that move |
 | `assignee:` changed or removed | `assign` |
 | `Blocked by:` changed | `link` / `unlink` |
-| a `- text` line under Comments | `comment` |
+| the prose, `Machine:`, `Session:` or a task changed | one comment authored `arcs` carrying the card's new state (below) |
 | a section deleted | `archive` |
-| title, opening post, `Workspace:`, `Branch:` or `Priority:` changed, or a done card moved to another lane | the card is **re-created** (below) |
+| the title, `Workspace:`, `Branch:` or `Priority:` changed, or a done card moved to another lane | the card is **re-created** (below) |
 
-Hermes has no door to edit a created card's title, body, workspace, branch or priority, and none
-to reopen a done card. So the sync re-creates the card, the way a board operator does by hand. It
-creates a new card with the edited fields and the same parents. It relinks the old card's children
-to the new card, comments `replaces t_…` on the new card and `replaced by t_…` on the old one,
-archives the old card, and renames the section to the new id. A running card is never re-created.
+**A card's state.** Hermes can't edit any of a created card's text. So the part of a card that
+changes every tick (its prose, `Machine:`, `Session:` and tasks) is carried in Hermes's one writable
+channel. Each change posts one comment authored `arcs`, whose text is that part of the section in
+this grammar. The latest `arcs` comment is the card's state. Until a card has one, its prose is its
+Hermes body. The board keeps every state as history, while the file shows only the current one.
+Tasks are not Hermes cards for two reasons: a card linked as the arc's parent would hold the arc out
+of `ready`, and a ready task card would be dispatched as a session of its own.
+
+**Re-creating.** Hermes has no door to edit a created card's title, workspace, branch or priority,
+and none to reopen a done card. So the sync re-creates the card, the way a board operator does by
+hand. It creates a new card with the edited fields, the same parents and the same state. It relinks
+the old card's children to the new card, comments `replaces t_…` on the new card and
+`replaced by t_…` on the old one, archives the old card, and renames the section to the new id. A
+running card is never re-created: the edit is recorded as a conflict instead.
 
 Board to file: every change another actor makes shows in the file after the next sync. That covers
-a new card, a comment, an assignment and a link. When a dispatcher claims a card, the card moves to
-`running`, gets the dispatcher's `assignee:`, and gets a `Run:` line naming the session it started or
-adopted. When the run ends, the `Run:` line goes away. A card archived on
-the board leaves the file. So does a link to an archived card, since the card no longer gates
-anything the board shows.
+a new card, a state comment, an assignment and a link. When a dispatcher claims a card, the card
+moves to `running`, gets the dispatcher's `assignee:`, and gets a `Run:` line naming the session it
+started or adopted. When the run ends, the `Run:` line goes away. A card that goes done or archived
+on the board leaves the file. So does a `Blocked by:` naming it, since it no longer gates anything.
 
 `ztrack check` (the whole tracker, not `ztrack check <file>.md`) and `ztrack loop start` run the
 sync first on a Hermes-linked project, like they do for a GitHub-linked one. A sync that can't run prints `! sync hermes skipped: <why>`, and the check
@@ -155,8 +166,8 @@ These are also recorded as conflicts, with the file keeping its value:
 
 - an edit Hermes refuses: a lane move with no Hermes verb (into `running` or `triage`), or a write
   the CLI rejects, with Hermes's own message;
-- a section whose card is gone from the board, archived there while the section was edited, or a
-  board id the board never had (delete the section to resolve it);
+- a section whose card is gone from the board, done or archived there while the section was edited,
+  or a board id the board never had (delete the section to resolve it);
 - a new section whose card couldn't be created.
 
 A refused write never leaves a sync half-done. The sync carries on and writes the file from the
@@ -166,7 +177,8 @@ board as it now stands.
 
 - One writer at a time. If the file changes while a sync runs, the sync applies what it read, leaves
   the file alone, and says to run it again.
-- A done card shows only its comment count. An open card shows its newest `comments`. The full
-  thread stays on the board (`hermes kanban show <id>`).
-- A sync reads every card with one `hermes kanban show` each, eight at a time. A board of about 40
-  cards takes several seconds.
+- Every sync checks that the file it rendered reads back as the board it rendered it from, before
+  it replaces the file. If it doesn't, the file is left as it was and the sync names the card and
+  field.
+- A sync reads every open card with one `hermes kanban show` each, eight at a time. A board of about
+  25 open cards takes several seconds.

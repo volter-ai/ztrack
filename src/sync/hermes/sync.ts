@@ -11,14 +11,21 @@
 //   read file (preset)├─ merge per card & field vs base ─ apply to board (CLI doors) ─ re-read
 //   read base ────────┘                                    board ─ render file ─ save base
 //
-// Hermes has no door to edit a created card's title, body, workspace, branch or priority, and none
-// to reopen a done card. A file edit to any of those RE-CREATES the card — the ritual a board
-// operator does by hand: a new card with the edited fields and the same parents, children relinked
-// to it, a `replaces`/`replaced by` comment on each, the old card archived, and the section's id
-// rewritten to the new card's.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// What maps where. Lane, assignee and `Blocked by:` have Hermes verbs. A card's STATE — its prose
+// (`Done when:` …), `Machine:`, `Session:` and tasks — changes every tick, and Hermes can edit none
+// of a created card's text, so the state is carried in Hermes's one writable channel: each change
+// posts one comment authored `arcs` whose text is the state in the preset's own grammar, and the
+// latest such comment is the card's state. The card's Hermes body is the prose it was created with,
+// the state until the first `arcs` comment. (Tasks are not Hermes cards: a card linked as the arc's
+// parent would hold the arc out of `ready`, and a ready task card would be dispatched as a session.)
+// The title, workspace, branch and priority are fixed at creation, and Hermes can't reopen a done
+// card: an edit to any of those RE-CREATES the card — the ritual a board operator does by hand: a
+// new card with the edited fields, the same parents and state, children relinked to it, a
+// `replaces`/`replaced by` comment on each, the old card archived, the section renamed.
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
-import { check as runCheck, type CoreRoot, type IssueRecord, type Preset } from '../../core/engine.ts';
+import { check as runCheck, type BlockRef, type CoreRoot, type IssueRecord, type Preset } from '../../core/engine.ts';
+import { formatRef } from '../../core/ref.ts';
 import { DocumentSource } from '../../backends/documentSource.ts';
 import { shiftHeadings } from '../../documentWriteBack.ts';
 import { parseMarkdownDocument } from '../../markdownDocument.ts';
@@ -36,11 +43,6 @@ export interface HermesSyncOpts {
   /** The installed preset; must be the kanban preset (its card fields are the sync's contract). */
   preset: Preset<CoreRoot>;
   policy?: HermesPolicy;
-  /** Newest comments shown per open card (default 5); done cards show only the count. */
-  comments?: number;
-  /** The command a reader runs for a card's full thread, printed after the earlier-comment count
-   *  (default `hermes kanban show`). */
-  showCommand?: string;
   dryRun?: boolean;
 }
 
@@ -53,15 +55,22 @@ export interface HermesSyncResult {
   actions: string[];
 }
 
-// ── the card as both sides are compared: Hermes-space ids, canonical values ─────────────────
+/** The author of the comments that carry a card's state (tasks, Machine, Session). */
+export const STATE_AUTHOR = 'arcs';
+
+// ── the card as both sides are compared: Hermes-space card ids, canonical values ──────────────
+interface Task { id: string; status: string; text: string; blockedBy: string[] } // refs as `<card>[:<task>]`, file ids
 interface Snap {
   title: string; body: string; status: string; assignee: string | null; parents: string[];
   workspace: string; branch: string | null; priority: number;
+  machine: string | null; session: string | null; tasks: Task[];
 }
-const FIELDS = ['title', 'body', 'status', 'assignee', 'parents', 'workspace', 'branch', 'priority'] as const;
+const FIELDS = ['title', 'body', 'status', 'assignee', 'parents', 'workspace', 'branch', 'priority', 'machine', 'session', 'tasks'] as const;
 type Field = typeof FIELDS[number];
 /** Fields only a new card can carry (Hermes has no edit door for them). */
-const CREATION_FIELDS: Field[] = ['title', 'body', 'workspace', 'branch', 'priority'];
+const CREATION_FIELDS: Field[] = ['title', 'workspace', 'branch', 'priority'];
+/** Fields carried by the card's latest state comment. */
+const STATE_FIELDS: Field[] = ['body', 'machine', 'session', 'tasks'];
 
 const RESOLVE = 'Edit the card in the file to agree with the board (or remove a section with no card), then `ztrack sync hermes`; `--policy file-wins` keeps the file, `--policy board-wins` takes the board.';
 const CARD_HEADING = /^[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+\b/;
@@ -80,30 +89,75 @@ function canonBody(s: string): string {
 
 const workspaceOf = (c: HermesCard) => (c.workspaceKind === 'scratch' ? 'scratch' : c.workspacePath ? `${c.workspaceKind}:${c.workspacePath}` : c.workspaceKind);
 
-function remoteSnap(c: HermesCard): Snap {
-  return {
-    title: c.title, body: canonBody(c.body), status: c.status, assignee: c.assignee,
-    parents: [...c.parents].sort(), workspace: workspaceOf(c), branch: c.branch, priority: c.priority,
-  };
-}
-
 /** A card of the kanban preset's validated root (the fields the sync reads). */
 interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
-  workspace?: string; branch?: string; priority?: number; run?: string; body: string;
-  comments: Array<{ at?: string; author?: string; text: string }>; earlierComments: number; earlierWhere?: string;
+  workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; body: string;
+  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[] }>;
+  unparsed?: string[];
+}
+
+const taskOf = (t: FileCard['acceptanceCriteria'][number], mapCard: (fileId: string) => string): Task => ({
+  id: t.id, status: t.status, text: t.text,
+  blockedBy: (t.blockedBy ?? []).map((r) => formatRef({ issue: mapCard(r.issue), ...(r.ac !== undefined ? { ac: r.ac } : {}) })),
+});
+
+/** `body` null: the card has no state comment yet, so its prose is its Hermes body. */
+type State = Pick<Snap, 'machine' | 'session' | 'tasks'> & { body: string | null };
+const NO_STATE: State = { body: null, machine: null, session: null, tasks: [] };
+
+/** Every card's state from its latest `arcs` comment, parsed in ONE batch through the preset (so
+ *  a bare task ref resolves against the whole board, exactly as it does in the file). */
+function boardStates(cards: HermesCard[], preset: Preset<CoreRoot>): Map<string, State> {
+  const records: IssueRecord[] = cards.map((c) => {
+    const latest = c.comments.filter((cm) => cm.author === STATE_AUTHOR).pop();
+    return { id: toFileId(c.id), title: c.title || c.id, status: 'todo', body: latest?.body ?? '' };
+  });
+  const parsed = (preset.parse(records) as { issues: FileCard[] }).issues;
+  const stated = new Set(cards.filter((c) => c.comments.some((cm) => cm.author === STATE_AUTHOR)).map((c) => toFileId(c.id)));
+  return new Map(parsed.map((p) => [toHermesId(p.id), {
+    body: stated.has(p.id) ? canonBody(p.body) : null,
+    machine: p.machine ?? null, session: p.session ?? null,
+    tasks: (p.acceptanceCriteria ?? []).map((t) => taskOf(t, (x) => x)),
+  }]));
+}
+
+function remoteSnap(c: HermesCard, state: State): Snap {
+  return {
+    title: c.title, status: c.status, assignee: c.assignee,
+    parents: [...c.parents].sort(), workspace: workspaceOf(c), branch: c.branch, priority: c.priority,
+    machine: state.machine, session: state.session, tasks: state.tasks,
+    body: state.body ?? canonBody(c.body),
+  };
 }
 
 function localSnap(c: FileCard, idMap: Map<string, string>): Snap {
+  const cardId = (fileId: string) => toFileId(idMap.get(fileId) ?? toHermesId(fileId));
   return {
     title: c.title, body: canonBody(c.body), status: c.status, assignee: c.assignee ?? null,
     parents: (c.relations ?? []).filter((r) => r.type === 'blocked-by').map((r) => idMap.get(r.issueId) ?? toHermesId(r.issueId)).sort(),
     workspace: c.workspace ?? 'scratch', branch: c.branch ?? null, priority: c.priority ?? 0,
+    machine: c.machine ?? null, session: c.session ?? null,
+    tasks: c.acceptanceCriteria.map((t) => taskOf(t, cardId)),
   };
 }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-const show = (v: unknown) => (Array.isArray(v) ? v.join(', ') : v === null ? '(none)' : String(v));
+const show = (v: unknown): string => {
+  if (Array.isArray(v)) return v.map((x) => (typeof x === 'object' && x ? `${(x as Task).status === 'passed' ? '[x]' : '[ ]'} ${(x as Task).id}` : String(x))).join(', ') || '(none)';
+  return v === null ? '(none)' : String(v);
+};
+
+/** The state comment's text: the card's `Machine:`/`Session:`, prose and `### Tasks`, in the preset's grammar. */
+function stateText(preset: Preset<CoreRoot>, fileId: string, s: Snap): string {
+  const toRef = (ref: string): BlockRef => { const [issue, ac] = ref.split(':'); return { issue: issue!, ...(ac ? { ac } : {}) }; };
+  const { body } = preset.serialize!({
+    id: fileId, title: fileId, summary: '', status: 'todo', body: s.body,
+    ...(s.machine ? { machine: s.machine } : {}), ...(s.session ? { session: s.session } : {}),
+    acceptanceCriteria: s.tasks.map((t) => ({ id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}) })),
+  } as unknown as CoreRoot['issues'][number]);
+  return body.trim() || '## Tasks'; // an emptied state: no prose, no tasks
+}
 
 // ── the base: what file and board last agreed on, per Hermes id ───────────────────────────────
 type Base = Record<string, Snap>;
@@ -121,16 +175,16 @@ function readFile(abs: string, preset: Preset<CoreRoot>): { cards: FileCard[]; p
   if (!existsSync(abs)) return { cards: [], preamble: '' };
   const text = readFileSync(abs, 'utf8').replace(/\r\n?/g, '\n');
   // The sync re-renders the file whole, so every heading must belong to the grammar: a card
-  // (`## <id> — <title>`) or its `### Comments`. Anything else would be dropped or moved by the
-  // next render — refuse instead, naming the line.
+  // (`## <id> — <title>`) or its `### Tasks`. Anything else would be dropped or moved by the next
+  // render — refuse instead, naming the line.
   const stray = parseMarkdownDocument(text).sections.filter((s, _i, all) => {
     if (s.level === 2 && CARD_HEADING.test(s.title)) return false;
     const parent = s.parentIndex === null ? null : all[s.parentIndex]!;
-    return !(s.level === 3 && /^comments$/i.test(s.title.trim()) && parent?.level === 2 && CARD_HEADING.test(parent.title));
+    return !(s.level === 3 && /^tasks$/i.test(s.title.trim()) && parent?.level === 2 && CARD_HEADING.test(parent.title));
   });
   if (stray.length) {
     const lines = stray.slice(0, 5).map((s) => `  ${abs}:${s.lineStart}: ${'#'.repeat(s.level)} ${s.title}`).join('\n');
-    throw new Error(`ztrack sync hermes: ${abs} has headings that are neither a card (\`## <id> — <title>\`) nor a card's \`### Comments\`; nothing was synced. Write a literal \`#\` line as \`\\#\`:\n${lines}`);
+    throw new Error(`ztrack sync hermes: ${abs} has headings that are neither a card (\`## <id> — <title>\`) nor a card's \`### Tasks\`; nothing was synced. Write a literal \`#\` line as \`\\#\`:\n${lines}`);
   }
   const source = new DocumentSource({ dir: abs, format: 'document', readonly: true, isDefault: false, name: abs });
   const records: IssueRecord[] = source.ids().map((id) => {
@@ -150,7 +204,7 @@ function readFile(abs: string, preset: Preset<CoreRoot>): { cards: FileCard[]; p
 const LANE_ORDER = ['running', 'review', 'ready', 'todo', 'triage', 'blocked', 'scheduled', 'done', 'archived'];
 
 function renderSection(preset: Preset<CoreRoot>, card: FileCard): string {
-  const { body } = preset.serialize!({ ...card, summary: '', acceptanceCriteria: [] } as unknown as CoreRoot['issues'][number]);
+  const { body } = preset.serialize!({ ...card, summary: '' } as unknown as CoreRoot['issues'][number]);
   const header = [`status: ${card.status}`, ...(card.assignee ? [`assignee: ${card.assignee}`] : [])].join('\n');
   const content = body.trim() ? `\n${shiftHeadings(body.replace(/\n+$/, ''), 1)}\n` : '';
   return `## ${card.id} — ${card.title}\n\n${header}\n${content}`;
@@ -164,22 +218,20 @@ function stamp(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, 'Z');
 }
 
-function remoteToFileCard(c: HermesCard, opts: { comments: number; showCommand: string }, override?: Partial<Snap>, idOf: (h: string) => string = toFileId): FileCard {
-  const s = { ...remoteSnap(c), ...(override ?? {}) };
-  const keep = s.status === 'done' ? 0 : opts.comments;
-  const shown = keep > 0 ? c.comments.slice(-keep) : [];
-  const earlier = c.comments.length - shown.length;
+function toFileCard(c: HermesCard, s: Snap, unparsed?: string[]): FileCard {
+  const toRef = (ref: string): BlockRef => { const [issue, ac] = ref.split(':'); return { issue: issue!, ...(ac ? { ac } : {}) }; };
   return {
-    id: idOf(c.id), title: s.title, status: s.status, ...(s.assignee ? { assignee: s.assignee } : {}),
-    ...(s.parents.length ? { relations: s.parents.map((p) => ({ type: 'blocked-by', issueId: idOf(p) })) } : {}),
+    id: toFileId(c.id), title: s.title, status: s.status, ...(s.assignee ? { assignee: s.assignee } : {}),
+    ...(s.parents.length ? { relations: s.parents.map((p) => ({ type: 'blocked-by', issueId: toFileId(p) })) } : {}),
     ...(s.workspace !== 'scratch' ? { workspace: s.workspace } : {}),
     ...(s.branch ? { branch: s.branch } : {}),
     ...(s.priority ? { priority: s.priority } : {}),
     ...(c.run ? { run: `${c.run.id} ${c.run.status}${c.run.startedAt ? ` since ${stamp(c.run.startedAt)}` : ''}${c.run.session ? `, ${c.run.session}` : ''}` } : {}),
+    ...(s.machine ? { machine: s.machine } : {}),
+    ...(s.session ? { session: s.session } : {}),
     body: s.body,
-    comments: shown.map((cm) => ({ at: stamp(cm.createdAt), author: cm.author || 'unknown', text: cm.body.trim() || '(empty)' })),
-    earlierComments: earlier,
-    ...(earlier ? { earlierWhere: `${opts.showCommand} ${c.id}` } : {}),
+    acceptanceCriteria: s.tasks.map((t) => ({ id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}) })),
+    ...(unparsed?.length ? { unparsed } : {}),
   };
 }
 
@@ -204,11 +256,11 @@ function transitionVerb(from: string, to: string): ((w: BoardWriter, id: string)
 
 /** Two-way sync of one board file with a Hermes kanban. */
 export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult> {
-  if (opts.preset.name !== 'kanban' || !opts.preset.serialize) {
-    throw new Error(`ztrack sync hermes: the installed preset is '${opts.preset.name}'; a Hermes-backed board needs the kanban preset (\`ztrack init --preset kanban\`).`);
+  const preset = opts.preset;
+  if (preset.name !== 'kanban' || !preset.serialize) {
+    throw new Error(`ztrack sync hermes: the installed preset is '${preset.name}'; a Hermes-backed board needs the kanban preset (\`ztrack init --preset kanban\`).`);
   }
   const policy = opts.policy ?? 'merge';
-  const view = { comments: opts.comments ?? 5, showCommand: opts.showCommand ?? 'hermes kanban show' };
   const abs = isAbsolute(opts.file) ? opts.file : resolve(opts.projectRoot, opts.file);
   const bPath = basePath(opts.projectRoot, opts.file);
   const base = loadBase(bPath);
@@ -217,8 +269,11 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
   const res: HermesSyncResult = { pulled: [], pushed: [], created: [], recreated: [], archived: [], conflicts: [], failed: [], actions: [] };
 
   const before = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
-  const { cards: localCards, preamble } = readFile(abs, opts.preset);
-  const remote = new Map((await readBoard(opts.exec)).map((c) => [c.id, c]));
+  const { cards: localCards, preamble } = readFile(abs, preset);
+  const boardCards = await readBoard(opts.exec);
+  const remote = new Map(boardCards.map((c) => [c.id, c]));
+  const states = boardStates(boardCards, preset);
+  const snapOf = (c: HermesCard) => remoteSnap(c, states.get(c.id) ?? NO_STATE);
 
   // Provisional ids (a section whose id isn't a board id) are new cards; map them as they're made.
   const idMap = new Map<string, string>();
@@ -226,6 +281,7 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
   const localById = new Map(localCards.map((c) => [c.id, c]));
   const conflictsByCard = new Map<string, ConflictRecord[]>();
   const keepLocal = new Map<string, Partial<Snap>>(); // Hermes id -> fields held at the file's value
+  const unparsedOf = new Map<string, string[]>();     // Hermes id -> task-section lines kept verbatim
   const orphans: FileCard[] = [];                    // sections kept in the file with no card behind them
   const conflict = (fileId: string, rec: ConflictRecord) => conflictsByCard.set(fileId, [...(conflictsByCard.get(fileId) ?? []), { ...rec, resolve: RESOLVE }]);
   const hold = (hid: string, f: Field, value: unknown) => keepLocal.set(hid, { ...(keepLocal.get(hid) ?? {}), [f]: value });
@@ -242,6 +298,10 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
       return why;
     }
   };
+  const postState = (label: string, hid: string, fileId: string, s: Snap) =>
+    act(`state ${label}`, () => writer.comment(hid, stateText(preset, fileId, s), STATE_AUTHOR));
+  // A new card's prose is its Hermes body; it needs a state comment only for the rest.
+  const hasState = (s: Snap) => !!(s.machine || s.session || s.tasks.length);
 
   // 1. New cards, parents first (a new card may be blocked by another new one).
   const fresh = localCards.filter((c) => !FILE_ID.test(c.id));
@@ -263,14 +323,15 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
     idMap.set(c.id, newId);
     const fid = dry ? c.id : toFileId(newId);
     res.created.push(fid);
+    if (c.unparsed?.length) unparsedOf.set(newId, c.unparsed);
     if (s.status !== 'todo' && s.status !== 'ready') {
       const verb = transitionVerb('ready', s.status);
       const why = typeof verb === 'function' ? await act(`${s.status} ${c.id}`, () => verb(writer, newId)) : verb;
       if (why) { conflict(fid, { field: 'status', local: `${s.status} (${why})`, remote: 'ready' }); hold(newId, 'status', s.status); }
     }
-    for (const cm of c.comments.filter((x) => !x.at)) {
-      const why = await act(`comment ${c.id}`, () => writer.comment(newId, cm.text));
-      if (why) conflict(fid, { field: 'comment', local: cm.text, remote: `not posted: ${why}` });
+    if (hasState(s)) {
+      const why = await postState(c.id, newId, fid, s);
+      if (why) { conflict(fid, { field: 'tasks', local: show(s.tasks), remote: `not posted: ${why}` }); for (const f of STATE_FIELDS) hold(newId, f, s[f]); }
     }
   };
   for (const c of fresh) await createOne(c, []);
@@ -292,6 +353,7 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
       await act(`comment ${toFileId(newId)}`, () => writer.comment(newId, `replaces ${r.id} (${changed.join(', ')} edited in ${opts.file})`));
       await act(`comment ${toFileId(r.id)}`, () => writer.comment(r.id, `replaced by ${newId}`));
       await act(`archive ${toFileId(r.id)}`, () => writer.archive(r.id));
+      if (hasState(t)) await postState(toFileId(newId), newId, toFileId(newId), t);
       if (t.status !== 'todo' && t.status !== 'ready') {
         const verb = transitionVerb('ready', t.status);
         if (typeof verb === 'function') await act(`${t.status} ${toFileId(newId)}`, () => verb(writer, newId));
@@ -315,7 +377,8 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
       orphans.push(local);
       continue;
     }
-    const R = remoteSnap(r);
+    if (local.unparsed?.length) unparsedOf.set(hid, local.unparsed);
+    const R = snapOf(r);
     const T: Snap = { ...R };
     const pushFields: Field[] = [];
     const conflicted: Field[] = [];
@@ -341,19 +404,11 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
       for (const f of needsRecreate) refuse(f, 'refused: the card is running');
       needsRecreate = [];
     }
-    const newComments = local.comments.filter((c) => !c.at);
-    const postComments = async (to: string) => {
-      for (const cm of newComments) {
-        const why = await act(`comment ${local.id}`, () => writer.comment(to, cm.text));
-        if (why) conflict(local.id, { field: 'comment', local: cm.text, remote: `not posted: ${why}` });
-      }
-    };
     if (pushFields.length) res.pushed.push(local.id);
     if (needsRecreate.length) {
       const why = await recreate(r, T, needsRecreate);
       if (why) for (const f of needsRecreate) refuse(f, `not re-created: ${why}`);
-      await postComments(idMap.get(local.id)!);
-      continue;
+      else continue;
     }
     if (!same(T.assignee, R.assignee)) {
       const why = await act(`assign ${local.id} ${T.assignee ?? 'none'}`, () => writer.assign(hid, T.assignee));
@@ -368,18 +423,20 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
       const why = typeof verb === 'function' ? await act(`${T.status} ${local.id}`, () => verb(writer, hid)) : null;
       if (why) refuse('status', why);
     }
-    await postComments(hid);
-    const boardComments = r.comments.length !== local.earlierComments + local.comments.filter((c) => c.at).length;
-    if (boardComments || FIELDS.some((f) => !same(L[f], R[f]) && !pushFields.includes(f) && !conflicted.includes(f))) res.pulled.push(local.id);
+    if (STATE_FIELDS.some((f) => !same(T[f], R[f]))) {
+      const why = await postState(local.id, hid, local.id, T);
+      if (why) for (const f of STATE_FIELDS) if (!same(T[f], R[f])) refuse(f, why);
+    }
+    if (FIELDS.some((f) => !same(L[f], R[f]) && !pushFields.includes(f) && !conflicted.includes(f))) res.pulled.push(local.id);
   }
 
   // 3. Board cards with no section: new on the board (pull), or a section the file dropped (archive).
   for (const r of remote.values()) {
     const fid = toFileId(r.id);
-    if (localById.has(fid)) continue;
+    if (localById.has(fid) || r.status === 'done') continue; // a done card isn't in the file: absent is not deleted
     const b = base[r.id];
     if (!b) { res.pulled.push(fid); continue; }
-    if (FIELDS.every((f) => same(remoteSnap(r)[f], b[f]))) {
+    if (FIELDS.every((f) => same(snapOf(r)[f], b[f]))) {
       const why = await act(`archive ${fid} (section removed from ${opts.file})`, () => writer.archive(r.id));
       if (why) conflict(fid, { field: 'card', local: 'removed from the file', remote: `not archived: ${why}` });
       else res.archived.push(fid);
@@ -391,21 +448,38 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
 
   // 4. The board as it now stands, rendered whole; the base follows every card that agreed.
   const after = await readBoard(opts.exec);
+  const afterStates = boardStates(after, preset);
+  const afterSnap = (c: HermesCard) => remoteSnap(c, afterStates.get(c.id) ?? NO_STATE);
+  const shown = after.filter((c) => c.status !== 'done' || keepLocal.has(c.id));
   const byCreated = new Map(after.map((c) => [toFileId(c.id), c.createdAt]));
-  const rendered = after
-    .map((c) => remoteToFileCard(c, view, keepLocal.get(c.id)))
+  const expected = new Map(shown.map((c) => [toFileId(c.id), { ...afterSnap(c), ...(keepLocal.get(c.id) ?? {}) } as Snap]));
+  const rendered = shown
+    .map((c) => toFileCard(c, expected.get(toFileId(c.id))!, unparsedOf.get(c.id)))
     .sort((a, b) => (LANE_ORDER.indexOf(a.status) - LANE_ORDER.indexOf(b.status)) || ((byCreated.get(a.id) ?? 0) - (byCreated.get(b.id) ?? 0)));
-  const text = renderFile(opts.preset, preamble || DEFAULT_PREAMBLE, [...rendered, ...orphans]);
+  const text = renderFile(preset, preamble || DEFAULT_PREAMBLE, [...rendered, ...orphans]);
 
-  const now = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
-  if (now !== before) {
-    throw new Error(`ztrack sync hermes: ${opts.file} changed while syncing; the board has the changes that were read before it did. Run the sync again.`);
-  }
+  // The file must read back as exactly the board it was rendered from, or the next sync would
+  // take the difference for an edit and write it to the board. Render to a sibling, read it back
+  // through the same parser, compare every card, then move it into place.
   mkdirSync(dirname(abs), { recursive: true });
-  writeFileSync(abs, text);
+  const tmp = `${abs}.ztrack-sync`;
+  writeFileSync(tmp, text);
+  try {
+    const back = readFile(tmp, preset).cards;
+    const drift = back.flatMap((c) => {
+      const want = expected.get(c.id);
+      return want ? FIELDS.filter((f) => !same(localSnap(c, new Map())[f], want[f])).map((f) => `${c.id} ${f}`) : [];
+    });
+    if (drift.length) throw new Error(`ztrack sync hermes: the rendered file does not read back as the board (${drift.slice(0, 5).join('; ')}); ${opts.file} was left as it was. This is a ztrack defect: report it with the card's section.`);
+    const now = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    if (now !== before) throw new Error(`ztrack sync hermes: ${opts.file} changed while syncing; the board has the changes that were read before it did. Run the sync again.`);
+    renameSync(tmp, abs);
+  } finally {
+    if (existsSync(tmp)) rmSync(tmp);
+  }
 
   const nextBase: Base = {};
-  for (const c of after) nextBase[c.id] = keepLocal.has(c.id) ? (base[c.id] ?? remoteSnap(c)) : remoteSnap(c);
+  for (const c of shown) nextBase[c.id] = keepLocal.has(c.id) ? (base[c.id] ?? afterSnap(c)) : afterSnap(c);
   saveBase(bPath, nextBase);
   const stale = Object.keys(loadConflicts(opts.projectRoot).issues).filter((id) => FILE_ID.test(id) && !conflictsByCard.has(id));
   for (const id of stale) setIssueConflicts(opts.projectRoot, id, []);
@@ -414,9 +488,6 @@ export async function syncHermes(opts: HermesSyncOpts): Promise<HermesSyncResult
 }
 
 const DEFAULT_PREAMBLE = [
-  'This file is a Hermes kanban, kept in step with it by `ztrack sync hermes`: edit it, then sync.',
-  'One `## <card id> — <title>` section per card, then its `status:`/`assignee:` lines, then the',
-  'kanban preset\'s grammar (`Blocked by:`/`Workspace:`/`Branch:`/`Priority:`, the opening post, and',
-  `\`### Comments\`). A new card is a section with any id that isn't a board id (\`## new-1 — …\`);`,
-  'deleting a section archives its card. The grammar: docs/SYNC-HERMES.md in ztrack.',
+  'The arc board: a Hermes kanban, one `## <card id> — <title>` section per open card. Edit, then',
+  '`ztrack sync hermes`. A new section makes a card; a deleted one archives it. Grammar: docs/SYNC-HERMES.md in ztrack.',
 ].join('\n');

@@ -101,16 +101,18 @@ async function mapLimit<T, U>(items: T[], limit: number, fn: (t: T) => Promise<U
   return out;
 }
 
-/** Every card on the board except archived ones (Hermes's own `list` default), each with its
- *  parents and full comment thread (`show --json`). */
+/** Every card on the board except archived ones (Hermes's own `list` default). An open card comes
+ *  with its parents, comment thread and open run (`show --json`); a done card is read from the list
+ *  alone, since it neither shows nor gates. */
 export async function readBoard(exec: HermesExec): Promise<HermesCard[]> {
   const list = JSON.parse(await exec(['list', '--json'])) as Json[];
-  const onBoard = new Set(list.map((row) => String(row.id)));
+  const open = new Set(list.filter((row) => row.status !== 'done').map((row) => String(row.id)));
   return mapLimit(list, 8, async (row) => {
+    if (row.status === 'done') return toCard(row, [], [], null);
     const shown = JSON.parse(await exec(['show', String(row.id), '--json'])) as { task: Json; parents?: unknown[]; comments?: Json[]; runs?: Json[] };
-    // A link to an archived card stays in Hermes but no longer gates anything the board shows;
-    // only parents still on the board are the card's dependencies here.
-    const parents = (shown.parents ?? []).map((p) => (typeof p === 'string' ? p : String((p as Json).id))).filter((p) => onBoard.has(p));
+    // A link to a done or archived card stays in Hermes but no longer gates anything; only open
+    // parents are the card's dependencies here.
+    const parents = (shown.parents ?? []).map((p) => (typeof p === 'string' ? p : String((p as Json).id))).filter((p) => open.has(p));
     const comments = (shown.comments ?? []).map((c) => ({ author: String(c.author ?? ''), body: String(c.body ?? ''), createdAt: Number(c.created_at ?? 0) }));
     return toCard(shown.task, parents, comments, openRun(shown.runs ?? []));
   });
@@ -135,7 +137,7 @@ export function boardWriter(exec: HermesExec) {
       const out = JSON.parse(await exec(args)) as Json;
       return String(out.id);
     },
-    comment: (id: string, text: string) => run(['comment', id, text]),
+    comment: (id: string, text: string, author?: string) => run(['comment', ...(author ? ['--author', author] : []), id, text]),
     assign: (id: string, who: string | null) => run(['assign', id, who ?? 'none']),
     link: (parent: string, child: string) => run(['link', parent, child]),
     unlink: (parent: string, child: string) => run(['unlink', parent, child]),
