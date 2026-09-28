@@ -90,7 +90,7 @@ function remoteSnap(c: HermesCard): Snap {
 /** A card of the kanban preset's validated root (the fields the sync reads). */
 interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
-  workspace?: string; branch?: string; priority?: number; body: string;
+  workspace?: string; branch?: string; priority?: number; run?: string; body: string;
   comments: Array<{ at?: string; author?: string; text: string }>; earlierComments: number; earlierWhere?: string;
 }
 
@@ -175,6 +175,7 @@ function remoteToFileCard(c: HermesCard, opts: { comments: number; showCommand: 
     ...(s.workspace !== 'scratch' ? { workspace: s.workspace } : {}),
     ...(s.branch ? { branch: s.branch } : {}),
     ...(s.priority ? { priority: s.priority } : {}),
+    ...(c.run ? { run: `${c.run.id} ${c.run.status}${c.run.startedAt ? ` since ${stamp(c.run.startedAt)}` : ''}${c.run.session ? `, ${c.run.session}` : ''}` } : {}),
     body: s.body,
     comments: shown.map((cm) => ({ at: stamp(cm.createdAt), author: cm.author || 'unknown', text: cm.body.trim() || '(empty)' })),
     earlierComments: earlier,

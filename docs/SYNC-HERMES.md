@@ -55,6 +55,7 @@ Blocked by: t-954aa1da
 Workspace: dir:/Users/me/volter/ztrack
 Branch: wt/board
 Priority: 2
+Run: 64 running since 2026-09-28 21:22:55Z, sc:mac-mini:claude-code:1a03c457-…
 
 Done when: the manager reads and writes one ztrack md that parses into task state.
 A line of the opening post that starts with `#` is written \# so it is never a heading.
@@ -80,6 +81,11 @@ A line of the opening post that starts with `#` is written \# so it is never a h
     `dir:<path>`.
   - `Branch:` is the worktree branch.
   - `Priority:` is an integer. The default 0 is never written.
+  - `Run:` is the card's open run on the board: the run id, its status, when it started and the
+    session it names. A dispatcher writes it when it claims the card, so this line is read-only. A
+    sync writes the board's value and ignores an edit to it. The session is the run metadata's
+    `address` (else `session_id`), top-level or one level down (supercode's dispatcher records
+    `metadata.supercode.address`); Hermes's own dispatcher records a worker pid (`pid <n>`).
 - **The opening post** is everything after that, up to `### Comments`. It is the card's body,
   verbatim.
 - **`### Comments`** holds the newest comments, oldest first. A comment on the board is
@@ -127,7 +133,9 @@ to the new card, comments `replaces t_…` on the new card and `replaced by t_�
 archives the old card, and renames the section to the new id. A running card is never re-created.
 
 Board to file: every change another actor makes shows in the file after the next sync. That covers
-a lane move by a dispatcher, a new card, a comment, an assignment and a link. A card archived on
+a new card, a comment, an assignment and a link. When a dispatcher claims a card, the card moves to
+`running`, gets the dispatcher's `assignee:`, and gets a `Run:` line naming the session it started or
+adopted. When the run ends, the `Run:` line goes away. A card archived on
 the board leaves the file. So does a link to an archived card, since the card no longer gates
 anything the board shows.
 

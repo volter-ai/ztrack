@@ -21,7 +21,11 @@ export interface HermesCard {
   createdAt: number;
   parents: string[];          // cards that must finish first (Hermes `link parent child`)
   comments: HermesComment[];
+  /** The card's open run (a worker's claim, not yet ended), with the session it names, if any. */
+  run: HermesRun | null;
 }
+
+export interface HermesRun { id: number; status: string; startedAt: number; session: string | null }
 
 export type HermesExec = (args: string[]) => Promise<string>;
 
@@ -52,7 +56,26 @@ export function hermesExec(target: HermesTarget = {}): HermesExec {
 type Json = Record<string, unknown>;
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
-function toCard(task: Json, parents: string[], comments: HermesComment[]): HermesCard {
+// A dispatcher records what it started on the run: Hermes's own a worker pid, supercode's the session under `metadata.supercode` (`address`, `session_id`). The run's
+// session is the first address (else session id) found at the top level or one level down.
+function runSession(meta: unknown): string | null {
+  if (!meta || typeof meta !== 'object') return null;
+  const m = meta as Json;
+  const direct = str(m.address) ?? str(m.session_id);
+  if (direct) return direct;
+  for (const v of Object.values(m)) {
+    if (v && typeof v === 'object') { const nested = str((v as Json).address) ?? str((v as Json).session_id); if (nested) return nested; }
+  }
+  return null;
+}
+
+function openRun(runs: Json[]): HermesRun | null {
+  const open = runs.filter((r) => r.ended_at === null || r.ended_at === undefined).pop();
+  if (!open) return null;
+  return { id: Number(open.id), status: String(open.status ?? 'running'), startedAt: Number(open.started_at ?? 0), session: runSession(open.metadata) ?? (typeof open.worker_pid === 'number' ? `pid ${open.worker_pid}` : null) };
+}
+
+function toCard(task: Json, parents: string[], comments: HermesComment[], run: HermesRun | null): HermesCard {
   return {
     id: String(task.id),
     title: String(task.title ?? ''),
@@ -66,6 +89,7 @@ function toCard(task: Json, parents: string[], comments: HermesComment[]): Herme
     createdAt: typeof task.created_at === 'number' ? task.created_at : 0,
     parents,
     comments,
+    run,
   };
 }
 
@@ -83,12 +107,12 @@ export async function readBoard(exec: HermesExec): Promise<HermesCard[]> {
   const list = JSON.parse(await exec(['list', '--json'])) as Json[];
   const onBoard = new Set(list.map((row) => String(row.id)));
   return mapLimit(list, 8, async (row) => {
-    const shown = JSON.parse(await exec(['show', String(row.id), '--json'])) as { task: Json; parents?: unknown[]; comments?: Json[] };
+    const shown = JSON.parse(await exec(['show', String(row.id), '--json'])) as { task: Json; parents?: unknown[]; comments?: Json[]; runs?: Json[] };
     // A link to an archived card stays in Hermes but no longer gates anything the board shows;
     // only parents still on the board are the card's dependencies here.
     const parents = (shown.parents ?? []).map((p) => (typeof p === 'string' ? p : String((p as Json).id))).filter((p) => onBoard.has(p));
     const comments = (shown.comments ?? []).map((c) => ({ author: String(c.author ?? ''), body: String(c.body ?? ''), createdAt: Number(c.created_at ?? 0) }));
-    return toCard(shown.task, parents, comments);
+    return toCard(shown.task, parents, comments, openRun(shown.runs ?? []));
   });
 }
 

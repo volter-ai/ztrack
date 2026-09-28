@@ -12,6 +12,7 @@
 //   Workspace: dir:/Users/me/repo          optional: scratch | worktree | worktree:<path> | dir:<path>
 //   Branch: wt/t6-wire                     optional
 //   Priority: 2                            optional integer
+//   Run: 64 running since 2026-09-28 21:02:55Z, sc:mac:claude-code:1a03…   the board's open run (read-only)
 //
 //   The card's opening post, verbatim prose. A line of it that starts with `#` is written
 //   `\#` so it can never read as a heading.
@@ -24,7 +25,7 @@
 //   - a new comment (no stamp): posted by the next sync
 //
 // The metadata block is the body's FIRST paragraph and only when every line of it is one of the
-// four keys above; anything else is the opening post.
+// five keys above; anything else is the opening post.
 
 // A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
@@ -57,6 +58,9 @@ export const KanbanCardSchema = z.object({
   workspace: z.string().regex(/^(scratch|worktree|worktree:.+|dir:.+)$/).optional(),
   branch: z.string().min(1).optional(),
   priority: z.number().int().optional(),
+  /** The board's open run: a worker's claim and the session it names. Written by the board's
+   *  dispatcher, never by the file (a sync overwrites it). */
+  run: z.string().min(1).optional(),
   body: z.string(),
   comments: z.array(KanbanCommentSchema),
   /** How many older comments the file leaves out (the board keeps them). */
@@ -73,7 +77,7 @@ export type KanbanRoot = z.infer<typeof KanbanRootSchema>;
 export type KanbanCard = KanbanRoot['issues'][number];
 
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
-const META_LINE = /^(Blocked by|Workspace|Branch|Priority):\s*(.*)$/i;
+const META_LINE = /^(Blocked by|Workspace|Branch|Priority|Run):\s*(.*)$/i;
 const COMMENTS_HEADING = /^##\s+Comments\s*$/i;
 const STAMPED = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}Z) ([^:\s][^:]*?): ([\s\S]*)$/;
 const EARLIER = /^(\d+) earlier comments?(?::\s*(.*))?$/i;
@@ -143,6 +147,7 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
   if (meta.workspace) card.workspace = meta.workspace;
   if (meta.branch) card.branch = meta.branch;
+  if (meta.run) card.run = meta.run;
   if (meta.priority !== undefined && meta.priority !== '') card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
   const c = parseComments(tail);
   card.comments = c.comments;
@@ -164,6 +169,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
   if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);
+  if (card.run) out.push(`Run: ${card.run}`);
   if (card.body) {
     if (out.length) out.push('');
     out.push(...card.body.split('\n').map((l) => (/^\s{0,3}#/.test(l) ? `\\${l.trimStart()}` : l)));
