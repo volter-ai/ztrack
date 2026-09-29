@@ -95,3 +95,7 @@ if (kitCjs.status !== 0) {
   process.stderr.write(kitCjs.stderr || kitCjs.stdout || 'preset-kit CJS bundle failed\n');
   process.exit(kitCjs.status ?? 1);
 }
+
+// The board backing consumes the installed kanban grammar without a TypeScript loader.
+const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8' });
+if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout); process.exit(kanban.status ?? 1); }

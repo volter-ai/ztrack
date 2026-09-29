@@ -83,7 +83,7 @@
       "types": "./dist/src/boardDocument.d.ts",
       "default": "./dist/src/boardDocument.js"
     },
-    "./kanban-preset": "./boilerplates/presets/kanban.ts"
+    "./kanban-preset": "./dist/kanban-preset.cjs"
   },
   "bin": {
     "ztrack": "dist/cli.js"
