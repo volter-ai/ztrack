@@ -48,7 +48,17 @@ export interface HermesSyncResult {
 }
 
 // ── the card as both sides are compared: board card ids, canonical values ──────────────────────
-interface Task { id: string; status: string; text: string; blockedBy: string[] } // refs `<file card id>[:<task>]`
+// a task's acceptance lines are its subtask's checkbox lines (`- [ ] <criterion>`, `- [x] <criterion>: <evidence>`)
+interface TaskLine { checked: boolean; text: string }
+interface Task { id: string; status: string; text: string; blockedBy: string[]; lines: TaskLine[] } // refs `<file card id>[:<task>]`
+const CHECKBOX = /^\s*[-*] \[( |x|X)\]\s+(.+)$/;
+const linesOf = (body: string): TaskLine[] => body.split('\n').flatMap((l) => { const m = CHECKBOX.exec(l); return m ? [{ checked: m[1] !== ' ', text: m[2]!.trim() }] : []; });
+/** A subtask's text with its acceptance lines set to `lines` (its other text kept, the lines after it). */
+function withLines(body: string, lines: TaskLine[]): string {
+  const rest = body.split('\n').filter((l) => !CHECKBOX.test(l)).join('\n').trim();
+  const rendered = lines.map((l) => `- [${l.checked ? 'x' : ' '}] ${l.text}`).join('\n');
+  return [rest, rendered].filter(Boolean).join('\n\n');
+}
 interface Snap {
   title: string; body: string; status: string; assignee: string | null; parents: string[];
   workspace: string; branch: string | null; priority: number;
@@ -83,7 +93,7 @@ const byTaskId = (a: Task, b: Task) => a.id.replace(/\d+$/, '').localeCompare(b.
 interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
   workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; body: string;
-  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; sources?: TaskSource[] }>;
+  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; sources?: TaskSource[]; lines?: TaskLine[] }>;
   unparsed?: string[];
 }
 
@@ -113,6 +123,8 @@ interface BoardView {
   subtaskIds: Map<string, Map<string, string>>;
   /** Subtasks whose titles carry no task id yet: [subtask, arc]. */
   unnamed: Array<[BoardCard, BoardCard]>;
+  /** Each subtask's text, by its board id. */
+  bodies: Map<string, string>;
 }
 
 function viewOf(all: BoardCard[], preset: Preset<CoreRoot>): BoardView {
@@ -143,10 +155,10 @@ function viewOf(all: BoardCard[], preset: Preset<CoreRoot>): BoardView {
       title: c.title, status: c.status, assignee: c.assignee,
       parents: [...c.parents].sort(), workspace: workspaceOf(c), branch: c.branch, priority: c.priority,
       machine: c.machine, session: p?.session ?? null, body: canonBody(p?.body ?? c.body),
-      tasks: (tasksOf.get(c.id) ?? []).map((t) => ({ id: t.id, status: t.card.status === 'done' ? 'passed' : 'pending', text: t.text, blockedBy: t.card.parents.map(refOf).sort() })).sort(byTaskId),
+      tasks: (tasksOf.get(c.id) ?? []).map((t) => ({ id: t.id, status: t.card.status === 'done' ? 'passed' : 'pending', text: t.text, blockedBy: t.card.parents.map(refOf).sort(), lines: linesOf(t.card.body) })).sort(byTaskId),
     };
   };
-  return { cards, ids: new Set(all.map((c) => c.id)), snap, subtaskIds, unnamed };
+  return { cards, ids: new Set(all.map((c) => c.id)), snap, subtaskIds, unnamed, bodies: new Map(all.filter((c) => c.subtaskOf).map((c) => [c.id, c.body])) };
 }
 
 function localSnap(c: FileCard, idMap: Map<string, string>): Snap {
@@ -159,6 +171,7 @@ function localSnap(c: FileCard, idMap: Map<string, string>): Snap {
     tasks: c.acceptanceCriteria.map((t) => ({
       id: t.id, status: t.status, text: t.text,
       blockedBy: (t.blockedBy ?? []).map((r) => formatRef({ issue: fileIdOf(r.issue), ...(r.ac !== undefined ? { ac: r.ac } : {}) })).sort(),
+      lines: t.lines ?? [],
     })).sort(byTaskId),
   };
 }
@@ -254,6 +267,7 @@ function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<st
     acceptanceCriteria: s.tasks.map((t) => ({
       id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}),
       ...(sources?.get(t.id) ? { sources: sources.get(t.id) } : {}),
+      ...(t.lines.length ? { lines: t.lines } : {}),
     })),
     ...(unparsed?.length ? { unparsed } : {}),
   };
@@ -358,12 +372,14 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
       let sub = ids.get(t.id) ?? null;
       if (!rt) {
         const made = { id: '' };
-        const why = await act(`create ${label} "${t.text}"`, async () => { made.id = await writer.create({ title: `${t.id} ${t.text}`, body: '', parents: [], subtaskOf: arc }); });
+        const why = await act(`create ${label} "${t.text}"`, async () => { made.id = await writer.create({ title: `${t.id} ${t.text}`, body: withLines('', t.lines), parents: [], subtaskOf: arc }); });
         if (why || dry) continue;
         sub = made.id;
         ids.set(t.id, sub);
         res.created.push(label);
       } else if (rt.text !== t.text) await act(`retitle ${label}`, () => writer.specify(sub!, { title: `${t.id} ${t.text}` }));
+      // its acceptance lines go to its text before any move, so a close sees them checked
+      if (rt && !same(rt.lines, t.lines)) await act(`lines ${label}`, () => writer.specify(sub!, { body: withLines(view.bodies.get(sub!) ?? '', t.lines) }));
       if ((rt?.status ?? 'pending') !== t.status) {
         const to = t.status === 'passed' ? 'done' : 'ready';
         const why = await act(`${to} ${label}`, () => writer.goto(sub!, to));

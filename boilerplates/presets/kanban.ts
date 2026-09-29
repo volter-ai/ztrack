@@ -27,6 +27,7 @@
 //   - [x] c2 studio lights fix on main
 //   - [ ] c3 release
 //     - blocked-by: c1, t-954aa1da:c2
+//     - [ ] a person has seen it working       an acceptance line; checked: `- [x] <line>: <evidence>`
 //   - [x] c4 the owner's words are the source of this task
 //     - source: u-63f732c036792fc8462474ae "supercode inbox can be a source cited by ztrack"
 //
@@ -64,6 +65,8 @@ export const KanbanTaskSchema = z.object({
   text: z.string().min(1),
   blockedBy: z.array(BlockRefSchema).optional(),         // primitive
   sources: z.array(z.object({ id: z.string().regex(/^[a-z]-[0-9a-f]+$/), quote: z.string().min(1).optional() }).strict()).optional(),
+  /** The task's acceptance lines (`  - [ ] <criterion>` under it), each checked off with its evidence on the line. */
+  lines: z.array(z.object({ checked: z.boolean(), text: z.string().min(1) }).strict()).optional(),
 }).strict();
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
@@ -105,6 +108,7 @@ const ESCAPED = /^\\(?=#|(?:Blocked by|Workspace|Branch|Priority|Run|Machine|Ses
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
+const CRITERION_LINE = /^\s{2,}[-*] \[( |x|X)\]\s+(.+)$/;
 
 const splitList = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
 const trimBlankLines = (lines: string[]) => {
@@ -115,7 +119,8 @@ const trimBlankLines = (lines: string[]) => {
 };
 
 type TaskSource = { id: string; quote?: string };
-type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; sources?: TaskSource[] };
+type TaskLine = { checked: boolean; text: string };
+type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; sources?: TaskSource[]; lines?: TaskLine[] };
 
 function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
   const tasks: ParsedTask[] = [];
@@ -133,6 +138,12 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     if (b && tasks.length) {
       const last = tasks[tasks.length - 1]!;
       last.blockedBy = [...(last.blockedBy ?? []), ...splitList(b[1]!).map((tok) => parseBlockToken(tok, cardId)).filter((r): r is RawBlockRef => r !== null)];
+      continue;
+    }
+    const crit = CRITERION_LINE.exec(line);
+    if (crit && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      last.lines = [...(last.lines ?? []), { checked: crit[1] !== ' ', text: crit[2]!.trim() }];
       continue;
     }
     const src = SOURCE_LINE.exec(line);
@@ -222,6 +233,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
       out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.id} ${t.text}`);
       if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
       for (const src of t.sources ?? []) out.push(`  - source: ${src.id}${src.quote ? ` "${src.quote}"` : ''}`);
+      for (const l of t.lines ?? []) out.push(`  - [${l.checked ? 'x' : ' '}] ${l.text}`);
     }
     out.push(...(card.unparsed ?? []));
   }
