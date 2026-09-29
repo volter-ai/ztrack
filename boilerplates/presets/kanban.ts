@@ -15,7 +15,7 @@
 //   Blocked by: m-f17fd1c2                  message waits share the blocking relation
 //   Paused: sc:host:codex:session — waiting for owner
 //   Every: 2h                              recurring role runs
-//   Workspace: dir:/Users/me/repo           optional: scratch | worktree | worktree:<path> | dir:<path>
+//   Workspace: worktree:volter-ai/editor    optional: scratch | worktree:<repository> | dir:<repository>
 //   Branch: wt/t6-wire                      optional
 //   Priority: 2                             optional integer
 //   Machine: aarons-mac-mini                optional
@@ -93,7 +93,6 @@ export const KanbanCardSchema = z.object({
   assignee: z.string().min(1).optional(),
   relations: z.array(KanbanRelationSchema).optional(),   // primitive: `Blocked by:`
   workspace: z.string().regex(/^(scratch|worktree|worktree:.+|dir:.+)$/).optional(),
-  worktreePath: z.string().min(1).optional(),
   branch: z.string().min(1).optional(),
   priority: z.number().int().optional(),
   /** The board's open run: a worker's claim and the session it names. Written by the board's
@@ -117,7 +116,7 @@ export type KanbanCard = KanbanRoot['issues'][number];
 
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
 const META_KEYS: Record<string, string> = {
-  'blocked by': 'blockedBy', workspace: 'workspace', 'worktree path': 'worktreePath', branch: 'branch', priority: 'priority',
+  'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
   run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', every: 'every', metadata: 'metadata',
 };
 const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):\s*(.*)$/i;
@@ -238,7 +237,7 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   if (record.assignee) card.assignee = record.assignee;
   const blockers = [...new Set([...splitList(meta.blockedBy ?? ''), ...splitList(meta.waitingOn ?? '')])];
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
-  for (const k of ['workspace', 'worktreePath', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
+  for (const k of ['workspace', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
   if (meta.metadata) card.metadata = JSON.parse(meta.metadata);
   if (meta.paused) {
     const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused);
@@ -265,7 +264,6 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.paused) out.push(`Paused: ${card.paused.by} — ${card.paused.reason}`);
   if (card.every) out.push(`Every: ${card.every}`);
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
-  if (card.worktreePath) out.push(`Worktree path: ${card.worktreePath}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
   if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);
   if (card.machine) out.push(`Machine: ${card.machine}`);
