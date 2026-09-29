@@ -50,7 +50,7 @@ export interface HermesSyncResult {
 // ── the card as both sides are compared: board card ids, canonical values ──────────────────────
 // a task's acceptance lines are its subtask's checkbox lines (`- [ ] <criterion>`, `- [x] <criterion>: <evidence>`)
 interface TaskLine { checked: boolean; text: string }
-interface Task { id: string; status: string; text: string; blockedBy: string[]; lines: TaskLine[] } // refs `<file card id>[:<task>]`
+interface Task { id: string; status: string; text: string; blockedBy: string[]; lines: TaskLine[]; waiting: string | null } // refs `<file card id>[:<task>]`
 const CHECKBOX = /^\s*[-*] \[( |x|X)\]\s+(.+)$/;
 const linesOf = (body: string): TaskLine[] => body.split('\n').flatMap((l) => { const m = CHECKBOX.exec(l); return m ? [{ checked: m[1] !== ' ', text: m[2]!.trim() }] : []; });
 /** A subtask's text with its acceptance lines set to `lines` (its other text kept, the lines after it). */
@@ -98,7 +98,7 @@ interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
   workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; waitingOn?: string; body: string;
   acceptance?: TaskLine[];
-  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; sources?: TaskSource[]; lines?: TaskLine[] }>;
+  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[] }>;
   unparsed?: string[];
 }
 
@@ -161,7 +161,7 @@ function viewOf(all: BoardCard[], preset: Preset<CoreRoot>): BoardView {
       title: c.title, status: c.status, assignee: c.assignee,
       parents: [...c.parents].sort(), workspace: workspaceOf(c), branch: c.branch, priority: c.priority,
       machine: c.machine, session: p?.session ?? null, waiting: c.waitingOn, body: canonBody(p?.body ?? c.body), acceptance: p?.acceptance ?? [],
-      tasks: (tasksOf.get(c.id) ?? []).map((t) => ({ id: t.id, status: t.card.status === 'done' ? 'passed' : 'pending', text: t.text, blockedBy: t.card.parents.map(refOf).sort(), lines: linesOf(t.card.body) })).sort(byTaskId),
+      tasks: (tasksOf.get(c.id) ?? []).map((t) => ({ id: t.id, status: t.card.status === 'done' ? 'passed' : 'pending', text: t.text, blockedBy: t.card.parents.map(refOf).sort(), lines: linesOf(t.card.body), waiting: t.card.waitingOn })).sort(byTaskId),
     };
   };
   return { cards, ids: new Set(all.map((c) => c.id)), snap, subtaskIds, unnamed, bodies: new Map(all.filter((c) => c.subtaskOf).map((c) => [c.id, c.body])) };
@@ -178,6 +178,7 @@ function localSnap(c: FileCard, idMap: Map<string, string>): Snap {
       id: t.id, status: t.status, text: t.text,
       blockedBy: (t.blockedBy ?? []).map((r) => formatRef({ issue: fileIdOf(r.issue), ...(r.ac !== undefined ? { ac: r.ac } : {}) })).sort(),
       lines: t.lines ?? [],
+      waiting: t.waitingOn ?? null,
     })).sort(byTaskId),
   };
 }
@@ -193,7 +194,7 @@ function loadBase(p: string): Base {
   // a base written before a field existed holds it as its empty value, so the field's first sync reads the board's
   // value as the board's change, never as the file taking it away
   for (const snap of Object.values(cards)) {
-    snap.tasks = (snap.tasks ?? []).map((t) => ({ ...t, lines: t.lines ?? [] }));
+    snap.tasks = (snap.tasks ?? []).map((t) => ({ ...t, lines: t.lines ?? [], waiting: t.waiting ?? null }));
     snap.acceptance = snap.acceptance ?? [];
     snap.waiting = snap.waiting ?? null;
   }
@@ -285,6 +286,7 @@ function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<st
       id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}),
       ...(sources?.get(t.id) ? { sources: sources.get(t.id) } : {}),
       ...(t.lines.length ? { lines: t.lines } : {}),
+      ...(t.waiting ? { waitingOn: t.waiting } : {}),
     })),
     ...(unparsed?.length ? { unparsed } : {}),
   };
@@ -402,6 +404,9 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
         const why = await act(`${to} ${label}`, () => writer.goto(sub!, to));
         if (why && to === 'ready') await act(`todo ${label}`, () => writer.goto(sub!, 'todo'));
       }
+      // a wait written on a task blocks its subtask on that message; one dropped is not an unblock
+      if (sub && t.waiting && t.waiting !== (rt?.waiting ?? null)) await act(`block ${label} waiting on ${t.waiting}`, () => writer.waitOn(sub!, t.waiting!));
+      else if (rt?.waiting && !t.waiting) res.refused.push(`waiting ${label}: its subtask waits for the answer to ${rt.waiting}; it resumes when one lands, or unblock it naming what arrived`);
       const had = rt?.blockedBy ?? [];
       if (!same(had, t.blockedBy)) {
         pending.push(async () => {

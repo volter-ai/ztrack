@@ -55,6 +55,7 @@ export interface CoreAC {
   proof?: Proof;            // primitive
   blockedBy?: BlockRef[];   // primitive: nodes that must land before this one
   blocks?: BlockRef[];      // primitive: nodes this one must land before
+  waitingOn?: string;       // primitive: the message (m-… or a-…) whose answer this waits for
 }
 export interface CoreIssue {
   id: string; title: string; summary: string; status: string; acceptanceCriteria: CoreAC[];
@@ -62,6 +63,7 @@ export interface CoreIssue {
   relations?: Relation[];       // primitive
   children?: string[];          // primitive
   sources?: Source[];           // primitive
+  waitingOn?: string;           // primitive: the message (m-… or a-…) whose answer this waits for
   // (waivers are NOT a primitive on the issue — they live in context.waivers; see WaiverDirective)
 }
 export interface CoreRoot { issues: CoreIssue[] }

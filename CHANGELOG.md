@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **Waiting on in core, and on a task.** ztrack's core carries `waitingOn` beside `blockedBy` on an issue and on an acceptance criterion: a node waiting on an answer reads as blocked (`blockStatuses`, `issueFrontier`), with the message named in `waitingOn`. A kanban task takes a `  - waiting-on: <m-/a- id>` line under it, synced to its subtask's `block --waiting-on`.
+
 ## 2.4.8
 
 - **A card waiting on a reply says so.** The kanban preset's `Waiting on: <m-/a- id>` sits beside `Blocked by:`; the board writes it while a card's block waits for the answer to that message, and a `Waiting on:` written in the file blocks the card on it (`block --waiting-on`).

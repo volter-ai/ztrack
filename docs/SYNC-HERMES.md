@@ -157,6 +157,7 @@ file is not known to it, so a card's thread and notices say the edit came from t
 | a task's text changed | `specify` on its subtask |
 | a task ticked or unticked | `goto` its subtask to `done`, or back |
 | a task's `blocked-by` changed | `link` / `unlink` on its subtask |
+| a task's `waiting-on` written | `block --waiting-on <id>` on its subtask (dropping it is refused, as for a card's `Waiting on:`) |
 | a task's acceptance line added, changed or checked | `specify` its subtask's text: its checkbox lines are the task's acceptance lines (its other text is kept) |
 | a task deleted | `archive` its subtask |
 | a section deleted | `archive` |

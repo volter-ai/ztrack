@@ -72,6 +72,8 @@ export const KanbanTaskSchema = z.object({
   evidence: z.array(z.never()),                          // core: a task carries no evidence, ever
   text: z.string().min(1),
   blockedBy: z.array(BlockRefSchema).optional(),         // primitive
+  /** The message whose answer the task waits for (`  - waiting-on: m-…`). */
+  waitingOn: z.string().regex(/^[ma]-[0-9a-f]{6,}$/).optional(), // primitive
   sources: z.array(z.object({ id: z.string().regex(/^[a-z]-[0-9a-f]+$/), quote: z.string().min(1).optional() }).strict()).optional(),
   /** The task's acceptance lines (`  - [ ] <criterion>` under it), each checked off with its evidence on the line. */
   lines: z.array(z.object({ checked: z.boolean(), text: z.string().min(1) }).strict()).optional(),
@@ -121,6 +123,7 @@ const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session):)/i;
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
+const WAITING_LINE = /^\s{2,}[-*] waiting-on:\s*(\S+)\s*$/i;
 const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
 const CRITERION_LINE = /^\s{2,}[-*] \[( |x|X)\]\s+(.+)$/;
 
@@ -134,7 +137,7 @@ const trimBlankLines = (lines: string[]) => {
 
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string };
-type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; sources?: TaskSource[]; lines?: TaskLine[] };
+type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[] };
 
 function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
   const tasks: ParsedTask[] = [];
@@ -152,6 +155,11 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     if (b && tasks.length) {
       const last = tasks[tasks.length - 1]!;
       last.blockedBy = [...(last.blockedBy ?? []), ...splitList(b[1]!).map((tok) => parseBlockToken(tok, cardId)).filter((r): r is RawBlockRef => r !== null)];
+      continue;
+    }
+    const w = WAITING_LINE.exec(line);
+    if (w && tasks.length) {
+      tasks[tasks.length - 1]!.waitingOn = w[1]!;
       continue;
     }
     const crit = CRITERION_LINE.exec(line);
@@ -265,6 +273,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
     for (const t of card.acceptanceCriteria) {
       out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.id} ${t.text}`);
       if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
+      if (t.waitingOn) out.push(`  - waiting-on: ${t.waitingOn}`);
       for (const src of t.sources ?? []) out.push(`  - source: ${src.id}${src.quote ? ` "${src.quote}"` : ''}`);
       for (const l of t.lines ?? []) out.push(`  - [${l.checked ? 'x' : ' '}] ${l.text}`);
     }

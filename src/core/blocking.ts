@@ -129,6 +129,9 @@ export interface NodeBlockStatus {
   blocked: boolean;
   /** the unsatisfied nodes upstream in the dependency closure — what's holding it up. */
   blockers: BlockRef[];
+  /** the messages whose answers it (or, for an issue, one of its own ACs) waits for: a wait beside the blockers,
+   *  ended by an answer, not by any node landing. */
+  waitingOn?: string[];
 }
 
 /** Per node, its transitive blocked state: the closure of upstream dependencies that
@@ -152,7 +155,9 @@ export function blockStatuses(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
       }
     };
     walk(startKey);
-    out.set(startKey, { blocked: unmet.size > 0, blockers: [...unmet].map((k) => nodeRef(nodes.get(k)!)) });
+    const node = nodes.get(startKey)!;
+    const waiting = node.kind === 'issue' ? node.issue.waitingOn : node.ac!.waitingOn;
+    out.set(startKey, { blocked: unmet.size > 0 || !!waiting, blockers: [...unmet].map((k) => nodeRef(nodes.get(k)!)), ...(waiting ? { waitingOn: [waiting] } : {}) });
   }
   return out;
 }
@@ -215,7 +220,9 @@ export function issueFrontier(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
       const k = refKey(b);
       if (!seen.has(k)) { seen.add(k); blockers.push(b); }
     }
-    out.set(issue.id, { blocked: blockers.length > 0, blockers });
+    // a wait on an answer holds the issue up as a blocker does: its own, or one of its ACs'
+    const waitingOn = [issue.waitingOn, ...issue.acceptanceCriteria.map((ac) => ac.waitingOn)].filter((w): w is string => !!w);
+    out.set(issue.id, { blocked: blockers.length > 0 || waitingOn.length > 0, blockers, ...(waitingOn.length ? { waitingOn } : {}) });
   }
   return out;
 }
