@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.8
+
 - **A card waiting on a reply says so.** The kanban preset's `Waiting on: <m-/a- id>` sits beside `Blocked by:`; the board writes it while a card's block waits for the answer to that message, and a `Waiting on:` written in the file blocks the card on it (`block --waiting-on`).
 ## 2.4.7
 
