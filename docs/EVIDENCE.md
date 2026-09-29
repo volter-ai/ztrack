@@ -151,6 +151,32 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
   statement that falsely looks attested).
 - `verify --bundle … --key <public.pem>` checks the envelope signatures.
 
+## A task's source: the message it came from
+
+A claim on a board often comes from someone's words: the owner's line, a Room member's request, a
+message from another session. The kanban preset lets a task cite that message by its **supercode
+mailbox id**, with an optional quote of its words:
+
+```markdown
+- [ ] c3 ztrack cites a mailbox id, verified by `ztrack check`
+  - source: u-63f732c036792fc8462474ae "supercode inbox can be a source cited by ztrack"
+```
+
+supercode files every message a session receives or sends under an id: a line a person typed
+(`u-…`), mail from a session, a Room or a channel (`m-…`), a session's answer (`a-…`).
+`supercode message inbox --session <session>` lists them. `ztrack check` asks supercode for each
+cited message (`supercode message show --json <id>…`; `SUPERCODE_BIN` names another supercode) as
+world events of service `supercode`, and reports `task_source_unverified` for:
+
+- an id no mailbox on this machine holds;
+- a quote that is not in the message's words (whitespace is ignored);
+- supercode not answering at all.
+
+A source is where a task came from, not proof that it is done: the kanban preset stays
+evidence-free, and ticking a task still takes nothing. The check is local to the machine whose
+mailboxes hold the message. A preset of your own rents the same lookup from the kit:
+`supercodeMessages(ids)` and `quoteIn(text, quote)` from `@volter/ztrack/preset-kit`.
+
 ## Advanced: validating against a mirrored world
 
 > **Disambiguation: "world sources" vs. declared `sources`.** This section's "world" and "source

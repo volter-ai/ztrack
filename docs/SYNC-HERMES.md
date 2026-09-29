@@ -95,7 +95,10 @@ Done when: the manager's arcs live in arcs.md backed by its board; released.
 - **`### Tasks`** holds the card's tasks, one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
   done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A task written without
   one gets the card's next free `c<N>` on the next sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
-  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card).
+  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented
+  `- source: <message id> "<quote>"` line names the message the task came from (the quote is
+  optional); see [EVIDENCE.md](EVIDENCE.md#a-tasks-source-the-message-it-came-from). The board does
+  not hold a source: the file keeps it, and a sync that rewrites the card keeps it on its task.
 - **No other heading** may appear anywhere in the file, the prose before the first card included.
   The sync renders the file whole, and it refuses a file with any other heading rather than drop
   or move it. The refusal names the line.
@@ -112,7 +115,8 @@ lane or field, and it reports these rules:
 | `duplicate_task_id` | error | a card has two tasks with one id |
 | `done_before_blocker` | warning | a ticked task (or a done card) waits on something that isn't done |
 | `card_header_unended` | error | a card's prose starts with a `status:`/`assignee:` line (no blank line after the header) |
-| `kanban_line_unparsed` | error | a line under Tasks is neither a task nor its `blocked-by` line |
+| `kanban_line_unparsed` | error | a line under Tasks is neither a task nor its `blocked-by` or `source` line |
+| `task_source_unverified` | error | a task's `source` is an id no supercode mailbox on this machine holds, its quote is not in the message's words, or supercode could not be asked (`check` only; a sync does not ask) |
 
 ## What a sync does
 

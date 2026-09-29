@@ -83,9 +83,14 @@ const byTaskId = (a: Task, b: Task) => a.id.replace(/\d+$/, '').localeCompare(b.
 interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
   workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; body: string;
-  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[] }>;
+  acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; sources?: TaskSource[] }>;
   unparsed?: string[];
 }
+
+/** The message a task cites as where it came from: the file's own, which the board does not hold. */
+type TaskSource = { id: string; quote?: string };
+/** A card's tasks' sources, by task id. */
+const sourcesByTask = (c: FileCard) => new Map(c.acceptanceCriteria.filter((t) => t.sources?.length).map((t) => [t.id, t.sources!]));
 
 /** The card's text on the board: its prose and `Session:`, in the preset's grammar (no tasks, no
  *  board fields: those are the board's own). */
@@ -234,7 +239,7 @@ function stamp(epochSeconds: number): string {
   return new Date(epochSeconds * 1000).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, 'Z');
 }
 
-function toFileCard(c: BoardCard, s: Snap, unparsed?: string[]): FileCard {
+function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<string, TaskSource[]>): FileCard {
   const toRef = (ref: string): BlockRef => { const [issue, ac] = ref.split(':'); return { issue: issue!, ...(ac ? { ac } : {}) }; };
   return {
     id: toFileId(c.id), title: s.title, status: s.status, ...(s.assignee ? { assignee: s.assignee } : {}),
@@ -246,7 +251,10 @@ function toFileCard(c: BoardCard, s: Snap, unparsed?: string[]): FileCard {
     ...(s.machine ? { machine: s.machine } : {}),
     ...(s.session ? { session: s.session } : {}),
     body: s.body,
-    acceptanceCriteria: s.tasks.map((t) => ({ id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}) })),
+    acceptanceCriteria: s.tasks.map((t) => ({
+      id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}),
+      ...(sources?.get(t.id) ? { sources: sources.get(t.id) } : {}),
+    })),
     ...(unparsed?.length ? { unparsed } : {}),
   };
 }
@@ -324,6 +332,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
   for (const c of localCards) if (FILE_ID.test(c.id)) idMap.set(c.id, toBoardId(c.id));
   const localById = new Map(localCards.map((c) => [c.id, c]));
   const unparsedOf = new Map<string, string[]>();     // board id -> task-section lines kept verbatim
+  const sourcesOf = new Map<string, Map<string, TaskSource[]>>(); // board id -> its tasks' sources, kept from the file
   const orphans: FileCard[] = [];                     // sections kept in the file with no card behind them
 
   // A task ref (`t-…:c2` or `t-…`) as the board card it names, once it exists.
@@ -406,6 +415,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
     const fid = dry ? c.id : toFileId(newId);
     res.created.push(fid);
     if (c.unparsed?.length) unparsedOf.set(newId, c.unparsed);
+    sourcesOf.set(newId, sourcesByTask(c));
     if (!dry) await syncTasks(newId, fid, s.tasks, [], undefined);
     if (s.status !== 'todo' && s.status !== 'ready') await act(`${s.status} ${fid}`, () => writer.goto(newId, s.status));
   };
@@ -450,6 +460,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
       continue;
     }
     if (local.unparsed?.length) unparsedOf.set(hid, local.unparsed);
+    sourcesOf.set(hid, sourcesByTask(local));
     const R = view.snap(r);
     // what the file changed since the base goes to the board (with no base, all of it)
     const pushFields = FIELDS.filter((f) => !same(L[f], R[f]) && !(b && same(L[f], b[f])));
@@ -498,7 +509,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
   const shown = after.cards.filter((c) => c.status !== 'done');
   const expected = new Map(shown.map((c) => [toFileId(c.id), after.snap(c)]));
   const rendered = shown
-    .map((c) => toFileCard(c, expected.get(toFileId(c.id))!, unparsedOf.get(c.id)))
+    .map((c) => toFileCard(c, expected.get(toFileId(c.id))!, unparsedOf.get(c.id), sourcesOf.get(c.id)))
     .sort((a, b) => (laneRank(a.status) - laneRank(b.status)) || ((after.cards.find((c) => toFileId(c.id) === a.id)?.createdAt ?? 0) - (after.cards.find((c) => toFileId(c.id) === b.id)?.createdAt ?? 0)));
   const text = renderFile(preset, preamble || DEFAULT_PREAMBLE, [...rendered, ...orphans]);
 

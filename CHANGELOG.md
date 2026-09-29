@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **A task cites the message it came from.** On a kanban board, `  - source: <id> "<quote>"` under a task names a supercode mailbox message: a line a person typed (`u-…`), mail from a session, a Room or a channel (`m-…`), or a session's answer (`a-…`). `ztrack check` reads each cited message through `supercode message show` and reports `task_source_unverified` for an id no mailbox holds, a quote not in the message, or a supercode that doesn't answer. A sync keeps a task's sources, which the board does not hold. The preset kit exports the lookup (`supercodeMessages`, `quoteIn`). See docs/EVIDENCE.md.
+
 ## 2.4.1
 
 - A card created from the file is filed with `--no-start`: the board's dispatcher starts it on its own terms, so a section written straight into a lane of its own (`status: audit`, say) reaches that lane instead of being started first.

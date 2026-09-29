@@ -27,15 +27,25 @@
 //   - [x] c2 studio lights fix on main
 //   - [ ] c3 release
 //     - blocked-by: c1, t-954aa1da:c2
+//   - [x] c4 the owner's words are the source of this task
+//     - source: u-63f732c036792fc8462474ae "supercode inbox can be a source cited by ztrack"
 //
 // The metadata block is the body's leading paragraphs made wholly of the keys above; anything
 // else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>` (or another letter prefix and
 // number, `s1`), and a task written without one gets the next free `c<N>` of its card. `blocked-by` names tasks
 // (`c1` in this card, `<card>:<task>` in another) or whole cards.
+//
+// A `source` names the message a task came from, by its supercode mailbox id (a line a person
+// typed, `u-…`; mail from a session, a Room or a channel, `m-…`; a session's answer, `a-…`), with
+// an optional quote of its words. `check` asks supercode for each cited message
+// (`supercode message show`): an id no mailbox on this machine holds, or a quote not in the
+// message's words, is an error. A source is where a task came from, not proof it is done; ticking
+// a task still takes no evidence.
 
 // A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
   z, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
+  supercodeMessages, quoteIn, SUPERCODE_SERVICE, type PresetContextInput,
   type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
 
@@ -53,6 +63,7 @@ export const KanbanTaskSchema = z.object({
   evidence: z.array(z.never()),                          // core: a task carries no evidence, ever
   text: z.string().min(1),
   blockedBy: z.array(BlockRefSchema).optional(),         // primitive
+  sources: z.array(z.object({ id: z.string().regex(/^[a-z]-[0-9a-f]+$/), quote: z.string().min(1).optional() }).strict()).optional(),
 }).strict();
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
@@ -93,6 +104,7 @@ const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ESCAPED = /^\\(?=#|(?:Blocked by|Workspace|Branch|Priority|Run|Machine|Session):)/i;
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
+const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
 
 const splitList = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
 const trimBlankLines = (lines: string[]) => {
@@ -102,7 +114,8 @@ const trimBlankLines = (lines: string[]) => {
   return lines.slice(a, b);
 };
 
-type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[] };
+type TaskSource = { id: string; quote?: string };
+type ParsedTask = { id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; sources?: TaskSource[] };
 
 function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
   const tasks: ParsedTask[] = [];
@@ -120,6 +133,12 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     if (b && tasks.length) {
       const last = tasks[tasks.length - 1]!;
       last.blockedBy = [...(last.blockedBy ?? []), ...splitList(b[1]!).map((tok) => parseBlockToken(tok, cardId)).filter((r): r is RawBlockRef => r !== null)];
+      continue;
+    }
+    const src = SOURCE_LINE.exec(line);
+    if (src && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      last.sources = [...(last.sources ?? []), { id: src[1]!, ...(src[2] ? { quote: src[2] } : {}) }];
       continue;
     }
     if (line.trim() !== '') unparsed.push(line);
@@ -202,6 +221,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
     for (const t of card.acceptanceCriteria) {
       out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.id} ${t.text}`);
       if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
+      for (const src of t.sources ?? []) out.push(`  - source: ${src.id}${src.quote ? ` "${src.quote}"` : ''}`);
     }
     out.push(...(card.unparsed ?? []));
   }
@@ -256,9 +276,38 @@ const KANBAN_RULES = [
   rule<KanbanRoot, { issueId: string; line: string }>({
     code: 'kanban_line_unparsed',
     select: (m) => m.root.issues.flatMap((i) => (i.unparsed ?? []).map((line) => ({ issueId: i.id, line }))),
-    message: ({ issueId, line }) => `Card ${issueId}: "${line.trim()}" under Tasks is not a task (\`- [ ] c<N> <text>\`, or its \`  - blocked-by:\` line).`,
+    message: ({ issueId, line }) => `Card ${issueId}: "${line.trim()}" under Tasks is not a task (\`- [ ] c<N> <text>\`, or its \`  - blocked-by:\` or \`  - source:\` line).`,
+  }),
+  rule<KanbanRoot, { issueId: string; acId: string; source: string; quote?: string; problem: 'not_found' | 'unreachable' | 'quote' }>({
+    code: 'task_source_unverified',
+    // Judged only where the messages were read (`check` loads them; a sync's parse does not).
+    select: (m) => {
+      if (!m.context.world) return [];
+      const events = new Map((m.context.world.events ?? []).filter((e) => e.service === SUPERCODE_SERVICE).map((e) => [e.id, e]));
+      type Problem = 'not_found' | 'unreachable' | 'quote';
+      return m.root.issues.flatMap((i) => i.acceptanceCriteria.flatMap((t) => (t.sources ?? []).flatMap((src) => {
+        const event = events.get(src.id);
+        const problem: Problem | null = !event ? 'not_found'
+          : event.type === 'unreachable' ? 'unreachable'
+            : src.quote && !quoteIn(event.text ?? '', src.quote) ? 'quote' : null;
+        return problem ? [{ issueId: i.id, acId: t.id, source: src.id, ...(src.quote ? { quote: src.quote } : {}), problem }] : [];
+      })));
+    },
+    message: ({ issueId, acId, source, quote, problem }) => problem === 'not_found'
+      ? `Task ${issueId}:${acId} cites ${source}, which no supercode mailbox on this machine holds (\`supercode message show ${source}\`).`
+      : problem === 'unreachable'
+        ? `Task ${issueId}:${acId} cites ${source}, but supercode could not be asked (\`supercode message show ${source}\`; SUPERCODE_BIN names another supercode).`
+        : `Task ${issueId}:${acId} quotes ${source} as "${quote}", which is not in that message's words (\`supercode message show ${source}\`).`,
   }),
 ];
+
+// The cited messages' ids: from the parsed root when there is one, else from the bundle's lines.
+function citedSources(input: PresetContextInput): string[] {
+  if (input.root) {
+    return (input.root as unknown as KanbanRoot).issues.flatMap((i) => (i.acceptanceCriteria ?? []).flatMap((t) => (t.sources ?? []).map((src) => src.id)));
+  }
+  return [...(input.bundle ?? '').matchAll(/^\s{2,}[-*] source:\s*(\S+)/gim)].map((match) => match[1]!);
+}
 
 // ── the dashboard's vocabulary, as plain data ──────────────────────────────────────────────
 const KANBAN_VISUALIZER: VisualizerSpec = {
@@ -275,6 +324,10 @@ export const KanbanPreset: Preset<KanbanRoot> = {
   parse: parseKanban,
   serialize: serializeKanbanCard, // card -> { body, columns }; the inverse of parse
   rules: KANBAN_RULES,
+  // this preset's observed facts: the messages its tasks cite, read from supercode's mailboxes.
+  loadContext: (input) => {
+    return { world: { events: supercodeMessages(citedSources(input)) } };
+  },
   // a task-less card is done (for the block graph) in the done or archived lane; a card with
   // tasks, when every task is ticked.
   isIssueDone: (i) => i.status === 'done' || i.status === 'archived',
