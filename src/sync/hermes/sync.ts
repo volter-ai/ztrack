@@ -63,10 +63,12 @@ interface Snap {
   title: string; body: string; status: string; assignee: string | null; parents: string[];
   workspace: string; branch: string | null; priority: number;
   machine: string | null; session: string | null; tasks: Task[];
+  /** The message whose answer the card's block waits for (`Waiting on:`). */
+  waiting: string | null;
   /** The card's acceptance criteria: outcomes, each ticked with a pointer to where it was seen. */
   acceptance: TaskLine[];
 }
-const FIELDS = ['title', 'body', 'status', 'assignee', 'parents', 'workspace', 'branch', 'priority', 'machine', 'session', 'acceptance', 'tasks'] as const;
+const FIELDS = ['title', 'body', 'status', 'assignee', 'parents', 'workspace', 'branch', 'priority', 'machine', 'session', 'waiting', 'acceptance', 'tasks'] as const;
 type Field = typeof FIELDS[number];
 /** Fields only a new card can carry (the board has no edit door for them). */
 const CREATION_FIELDS: Field[] = ['workspace', 'branch', 'priority'];
@@ -94,7 +96,7 @@ const byTaskId = (a: Task, b: Task) => a.id.replace(/\d+$/, '').localeCompare(b.
 /** A card of the kanban preset's validated root (the fields the sync reads). */
 interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
-  workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; body: string;
+  workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; waitingOn?: string; body: string;
   acceptance?: TaskLine[];
   acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; sources?: TaskSource[]; lines?: TaskLine[] }>;
   unparsed?: string[];
@@ -158,7 +160,7 @@ function viewOf(all: BoardCard[], preset: Preset<CoreRoot>): BoardView {
     return {
       title: c.title, status: c.status, assignee: c.assignee,
       parents: [...c.parents].sort(), workspace: workspaceOf(c), branch: c.branch, priority: c.priority,
-      machine: c.machine, session: p?.session ?? null, body: canonBody(p?.body ?? c.body), acceptance: p?.acceptance ?? [],
+      machine: c.machine, session: p?.session ?? null, waiting: c.waitingOn, body: canonBody(p?.body ?? c.body), acceptance: p?.acceptance ?? [],
       tasks: (tasksOf.get(c.id) ?? []).map((t) => ({ id: t.id, status: t.card.status === 'done' ? 'passed' : 'pending', text: t.text, blockedBy: t.card.parents.map(refOf).sort(), lines: linesOf(t.card.body) })).sort(byTaskId),
     };
   };
@@ -171,7 +173,7 @@ function localSnap(c: FileCard, idMap: Map<string, string>): Snap {
     title: c.title, body: canonBody(c.body), status: c.status, assignee: c.assignee ?? null,
     parents: (c.relations ?? []).filter((r) => r.type === 'blocked-by').map((r) => idMap.get(r.issueId) ?? toBoardId(r.issueId)).sort(),
     workspace: c.workspace ?? 'scratch', branch: c.branch ?? null, priority: c.priority ?? 0,
-    machine: c.machine ?? null, session: c.session ?? null, acceptance: c.acceptance ?? [],
+    machine: c.machine ?? null, session: c.session ?? null, waiting: c.waitingOn ?? null, acceptance: c.acceptance ?? [],
     tasks: c.acceptanceCriteria.map((t) => ({
       id: t.id, status: t.status, text: t.text,
       blockedBy: (t.blockedBy ?? []).map((r) => formatRef({ issue: fileIdOf(r.issue), ...(r.ac !== undefined ? { ac: r.ac } : {}) })).sort(),
@@ -193,6 +195,7 @@ function loadBase(p: string): Base {
   for (const snap of Object.values(cards)) {
     snap.tasks = (snap.tasks ?? []).map((t) => ({ ...t, lines: t.lines ?? [] }));
     snap.acceptance = snap.acceptance ?? [];
+    snap.waiting = snap.waiting ?? null;
   }
   return cards;
 }
@@ -275,6 +278,7 @@ function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<st
     ...(c.run ? { run: `${c.run.id} ${c.run.status}${c.run.startedAt ? ` since ${stamp(c.run.startedAt)}` : ''}${c.run.session ? `, ${c.run.session}` : ''}` } : {}),
     ...(s.machine ? { machine: s.machine } : {}),
     ...(s.session ? { session: s.session } : {}),
+    ...(s.waiting ? { waitingOn: s.waiting } : {}),
     ...(s.acceptance.length ? { acceptance: s.acceptance } : {}),
     body: s.body,
     acceptanceCriteria: s.tasks.map((t) => ({
@@ -514,7 +518,11 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
       for (const p of R.parents.filter((x) => !L.parents.includes(x))) await act(`unlink ${toFileId(p)} -> ${local.id}`, () => writer.unlink(p, hid));
     }
     if (push.has('tasks')) await syncTasks(hid, local.id, L.tasks, R.tasks, b?.tasks);
-    if (push.has('status')) await act(`${L.status} ${local.id}`, () => writer.goto(hid, L.status));
+    // a wait written in the file is a block on that message (which also moves the card to blocked); a wait the file
+    // drops is not an unblock: the card resumes when an answer lands, or by an unblock that names it
+    if (push.has('waiting') && L.waiting) await act(`block ${local.id} waiting on ${L.waiting}`, () => writer.waitOn(hid, L.waiting!));
+    else if (push.has('waiting')) res.refused.push(`waiting ${local.id}: the card waits for the answer to ${R.waiting}; it resumes when one lands, or unblock it naming what arrived (supercode workflow unblock ${hid} --reason "<the answering message's id>")`);
+    if (push.has('status') && !(push.has('waiting') && L.waiting && L.status === 'blocked')) await act(`${L.status} ${local.id}`, () => writer.goto(hid, L.status));
     if (FIELDS.some((f) => !same(L[f], R[f]) && !push.has(f))) res.pulled.push(local.id);
   }
   for (const link of pending) await link();

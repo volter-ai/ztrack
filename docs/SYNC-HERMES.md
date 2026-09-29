@@ -86,6 +86,8 @@ What stands: the manager's arcs live in arcs.md, backed by its board.
 - **Its metadata block** is the paragraphs after the header made wholly of these keys (the sync
   writes them as one). Each key is optional:
   - `Blocked by:` lists the cards that must finish first (parent links), comma-separated.
+  - `Waiting on:` is the id of the message (`m-…` or `a-…`) whose answer the card's block waits for.
+    The board writes it while such a block stands and drops it when an answer lands.
   - `Workspace:` is `scratch` (the default, never written), `worktree`, `worktree:<path>` or
     `dir:<path>`.
   - `Branch:` is the worktree branch.
@@ -150,6 +152,7 @@ file is not known to it, so a card's thread and notices say the edit came from t
 | `assignee:` changed or removed | `assign` |
 | `Machine:` changed | `move` |
 | `Blocked by:` changed | `link` / `unlink` |
+| `Waiting on:` written | `block --waiting-on <id>`: the card waits in `blocked` until an answer to that message lands in its asker's mailbox. Removing it is refused: the card resumes when the answer lands, or by an unblock naming what arrived |
 | a task added | `create "c<N> <text>" --subtask-of <card>`: a subtask of the card |
 | a task's text changed | `specify` on its subtask |
 | a task ticked or unticked | `goto` its subtask to `done`, or back |

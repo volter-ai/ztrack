@@ -12,6 +12,7 @@
 // preset's, level-shifted so the card's `### Tasks` reads as `## Tasks` here):
 //
 //   Blocked by: t-954aa1da                  optional: cards that must be done first
+//   Waiting on: m-f17fd1c2                  optional: the message whose answer the card waits for
 //   Workspace: dir:/Users/me/repo           optional: scratch | worktree | worktree:<path> | dir:<path>
 //   Branch: wt/t6-wire                      optional
 //   Priority: 2                             optional integer
@@ -96,6 +97,8 @@ export const KanbanCardSchema = z.object({
   run: z.string().min(1).optional(),
   machine: z.string().min(1).optional(),
   session: z.string().min(1).optional(),
+  /** The message (m-… or a-…) whose answer the card's block waits for; the board unblocks it when one lands. */
+  waitingOn: z.string().regex(/^[ma]-[0-9a-f]{6,}$/).optional(),
   body: z.string(),
   /** Lines under Tasks that are not a task; kept verbatim and reported by `kanban_line_unparsed`. */
   unparsed: z.array(z.string()).min(1).optional(),
@@ -108,14 +111,14 @@ export type KanbanCard = KanbanRoot['issues'][number];
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
 const META_KEYS: Record<string, string> = {
   'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
-  run: 'run', machine: 'machine', session: 'session',
+  run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn',
 };
-const META_LINE = /^(Blocked by|Workspace|Branch|Priority|Run|Machine|Session):\s*(.*)$/i;
+const META_LINE = /^(Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session):\s*(.*)$/i;
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
-const ESCAPED = /^\\(?=#|(?:Blocked by|Workspace|Branch|Priority|Run|Machine|Session):)/i;
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session):)/i;
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
@@ -220,7 +223,7 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   if (record.assignee) card.assignee = record.assignee;
   const blockers = splitList(meta.blockedBy ?? '');
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
-  for (const k of ['workspace', 'branch', 'run', 'machine', 'session'] as const) if (meta[k]) card[k] = meta[k];
+  for (const k of ['workspace', 'branch', 'run', 'machine', 'session', 'waitingOn'] as const) if (meta[k]) card[k] = meta[k];
   if (meta.priority) card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
   if (unparsed.length) card.unparsed = unparsed;
   return card;
@@ -238,6 +241,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   const out: string[] = [];
   const blockers = (card.relations ?? []).map((r) => r.issueId);
   if (blockers.length) out.push(`Blocked by: ${blockers.join(', ')}`);
+  if (card.waitingOn) out.push(`Waiting on: ${card.waitingOn}`);
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
   if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);

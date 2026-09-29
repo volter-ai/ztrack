@@ -26,6 +26,8 @@ export interface BoardCard {
   subtaskOf: string | null;
   /** The card's open run (a claim, not yet ended), with the session it names, if any. */
   run: BoardRun | null;
+  /** The message whose answer the card's standing block waits for (`block --waiting-on`), or null. */
+  waitingOn: string | null;
 }
 
 export interface BoardRun { id: number; status: string; startedAt: number; session: string | null }
@@ -83,6 +85,7 @@ export async function readBoard(exec: BoardExec): Promise<BoardCard[]> {
       parents: (Array.isArray(row.parents) ? row.parents.map(String) : []).filter((p) => open.has(p)),
       subtaskOf: str(row.subtask_of),
       run: run ? { id: Number(run.id), status: String(run.status ?? 'running'), startedAt: Number(run.started_at ?? 0), session: str(run.session) } : null,
+      waitingOn: str(row.waiting_on),
     };
   });
 }
@@ -123,6 +126,8 @@ export function boardWriter(exec: BoardExec, author = 'the board file') {
     unlink: (parent: string, child: string) => run(['unlink', parent, child]),
     /** Take the card to `status` by whichever event the board's workflow says goes there. */
     goto: (id: string, status: string) => run(['goto', id, status]),
+    /** Block the card until an answer to message `waitingOn` lands in its asker's mailbox. */
+    waitOn: (id: string, waitingOn: string) => run(['block', id, `waiting for the answer to ${waitingOn} (${author})`, '--waiting-on', waitingOn]),
     archive: (id: string) => run(['archive', id]),
   };
 }

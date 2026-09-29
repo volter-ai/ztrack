@@ -4,6 +4,7 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **A card waiting on a reply says so.** The kanban preset's `Waiting on: <m-/a- id>` sits beside `Blocked by:`; the board writes it while a card's block waits for the answer to that message, and a `Waiting on:` written in the file blocks the card on it (`block --waiting-on`).
 ## 2.4.7
 
 - **An edit made in the board file names the file.** The sync's writes (`create`, `specify`, `comment`) record the board file (`arcs.md`) as their author, so a session reads an edit made in the file as the file's, never as the machine user's (its owner's) words.
