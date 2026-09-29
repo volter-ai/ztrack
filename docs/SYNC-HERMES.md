@@ -108,7 +108,8 @@ What stands: the manager's arcs live in arcs.md, backed by its board.
 - **`### Tasks`** holds the card's tasks (the working session's plan), one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
   done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A task written without
   one gets the card's next free `c<N>` on the next sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
-  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented checkbox,
+  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented
+  `- waiting-on: <m-/a- id>` line names the message whose answer it waits for. An indented checkbox,
   `- [ ] <criterion>`, is one of the task's acceptance lines, checked off with its evidence on the line
   (`- [x] <criterion>: <evidence>`); on the board they are its subtask's checkbox lines. An indented
   `- source: <message id> "<quote>"` line names the message the task came from (the quote is
