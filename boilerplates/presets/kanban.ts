@@ -93,6 +93,7 @@ export const KanbanCardSchema = z.object({
   assignee: z.string().min(1).optional(),
   relations: z.array(KanbanRelationSchema).optional(),   // primitive: `Blocked by:`
   workspace: z.string().regex(/^(scratch|worktree|worktree:.+|dir:.+)$/).optional(),
+  worktreePath: z.string().min(1).optional(),
   branch: z.string().min(1).optional(),
   priority: z.number().int().optional(),
   /** The board's open run: a worker's claim and the session it names. Written by the board's
@@ -116,15 +117,15 @@ export type KanbanCard = KanbanRoot['issues'][number];
 
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
 const META_KEYS: Record<string, string> = {
-  'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
+  'blocked by': 'blockedBy', workspace: 'workspace', 'worktree path': 'worktreePath', branch: 'branch', priority: 'priority',
   run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', every: 'every', metadata: 'metadata',
 };
-const META_LINE = /^(Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):\s*(.*)$/i;
+const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):\s*(.*)$/i;
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
-const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):)/i;
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):)/i;
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 const WAITING_LINE = /^\s{2,}[-*] waiting-on:\s*(\S+)\s*$/i;
@@ -237,7 +238,7 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   if (record.assignee) card.assignee = record.assignee;
   const blockers = [...new Set([...splitList(meta.blockedBy ?? ''), ...splitList(meta.waitingOn ?? '')])];
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
-  for (const k of ['workspace', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
+  for (const k of ['workspace', 'worktreePath', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
   if (meta.metadata) card.metadata = JSON.parse(meta.metadata);
   if (meta.paused) {
     const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused);
@@ -264,6 +265,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.paused) out.push(`Paused: ${card.paused.by} — ${card.paused.reason}`);
   if (card.every) out.push(`Every: ${card.every}`);
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
+  if (card.worktreePath) out.push(`Worktree path: ${card.worktreePath}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
   if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);
   if (card.machine) out.push(`Machine: ${card.machine}`);
