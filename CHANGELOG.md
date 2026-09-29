@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.10
+
 - **A refused edit is said in the board file.** What the board refused (and why a file that does not validate was not synced at all) is written into the file as a note after its preamble, where whoever edits it reads it; the watcher's own output is read by no one. The note is the sync's, rewritten each sync and removed when nothing is refused.
 
 ## 2.4.9
