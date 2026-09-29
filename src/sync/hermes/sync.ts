@@ -253,6 +253,8 @@ function readFile(abs: string, preset: Preset<CoreRoot>, strict = false): { card
 // nobody who edits the file.
 const REFUSED_HEAD = '> **Not on the board**: the last sync refused these edits of this file. Fix them here; this note is the sync\'s and goes when nothing is refused.';
 const REFUSED_LINE = /^> - /;
+/** A line the runtime printed (a node warning, its hint, a stack frame), not the board's or the checker's reason. */
+export const RUNTIME_NOISE = /^\(node:\d+\)|ExperimentalWarning|--trace-warnings|^at\s/;
 /** `text` with the sync's refusal note set to `lines` (removed when there are none), placed before the first card. */
 export function setRefusedNote(text: string, lines: string[]): string {
   const all = text.split('\n');
@@ -365,7 +367,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
   } catch (error) {
     // a file that does not validate is not synced at all: its editor is told in the file itself
     // line numbers are left out: the note moves the lines it would name
-    const why = String((error as Error).message).split('\n').slice(1).map((l) => l.trim().replace(/\s*\(line \d+\)/, '')).filter(Boolean);
+    const why = String((error as Error).message).split('\n').slice(1).map((l) => l.trim().replace(/\s*\(line \d+\)/, '')).filter((l) => l && !RUNTIME_NOISE.test(l));
     const now = readFileSync(abs, 'utf8');
     const noted = setRefusedNote(now, why.length ? why : [String((error as Error).message)]);
     if (!dry && noted !== now) writeFileSync(abs, noted);

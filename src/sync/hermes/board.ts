@@ -53,7 +53,9 @@ export const boardFlags = (target: BoardTarget) => [...(target.home ? ['--root',
 export function boardExec(target: BoardTarget = {}): BoardExec {
   return (args) => new Promise((resolveP, reject) => {
     execFile(target.bin ?? 'supercode', ['workflow', ...args, ...boardFlags(target)], { maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(`supercode workflow ${args[0]}: ${(stderr || stdout || err.message).trim()}`));
+      // the board's own words, without what the runtime printed beside them (a node warning names no reason)
+      const said = (text: string) => text.split('\n').filter((l) => l.trim() && !/^\(node:\d+\)|ExperimentalWarning|--trace-warnings|^\s+at\s/.test(l)).join('\n').trim();
+      if (err) reject(new Error(`supercode workflow ${args[0]}: ${said(stderr) || said(stdout) || err.message.trim()}`));
       else resolveP(stdout);
     });
   });
