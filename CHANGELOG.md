@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.19
+
 ## 2.4.18
 
 ## 2.4.17
