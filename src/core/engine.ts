@@ -63,6 +63,7 @@ export interface CoreIssue {
   relations?: Relation[];       // primitive
   children?: string[];          // primitive
   sources?: Source[];           // primitive
+  paused?: { by: string; reason: string }; // card flag, independent of lifecycle
   waitingOn?: string;           // primitive: the message (m-… or a-…) whose answer this waits for
   // (waivers are NOT a primitive on the issue — they live in context.waivers; see WaiverDirective)
 }

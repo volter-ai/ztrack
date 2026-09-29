@@ -12,13 +12,13 @@
 // preset's, level-shifted so the card's `### Tasks` reads as `## Tasks` here):
 //
 //   Blocked by: t-954aa1da                  optional: cards that must be done first
-//   Waiting on: m-f17fd1c2                  optional: the message whose answer the card waits for
+//   Blocked by: m-f17fd1c2                  message waits share the blocking relation
+//   Paused: sc:host:codex:session — waiting for owner
+//   Every: 2h                              recurring role runs
 //   Workspace: dir:/Users/me/repo           optional: scratch | worktree | worktree:<path> | dir:<path>
 //   Branch: wt/t6-wire                      optional
 //   Priority: 2                             optional integer
-//   Run: 64 running since …, sc:…           the board's open run (a dispatcher writes it)
 //   Machine: aarons-mac-mini                optional
-//   Session: sc:aarons-mac-mini:claude-code:1a03…   optional
 //
 //   What stands: the card's context, verbatim. A line of it that starts with `#` is
 //   written `\#` so it can never read as a heading, and a first line that starts like a
@@ -101,6 +101,8 @@ export const KanbanCardSchema = z.object({
   session: z.string().min(1).optional(),
   /** The message (m-… or a-…) whose answer the card's block waits for; the board unblocks it when one lands. */
   waitingOn: z.string().regex(/^[ma]-[0-9a-f]{6,}$/).optional(),
+  paused: z.object({ by: z.string().min(1), reason: z.string().min(1) }).strict().optional(),
+  every: z.string().regex(/^[1-9]\d*(?:\.\d+)?\s*(?:s|m|h|d|w)?$/).optional(),
   body: z.string(),
   /** Lines under Tasks that are not a task; kept verbatim and reported by `kanban_line_unparsed`. */
   unparsed: z.array(z.string()).min(1).optional(),
@@ -113,14 +115,14 @@ export type KanbanCard = KanbanRoot['issues'][number];
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
 const META_KEYS: Record<string, string> = {
   'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
-  run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn',
+  run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', every: 'every',
 };
-const META_LINE = /^(Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session):\s*(.*)$/i;
+const META_LINE = /^(Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session|Paused|Every):\s*(.*)$/i;
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
-const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session):)/i;
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Branch|Priority|Run|Machine|Session|Paused|Every):)/i;
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 const WAITING_LINE = /^\s{2,}[-*] waiting-on:\s*(\S+)\s*$/i;
@@ -229,9 +231,13 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   };
   if (acceptance.length) card.acceptance = acceptance;
   if (record.assignee) card.assignee = record.assignee;
-  const blockers = splitList(meta.blockedBy ?? '');
+  const blockers = [...new Set([...splitList(meta.blockedBy ?? ''), ...splitList(meta.waitingOn ?? '')])];
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
-  for (const k of ['workspace', 'branch', 'run', 'machine', 'session', 'waitingOn'] as const) if (meta[k]) card[k] = meta[k];
+  for (const k of ['workspace', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
+  if (meta.paused) {
+    const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused);
+    card.paused = pause ? { by: pause[1], reason: pause[2] } : { by: '', reason: meta.paused };
+  }
   if (meta.priority) card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
   if (unparsed.length) card.unparsed = unparsed;
   return card;
@@ -247,15 +253,14 @@ export function parseKanban(records: IssueRecord[]): unknown {
 // ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
 export function serializeKanbanCard(card: KanbanCard): { body: string; columns: IssueColumns } {
   const out: string[] = [];
-  const blockers = (card.relations ?? []).map((r) => r.issueId);
+  const blockers = [...new Set([...(card.relations ?? []).map((r) => r.issueId), ...(card.waitingOn ? [card.waitingOn] : [])])];
   if (blockers.length) out.push(`Blocked by: ${blockers.join(', ')}`);
-  if (card.waitingOn) out.push(`Waiting on: ${card.waitingOn}`);
+  if (card.paused) out.push(`Paused: ${card.paused.by} — ${card.paused.reason}`);
+  if (card.every) out.push(`Every: ${card.every}`);
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
   if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);
-  if (card.run) out.push(`Run: ${card.run}`);
   if (card.machine) out.push(`Machine: ${card.machine}`);
-  if (card.session) out.push(`Session: ${card.session}`);
   if (card.body) {
     if (out.length) out.push('');
     out.push(...card.body.split('\n').map((l, i) => (/^\s{0,3}#/.test(l) ? `\\${l.trimStart()}` : i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
@@ -301,12 +306,12 @@ const KANBAN_RULES = [
     code: 'card_blocker_missing',
     select: (m) => {
       const ids = new Set(m.root.issues.map((i) => i.id));
-      return m.root.issues.flatMap((i) => (i.relations ?? []).filter((r: Relation) => !ids.has(r.issueId)).map((r: Relation) => ({ issueId: i.id, target: r.issueId })));
+      return m.root.issues.flatMap((i) => (i.relations ?? []).filter((r: Relation) => !/^[ma]-[0-9a-f]{6,}$/.test(r.issueId) && !ids.has(r.issueId)).map((r: Relation) => ({ issueId: i.id, target: r.issueId })));
     },
     message: ({ issueId, target }) => `Card ${issueId} is blocked by ${target}, which is not on the board.`,
   }),
   rule<KanbanRoot, { issueId: string; acId?: string; kind: string; refText: string }>({
-    code: 'task_blocker_missing', select: (m) => m.graph.blockerProblems,
+    code: 'task_blocker_missing', select: (m) => m.graph.blockerProblems.filter((r) => !/^[ma]-[0-9a-f]{6,}$/.test(r.refText)),
     message: ({ issueId, acId, kind, refText }) => kind === 'self'
       ? `Task ${issueId}:${acId} is blocked by itself.`
       : `Task ${issueId}:${acId} is blocked by ${refText}, which is not on the board.`,
@@ -370,7 +375,7 @@ function citedSources(input: PresetContextInput): string[] {
 
 // ── the dashboard's vocabulary, as plain data ──────────────────────────────────────────────
 const KANBAN_VISUALIZER: VisualizerSpec = {
-  statusOrder: ['triage', 'todo', 'ready', 'running', 'review', 'blocked', 'scheduled', 'done', 'archived'], // the common lanes, in board order
+  statusOrder: ['todo', 'running', 'review', 'done', 'cancelled'], // the common lanes, in board order
   acUnitLabel: 'Tasks',
   assignee: 'assignee',
   acText: { id: 'id', text: 'text' },
@@ -388,8 +393,8 @@ export const KanbanPreset: Preset<KanbanRoot> = {
     return { world: { events: supercodeMessages(citedSources(input)) } };
   },
   // a task-less card is done (for the block graph) in the done or archived lane; a card with
-  // tasks, when every task is ticked.
-  isIssueDone: (i) => i.status === 'done' || i.status === 'archived',
+  // tasks, when every task is ticked. Cancelled is an end; archived is accepted on import.
+  isIssueDone: (i) => i.status === 'done' || i.status === 'cancelled' || i.status === 'archived',
   primitives: { relations: true, blocking: true, labels: false, children: false, proof: false, sources: false, category: false },
   scaffold: (_title) => `Machine: <machine>\n\nWhat stands: the context, the owner's words with their sources, links to ADRs.\n\n## Acceptance\n\n- [ ] the first outcome\n\n## Tasks\n\n- [ ] c1 the first step of the plan\n`,
 };

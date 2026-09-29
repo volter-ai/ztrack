@@ -22,7 +22,7 @@ their workflow becomes more specific.
 | `simple-gh-sdlc` | a GitHub PR-based dev lifecycle (review happens on a PR) | everything `simple-sdlc` enforces, **plus** a PR at in-review and a merged PR for done. *(Stage 2 will also require world annotations + world sources — the mirrored-world adapters in [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world), not declared `sources:`.)* |
 | `spec` | issue bodies are lightweight specs | passed ACs cite commit-backed evidence; cited commits exist; ids unique |
 | `speckit` | repos following GitHub Spec Kit conventions | a multi-file feature bundle with required User Scenarios/Stories, Functional Requirements, and Tasks; task commits exist; foundational tasks gate story completion; Constitution Check gate passes (read-only) |
-| `kanban` | a board of cards, not a dev lifecycle — no evidence (e.g. a kanban kept as one file) | cards sit in their board workflow's lanes (triage→done, and any the workflow declares); a card's work is its tasks (`- [ ] c1 …`, ticked when done; on a synced board each a subtask card); every `Blocked by:` / task `blocked-by:` target exists and nothing loops; a ticked task's blockers are done (warning); a task's `source:` names a supercode mailbox message that exists and holds its quote ([EVIDENCE.md](EVIDENCE.md#a-tasks-source-the-message-it-came-from)). Pairs with [`ztrack sync hermes`](SYNC-HERMES.md) |
+| `kanban` | a board of cards, not a dev lifecycle — no evidence (e.g. a kanban kept as one file) | cards sit in their board workflow's lanes (todo, running, review, done, cancelled by default); a card's work is its tasks (`- [ ] c1 …`, ticked when done; on a synced board each a subtask card); every `Blocked by:` / task `blocked-by:` target exists and nothing loops; a ticked task's blockers are done (warning); a task's `source:` names a supercode mailbox message that exists and holds its quote ([EVIDENCE.md](EVIDENCE.md#a-tasks-source-the-message-it-came-from)). Supports the supercode ztrack backing directly: `Blocked by:` takes cards and messages, `Paused:` records the pauser and reason, and `Every:` schedules runs; Run/Session state stays in the runtime store |
 
 Install one with:
 
@@ -644,3 +644,5 @@ first). Produce one ranked must-fix / should-fix / low list, each with file:line
 input. Re-verify until clean: preset tests green (clean fixtures = 0 findings; a perturbation per
 rule), `tsc` clean, and — if porting — world/legacy-validator fidelity on real data where scope
 overlaps. **Ready = contract held + behavior correct on real data, not just fixtures green.**
+
+The public `@volter/ztrack/board-document` codec parses and renders flat board documents through ztrack’s markdown grammar. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.

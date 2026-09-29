@@ -1,3 +1,3 @@
 {
-  "description": "An evidence-free kanban board: cards in their board workflow's lanes (triage…done), Blocked by: dependencies, an opening post and tasks, each task a subtask card. No ACs, no evidence. Pairs with `ztrack sync hermes`."
+  "description": "A card/run board: todo, running, review, done, cancelled; Blocked by takes cards and messages, Paused is a flag, Every schedules runs. Cards hold context, Acceptance and Tasks; runtime session state stays outside the document."
 }

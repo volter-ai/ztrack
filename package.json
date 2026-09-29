@@ -1,7 +1,7 @@
 {
   "name": "@volter/ztrack",
   "version": "2.4.12",
-  "description": "A typechecker for your issue tracker — every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
+  "description": "A typechecker for your issue tracker \u2014 every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
@@ -78,7 +78,12 @@
     "./world-source-books": {
       "types": "./dist/src/worldSourceBooks.d.ts",
       "default": "./dist/src/worldSourceBooks.js"
-    }
+    },
+    "./board-document": {
+      "types": "./dist/src/boardDocument.d.ts",
+      "default": "./dist/src/boardDocument.js"
+    },
+    "./kanban-preset": "./boilerplates/presets/kanban.ts"
   },
   "bin": {
     "ztrack": "dist/cli.js"

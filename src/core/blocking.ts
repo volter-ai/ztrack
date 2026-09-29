@@ -156,8 +156,8 @@ export function blockStatuses(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
     };
     walk(startKey);
     const node = nodes.get(startKey)!;
-    const waiting = node.kind === 'issue' ? node.issue.waitingOn : node.ac!.waitingOn;
-    out.set(startKey, { blocked: unmet.size > 0 || !!waiting, blockers: [...unmet].map((k) => nodeRef(nodes.get(k)!)), ...(waiting ? { waitingOn: [waiting] } : {}) });
+    const waiting = messageWaits(node.kind === 'issue' ? node.issue : node.ac!);
+    out.set(startKey, { blocked: unmet.size > 0 || waiting.length > 0 || (node.kind === 'issue' && !!node.issue.paused), blockers: [...unmet].map((k) => nodeRef(nodes.get(k)!)), ...(waiting.length ? { waitingOn: waiting } : {}) });
   }
   return out;
 }
@@ -221,8 +221,8 @@ export function issueFrontier(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
       if (!seen.has(k)) { seen.add(k); blockers.push(b); }
     }
     // a wait on an answer holds the issue up as a blocker does: its own, or one of its ACs'
-    const waitingOn = [issue.waitingOn, ...issue.acceptanceCriteria.map((ac) => ac.waitingOn)].filter((w): w is string => !!w);
-    out.set(issue.id, { blocked: blockers.length > 0 || waitingOn.length > 0, blockers, ...(waitingOn.length ? { waitingOn } : {}) });
+    const waitingOn = [...new Set([...messageWaits(issue), ...issue.acceptanceCriteria.flatMap(messageWaits)])];
+    out.set(issue.id, { blocked: blockers.length > 0 || waitingOn.length > 0 || !!issue.paused, blockers, ...(waitingOn.length ? { waitingOn } : {}) });
   }
   return out;
 }
@@ -300,4 +300,11 @@ export function normalizeBlockRefs(issues: ParsedIssue[]): void {
       if (ac.blocks) ac.blocks = ac.blocks.map(classify) as unknown as RawBlockRef[];
     }
   }
+}
+
+
+// A message target participates in blocking without inventing a card node for a mailbox thread.
+function messageWaits(node: { waitingOn?: string; relations?: { type: string; issueId: string }[]; blockedBy?: BlockRef[] }): string[] {
+  const refs = [node.waitingOn, ...(node.relations ?? []).filter((r) => r.type === 'blocked-by').map((r) => r.issueId), ...(node.blockedBy ?? []).map((r) => r.issue)];
+  return [...new Set(refs.filter((id): id is string => !!id && /^[ma]-[0-9a-f]{6,}$/.test(id)))];
 }

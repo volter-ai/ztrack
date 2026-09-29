@@ -18,7 +18,7 @@ import { parseMarkdownDocument, type MarkdownDocument, type MarkdownSection } fr
 // OPTIONAL separator (em dash, middot, or colon, each optionally surrounded by whitespace) or
 // just whitespace precedes the title remainder; nothing past the separator is interpreted further
 // — `## ZL-A5 · P0 · title` yields title `"P0 · title"` verbatim, not a parsed priority field.
-const ID_HEADING_RE = /^([A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+)\b\s*(?:[—·:]\s*)?(.*)$/;
+const ID_HEADING_RE = /^([A-Za-z][A-Za-z0-9_-]*[-_][A-Za-z0-9]+)\b\s*(?:[—·:]\s*)?(.*)$/;
 
 // Mirrors src/check.ts's `HEADER_LINE`/`fileToRecord` header-block scan exactly (same regex, same
 // abort-on-first-non-match semantics) but applied only to the document's PREAMBLE (the text before
