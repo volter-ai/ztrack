@@ -99,7 +99,8 @@ export function boardWriter(exec: BoardExec) {
   const run = (args: string[]) => exec(args).then(() => undefined);
   return {
     async create(c: NewCard): Promise<string> {
-      const args = ['create', c.title, '--body', c.body, '--json'];
+      // the board's dispatcher starts what it starts; a card written in the file is filed, never launched by the write
+      const args = ['create', c.title, '--body', c.body, '--no-start', '--json'];
       if (c.assignee) args.push('--assignee', c.assignee);
       for (const p of c.parents) args.push('--parent', p);
       if (c.workspace && c.workspace !== 'scratch') args.push('--workspace', c.workspace);

@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- A card created from the file is filed with `--no-start`: the board's dispatcher starts it on its own terms, so a section written straight into a lane of its own (`status: audit`, say) reaches that lane instead of being started first.
+
 ## 2.4.0
 
 - **The board file is where the board is written, through supercode.** `ztrack sync hermes` reads and writes the board through supercode's board door (`supercode workflow`), never Hermes's own code. The sync reads the whole board in one `list --json`. There is no conflict state and no `--policy`: what the file changed since the last sync goes to the board, what only the board changed comes back, and an edit the board's workflow refuses is reported while the file shows the card as it stands.
