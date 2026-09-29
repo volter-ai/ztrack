@@ -364,7 +364,8 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
     read = readFile(abs, preset, true);
   } catch (error) {
     // a file that does not validate is not synced at all: its editor is told in the file itself
-    const why = String((error as Error).message).split('\n').slice(1).map((l) => l.trim()).filter(Boolean);
+    // line numbers are left out: the note moves the lines it would name
+    const why = String((error as Error).message).split('\n').slice(1).map((l) => l.trim().replace(/\s*\(line \d+\)/, '')).filter(Boolean);
     const now = readFileSync(abs, 'utf8');
     const noted = setRefusedNote(now, why.length ? why : [String((error as Error).message)]);
     if (!dry && noted !== now) writeFileSync(abs, noted);
