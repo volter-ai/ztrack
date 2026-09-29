@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- `--watch` runs a sync again at once when the board file changed while the last one ran, instead of leaving that edit until the next change.
+
 ## 2.4.4
 
 - A board file's first sync after upgrading reads a task's acceptance lines on the board as the board's own, instead of taking the old base's missing lines for a deletion in the file.

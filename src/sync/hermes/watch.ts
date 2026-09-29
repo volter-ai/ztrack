@@ -43,7 +43,12 @@ export function watchHermes(o: HermesWatchOpts): Promise<never> {
     running = true;
     const why = [...reasons].join(', ');
     reasons.clear();
-    try { o.onSync(why, await o.sync()); } catch (e) { o.onSync(why, e as Error); }
+    try { o.onSync(why, await o.sync()); } catch (e) {
+      o.onSync(why, e as Error);
+      // the file changed under the sync: that save's own event may have been read before the sync began, so the
+      // sync runs again now rather than waiting for the next change
+      if (/changed while syncing/.test((e as Error).message)) reasons.add('file changed while syncing');
+    }
     running = false;
     if (reasons.size) trigger(); // what arrived while syncing, this sync's own writes included
   };
