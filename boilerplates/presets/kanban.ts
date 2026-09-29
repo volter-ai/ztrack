@@ -1,6 +1,8 @@
 // An evidence-free kanban preset: each issue is a CARD on a board whose lanes are its workflow's
-// statuses, and a card's work is its TASKS: one line each, with ids, ticked when done, optionally
-// blocked by other tasks or cards. There is no evidence and no comment thread. Written for a board
+// statuses. A card is its story: its context (prose), its ACCEPTANCE (outcomes, each ticked with one
+// pointer to where it was seen), and its TASKS (the working session's plan: one line each, with ids,
+// ticked when done, optionally blocked by other tasks or cards). There is no evidence record and no
+// comment thread. Written for a board
 // kept as ONE document-source markdown file (docs/SOURCES.md), optionally backed by a kanban through
 // `ztrack sync hermes` (docs/SYNC-HERMES.md), where each task is a subtask card, but it validates
 // any card file on its own.
@@ -17,9 +19,14 @@
 //   Machine: aarons-mac-mini                optional
 //   Session: sc:aarons-mac-mini:claude-code:1a03…   optional
 //
-//   Done when: the card's opening post, verbatim. A line of it that starts with `#` is
+//   What stands: the card's context, verbatim. A line of it that starts with `#` is
 //   written `\#` so it can never read as a heading, and a first line that starts like a
 //   metadata key is written `\Key:` so it can never read as metadata.
+//
+//   ## Acceptance
+//
+//   - [ ] the Stoneguard Bridge scene loads in the editor
+//   - [x] a person has seen it working: request_afcaef03, answered 11:21:25Z
 //
 //   ## Tasks
 //
@@ -76,7 +83,9 @@ export const KanbanCardSchema = z.object({
   title: z.string().min(1),                              // core
   summary: z.string(),                                   // core (unused: the opening post is `body`)
   status: KanbanStatusSchema,                            // core (a lane name)
-  acceptanceCriteria: z.array(KanbanTaskSchema),         // core: the card's tasks
+  acceptanceCriteria: z.array(KanbanTaskSchema),         // core: the card's tasks (the session's plan)
+  /** The card's acceptance criteria: outcomes, each ticked with one pointer to where it was seen (`- [x] <outcome>: <pointer>`). */
+  acceptance: z.array(z.object({ checked: z.boolean(), text: z.string().min(1) }).strict()).optional(),
   assignee: z.string().min(1).optional(),
   relations: z.array(KanbanRelationSchema).optional(),   // primitive: `Blocked by:`
   workspace: z.string().regex(/^(scratch|worktree|worktree:.+|dir:.+)$/).optional(),
@@ -103,6 +112,8 @@ const META_KEYS: Record<string, string> = {
 };
 const META_LINE = /^(Blocked by|Workspace|Branch|Priority|Run|Machine|Session):\s*(.*)$/i;
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
+const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
+const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
 const ESCAPED = /^\\(?=#|(?:Blocked by|Workspace|Branch|Priority|Run|Machine|Session):)/i;
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
@@ -163,8 +174,19 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
 function parseCard(record: IssueRecord): Record<string, unknown> {
   const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
   const at = lines.findIndex((l) => TASKS_HEADING.test(l));
-  const head = at < 0 ? lines : lines.slice(0, at);
-  const tail = at < 0 ? [] : lines.slice(at + 1);
+  const acc = lines.findIndex((l) => ACCEPTANCE_HEADING.test(l));
+  // the prose runs to the first of the card's two sections; Acceptance runs to Tasks (or the end), Tasks to the end
+  const firstSection = [at, acc].filter((i) => i >= 0).reduce((m, i) => Math.min(m, i), lines.length);
+  const head = lines.slice(0, firstSection);
+  const tail = at < 0 ? [] : lines.slice(at + 1, acc > at ? acc : lines.length);
+  const outcomeLines = acc < 0 ? [] : lines.slice(acc + 1, at > acc ? at : lines.length);
+  const acceptance: Array<{ checked: boolean; text: string }> = [];
+  const accUnparsed: string[] = [];
+  for (const l of outcomeLines) {
+    const m = OUTCOME_LINE.exec(l);
+    if (m) acceptance.push({ checked: m[1] !== ' ', text: m[2]!.trim() });
+    else if (l.trim() !== '') accUnparsed.push(l);
+  }
 
   // The metadata block: the leading paragraphs made wholly of metadata lines (written as one
   // paragraph, read from several, so a blank line inside the block loses nothing).
@@ -182,7 +204,8 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   }
   const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
 
-  const { tasks, unparsed } = parseTasks(record.id, tail);
+  const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail);
+  const unparsed = [...accUnparsed, ...taskUnparsed];
   const card: Record<string, unknown> = {
     id: record.id,
     title: record.title,
@@ -193,6 +216,7 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
     acceptanceCriteria: tasks,
     body: bodyLines.join('\n'),
   };
+  if (acceptance.length) card.acceptance = acceptance;
   if (record.assignee) card.assignee = record.assignee;
   const blockers = splitList(meta.blockedBy ?? '');
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
@@ -223,6 +247,11 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.body) {
     if (out.length) out.push('');
     out.push(...card.body.split('\n').map((l, i) => (/^\s{0,3}#/.test(l) ? `\\${l.trimStart()}` : i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
+  }
+  if (card.acceptance?.length) {
+    if (out.length) out.push('');
+    out.push('## Acceptance', '');
+    for (const o of card.acceptance) out.push(`- [${o.checked ? 'x' : ' '}] ${o.text}`);
   }
   if (card.acceptanceCriteria.length || card.unparsed?.length) {
     if (out.length) out.push('');
@@ -285,6 +314,11 @@ const KANBAN_RULES = [
     }),
     message: ({ issueId, line }) => `Card ${issueId}: "${line.trim()}" reads as prose, not as the card's lane or assignee — the \`status:\`/\`assignee:\` lines must be followed by a blank line.`,
   }),
+  rule<KanbanRoot, { issueId: string; text: string }>({
+    code: 'acceptance_tick_unpointed', severity: 'warning',
+    select: (m) => m.root.issues.flatMap((i) => (i.acceptance ?? []).filter((o) => o.checked && !/:\s*\S/.test(o.text)).map((o) => ({ issueId: i.id, text: o.text }))),
+    message: ({ issueId, text }) => `Card ${issueId}: the ticked outcome "${text}" names no pointer to where it was seen (\`- [x] <outcome>: <pointer>\`).`,
+  }),
   rule<KanbanRoot, { issueId: string; line: string }>({
     code: 'kanban_line_unparsed',
     select: (m) => m.root.issues.flatMap((i) => (i.unparsed ?? []).map((line) => ({ issueId: i.id, line }))),
@@ -344,7 +378,7 @@ export const KanbanPreset: Preset<KanbanRoot> = {
   // tasks, when every task is ticked.
   isIssueDone: (i) => i.status === 'done' || i.status === 'archived',
   primitives: { relations: true, blocking: true, labels: false, children: false, proof: false, sources: false, category: false },
-  scaffold: (_title) => `Machine: <machine>\n\nDone when: the outcome, in one to three lines.\n\n## Tasks\n\n- [ ] c1 the first open item\n`,
+  scaffold: (_title) => `Machine: <machine>\n\nWhat stands: the context, the owner's words with their sources, links to ADRs.\n\n## Acceptance\n\n- [ ] the first outcome\n\n## Tasks\n\n- [ ] c1 the first step of the plan\n`,
 };
 
 export function checkKanban(records: IssueRecord[], ctx?: Context) {

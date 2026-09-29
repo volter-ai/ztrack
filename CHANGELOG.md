@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **A card's acceptance criteria.** A card's `### Acceptance` section lists its outcomes, `- [ ] <outcome>` open and `- [x] <outcome>: <pointer>` ticked with one pointer to where it was seen; `### Tasks` stays the working session's plan. The sync carries the outcomes in the card's text on the board (its checkbox lines), so a board's workflow can hold a close until each is ticked. `ztrack check` warns on a ticked outcome with no pointer (`acceptance_tick_unpointed`).
+
 ## 2.4.5
 
 - `--watch` runs a sync again at once when the board file changed while the last one ran, instead of leaving that edit until the next change.

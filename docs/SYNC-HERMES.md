@@ -58,7 +58,12 @@ Run: 78 running since 2026-09-28 21:26:06Z, sc:yuerans-macbook-pro:claude-code:b
 Machine: yuerans-macbook-pro
 Session: sc:yuerans-macbook-pro:claude-code:b2b278cf-…
 
-Done when: the manager's arcs live in arcs.md backed by its board; released.
+What stands: the manager's arcs live in arcs.md, backed by its board.
+
+### Acceptance
+
+- [ ] the manager's repo runs from arcs.md
+- [x] released: @volter/ztrack 2.3.0 on npm
 
 ### Tasks
 
@@ -93,7 +98,12 @@ Done when: the manager's arcs live in arcs.md backed by its board; released.
 - **The prose** is everything after that, up to `### Tasks`: a few lines, such as `Done when:`.
   A line of it that starts with `#` is written `\#`. A first line that starts like a metadata key
   is written `\Key:`. Either way, it can't read as a heading or as metadata.
-- **`### Tasks`** holds the card's tasks, one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
+- **`### Acceptance`** holds the card's acceptance criteria: outcomes, one per line, `- [ ] <outcome>`
+  open and `- [x] <outcome>: <pointer>` ticked, the pointer naming where it was seen (`ztrack check`
+  warns on a ticked outcome with none: `acceptance_tick_unpointed`). On the board they are the
+  checkbox lines of the card's text, so the board's workflow can hold a close until every one is
+  ticked.
+- **`### Tasks`** holds the card's tasks (the working session's plan), one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
   done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A task written without
   one gets the card's next free `c<N>` on the next sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
   of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented checkbox,
@@ -133,7 +143,7 @@ shows the card as it stands. The sync then reads the board again and writes the 
 | In the file | On the board |
 |---|---|
 | a section whose id isn't a board id (`## new-1 — …`) | `create`, with the prose (and `Session:`) as its body. The section's id becomes the new card's. `Blocked by:` may name another new section. |
-| the title, the prose or `Session:` changed | `specify`: the card's text, edited where it stands |
+| the title, the prose, `Session:` or an acceptance line changed | `specify`: the card's text, edited where it stands |
 | `status:` changed | `goto`: whichever event the board's workflow says takes the card to that lane |
 | `assignee:` changed or removed | `assign` |
 | `Machine:` changed | `move` |

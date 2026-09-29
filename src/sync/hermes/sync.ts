@@ -63,8 +63,10 @@ interface Snap {
   title: string; body: string; status: string; assignee: string | null; parents: string[];
   workspace: string; branch: string | null; priority: number;
   machine: string | null; session: string | null; tasks: Task[];
+  /** The card's acceptance criteria: outcomes, each ticked with a pointer to where it was seen. */
+  acceptance: TaskLine[];
 }
-const FIELDS = ['title', 'body', 'status', 'assignee', 'parents', 'workspace', 'branch', 'priority', 'machine', 'session', 'tasks'] as const;
+const FIELDS = ['title', 'body', 'status', 'assignee', 'parents', 'workspace', 'branch', 'priority', 'machine', 'session', 'acceptance', 'tasks'] as const;
 type Field = typeof FIELDS[number];
 /** Fields only a new card can carry (the board has no edit door for them). */
 const CREATION_FIELDS: Field[] = ['workspace', 'branch', 'priority'];
@@ -93,6 +95,7 @@ const byTaskId = (a: Task, b: Task) => a.id.replace(/\d+$/, '').localeCompare(b.
 interface FileCard {
   id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
   workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; body: string;
+  acceptance?: TaskLine[];
   acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; sources?: TaskSource[]; lines?: TaskLine[] }>;
   unparsed?: string[];
 }
@@ -104,10 +107,11 @@ const sourcesByTask = (c: FileCard) => new Map(c.acceptanceCriteria.filter((t) =
 
 /** The card's text on the board: its prose and `Session:`, in the preset's grammar (no tasks, no
  *  board fields: those are the board's own). */
-function cardText(preset: Preset<CoreRoot>, fileId: string, s: Pick<Snap, 'body' | 'session'>): string {
+function cardText(preset: Preset<CoreRoot>, fileId: string, s: Pick<Snap, 'body' | 'session' | 'acceptance'>): string {
   const { body } = preset.serialize!({
     id: fileId, title: fileId, summary: '', status: 'todo', body: s.body, acceptanceCriteria: [],
     ...(s.session ? { session: s.session } : {}),
+    ...(s.acceptance.length ? { acceptance: s.acceptance } : {}),
   } as unknown as CoreRoot['issues'][number]);
   return body.trim();
 }
@@ -154,7 +158,7 @@ function viewOf(all: BoardCard[], preset: Preset<CoreRoot>): BoardView {
     return {
       title: c.title, status: c.status, assignee: c.assignee,
       parents: [...c.parents].sort(), workspace: workspaceOf(c), branch: c.branch, priority: c.priority,
-      machine: c.machine, session: p?.session ?? null, body: canonBody(p?.body ?? c.body),
+      machine: c.machine, session: p?.session ?? null, body: canonBody(p?.body ?? c.body), acceptance: p?.acceptance ?? [],
       tasks: (tasksOf.get(c.id) ?? []).map((t) => ({ id: t.id, status: t.card.status === 'done' ? 'passed' : 'pending', text: t.text, blockedBy: t.card.parents.map(refOf).sort(), lines: linesOf(t.card.body) })).sort(byTaskId),
     };
   };
@@ -167,7 +171,7 @@ function localSnap(c: FileCard, idMap: Map<string, string>): Snap {
     title: c.title, body: canonBody(c.body), status: c.status, assignee: c.assignee ?? null,
     parents: (c.relations ?? []).filter((r) => r.type === 'blocked-by').map((r) => idMap.get(r.issueId) ?? toBoardId(r.issueId)).sort(),
     workspace: c.workspace ?? 'scratch', branch: c.branch ?? null, priority: c.priority ?? 0,
-    machine: c.machine ?? null, session: c.session ?? null,
+    machine: c.machine ?? null, session: c.session ?? null, acceptance: c.acceptance ?? [],
     tasks: c.acceptanceCriteria.map((t) => ({
       id: t.id, status: t.status, text: t.text,
       blockedBy: (t.blockedBy ?? []).map((r) => formatRef({ issue: fileIdOf(r.issue), ...(r.ac !== undefined ? { ac: r.ac } : {}) })).sort(),
@@ -186,7 +190,10 @@ function loadBase(p: string): Base {
   try { cards = existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as { cards: Base }).cards ?? {} : {}; } catch { return {}; }
   // a base written before a field existed holds it as its empty value, so the field's first sync reads the board's
   // value as the board's change, never as the file taking it away
-  for (const snap of Object.values(cards)) snap.tasks = (snap.tasks ?? []).map((t) => ({ ...t, lines: t.lines ?? [] }));
+  for (const snap of Object.values(cards)) {
+    snap.tasks = (snap.tasks ?? []).map((t) => ({ ...t, lines: t.lines ?? [] }));
+    snap.acceptance = snap.acceptance ?? [];
+  }
   return cards;
 }
 function saveBase(p: string, cards: Base): void {
@@ -204,7 +211,7 @@ function readFile(abs: string, preset: Preset<CoreRoot>, strict = false): { card
   const stray = parseMarkdownDocument(text).sections.filter((s, _i, all) => {
     if (s.level === 2 && CARD_HEADING.test(s.title)) return false;
     const parent = s.parentIndex === null ? null : all[s.parentIndex]!;
-    return !(s.level === 3 && /^tasks$/i.test(s.title.trim()) && parent?.level === 2 && CARD_HEADING.test(parent.title));
+    return !(s.level === 3 && /^(tasks|acceptance)$/i.test(s.title.trim()) && parent?.level === 2 && CARD_HEADING.test(parent.title));
   });
   if (stray.length) {
     const lines = stray.slice(0, 5).map((s) => `  ${abs}:${s.lineStart}: ${'#'.repeat(s.level)} ${s.title}`).join('\n');
@@ -268,6 +275,7 @@ function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<st
     ...(c.run ? { run: `${c.run.id} ${c.run.status}${c.run.startedAt ? ` since ${stamp(c.run.startedAt)}` : ''}${c.run.session ? `, ${c.run.session}` : ''}` } : {}),
     ...(s.machine ? { machine: s.machine } : {}),
     ...(s.session ? { session: s.session } : {}),
+    ...(s.acceptance.length ? { acceptance: s.acceptance } : {}),
     body: s.body,
     acceptanceCriteria: s.tasks.map((t) => ({
       id: t.id, status: t.status, evidence: [], text: t.text, ...(t.blockedBy.length ? { blockedBy: t.blockedBy.map(toRef) } : {}),
@@ -496,8 +504,8 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
       if (!why) continue;
     }
     const push = new Set(pushFields);
-    if (push.has('title') || push.has('body') || push.has('session')) {
-      await act(`edit ${local.id}`, () => writer.specify(hid, { ...(push.has('title') ? { title: L.title } : {}), ...(push.has('body') || push.has('session') ? { body: textOf(local.id, L) } : {}) }));
+    if (push.has('title') || push.has('body') || push.has('session') || push.has('acceptance')) {
+      await act(`edit ${local.id}`, () => writer.specify(hid, { ...(push.has('title') ? { title: L.title } : {}), ...(push.has('body') || push.has('session') || push.has('acceptance') ? { body: textOf(local.id, L) } : {}) }));
     }
     if (push.has('assignee')) await act(`assign ${local.id} ${L.assignee ?? 'none'}`, () => writer.assign(hid, L.assignee));
     if (push.has('machine')) await act(`move ${local.id} ${L.machine ?? 'none'}`, () => writer.move(hid, L.machine));
