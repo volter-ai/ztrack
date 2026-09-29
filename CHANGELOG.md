@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- A board file's first sync after upgrading reads a task's acceptance lines on the board as the board's own, instead of taking the old base's missing lines for a deletion in the file.
+
 ## 2.4.3
 
 - **A task's acceptance lines.** An indented checkbox under a task, `  - [ ] <criterion>`, is one of its acceptance lines, checked off with its evidence on the line (`- [x] <criterion>: <evidence>`). On the board they are the checkbox lines of the task's subtask text, so the board's workflow can refuse a close while one is open; the sync carries them both ways and keeps the subtask's other text.

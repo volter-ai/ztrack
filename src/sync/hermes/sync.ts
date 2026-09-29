@@ -182,7 +182,12 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 type Base = Record<string, Snap>;
 const basePath = (projectRoot: string, file: string) => join(syncStateDir(projectRoot), `hermes-base.${file.replace(/[^A-Za-z0-9._-]+/g, '_')}.json`);
 function loadBase(p: string): Base {
-  try { return existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as { cards: Base }).cards ?? {} : {}; } catch { return {}; }
+  let cards: Base = {};
+  try { cards = existsSync(p) ? (JSON.parse(readFileSync(p, 'utf8')) as { cards: Base }).cards ?? {} : {}; } catch { return {}; }
+  // a base written before a field existed holds it as its empty value, so the field's first sync reads the board's
+  // value as the board's change, never as the file taking it away
+  for (const snap of Object.values(cards)) snap.tasks = (snap.tasks ?? []).map((t) => ({ ...t, lines: t.lines ?? [] }));
+  return cards;
 }
 function saveBase(p: string, cards: Base): void {
   mkdirSync(dirname(p), { recursive: true });
