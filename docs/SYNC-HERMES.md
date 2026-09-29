@@ -65,6 +65,7 @@ Done when: the manager's arcs live in arcs.md backed by its board; released.
 - [x] c1 kanban preset and sync on main
 - [ ] c2 the manager's repo runs from arcs.md
   - blocked-by: c1, t-954aa1da:c3
+  - [ ] a person has seen it working
 ```
 
 - **A card** is a level-2 heading `## <id> — <title>`. The id of a card on the board is its
@@ -95,7 +96,9 @@ Done when: the manager's arcs live in arcs.md backed by its board; released.
 - **`### Tasks`** holds the card's tasks, one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
   done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A task written without
   one gets the card's next free `c<N>` on the next sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
-  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented
+  of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented checkbox,
+  `- [ ] <criterion>`, is one of the task's acceptance lines, checked off with its evidence on the line
+  (`- [x] <criterion>: <evidence>`); on the board they are its subtask's checkbox lines. An indented
   `- source: <message id> "<quote>"` line names the message the task came from (the quote is
   optional); see [EVIDENCE.md](EVIDENCE.md#a-tasks-source-the-message-it-came-from). The board does
   not hold a source: the file keeps it, and a sync that rewrites the card keeps it on its task.
@@ -139,6 +142,7 @@ shows the card as it stands. The sync then reads the board again and writes the 
 | a task's text changed | `specify` on its subtask |
 | a task ticked or unticked | `goto` its subtask to `done`, or back |
 | a task's `blocked-by` changed | `link` / `unlink` on its subtask |
+| a task's acceptance line added, changed or checked | `specify` its subtask's text: its checkbox lines are the task's acceptance lines (its other text is kept) |
 | a task deleted | `archive` its subtask |
 | a section deleted | `archive` |
 | `Workspace:`, `Branch:` or `Priority:` changed | the card is **re-created** (below) |
