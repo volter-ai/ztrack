@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.4
+
 - A board file's first sync after upgrading reads a task's acceptance lines on the board as the board's own, instead of taking the old base's missing lines for a deletion in the file.
 
 ## 2.4.3
