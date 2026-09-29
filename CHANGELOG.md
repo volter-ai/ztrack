@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **An edit made in the board file names the file.** The sync's writes (`create`, `specify`, `comment`) record the board file (`arcs.md`) as their author, so a session reads an edit made in the file as the file's, never as the machine user's (its owner's) words.
+
 ## 2.4.6
 
 - **A card's acceptance criteria.** A card's `### Acceptance` section lists its outcomes, `- [ ] <outcome>` open and `- [x] <outcome>: <pointer>` ticked with one pointer to where it was seen; `### Tasks` stays the working session's plan. The sync carries the outcomes in the card's text on the board (its checkbox lines), so a board's workflow can hold a close until each is ticked. `ztrack check` warns on a ticked outcome with no pointer (`acceptance_tick_unpointed`).

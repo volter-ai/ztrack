@@ -324,7 +324,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
   // with — a fresh checkout, a deleted file — so the sync starts over from the board instead of
   // reading every card as a deleted section.
   const base = existsSync(abs) ? loadBase(bPath) : {};
-  const writer = boardWriter(opts.exec);
+  const writer = boardWriter(opts.exec, basename(abs));
   const dry = !!opts.dryRun;
   const res: HermesSyncResult = { pulled: [], pushed: [], created: [], recreated: [], archived: [], refused: [], actions: [] };
 

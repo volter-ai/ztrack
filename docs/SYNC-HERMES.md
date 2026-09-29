@@ -139,6 +139,8 @@ file changed since the base goes to the board; a field only the board changed co
 There is no conflict state: the file is where the board is written, so a field both changed takes
 the file's value, and an edit the board's workflow refuses is reported by the sync while the file
 shows the card as it stands. The sync then reads the board again and writes the file whole from it.
+Each write names the board file as its author (`arcs.md`): the sync runs in no session, and whoever edited the
+file is not known to it, so a card's thread and notices say the edit came from the file.
 
 | In the file | On the board |
 |---|---|

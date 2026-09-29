@@ -94,13 +94,15 @@ export interface NewCard {
   subtaskOf?: string;
 }
 
-/** The board's write doors, one method per verb the sync uses. */
-export function boardWriter(exec: BoardExec) {
+/** The board's write doors, one method per verb the sync uses. `author` is who the board records for each write
+ *  (the board file the edit was made in): the sync runs in no session, and the board would otherwise name the
+ *  machine's user, so a session reads an edit anyone made in the file as its owner's words. */
+export function boardWriter(exec: BoardExec, author = 'the board file') {
   const run = (args: string[]) => exec(args).then(() => undefined);
   return {
     async create(c: NewCard): Promise<string> {
       // the board's dispatcher starts what it starts; a card written in the file is filed, never launched by the write
-      const args = ['create', c.title, '--body', c.body, '--no-start', '--json'];
+      const args = ['create', c.title, '--body', c.body, '--no-start', '--json', '--created-by', author];
       if (c.assignee) args.push('--assignee', c.assignee);
       for (const p of c.parents) args.push('--parent', p);
       if (c.workspace && c.workspace !== 'scratch') args.push('--workspace', c.workspace);
@@ -113,8 +115,8 @@ export function boardWriter(exec: BoardExec) {
     },
     /** The card's title and body, edited where it stands. */
     specify: (id: string, edit: { title?: string; body?: string }) =>
-      run(['specify', id, ...(edit.title !== undefined ? ['--title', edit.title] : []), ...(edit.body !== undefined ? ['--body', edit.body] : [])]),
-    comment: (id: string, text: string) => run(['comment', id, text]),
+      run(['specify', id, ...(edit.title !== undefined ? ['--title', edit.title] : []), ...(edit.body !== undefined ? ['--body', edit.body] : []), '--author', author]),
+    comment: (id: string, text: string) => run(['comment', id, text, '--author', author]),
     assign: (id: string, who: string | null) => run(['assign', id, who ?? 'none']),
     move: (id: string, machine: string | null) => run(['move', id, machine ?? 'none']),
     link: (parent: string, child: string) => run(['link', parent, child]),
