@@ -4,6 +4,11 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **The board file is where the board is written, through supercode.** `ztrack sync hermes` reads and writes the board through supercode's board door (`supercode workflow`), never Hermes's own code. The sync reads the whole board in one `list --json`. There is no conflict state and no `--policy`: what the file changed since the last sync goes to the board, what only the board changed comes back, and an edit the board's workflow refuses is reported while the file shows the card as it stands.
+- **Each task is a subtask.** A task line `- [ ] c3 <text>` is the card's subtask titled `c3 <text>`. It has its own acceptance and review, is ticked when done, and its `blocked-by` lines are links. A card's title and prose are edited in place (`specify`) instead of carried in `arcs` comments. `Machine:` is the card's own machine (`move`), and a lane change is sent as whichever event the board's workflow says reaches it (`goto`).
+- **Lanes are the board's workflow's.** The kanban preset takes any lane name the board's workflow declares (`stopped`, `reviewing`, …), not only Hermes's nine.
+- `--watch` listens to the board's own event stream (`supercode workflow watch`) and syncs 0.3 s after a save or a board event.
+
 ## 2.3.0
 
 - **The board syncs itself.** `ztrack sync hermes --watch` keeps running and syncs whenever the board file is saved or the board changes. The board side is Hermes's own event stream (`hermes kanban watch`), so a dispatcher's claim, a lane move or a new card reaches the file without anyone running a sync. Events that change nothing the file shows (a claim's lease renewal, a goal loop's turn, a comment not authored `arcs`) don't trigger one. A sync that changes nothing no longer rewrites the file, and syncs of one board file take turns: a manual `sync hermes` waits for the watcher's.

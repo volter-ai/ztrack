@@ -127,7 +127,7 @@ do not invoke project hooks.
 | You have… | Do |
 |---|---|
 | **GitHub Issues already** | `npx @volter/ztrack init --sync github --repo owner/name` — your issues pull in and GitHub stays the source of truth ([linked sync](docs/GUIDE.md#how-linked-sync-works)) |
-| **a Hermes kanban** | `npx @volter/ztrack init --preset kanban --sync hermes --hermes-home <dir>` — the board becomes one markdown file you read and edit; `ztrack sync hermes --watch` carries edits both ways as they happen ([Hermes board](docs/SYNC-HERMES.md)) |
+| **a kanban (Hermes's format, through supercode)** | `npx @volter/ztrack init --preset kanban --sync hermes --hermes-home <home>` — the board is written as one markdown file, each task a subtask card; `ztrack sync hermes --watch` carries each edit to the board, and the board's own moves back, as they happen ([board file](docs/SYNC-HERMES.md)) |
 | **a pile of tasks, no tracker** | `npx @volter/ztrack init`, write the tasks down as you naturally would, then `npx @volter/ztrack import notes/tasks.md --register` materializes them into issues (or `issue create` one by one) ([importing](docs/GUIDE.md#importing-a-freeform-backlog)) |
 | **one issue to finish** | `ztrack loop start <id> --until done` — the Stop-hook gate holds your agent's turn until the work is genuinely done ([drive to green](#drive-to-green--ztrack-loop)) |
 | **a whole backlog to burn down** | groom → order → dispatch one loop-armed subagent per `issue list --actionable` row, wave by wave ([orchestrating a backlog](docs/GUIDE.md#orchestrating-a-whole-backlog-one-long-lived-session-many-issues)) |
@@ -498,7 +498,7 @@ The README is the front door; these go deep:
 - **[Guide](docs/GUIDE.md)** — setup, the two usage patterns, CI gate, agent enforcement, visualize.
 - **[Presets](docs/PRESETS.md)** — choose and customize the ruleset; the grammar; add a rule; build your own preset; `preset upgrade`.
 - **[Sources](docs/SOURCES.md)** — declare where issues live; the document format (one file, many issues); write-back and diagnostics.
-- **[A Hermes kanban as one file](docs/SYNC-HERMES.md)** — the `kanban` preset's grammar and `ztrack sync hermes`.
+- **[A kanban as one file](docs/SYNC-HERMES.md)** — the `kanban` preset's grammar and `ztrack sync hermes`.
 - **[Evidence](docs/EVIDENCE.md)** — cite, store, and verify proof; in-toto + DSSE attestation.
 - **[Agent playbook](docs/AGENT-PLAYBOOK.md)** — the copy-paste prompt for an agent adopting and driving ztrack.
 - **[Programmatic API](docs/API.md)** · **[Architecture](ARCHITECTURE.md)** · **[Visualizer](visualizer/README.md)** ([extending it](docs/VISUALIZER.md))

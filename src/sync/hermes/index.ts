@@ -1,18 +1,18 @@
-// The Hermes kanban sync provider: one board FILE (a `document` source in the kanban preset's
-// grammar) kept two-way in step with a Hermes kanban through `hermes kanban`. Standalone like the
-// github provider (src/sync/github/index.ts) — no shared sync engine; conflicts land in the same
-// provider-agnostic store (src/sync/conflicts.ts) that `ztrack check` gates on.
+// The board-file sync provider: one board FILE (a `document` source in the kanban preset's
+// grammar) kept in step with a kanban in Hermes's format through supercode's board door
+// (`supercode workflow`). Standalone like the github provider (src/sync/github/index.ts): no
+// shared sync engine.
 import { loadTrackerConfig } from '../../config.ts';
 import { resolveTrackerValidation } from '../../presetRegistry.ts';
-import { hermesExec, type HermesExec } from './board.ts';
-import { syncHermes, type HermesPolicy, type HermesSyncResult } from './sync.ts';
+import { boardExec, type BoardExec } from './board.ts';
+import { syncHermes, type HermesSyncResult } from './sync.ts';
 import { watchHermes } from './watch.ts';
 
-export { syncHermes, toFileId, toHermesId, STATE_AUTHOR, type HermesPolicy, type HermesSyncOpts, type HermesSyncResult } from './sync.ts';
+export { syncHermes, toFileId, toBoardId, type HermesSyncOpts, type HermesSyncResult } from './sync.ts';
 export { watchHermes, type HermesWatchOpts } from './watch.ts';
-export { hermesExec, readBoard, boardWriter, type HermesCard, type HermesExec, type HermesTarget } from './board.ts';
+export { boardExec, readBoard, boardWriter, type BoardCard, type BoardExec, type BoardTarget } from './board.ts';
 
-/** The project's Hermes link, or null when it has none. */
+/** The project's board link, or null when it has none. */
 export function linkedHermes(projectRoot: string) {
   try {
     const sync = loadTrackerConfig(projectRoot).sync;
@@ -21,8 +21,8 @@ export function linkedHermes(projectRoot: string) {
 }
 
 /** Sync the linked board file (config `sync: { provider: 'hermes', file, … }`). Null when the
- *  project has no Hermes link. `exec` overrides the `hermes` CLI (tests). */
-export async function syncLinkedHermes(projectRoot: string, o: { policy?: HermesPolicy; dryRun?: boolean; exec?: HermesExec } = {}): Promise<HermesSyncResult | null> {
+ *  project has no board link. `exec` overrides the `supercode` CLI (tests). */
+export async function syncLinkedHermes(projectRoot: string, o: { dryRun?: boolean; exec?: BoardExec } = {}): Promise<HermesSyncResult | null> {
   const link = linkedHermes(projectRoot);
   if (!link) return null;
   const config = loadTrackerConfig(projectRoot);
@@ -30,22 +30,21 @@ export async function syncLinkedHermes(projectRoot: string, o: { policy?: Hermes
   return syncHermes({
     projectRoot,
     file: link.file,
-    exec: o.exec ?? hermesExec({ ...(link.home ? { home: link.home } : {}), ...(link.board ? { board: link.board } : {}), ...(link.bin ? { bin: link.bin } : {}) }),
+    exec: o.exec ?? boardExec({ ...(link.home ? { home: link.home } : {}), ...(link.board ? { board: link.board } : {}), ...(link.bin ? { bin: link.bin } : {}) }),
     preset,
-    policy: o.policy ?? link.policy ?? 'merge',
     ...(o.dryRun ? { dryRun: true } : {}),
   });
 }
 
 /** Sync the linked board file whenever it or its board changes, until the board's event stream
- *  ends (then rejects). Null when the project has no Hermes link. */
-export function watchLinkedHermes(projectRoot: string, o: { policy?: HermesPolicy; onSync: (why: string, r: HermesSyncResult | Error) => void }): Promise<never> | null {
+ *  ends (then rejects). Null when the project has no board link. */
+export function watchLinkedHermes(projectRoot: string, o: { onSync: (why: string, r: HermesSyncResult | Error) => void }): Promise<never> | null {
   const link = linkedHermes(projectRoot);
   if (!link) return null;
   return watchHermes({
     projectRoot,
     link,
-    sync: async () => (await syncLinkedHermes(projectRoot, o.policy ? { policy: o.policy } : {}))!,
+    sync: async () => (await syncLinkedHermes(projectRoot))!,
     onSync: o.onSync,
   });
 }

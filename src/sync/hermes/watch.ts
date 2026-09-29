@@ -1,22 +1,21 @@
-// `ztrack sync hermes --watch`: the sync, run whenever either side moves, so nobody runs it by
+// `ztrack sync hermes --watch`: the sync, run the moment either side moves, so nobody runs it by
 // hand. The file side is a watch on the board file's directory (an editor's save-by-rename
-// replaces the file's inode, so the file itself can't be watched). The board side is Hermes's own
-// event stream, `hermes kanban watch`, one line per task event, whoever made it (a person, a
-// dispatcher, this sync). Every trigger is debounced and coalesced into one sync at a time; a
-// sync's own writes trigger one more sync, which finds nothing to do and writes nothing.
+// replaces the file's inode, so the file itself can't be watched). The board side is the board's
+// event stream, `supercode workflow watch`, one line per card event, whoever made it (a person, a
+// dispatcher, a session, this sync). Every trigger is debounced and coalesced into one sync at a
+// time; a sync's own writes trigger one more sync, which finds nothing to do and writes nothing.
 import { spawn } from 'node:child_process';
 import { watch as watchFs } from 'node:fs';
-import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import { STATE_AUTHOR, type HermesSyncResult } from './sync.ts';
+import { boardFlags } from './board.ts';
+import type { HermesSyncResult } from './sync.ts';
 
-// Events that change nothing the file shows: a live claim's lease renewal, a goal loop's turn
-// count, and a comment by anyone but the state's author (the file carries only the latest state
-// comment). On a busy board these are most of the stream, and each sync reads every open card.
-const QUIET_KINDS = new Set(['claim_extended', 'goal_continued']);
-const quiet = (kind: string, rest: string) =>
-  QUIET_KINDS.has(kind) || (kind === 'commented' && !new RegExp(`'author': '${STATE_AUTHOR}'`).test(rest));
+// Events that change nothing the file shows: a live claim's lease renewal, a heartbeat, the
+// dispatcher's asks and notes, and comments (the file carries no thread). On a busy board these
+// are most of the stream.
+const QUIET_KINDS = new Set(['claim_extended', 'goal_continued', 'heartbeat', 'decision_asked', 'idle_surfaced', 'respawn_guarded', 'commented', 'suspected_hallucinated_references']);
+const quiet = (kind: string) => QUIET_KINDS.has(kind);
 
 export interface HermesWatchLink { file: string; home?: string; board?: string; bin?: string }
 
@@ -30,12 +29,10 @@ export interface HermesWatchOpts {
   debounceMs?: number;
 }
 
-const expandHome = (p: string) => (p === '~' || p.startsWith('~/') ? `${homedir()}${p.slice(1)}` : p);
-
 /** Runs until the board's event stream ends, then rejects: a supervisor restarts it. */
 export function watchHermes(o: HermesWatchOpts): Promise<never> {
   const abs = isAbsolute(o.link.file) ? o.link.file : resolve(o.projectRoot, o.link.file);
-  const debounceMs = o.debounceMs ?? 1000;
+  const debounceMs = o.debounceMs ?? 300;
   let running = false;
   let timer: NodeJS.Timeout | null = null;
   const reasons = new Set<string>();
@@ -60,11 +57,10 @@ export function watchHermes(o: HermesWatchOpts): Promise<never> {
   const name = basename(abs);
   const fsWatcher = watchFs(dirname(abs), (_event, f) => { if (f === name) trigger('file'); });
 
-  const env = { ...process.env, ...(o.link.home ? { HERMES_HOME: expandHome(o.link.home) } : {}) };
-  const child = spawn(o.link.bin ?? 'hermes', ['kanban', ...(o.link.board ? ['--board', o.link.board] : []), 'watch', '--interval', '1'], { env, stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = spawn(o.link.bin ?? 'supercode', ['workflow', 'watch', '--interval', '0.3', ...boardFlags(o.link)], { stdio: ['ignore', 'pipe', 'inherit'] });
   createInterface({ input: child.stdout! }).on('line', (line) => {
-    const m = /^\[[^\]]*\]\s+(\S+)\s+(\S+)(.*)$/.exec(line); // `[ts] t_… kind (@assignee) payload`
-    if (m && !quiet(m[2]!, m[3]!)) trigger(`board ${m[2]} ${m[1]}`);
+    const m = /^\[[^\]]*\]\s+(\S+)\s+(\S+)/.exec(line); // `[ts] t_… kind payload`
+    if (m && !quiet(m[2]!)) trigger(`board ${m[2]} ${m[1]}`);
   });
 
   trigger('start');

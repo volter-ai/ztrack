@@ -66,22 +66,19 @@ const GithubSyncSchema = z.object({
   policy: z.enum(['hub-wins', 'twin-wins', 'merge']).optional(),
 }).strict();
 
-/** A board FILE kept two-way in step with a Hermes kanban (`ztrack sync hermes`,
+/** A board FILE kept in step with a kanban in Hermes's format (`ztrack sync hermes`,
  *  docs/SYNC-HERMES.md). The file is a declared `document` source in the kanban preset's grammar;
- *  the board is read and written only through `hermes kanban`. */
+ *  the board is read and written only through supercode's board door (`supercode workflow`). */
 const HermesSyncSchema = z.object({
   provider: z.literal('hermes'),
   /** The board file, project-root-relative (also declared under `sources` as a document). */
   file: z.string(),
-  /** HERMES_HOME of the board's profile (`~` expands). Absent: the environment's. */
+  /** The home the board lives in (`supercode workflow --root`; `~` expands). Absent: the environment's. */
   home: z.string().optional(),
-  /** A named Hermes board (`hermes kanban --board <slug>`). Absent: the home's default board. */
+  /** A named board (`--board <slug>`). Absent: the home's default board. */
   board: z.string().optional(),
-  /** The `hermes` executable. Default `hermes` on PATH. */
+  /** The `supercode` executable. Default `supercode` on PATH. */
   bin: z.string().optional(),
-  /** Same-field collision policy. Default `merge` (recorded as a sync conflict, neither side
-   *  applied); `board-wins` / `file-wins` pick a side. */
-  policy: z.enum(['merge', 'board-wins', 'file-wins']).optional(),
 }).strict();
 
 const SyncSchema = z.discriminatedUnion('provider', [GithubSyncSchema, HermesSyncSchema]);

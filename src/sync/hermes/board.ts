@@ -1,53 +1,57 @@
-// The Hermes kanban, read and written ONLY through its own CLI (`hermes kanban …`), never its
-// SQLite file: every write goes through the door Hermes itself runs, so its events, notifications
-// and dispatcher see a sync's edits exactly as they see a person's. `HermesExec` is the one seam —
-// the real one spawns `hermes`; tests inject a fake board behind the same argv contract.
+// The board — a kanban in Hermes's format — read and written ONLY through supercode's board door
+// (`supercode workflow …`), never its SQLite file and never Hermes's own code. supercode answers
+// every `hermes kanban` verb, and its board's workflow (its IR) decides what each write does: the
+// statuses, who may move a card and how, what reaches the card's session. So a sync's writes are
+// the same events a person's are. `BoardExec` is the one seam — the real one spawns `supercode`;
+// tests inject a fake board behind the same argv contract.
 import { execFile } from 'node:child_process';
 import { homedir } from 'node:os';
 
-export interface HermesComment { author: string; body: string; createdAt: number }
-
 /** One card as the board holds it (the fields the sync reads; the rest stay the board's). */
-export interface HermesCard {
+export interface BoardCard {
   id: string;                 // t_65a8d101
   title: string;
   body: string;
-  status: string;             // triage | todo | ready | running | review | blocked | scheduled | done | archived
+  /** The status the board's workflow names (its own statuses: `stopped`, `reviewing`, …). */
+  status: string;
   assignee: string | null;
   priority: number;
   workspaceKind: string;      // scratch | worktree | dir
   workspacePath: string | null;
   branch: string | null;
+  machine: string | null;
   createdAt: number;
-  parents: string[];          // cards that must finish first (Hermes `link parent child`)
-  comments: HermesComment[];
-  /** The card's open run (a worker's claim, not yet ended), with the session it names, if any. */
-  run: HermesRun | null;
+  parents: string[];          // cards that must finish first (`link parent child`), open ones only
+  /** The arc this card is a subtask of, or null. */
+  subtaskOf: string | null;
+  /** The card's open run (a claim, not yet ended), with the session it names, if any. */
+  run: BoardRun | null;
 }
 
-export interface HermesRun { id: number; status: string; startedAt: number; session: string | null }
+export interface BoardRun { id: number; status: string; startedAt: number; session: string | null }
 
-export type HermesExec = (args: string[]) => Promise<string>;
+export type BoardExec = (args: string[]) => Promise<string>;
 
-export interface HermesTarget {
-  /** HERMES_HOME of the board's profile. Absent: the caller's environment decides (Hermes's own default). */
+export interface BoardTarget {
+  /** The home the board lives in (`supercode workflow --root`). Absent: the environment's. */
   home?: string;
-  /** A named board (`hermes kanban --board <slug>`). Absent: the home's default board. */
+  /** A named board (`--board <slug>`). Absent: the home's default board. */
   board?: string;
-  /** The `hermes` executable. Default `hermes` on PATH. */
+  /** The `supercode` executable. Default `supercode` on PATH. */
   bin?: string;
 }
 
 const expandHome = (p: string) => (p === '~' || p.startsWith('~/') ? `${homedir()}${p.slice(1)}` : p);
 
-/** The real exec: `hermes kanban [--board b] <args>` with HERMES_HOME set. Rejects with Hermes's
- *  own stderr on a non-zero exit, so a refused transition reads in Hermes's words. */
-export function hermesExec(target: HermesTarget = {}): HermesExec {
-  const env = { ...process.env, ...(target.home ? { HERMES_HOME: expandHome(target.home) } : {}) };
-  const prefix = ['kanban', ...(target.board ? ['--board', target.board] : [])];
+/** Where each call names the board: `--root <home> [--board <slug>]`, after the verb's own words. */
+export const boardFlags = (target: BoardTarget) => [...(target.home ? ['--root', expandHome(target.home)] : []), ...(target.board ? ['--board', target.board] : [])];
+
+/** The real exec: `supercode workflow <args> [--root …] [--board …]`. Rejects with the board's
+ *  own words on a non-zero exit, so a refused move reads as the workflow refused it. */
+export function boardExec(target: BoardTarget = {}): BoardExec {
   return (args) => new Promise((resolveP, reject) => {
-    execFile(target.bin ?? 'hermes', [...prefix, ...args], { env, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) reject(new Error(`hermes kanban ${args[0]}: ${(stderr || stdout || err.message).trim()}`));
+    execFile(target.bin ?? 'supercode', ['workflow', ...args, ...boardFlags(target)], { maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(`supercode workflow ${args[0]}: ${(stderr || stdout || err.message).trim()}`));
       else resolveP(stdout);
     });
   });
@@ -56,75 +60,42 @@ export function hermesExec(target: HermesTarget = {}): HermesExec {
 type Json = Record<string, unknown>;
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null);
 
-// A dispatcher records what it started on the run: Hermes's own a worker pid, supercode's the session under `metadata.supercode` (`address`, `session_id`). The run's
-// session is the first address (else session id) found at the top level or one level down.
-function runSession(meta: unknown): string | null {
-  if (!meta || typeof meta !== 'object') return null;
-  const m = meta as Json;
-  const direct = str(m.address) ?? str(m.session_id);
-  if (direct) return direct;
-  for (const v of Object.values(m)) {
-    if (v && typeof v === 'object') { const nested = str((v as Json).address) ?? str((v as Json).session_id); if (nested) return nested; }
-  }
-  return null;
-}
-
-function openRun(runs: Json[]): HermesRun | null {
-  const open = runs.filter((r) => r.ended_at === null || r.ended_at === undefined).pop();
-  if (!open) return null;
-  return { id: Number(open.id), status: String(open.status ?? 'running'), startedAt: Number(open.started_at ?? 0), session: runSession(open.metadata) ?? (typeof open.worker_pid === 'number' ? `pid ${open.worker_pid}` : null) };
-}
-
-function toCard(task: Json, parents: string[], comments: HermesComment[], run: HermesRun | null): HermesCard {
-  return {
-    id: String(task.id),
-    title: String(task.title ?? ''),
-    body: str(task.body) ?? '',
-    status: String(task.status),
-    assignee: str(task.assignee),
-    priority: typeof task.priority === 'number' ? task.priority : 0,
-    workspaceKind: str(task.workspace_kind) ?? 'scratch',
-    workspacePath: str(task.workspace_path),
-    branch: str(task.branch_name),
-    createdAt: typeof task.created_at === 'number' ? task.created_at : 0,
-    parents,
-    comments,
-    run,
-  };
-}
-
-async function mapLimit<T, U>(items: T[], limit: number, fn: (t: T) => Promise<U>): Promise<U[]> {
-  const out: U[] = new Array(items.length);
-  let next = 0;
-  const worker = async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]!); } };
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
-}
-
-/** Every card on the board except archived ones (Hermes's own `list` default). An open card comes
- *  with its parents, comment thread and open run (`show --json`); a done card is read from the list
- *  alone, since it neither shows nor gates. */
-export async function readBoard(exec: HermesExec): Promise<HermesCard[]> {
+/** Every card on the board except archived ones, in one read (`list --json`: each card with its
+ *  workflow status, parents, arc and open run). */
+export async function readBoard(exec: BoardExec): Promise<BoardCard[]> {
   const list = JSON.parse(await exec(['list', '--json'])) as Json[];
   const open = new Set(list.filter((row) => row.status !== 'done').map((row) => String(row.id)));
-  return mapLimit(list, 8, async (row) => {
-    if (row.status === 'done') return toCard(row, [], [], null);
-    const shown = JSON.parse(await exec(['show', String(row.id), '--json'])) as { task: Json; parents?: unknown[]; comments?: Json[]; runs?: Json[] };
-    // A link to a done or archived card stays in Hermes but no longer gates anything; only open
-    // parents are the card's dependencies here.
-    const parents = (shown.parents ?? []).map((p) => (typeof p === 'string' ? p : String((p as Json).id))).filter((p) => open.has(p));
-    const comments = (shown.comments ?? []).map((c) => ({ author: String(c.author ?? ''), body: String(c.body ?? ''), createdAt: Number(c.created_at ?? 0) }));
-    return toCard(shown.task, parents, comments, openRun(shown.runs ?? []));
+  return list.map((row) => {
+    const run = row.run as Json | null | undefined;
+    return {
+      id: String(row.id),
+      title: String(row.title ?? ''),
+      body: str(row.body) ?? '',
+      status: String(row.workflow_status ?? row.status),
+      assignee: str(row.assignee),
+      priority: typeof row.priority === 'number' ? row.priority : 0,
+      workspaceKind: str(row.workspace_kind) ?? 'scratch',
+      workspacePath: str(row.workspace_path),
+      branch: str(row.branch_name),
+      machine: str(row.machine),
+      createdAt: typeof row.created_at === 'number' ? row.created_at : 0,
+      // a link to a done or archived card no longer gates anything; only open parents are dependencies here
+      parents: (Array.isArray(row.parents) ? row.parents.map(String) : []).filter((p) => open.has(p)),
+      subtaskOf: str(row.subtask_of),
+      run: run ? { id: Number(run.id), status: String(run.status ?? 'running'), startedAt: Number(run.started_at ?? 0), session: str(run.session) } : null,
+    };
   });
 }
 
 export interface NewCard {
   title: string; body: string; assignee?: string | null; parents: string[];
-  workspace?: string; branch?: string | null; priority?: number;
+  workspace?: string; branch?: string | null; priority?: number; machine?: string | null;
+  /** File it as a subtask of this arc. */
+  subtaskOf?: string;
 }
 
-/** The board's write doors, one method per Hermes verb the sync uses. */
-export function boardWriter(exec: HermesExec) {
+/** The board's write doors, one method per verb the sync uses. */
+export function boardWriter(exec: BoardExec) {
   const run = (args: string[]) => exec(args).then(() => undefined);
   return {
     async create(c: NewCard): Promise<string> {
@@ -134,20 +105,21 @@ export function boardWriter(exec: HermesExec) {
       if (c.workspace && c.workspace !== 'scratch') args.push('--workspace', c.workspace);
       if (c.branch) args.push('--branch', c.branch);
       if (c.priority) args.push('--priority', String(c.priority));
+      if (c.machine) args.push('--machine', c.machine);
+      if (c.subtaskOf) args.push('--subtask-of', c.subtaskOf);
       const out = JSON.parse(await exec(args)) as Json;
       return String(out.id);
     },
-    comment: (id: string, text: string, author?: string) => run(['comment', ...(author ? ['--author', author] : []), id, text]),
+    /** The card's title and body, edited where it stands. */
+    specify: (id: string, edit: { title?: string; body?: string }) =>
+      run(['specify', id, ...(edit.title !== undefined ? ['--title', edit.title] : []), ...(edit.body !== undefined ? ['--body', edit.body] : [])]),
+    comment: (id: string, text: string) => run(['comment', id, text]),
     assign: (id: string, who: string | null) => run(['assign', id, who ?? 'none']),
+    move: (id: string, machine: string | null) => run(['move', id, machine ?? 'none']),
     link: (parent: string, child: string) => run(['link', parent, child]),
     unlink: (parent: string, child: string) => run(['unlink', parent, child]),
-    complete: (id: string) => run(['complete', id]),
-    block: (id: string) => run(['block', id]),
-    schedule: (id: string) => run(['schedule', id]),
-    unblock: (id: string) => run(['unblock', id]),
-    promote: (id: string) => run(['promote', id]),
-    requestReview: (id: string) => run(['request-review', id]),
-    reopenReview: (id: string) => run(['reopen-review', id]),
+    /** Take the card to `status` by whichever event the board's workflow says goes there. */
+    goto: (id: string, status: string) => run(['goto', id, status]),
     archive: (id: string) => run(['archive', id]),
   };
 }

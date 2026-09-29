@@ -1,9 +1,9 @@
-// An evidence-free kanban preset: each issue is a CARD on a board whose lanes are the Hermes
-// kanban's own statuses, and a card's work is its TASKS: one line each, with ids, ticked when done,
-// optionally blocked by other tasks or cards. There is no evidence and no comment thread. Written
-// for a board kept as ONE document-source markdown file (docs/SOURCES.md), optionally backed by a
-// Hermes kanban through `ztrack sync hermes` (docs/SYNC-HERMES.md), but it validates any card file
-// on its own.
+// An evidence-free kanban preset: each issue is a CARD on a board whose lanes are its workflow's
+// statuses, and a card's work is its TASKS: one line each, with ids, ticked when done, optionally
+// blocked by other tasks or cards. There is no evidence and no comment thread. Written for a board
+// kept as ONE document-source markdown file (docs/SOURCES.md), optionally backed by a kanban through
+// `ztrack sync hermes` (docs/SYNC-HERMES.md), where each task is a subtask card, but it validates
+// any card file on its own.
 //
 // One card, as the document presents it to this preset (the `status:`/`assignee:` header block
 // and the `## <id> — <title>` heading are the document grammar's; everything below is this
@@ -29,8 +29,8 @@
 //     - blocked-by: c1, t-954aa1da:c2
 //
 // The metadata block is the body's leading paragraphs made wholly of the keys above; anything
-// else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>`,
-// and a task written without one gets the next free `c<N>` of its card. `blocked-by` names tasks
+// else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>` (or another letter prefix and
+// number, `s1`), and a task written without one gets the next free `c<N>` of its card. `blocked-by` names tasks
 // (`c1` in this card, `<card>:<task>` in another) or whole cards.
 
 // A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
@@ -40,13 +40,15 @@ import {
 } from '@volter/ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ─────────────────────────────────────
-// The lanes, in board order. `archived` is a lane too: a card moved there leaves the board.
-export const KanbanStatusSchema = z.enum(['triage', 'todo', 'ready', 'running', 'review', 'blocked', 'scheduled', 'done', 'archived']);
+// A lane is a status of the board's workflow (Hermes's nine, or the ones a supercode board's workflow
+// declares, such as `stopped` or `reviewing`): a lowercase name. `archived` is a lane too: a card
+// moved there leaves the board.
+export const KanbanStatusSchema = z.string().regex(/^[a-z][a-z_]*$/);
 
 // A task is the core's AC shape (so the engine's blocking graph covers it) with no evidence:
 // `passed` is a ticked task, `pending` an open one.
 export const KanbanTaskSchema = z.object({
-  id: z.string().regex(/^c\d+$/),                        // core
+  id: z.string().regex(/^[a-z]+\d+$/),                   // core: `c3`, or any letter prefix and number (`s1`)
   status: z.enum(['pending', 'passed']),                 // core
   evidence: z.array(z.never()),                          // core: a task carries no evidence, ever
   text: z.string().min(1),
@@ -59,7 +61,7 @@ export const KanbanCardSchema = z.object({
   id: z.string().min(1),                                 // core
   title: z.string().min(1),                              // core
   summary: z.string(),                                   // core (unused: the opening post is `body`)
-  status: KanbanStatusSchema,                            // core (narrowed to the lanes)
+  status: KanbanStatusSchema,                            // core (a lane name)
   acceptanceCriteria: z.array(KanbanTaskSchema),         // core: the card's tasks
   assignee: z.string().min(1).optional(),
   relations: z.array(KanbanRelationSchema).optional(),   // primitive: `Blocked by:`
@@ -89,7 +91,7 @@ const META_LINE = /^(Blocked by|Workspace|Branch|Priority|Run|Machine|Session):\
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
 const ESCAPED = /^\\(?=#|(?:Blocked by|Workspace|Branch|Priority|Run|Machine|Session):)/i;
-const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(c\d+)\s+)?(.+)$/;
+const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 
 const splitList = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
@@ -123,7 +125,7 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     if (line.trim() !== '') unparsed.push(line);
   }
   // A task written without an id takes the card's next free `c<N>`, in line order.
-  let next = tasks.reduce((m, t) => Math.max(m, t.id ? Number(t.id.slice(1)) : 0), 0);
+  let next = tasks.reduce((m, t) => Math.max(m, /^c\d+$/.test(t.id) ? Number(t.id.slice(1)) : 0), 0);
   for (const t of unnamed) t.id = `c${++next}`;
   return { tasks, unparsed };
 }
@@ -260,7 +262,7 @@ const KANBAN_RULES = [
 
 // ── the dashboard's vocabulary, as plain data ──────────────────────────────────────────────
 const KANBAN_VISUALIZER: VisualizerSpec = {
-  statusOrder: ['triage', 'todo', 'ready', 'running', 'review', 'blocked', 'scheduled', 'done', 'archived'], // must equal KanbanStatusSchema above
+  statusOrder: ['triage', 'todo', 'ready', 'running', 'review', 'blocked', 'scheduled', 'done', 'archived'], // the common lanes, in board order
   acUnitLabel: 'Tasks',
   assignee: 'assignee',
   acText: { id: 'id', text: 'text' },

@@ -154,7 +154,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
 }
 
 // `init --sync hermes`: the first sync writes the board file from the board (best-effort, like the
-// github pull — a missing `hermes` leaves init successful and `ztrack sync hermes` retries).
+// github pull — a missing `supercode` leaves init successful and `ztrack sync hermes` retries).
 async function initHermesDone(root: string, result: ReturnType<typeof initTrackerProject>, sync: { file: string; home?: string }, command: string): Promise<boolean> {
   let synced = false;
   try {
@@ -165,13 +165,13 @@ async function initHermesDone(root: string, result: ReturnType<typeof initTracke
     process.stdout.write(`${statusMark('warn')} ${ui.yellow(`first sync skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim(`— run \`${command} sync hermes\``)}\n`);
   }
   process.stdout.write([
-    `${statusMark('pass')} ${heading('Initialized ztrack', `preset kanban • linked to the Hermes kanban${sync.home ? ` at ${sync.home}` : ''}`)}`,
+    `${statusMark('pass')} ${heading('Initialized ztrack', `preset kanban • linked to the board${sync.home ? ` at ${sync.home}` : ''}`)}`,
     `  ${ui.dim(result.configPath)}`,
     '',
     ui.bold('Next steps'),
-    stackedCommand(1, synced ? 'Read the board' : 'Write the board file', synced ? `$EDITOR ${sync.file}` : `${command} sync hermes`, 'One section per card: its lane, dependencies, opening post and newest comments.'),
+    stackedCommand(1, synced ? 'Read the board' : 'Write the board file', synced ? `$EDITOR ${sync.file}` : `${command} sync hermes`, 'One section per card: its lane, dependencies, prose and tasks (each a subtask).'),
     '',
-    stackedCommand(2, 'Edit it, then sync', `${command} sync hermes`, 'Two-way: your edits reach the board, the board\'s changes reach the file; a same-field collision gates `ztrack check`.'),
+    stackedCommand(2, 'Keep it in step', `${command} sync hermes --watch`, 'Your edits reach the board the moment you save; the board\'s own moves reach the file.'),
     '',
     ui.dim('The file grammar: docs/SYNC-HERMES.md.'),
     presetTrustNotice(),

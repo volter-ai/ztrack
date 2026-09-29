@@ -318,19 +318,20 @@ conflicts surface as an unwaivable \`sync_conflict\` that gates check; --policy 
 merge) sets resolution: hub-wins | twin-wins | merge. Auth uses the gh CLI or
 GITHUB_TOKEN — no prompted PAT.
 
-Usage: ${command} sync hermes [--dry-run | --watch] [--policy merge|board-wins|file-wins] [--json]
+Usage: ${command} sync hermes [--dry-run | --watch] [--json]
 
-Two-way sync of the board file (\`init --preset kanban --sync hermes\`) with its Hermes
-kanban, through \`hermes kanban\` only. A three-way merge per card field against the
-last agreed state: file edits reach the board, board changes reach the file, and a
-same-field collision is a \`sync_conflict\` that gates check (--policy picks a side).
-A new section (any id that isn't a board id) creates a card; a deleted section
-archives it. A card's prose, Machine:, Session: and ### Tasks are its state: a
-change posts one comment authored \`arcs\`, never a new card. An edited title,
-workspace, branch or priority, or a done card moved back, re-creates the card.
---dry-run prints the board writes it would make. --watch keeps running and syncs
-whenever the file is saved or the board changes (Hermes's own \`kanban watch\` stream),
-one sync at a time; a manual sync waits for it.
+Keeps the board file (\`init --preset kanban --sync hermes\`) and its board in step,
+through supercode's board door (\`supercode workflow\`) only. The file is where the board is
+written: what it changed since the last sync goes to the board, what only the board
+changed (a session's or reviewer's move, the open run) comes to the file. There is no
+conflict state: an edit the board's workflow refuses is reported, and the file shows the
+card as it stands. A new section (any id that isn't a board id) creates a card; a deleted
+section archives it. A card's title and prose (with Session:) are its text, edited in
+place; Machine: is the machine it runs on; its status is reached by whichever event the
+board's workflow says goes there; each task is a subtask card. An edited workspace,
+branch or priority re-creates the card. --dry-run prints the board writes it would make.
+--watch keeps running and syncs the moment the file is saved or the board records an
+event (\`supercode workflow watch\`), one sync at a time; a manual sync waits for it.
 The grammar: docs/SYNC-HERMES.md.
 `);
     return true;
