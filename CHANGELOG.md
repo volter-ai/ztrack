@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.7
+
 - **An edit made in the board file names the file.** The sync's writes (`create`, `specify`, `comment`) record the board file (`arcs.md`) as their author, so a session reads an edit made in the file as the file's, never as the machine user's (its owner's) words.
 
 ## 2.4.6
