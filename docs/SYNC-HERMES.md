@@ -142,6 +142,9 @@ file changed since the base goes to the board; a field only the board changed co
 There is no conflict state: the file is where the board is written, so a field both changed takes
 the file's value, and an edit the board's workflow refuses is reported by the sync while the file
 shows the card as it stands. The sync then reads the board again and writes the file whole from it.
+What the board refused is written into the file, where its editor reads it: a quoted note after the preamble
+(`> **Not on the board**: …`, one `> - ` line per refusal), rewritten by each sync and gone once nothing is refused.
+A file that does not validate is not synced at all; the same note names why, and the file is otherwise left as it is.
 Each write names the board file as its author (`arcs.md`): the sync runs in no session, and whoever edited the
 file is not known to it, so a card's thread and notices say the edit came from the file.
 

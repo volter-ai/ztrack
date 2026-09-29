@@ -244,8 +244,32 @@ function readFile(abs: string, preset: Preset<CoreRoot>, strict = false): { card
     }
   }
   const first = text.split('\n').findIndex((l) => /^#{1,6}\s+[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+\b/.test(l));
-  const preamble = (first < 0 ? text : text.split('\n').slice(0, first).join('\n')).replace(/\s+$/, '');
+  const preamble = setRefusedNote((first < 0 ? text : text.split('\n').slice(0, first).join('\n')), []).replace(/\s+$/, '');
   return { cards: result.export.issues as unknown as FileCard[], preamble };
+}
+
+// What the board refused of the file's edits, written into the file where its editor reads it: a note the sync owns,
+// after the preamble, rewritten by each sync and gone once nothing is refused. The watcher's own output is read by
+// nobody who edits the file.
+const REFUSED_HEAD = '> **Not on the board**: the last sync refused these edits of this file. Fix them here; this note is the sync\'s and goes when nothing is refused.';
+const REFUSED_LINE = /^> - /;
+/** `text` with the sync's refusal note set to `lines` (removed when there are none), placed before the first card. */
+export function setRefusedNote(text: string, lines: string[]): string {
+  const all = text.split('\n');
+  const at = all.indexOf(REFUSED_HEAD);
+  if (at >= 0) {
+    let end = at + 1;
+    while (end < all.length && REFUSED_LINE.test(all[end]!)) end++;
+    while (end < all.length && all[end]!.trim() === '' && at > 0 && all[at - 1]!.trim() === '') end++;
+    all.splice(at, end - at);
+  }
+  if (!lines.length) return all.join('\n');
+  const first = all.findIndex((l) => /^#{1,6}\s+[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+\b/.test(l));
+  const note = [REFUSED_HEAD, ...lines.map((l) => `> - ${l.replace(/\s*\n\s*/g, ' ')}`), ''];
+  const cut = first < 0 ? all.length : first;
+  const head = all.slice(0, cut);
+  while (head.length && head[head.length - 1]!.trim() === '') head.pop();
+  return [...head, ...(head.length ? [''] : []), ...note, ...all.slice(cut)].join('\n');
 }
 
 // the file's order: a busy card first, then waiting, then set aside; a status this list does not
@@ -335,7 +359,18 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
   const res: HermesSyncResult = { pulled: [], pushed: [], created: [], recreated: [], archived: [], refused: [], actions: [] };
 
   const before = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
-  const { cards: localCards, preamble } = readFile(abs, preset, true);
+  let read: ReturnType<typeof readFile>;
+  try {
+    read = readFile(abs, preset, true);
+  } catch (error) {
+    // a file that does not validate is not synced at all: its editor is told in the file itself
+    const why = String((error as Error).message).split('\n').slice(1).map((l) => l.trim()).filter(Boolean);
+    const now = readFileSync(abs, 'utf8');
+    const noted = setRefusedNote(now, why.length ? why : [String((error as Error).message)]);
+    if (!dry && noted !== now) writeFileSync(abs, noted);
+    throw error;
+  }
+  const { cards: localCards, preamble } = read;
   const view = viewOf(await readBoard(opts.exec), preset);
   const remote = new Map(view.cards.map((c) => [c.id, c]));
 
@@ -553,7 +588,7 @@ async function syncHermesLocked(opts: HermesSyncOpts): Promise<HermesSyncResult>
   const rendered = shown
     .map((c) => toFileCard(c, expected.get(toFileId(c.id))!, unparsedOf.get(c.id), sourcesOf.get(c.id)))
     .sort((a, b) => (laneRank(a.status) - laneRank(b.status)) || ((after.cards.find((c) => toFileId(c.id) === a.id)?.createdAt ?? 0) - (after.cards.find((c) => toFileId(c.id) === b.id)?.createdAt ?? 0)));
-  const text = renderFile(preset, preamble || DEFAULT_PREAMBLE, [...rendered, ...orphans]);
+  const text = renderFile(preset, setRefusedNote(preamble || DEFAULT_PREAMBLE, res.refused), [...rendered, ...orphans]);
 
   // The file must read back as exactly the board it was rendered from, or the next sync would
   // take the difference for an edit and write it to the board. Render to a sibling, read it back

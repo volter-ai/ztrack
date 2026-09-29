@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- **A refused edit is said in the board file.** What the board refused (and why a file that does not validate was not synced at all) is written into the file as a note after its preamble, where whoever edits it reads it; the watcher's own output is read by no one. The note is the sync's, rewritten each sync and removed when nothing is refused.
+
 ## 2.4.9
 
 - **Waiting on in core, and on a task.** ztrack's core carries `waitingOn` beside `blockedBy` on an issue and on an acceptance criterion: a node waiting on an answer reads as blocked (`blockStatuses`, `issueFrontier`), with the message named in `waitingOn`. A kanban task takes a `  - waiting-on: <m-/a- id>` line under it, synced to its subtask's `block --waiting-on`.
