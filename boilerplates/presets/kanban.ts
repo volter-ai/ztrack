@@ -269,7 +269,9 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.machine) out.push(`Machine: ${card.machine}`);
   if (card.body) {
     if (out.length) out.push('');
-    out.push(...card.body.split('\n').map((l, i) => (/^\s{0,3}#/.test(l) ? `\\${l.trimStart()}` : i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
+    // The document codec owns heading nesting. Escaping headings here turned
+    // real Acceptance sections into prose in the workflow's body projection.
+    out.push(...card.body.split('\n').map((l, i) => (i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
   }
   if (card.acceptance?.length) {
     if (out.length) out.push('');
