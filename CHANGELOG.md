@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.1
+
 - A card created from the file is filed with `--no-start`: the board's dispatcher starts it on its own terms, so a section written straight into a lane of its own (`status: audit`, say) reaches that lane instead of being started first.
 
 ## 2.4.0
