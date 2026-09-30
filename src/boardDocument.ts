@@ -34,16 +34,91 @@ export function renderBoardDocument(text: string, records: IssueRecord[], path =
     if (record && JSON.stringify(record) === JSON.stringify(before.get(item.id))) continue;
     const start = offsets[item.lineStart! - 1]!;
     // The parser's raw is the exact span; it includes its trailing blank lines.
-    result = result.slice(0, start) + (record ? checkedCard(record, item.level!, path) : '') + result.slice(start + item.raw!.length);
+    result = result.slice(0, start) + (record ? renderBoardCard(record, item.level!, path) : '') + result.slice(start + item.raw!.length);
   }
-  for (const record of wanted.values()) result += `${result.endsWith('\n\n') || !result ? '' : '\n'}${checkedCard(record, 2, path)}`;
+  for (const record of wanted.values()) result += `${result.endsWith('\n\n') || !result ? '' : '\n'}${renderBoardCard(record, 2, path)}`;
   return result;
 }
 
-function checkedCard(record: IssueRecord, level: number, path: string): string {
-  const text=renderCard(record,level), read=parseBoardDocument(text,path);
-  if(read.length!==1 || read[0]!.id!==record.id)throw new Error('board rendering changed card identities');
+/** One card's section text at heading `level`, checked on its own: it reads back as exactly this
+ * card, and a heading after it still starts a new section (no unclosed code block or HTML block
+ * swallows what follows), so it can be spliced in place of the card's old span. */
+export function renderBoardCard(record: IssueRecord, level = 2, path = 'arcs.md'): string {
+  const text = renderCard(record, level);
+  const items = parseMarkdownDocumentSource(`${text}# end\n`, path);
+  if (items.length !== 1 || items[0]!.id !== record.id) throw new Error('board rendering changed card identities');
+  recordOf(items[0]!);
+  if (items[0]!.raw !== text) throw new Error(`board card ${record.id} would run into the next section: its text holds a heading at the card's level or an unclosed code or HTML block`);
   return text;
+}
+
+/** A board document tiled into spans: each outermost card section (`id`), and the text between
+ * them (`id: null`: the preamble and sections that are not cards). Joined, the spans are the
+ * document. A card span starts at a heading, so it reads the same on its own. */
+export type BoardChunk = { id: string | null; level: number; text: string };
+
+export function chunkBoardDocument(text: string, path = 'arcs.md'): BoardChunk[] {
+  const chunks = tile(text, path);
+  if (chunks.map((chunk) => chunk.text).join('') !== text) throw new Error('board document spans do not tile its text');
+  return chunks;
+}
+
+function tile(text: string, path: string): BoardChunk[] {
+  const items = parseMarkdownDocumentSource(text, path).filter((item) => item.raw !== undefined && item.lineStart !== undefined);
+  const offsets = [0];
+  for (let index = 0; index < text.length; index++) if (text.charCodeAt(index) === 10) offsets.push(index + 1);
+  const spans = items.map((item) => ({ id: item.id, level: item.level!, start: text.indexOf(item.raw!, offsets[item.lineStart! - 1]!), text: item.raw! }))
+    .sort((a, b) => a.start - b.start);
+  const chunks: BoardChunk[] = [];
+  let at = 0;
+  for (const span of spans) {
+    if (span.start < at) continue; // nested inside an outer card's span
+    if (span.start > at) chunks.push({ id: null, level: 0, text: text.slice(at, span.start) });
+    chunks.push({ id: span.id, level: span.level, text: span.text });
+    at = span.start + span.text.length;
+  }
+  if (at < text.length) chunks.push({ id: null, level: 0, text: text.slice(at) });
+  return chunks;
+}
+
+/** Re-tile an edited document, parsing only the changed region: the spans holding the first and
+ * last changed bytes, one span before them (an edit on a span's first line can join it to the
+ * text before), and the first unchanged span after, which must read back unchanged or the region
+ * grows. Old spans [from, oldTo) became new spans [from, to). */
+export function rechunkBoardDocument(old: BoardChunk[], text: string, path = 'arcs.md'): { chunks: BoardChunk[]; from: number; oldTo: number; to: number } {
+  const oldText = old.map((chunk) => chunk.text).join('');
+  if (oldText === text) return { chunks: old, from: 0, oldTo: 0, to: 0 };
+  if (!old.length) { const chunks = chunkBoardDocument(text, path); return { chunks, from: 0, oldTo: 0, to: chunks.length }; }
+  const limit = Math.min(oldText.length, text.length);
+  let prefix = 0;
+  while (prefix < limit && oldText.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix++;
+  let suffix = 0;
+  while (suffix < limit - prefix && oldText.charCodeAt(oldText.length - 1 - suffix) === text.charCodeAt(text.length - 1 - suffix)) suffix++;
+  const starts: number[] = [];
+  let offset = 0;
+  for (const chunk of old) { starts.push(offset); offset += chunk.text.length; }
+  const containing = (position: number): number => {
+    let index = 0;
+    while (index + 1 < old.length && starts[index + 1]! <= position) index++;
+    return index;
+  };
+  const from = Math.max(0, containing(prefix) - 1);
+  let last = containing(Math.max(prefix, oldText.length - suffix - 1));
+  const delta = text.length - oldText.length;
+  for (;;) {
+    const region = text.slice(starts[from]!, starts[last]! + old[last]!.text.length + delta);
+    const next = old[last + 1];
+    const read = tile(region + (next?.text ?? ''), path);
+    const tail = read.at(-1);
+    const settled = !next || (tail !== undefined && tail.id === next.id && tail.level === next.level && tail.text === next.text);
+    const replaced = next ? read.slice(0, -1) : read;
+    if (!settled || replaced.map((chunk) => chunk.text).join('') !== region) {
+      if (!next) throw new Error('board document spans do not tile its text');
+      last++;
+      continue;
+    }
+    return { chunks: [...old.slice(0, from), ...replaced, ...old.slice(last + 1)], from, oldTo: last + 1, to: from + replaced.length };
+  }
 }
 
 function renderCard(record: IssueRecord, level: number): string {

@@ -50,11 +50,15 @@ export interface DocumentParsedIssue {
   assignee?: string;
 }
 
+const childIndex = new WeakMap<MarkdownDocument, Map<number | null, number[]>>();
 function directChildIndices(doc: MarkdownDocument, parentIndex: number | null): number[] {
-  return doc.sections.reduce<number[]>((acc, section, index) => {
-    if (section.parentIndex === parentIndex) acc.push(index);
-    return acc;
-  }, []);
+  let children = childIndex.get(doc);
+  if (!children) {
+    children = new Map();
+    doc.sections.forEach((section, index) => children!.set(section.parentIndex, [...(children!.get(section.parentIndex) ?? []), index]));
+    childIndex.set(doc, children);
+  }
+  return children.get(parentIndex) ?? [];
 }
 
 // A section's OWN leading content (before its first direct child heading). `section.body` already
@@ -136,7 +140,8 @@ function umbrellaBody(doc: MarkdownDocument, headerLineCount: number, isIdBearin
 /** Parse one document source's text into its issue tree. `filePath` is used only for the
  *  umbrella issue's id (mirrors `fileToRecord`'s `basename(path).replace(/\.[^.]+$/, '')`). */
 export function parseMarkdownDocumentSource(text: string, filePath: string): DocumentParsedIssue[] {
-  const doc = parseMarkdownDocument(text);
+  // Issues carry headings and spans only; section checkbox items are never read here.
+  const doc = parseMarkdownDocument(text, { checkboxes: false });
 
   const idBearing = new Map<number, { id: string; title: string }>();
   doc.sections.forEach((section, index) => {
