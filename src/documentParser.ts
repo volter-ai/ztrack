@@ -139,9 +139,21 @@ function umbrellaBody(doc: MarkdownDocument, headerLineCount: number, isIdBearin
 
 /** Parse one document source's text into its issue tree. `filePath` is used only for the
  *  umbrella issue's id (mirrors `fileToRecord`'s `basename(path).replace(/\.[^.]+$/, '')`). */
-export function parseMarkdownDocumentSource(text: string, filePath: string): DocumentParsedIssue[] {
+// One command reads a document through several doors (mode detection, then the source); the
+// Markdown parse of the same text is done once per process. Its result is only read.
+const parsedDocuments: Array<{ text: string; doc: MarkdownDocument }> = [];
+function parsedOnce(text: string): MarkdownDocument {
+  const known = parsedDocuments.find((entry) => entry.text === text);
+  if (known) return known.doc;
   // Issues carry headings and spans only; section checkbox items are never read here.
   const doc = parseMarkdownDocument(text, { checkboxes: false });
+  parsedDocuments.unshift({ text, doc });
+  parsedDocuments.length = Math.min(parsedDocuments.length, 4);
+  return doc;
+}
+
+export function parseMarkdownDocumentSource(text: string, filePath: string): DocumentParsedIssue[] {
+  const doc = parsedOnce(text);
 
   const idBearing = new Map<number, { id: string; title: string }>();
   doc.sections.forEach((section, index) => {
