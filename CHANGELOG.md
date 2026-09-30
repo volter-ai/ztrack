@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.20
+
 - Resolve task message blockers as external waits, preserving card/task referent checks.
 
 ## 2.4.19
