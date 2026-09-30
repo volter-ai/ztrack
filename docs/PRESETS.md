@@ -1,5 +1,8 @@
 # Preset Reference
 
+The [message-blocker decision](adr/0001-message-blockers.md) defines external
+message waits in task references without requiring synthetic card nodes.
+
 A ztrack preset is the repo-local rulebook for what "done" means. `ztrack init`
 always installs one editable, **standalone** preset at:
 

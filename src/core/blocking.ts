@@ -255,6 +255,7 @@ export function blockerRefProblems(root: CoreRoot): RefProblem[] {
     for (const ac of issue.acceptanceCriteria) {
       const selfKey = formatRef({ issue: issue.id, ac: ac.id });
       for (const ref of [...(ac.blockedBy ?? []), ...(ac.blocks ?? [])]) {
+        if (ac.blockedBy?.includes(ref) && ref.ac === undefined && /^[ma]-[0-9a-f]{6,}$/.test(ref.issue)) continue;
         const key = refKey(ref);
         if (key === selfKey) out.push({ issueId: issue.id, acId: ac.id, ref, kind: 'self' });
         else if (!nodes.has(key)) out.push({ issueId: issue.id, acId: ac.id, ref, kind: 'missing' });
@@ -290,6 +291,7 @@ export function normalizeBlockRefs(issues: ParsedIssue[]): void {
   for (const i of issues) for (const ac of i.acceptanceCriteria) acKeys.add(formatRef({ issue: i.id, ac: ac.id }));
   const classify = (r: RawBlockRef): BlockRef => {
     if (!r.bare) return { issue: r.issue, ac: r.ac };
+    if (/^[ma]-[0-9a-f]{6,}$/.test(r.ac)) return { issue: r.ac };
     if (acKeys.has(formatRef({ issue: r.issue, ac: r.ac }))) return { issue: r.issue, ac: r.ac }; // local AC
     if (issueIds.has(r.ac)) return { issue: r.ac };                                                // whole issue
     return { issue: r.issue, ac: r.ac };                                                           // dangling local AC
