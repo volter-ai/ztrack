@@ -179,7 +179,12 @@ function buildLoadedIssue(parsed: DocumentParsedIssue): LoadedIssue {
   let headerDiagnostic: string | undefined;
   try {
     const decomposed = decomposeSection(parsed.body);
-    const body = shiftHeadings(decomposed.middle, 1 - parsed.level); // -(level-1)
+    // The middle starts below the heading and its header block; the document's heading lines are
+    // moved to it, so the body is not parsed again.
+    const prefixLines = decomposed.prefixRaw.split('\n').length - 1;
+    const middleLines = decomposed.middle.split('\n').length;
+    const headingLines = parsed.headingLines?.map((line) => line - prefixLines).filter((line) => line >= 0 && line < middleLines);
+    const body = shiftHeadings(decomposed.middle, 1 - parsed.level, headingLines); // -(level-1)
     const status = decomposed.header?.status;
     const assignee = decomposed.header?.assignee;
     const state = status ?? 'draft';

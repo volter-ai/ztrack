@@ -38,29 +38,34 @@ const ATX_LINE_RE = /^(#{1,6})(\s.*|)$/;
  *  byte-identical. `delta === 0` is still validated (still throws on a setext heading) so a
  *  caller that relies on "shiftHeadings succeeded" as a writability signal gets it even when the
  *  shift is a no-op (an L=1 document item, whose read/write shift delta is 0). */
-export function shiftHeadings(text: string, delta: number): string {
-  // Only heading positions are read: the GFM tokenizer still decides what is a heading, and the
-  // GFM tree extensions (autolinks, tables, footnotes as nodes) are not built.
-  const tree = fromMarkdown(text, { extensions: [gfm()] });
+export function shiftHeadings(text: string, delta: number, headingLines?: readonly number[]): string {
   const lines = text.split('\n');
+  // The 0-based lines that start a heading: the caller's, when the document parse that cut `text`
+  // already found them, else the GFM tokenizer's (only heading positions are read; the GFM tree
+  // extensions are not built).
+  let starts = headingLines;
+  if (!starts) {
+    const found: number[] = [];
+    const walk = (node: unknown): void => {
+      const n = node as { type?: string; position?: { start: { line: number } }; children?: unknown[] };
+      if (n.type === 'heading' && n.position) found.push(n.position.start.line - 1); // mdast lines are 1-based
+      for (const c of n.children ?? []) walk(c);
+    };
+    walk(fromMarkdown(text, { extensions: [gfm()] }));
+    starts = found;
+  }
   const edits: Array<{ lineIndex: number; hashes: string; rest: string }> = [];
-  const walk = (node: unknown): void => {
-    const n = node as { type?: string; position?: { start: { line: number } }; children?: unknown[] };
-    if (n.type === 'heading' && n.position) {
-      const lineIndex = n.position.start.line - 1; // mdast lines are 1-based
-      const raw = lines[lineIndex] ?? '';
-      const atx = ATX_LINE_RE.exec(raw);
-      if (!atx) {
-        throw new HeadingShiftError(
-          `shiftHeadings: line ${lineIndex + 1} ("${raw}") is a setext heading (Title\\n===/---), which cannot be ` +
-          'renumbered without risking corruption of surrounding text; the item this belongs to is not splice-writable.',
-        );
-      }
-      edits.push({ lineIndex, hashes: atx[1]!, rest: atx[2] ?? '' });
+  for (const lineIndex of starts) {
+    const raw = lines[lineIndex] ?? '';
+    const atx = ATX_LINE_RE.exec(raw);
+    if (!atx) {
+      throw new HeadingShiftError(
+        `shiftHeadings: line ${lineIndex + 1} ("${raw}") is a setext heading (Title\\n===/---), which cannot be ` +
+        'renumbered without risking corruption of surrounding text; the item this belongs to is not splice-writable.',
+      );
     }
-    for (const c of n.children ?? []) walk(c);
-  };
-  walk(tree);
+    edits.push({ lineIndex, hashes: atx[1]!, rest: atx[2] ?? '' });
+  }
   for (const edit of edits) {
     const newLevel = edit.hashes.length + delta;
     if (newLevel < 1 || newLevel > 6) {

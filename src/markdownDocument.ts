@@ -161,7 +161,8 @@ export function parseMarkdownDocument(text: string, options: { checkboxes?: bool
   // headings are recognized. Title comes from the RAW heading-line slice (not
   // mdast textContent, which strips inline markdown) so section vocabulary
   // matches byte-for-byte; raw/offset feed the existing body-slicing below.
-  const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+  // Headings and spans need only the GFM tokenizer; its tree nodes are built when checkbox items are read.
+  const tree = fromMarkdown(text, { extensions: [gfm()], ...(options.checkboxes === false ? {} : { mdastExtensions: [gfmFromMarkdown()] }) });
   const headings: Array<{ level: number; title: string; line: number; offset: number; raw: string }> = [];
   const collectHeadings = (node: any): void => {
     if (node.type === 'heading' && node.position) {

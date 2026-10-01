@@ -48,6 +48,9 @@ export interface DocumentParsedIssue {
    *  documentWriteBack.ts, not here), so these stay unset for them — one source of truth each. */
   status?: string;
   assignee?: string;
+  /** The 0-based lines of `body` that start a heading (its own first), as the document's parse
+   *  found them; set only when nothing was excised (`body === raw`), so they index `body` exactly. */
+  headingLines?: number[];
 }
 
 const childIndex = new WeakMap<MarkdownDocument, Map<number | null, number[]>>();
@@ -137,6 +140,19 @@ function umbrellaBody(doc: MarkdownDocument, headerLineCount: number, isIdBearin
   return out;
 }
 
+// The lines (0-based, from the section's own heading) of every heading in section `index`'s
+// subtree: its descendants follow it contiguously in document order.
+function subtreeHeadingLines(doc: MarkdownDocument, index: number): number[] {
+  const start = doc.sections[index]!.lineStart;
+  const within = (j: number): boolean => {
+    for (let p = doc.sections[j]!.parentIndex; p !== null; p = doc.sections[p]!.parentIndex) if (p === index) return true;
+    return false;
+  };
+  const lines = [0];
+  for (let j = index + 1; j < doc.sections.length && within(j); j++) lines.push(doc.sections[j]!.lineStart - start);
+  return lines;
+}
+
 /** Parse one document source's text into its issue tree. `filePath` is used only for the
  *  umbrella issue's id (mirrors `fileToRecord`'s `basename(path).replace(/\.[^.]+$/, '')`). */
 // One command reads a document through several doors (mode detection, then the source); the
@@ -187,11 +203,13 @@ export function parseMarkdownDocumentSource(text: string, filePath: string): Doc
     const parentId = ancestorIndex !== null ? idBearing.get(ancestorIndex)!.id : umbrellaId;
     if (parentId) addChild(parentId, id);
     const section = doc.sections[index]!;
+    const body = subtreeExcisingIdBearing(doc, index, isIdBearing);
     issues.push({
       id, title, parent: parentId, children: [], // children filled below, once every parent is known
-      body: subtreeExcisingIdBearing(doc, index, isIdBearing),
+      body,
       lineStart: section.lineStart, lineEnd: section.lineEnd,
       level: section.level, raw: section.raw,
+      ...(body === section.raw ? { headingLines: subtreeHeadingLines(doc, index) } : {}),
     });
   }
 

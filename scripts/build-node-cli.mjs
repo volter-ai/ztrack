@@ -46,9 +46,14 @@ rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 // module load in dist/cli.js instead of bun inlining the packages into the bundle, so an install
 // without the peers stays lean and `ztrack sync github` fails with an install hint instead of a
 // module-not-found buried inside a bundled blob.
+// Bundles resolve their dependencies' production builds: bun otherwise takes the `development`
+// export condition, and micromark's development build runs debug calls and assertions on every
+// token of every parse.
+const production = { ...process.env, NODE_ENV: 'production' };
 const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/world-core', '--external=@volter/twin-github', '--outfile=dist/cli.js'], {
   cwd: packageRoot,
   encoding: 'utf8',
+  env: production,
 });
 
 if (build.status !== 0) {
@@ -89,7 +94,7 @@ if (vizCore.status !== 0) {
 const kitCjs = spawnSync(
   'bun',
   ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
-  { cwd: packageRoot, encoding: 'utf8' },
+  { cwd: packageRoot, encoding: 'utf8', env: production },
 );
 if (kitCjs.status !== 0) {
   process.stderr.write(kitCjs.stderr || kitCjs.stdout || 'preset-kit CJS bundle failed\n');
@@ -97,5 +102,5 @@ if (kitCjs.status !== 0) {
 }
 
 // The board backing consumes the installed kanban grammar without a TypeScript loader.
-const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8' });
+const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
 if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout); process.exit(kanban.status ?? 1); }
