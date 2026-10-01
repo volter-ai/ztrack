@@ -4,6 +4,8 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+## 2.4.22
+
 - The CLI bundles carry their dependencies' production builds; they carried micromark's development build, which runs debug calls and assertions on every token.
 - A document issue's headings are renumbered from the document's own parse, not by parsing each issue again. `ztrack check` on the fleet board's 600 KB document: 1.0 s to 0.44-0.69 s, with identical findings.
 
