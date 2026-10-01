@@ -38,6 +38,12 @@
 //     - [ ] a person has seen it working       an acceptance line; checked: `- [x] <line>: <evidence>`
 //   - [x] c4 the owner's words are the source of this task
 //     - source: u-63f732c036792fc8462474ae "supercode inbox can be a source cited by ztrack"
+//   - [ ] c5 write the release notes
+//
+//     The task's brief: Markdown indented under it, as long as it needs, read as the task's prose.
+//
+// A metadata or header line may end in a Markdown hard break (`\`), as a page editor (Git Notes) writes a paragraph's
+// line breaks; the break is not part of the value.
 //
 // The metadata block is the body's leading paragraphs made wholly of the keys above; anything
 // else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>` (or another letter prefix and
@@ -78,6 +84,8 @@ export const KanbanTaskSchema = z.object({
   sources: z.array(z.object({ id: z.string().regex(/^[a-z]-[0-9a-f]+$/), quote: z.string().min(1).optional() }).strict()).optional(),
   /** The task's acceptance lines (`  - [ ] <criterion>` under it), each checked off with its evidence on the line. */
   lines: z.array(z.object({ checked: z.boolean(), text: z.string().min(1) }).strict()).optional(),
+  /** The task's brief: Markdown indented under it, read as prose (a page editor shows it as the task's text). */
+  brief: z.string().min(1).optional(),
 }).strict();
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
@@ -141,13 +149,20 @@ const trimBlankLines = (lines: string[]) => {
 
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string };
-type ParsedTask = { metadata?: Record<string, unknown>; id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[] };
+type ParsedTask = { metadata?: Record<string, unknown>; id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
 
+// A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
+// inside it are kept, and its first two spaces of indent are the list's, not the brief's.
+const BRIEF_LINE = /^ {2,}\S/;
 function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
   const tasks: ParsedTask[] = [];
   const unparsed: string[] = [];
   const unnamed: ParsedTask[] = [];
+  const briefs = new Map<ParsedTask, string[]>();
+  let blanks = 0;
   for (const line of lines) {
+    if (line.trim() === '') { blanks++; continue; }
+    const pendingBlanks = blanks; blanks = 0;
     const t = TASK_LINE.exec(line);
     if (t) {
       const task: ParsedTask = { id: t[2] ?? '', status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[3]!.trim() };
@@ -180,8 +195,17 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
       last.sources = [...(last.sources ?? []), { id: src[1]!, ...(src[2] ? { quote: src[2] } : {}) }];
       continue;
     }
-    if (line.trim() !== '') unparsed.push(line);
+    if (BRIEF_LINE.test(line) && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      const brief = briefs.get(last) ?? [];
+      if (brief.length) for (let i = 0; i < pendingBlanks; i++) brief.push('');
+      brief.push(line.slice(2));
+      briefs.set(last, brief);
+      continue;
+    }
+    unparsed.push(line);
   }
+  for (const [task, brief] of briefs) task.brief = brief.join('\n');
   // A task written without an id takes the card's next free `c<N>`, in line order.
   let next = tasks.reduce((m, t) => Math.max(m, /^c\d+$/.test(t.id) ? Number(t.id.slice(1)) : 0), 0);
   for (const t of unnamed) t.id = `c${++next}`;
@@ -215,7 +239,8 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
     end = end < 0 ? content.length : at2 + end;
     const para = content.slice(at2, end);
     if (!para.length || !para.every((l) => META_LINE.test(l))) break;
-    for (const l of para) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.trim(); }
+    // A metadata line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
+    for (const l of para) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.replace(/\s*\\$/u, '').trim(); }
     at2 = end;
     while (at2 < content.length && content[at2]!.trim() === '') at2++;
   }
@@ -290,6 +315,8 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
       if (t.waitingOn) out.push(`  - waiting-on: ${t.waitingOn}`);
       for (const src of t.sources ?? []) out.push(`  - source: ${src.id}${src.quote ? ` "${src.quote}"` : ''}`);
       for (const l of t.lines ?? []) out.push(`  - [${l.checked ? 'x' : ' '}] ${l.text}`);
+      // The brief, indented under its task as a paragraph of the list item, set apart by blank lines.
+      if (t.brief) out.push('', ...t.brief.split('\n').map((l) => (l === '' ? '' : `  ${l}`)), '');
     }
     out.push(...(card.unparsed ?? []));
   }

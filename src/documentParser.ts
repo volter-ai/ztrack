@@ -117,7 +117,8 @@ function parseHeaderBlock(preamble: string): { title?: string; status?: string; 
     if (line.trim() === '') { i++; break; }
     const m = HEADER_LINE.exec(line.trim());
     if (!m) { aborted = true; i = 0; break; } // not a header block after all — nothing consumed
-    meta[m[1]!.toLowerCase()] = m[2]!.trim();
+    // A header line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
+    meta[m[1]!.toLowerCase()] = m[2]!.replace(/\s*\\$/u, '').trim();
   }
   // status/assignee ride along with title: fileToRecord (src/check.ts) — which this scan
   // deliberately mirrors — USES all three; dropping two of them left the umbrella issue

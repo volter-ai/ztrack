@@ -160,7 +160,8 @@ export function decomposeSection(raw: string): DecomposedSection {
       const m = HEADER_LINE_RE.exec(line.trim());
       if (!m) { aborted = true; break; }
       const key = m[1]!.toLowerCase();
-      meta[key] = m[2]!.trim();
+      // A header line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
+      meta[key] = m[2]!.replace(/\s*\\$/u, '').trim();
       metaLines[key] = idx;
     }
     if (!aborted && Object.keys(meta).length > 0) {
@@ -232,7 +233,8 @@ export function spliceSectionText(
  *  (documentSource.ts's `write()`) turns this into a fail-closed error naming the file/issue. */
 export class NoStatusHeaderError extends Error {}
 
-const STATUS_VALUE_RE = /^(\s*status\s*:\s*)(.*?)(\s*)$/i;
+// The value stops before a Markdown hard break (`\`, a Git Notes page's line break), which a rewrite keeps.
+const STATUS_VALUE_RE = /^(\s*status\s*:\s*)(.*?)(\s*(?:\\)?\s*)$/i;
 
 /** ZTB-16 dev/03: the write-side analogue of `spliceSectionText`, scoped to ONE header field —
  *  given a FRESHLY re-read section `raw` (same staleness contract as `spliceSectionText`), rewrite
@@ -267,7 +269,7 @@ export function spliceStatusLine(raw: string, newStatus: string): string {
 /** Thrown when a partially recognized, malformed header makes insertion ambiguous. */
 export class NoAssigneeInsertionPointError extends Error {}
 
-const ASSIGNEE_VALUE_RE = /^(\s*assignee\s*:\s*)(.*?)(\s*)$/i;
+const ASSIGNEE_VALUE_RE = /^(\s*assignee\s*:\s*)(.*?)(\s*(?:\\)?\s*)$/i;
 
 /** Rewrite, add, or remove one document item's `assignee:` header line.
  *
