@@ -20,7 +20,6 @@
 // DocumentSource (backends/documentSource.ts) is the only caller — this module owns no I/O and no
 // document-tree walking (that stays in documentParser.ts / markdownDocument.ts).
 import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
 
 // ── shiftHeadings ────────────────────────────────────────────────────────────────────────────
@@ -40,7 +39,9 @@ const ATX_LINE_RE = /^(#{1,6})(\s.*|)$/;
  *  caller that relies on "shiftHeadings succeeded" as a writability signal gets it even when the
  *  shift is a no-op (an L=1 document item, whose read/write shift delta is 0). */
 export function shiftHeadings(text: string, delta: number): string {
-  const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+  // Only heading positions are read: the GFM tokenizer still decides what is a heading, and the
+  // GFM tree extensions (autolinks, tables, footnotes as nodes) are not built.
+  const tree = fromMarkdown(text, { extensions: [gfm()] });
   const lines = text.split('\n');
   const edits: Array<{ lineIndex: number; hashes: string; rest: string }> = [];
   const walk = (node: unknown): void => {

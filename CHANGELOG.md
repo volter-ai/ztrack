@@ -4,6 +4,10 @@ All notable ztrack release changes are recorded here.
 
 ## Unreleased
 
+- Board codec: `chunkBoardDocument`, `rechunkBoardDocument` and `renderBoardCard` let a caller keep a document's card spans, re-read only the region an edit touched, and splice one card in place.
+- Parsing a document's issues no longer re-parses every section body for checkboxes, and one command parses the same document once.
+- `ztrack check` keeps each cited supercode message it has read and asks only for new ids (on the fleet board: 36-47 s to under 1 s).
+
 ## 2.4.20
 
 - Resolve task message blockers as external waits, preserving card/task referent checks.
