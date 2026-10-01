@@ -8,10 +8,8 @@
   },
   "files": [
     "ARCHITECTURE.md",
-    "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
-    "ROADMAP.md",
     "scripts/build-brand-tokens.mjs",
     "scripts/build-node-cli.mjs",
     "scripts/build-visualizer-react.mjs",
