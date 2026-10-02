@@ -174,7 +174,9 @@ export function parseMarkdownDocumentSource(text: string, filePath: string): Doc
 
   const idBearing = new Map<number, { id: string; title: string }>();
   doc.sections.forEach((section, index) => {
-    const m = ID_HEADING_RE.exec(section.title);
+    // The heading as Markdown reads it: a backslash-escaped punctuation character is that character (CommonMark 2.4), so
+    // an editor that writes `t\_651ec10b` (Git Notes does) names the same card.
+    const m = ID_HEADING_RE.exec(section.title.replace(/\\([!-\/:-@[-`{-~])/g, '$1'));
     if (m) idBearing.set(index, { id: m[1]!, title: (m[2] ?? '').trim() });
   });
   const isIdBearing = (i: number): boolean => idBearing.has(i);
