@@ -160,6 +160,18 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
   const unnamed: ParsedTask[] = [];
   const briefs = new Map<ParsedTask, string[]>();
   let blanks = 0;
+  // A task's marked lines (metadata, blocked-by, waiting-on, sources, criteria) sit directly under it; once its brief has
+  // begun (a blank line, or a line that is none of them), every indented line is the brief's, whatever it reads like:
+  // Markdown in a brief is arbitrary (company RFC 0025 decisions 1 and 4).
+  let inBrief = false;
+  const addBrief = (line: string, pendingBlanks: number) => {
+    const last = tasks[tasks.length - 1]!;
+    const brief = briefs.get(last) ?? [];
+    if (brief.length) for (let i = 0; i < pendingBlanks; i++) brief.push('');
+    brief.push(line.slice(2));
+    briefs.set(last, brief);
+    inBrief = true;
+  };
   for (const line of lines) {
     if (line.trim() === '') { blanks++; continue; }
     const pendingBlanks = blanks; blanks = 0;
@@ -168,10 +180,17 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
       const task: ParsedTask = { id: t[2] ?? '', status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[3]!.trim() };
       tasks.push(task);
       if (!task.id) unnamed.push(task);
+      inBrief = false;
       continue;
     }
+    if (tasks.length && (inBrief || pendingBlanks > 0) && BRIEF_LINE.test(line)) { addBrief(line, pendingBlanks); continue; }
     const metadata = /^\s{2,}[-*] metadata:\s*(.+)$/.exec(line);
-    if (metadata && tasks.length) { tasks[tasks.length - 1]!.metadata = JSON.parse(metadata[1]!); continue; }
+    if (metadata && tasks.length) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(metadata[1]!); } catch { parsed = undefined; }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) { tasks[tasks.length - 1]!.metadata = parsed as Record<string, unknown>; continue; }
+      if (BRIEF_LINE.test(line)) { addBrief(line, pendingBlanks); continue; }
+    }
     const b = BLOCKED_LINE.exec(line);
     if (b && tasks.length) {
       const last = tasks[tasks.length - 1]!;
@@ -195,14 +214,7 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
       last.sources = [...(last.sources ?? []), { id: src[1]!, ...(src[2] ? { quote: src[2] } : {}) }];
       continue;
     }
-    if (BRIEF_LINE.test(line) && tasks.length) {
-      const last = tasks[tasks.length - 1]!;
-      const brief = briefs.get(last) ?? [];
-      if (brief.length) for (let i = 0; i < pendingBlanks; i++) brief.push('');
-      brief.push(line.slice(2));
-      briefs.set(last, brief);
-      continue;
-    }
+    if (BRIEF_LINE.test(line) && tasks.length) { addBrief(line, pendingBlanks); continue; }
     unparsed.push(line);
   }
   for (const [task, brief] of briefs) task.brief = brief.join('\n');
