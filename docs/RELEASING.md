@@ -12,14 +12,13 @@ until all three surfaces point at the intended code.
 
 Every push to `main` publishes (`.github/workflows/publish.yml`). When anything ztrack ships
 changed since its last release, the workflow moves `package.json` to the next patch version,
-turns the changelog's `## Unreleased` notes into that version's section, builds and publishes
-with provenance, commits the release back to `main`, tags `vX.Y.Z`, moves the major Action tag
-(`v2`) to it, and creates the GitHub release from the section. A push that changes nothing
+builds and publishes with provenance, commits the release back to `main`, tags `vX.Y.Z`, moves the
+major Action tag (`v2`) to it, and creates the GitHub release with notes generated from history. A push that changes nothing
 shipped (a workflow edit, say) publishes nothing.
 
-A change lands with its user-facing note under `## Unreleased` in `CHANGELOG.md`. A minor or
-major version is set by hand in `package.json` in the change that needs it; the workflow
-publishes that version as it stands.
+There is no changelog (company RFC 0025 decision 5): a change's commit message says what it does
+for its users. A minor or major version is set by hand in `package.json` in the change that needs
+it; the workflow publishes that version as it stands.
 
 ## Credentials (one-time / rotation)
 

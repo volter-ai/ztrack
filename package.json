@@ -1,6 +1,6 @@
 {
   "name": "@volter/ztrack",
-  "version": "2.4.22",
+  "version": "2.4.23",
   "description": "A typechecker for your issue tracker — every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
   "type": "module",
   "engines": {
@@ -8,10 +8,8 @@
   },
   "files": [
     "ARCHITECTURE.md",
-    "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
-    "ROADMAP.md",
     "scripts/build-brand-tokens.mjs",
     "scripts/build-node-cli.mjs",
     "scripts/build-visualizer-react.mjs",

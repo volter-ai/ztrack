@@ -460,7 +460,7 @@ release re-proves in CI that a fabricated commit SHA fails the check.
 **Stability & dependencies (be honest before adopting).** Since 1.0.0 ztrack follows semver
 proper: the CLI flag surface, the package-root API, and the bundled preset contracts break only at
 a **major** version — minor and patch releases are safe to take. Still read the
-[CHANGELOG](CHANGELOG.md) before upgrading across a major. The deterministic **local** core
+[release notes](https://github.com/volter-ai/ztrack/releases) before upgrading across a major. The deterministic **local** core
 (check, evidence, presets) depends only on the markdown store and git, and needs nothing beyond
 `ztrack` itself. **GitHub two-way sync** and **world-backed evidence** route through `@volter/world-core` (same publisher) — an **optional
 peer dependency**, not a regular one: adopt only local verification and nothing extra installs or
@@ -502,7 +502,7 @@ The README is the front door; these go deep:
 - **[Evidence](docs/EVIDENCE.md)** — cite, store, and verify proof; in-toto + DSSE attestation.
 - **[Agent playbook](docs/AGENT-PLAYBOOK.md)** — the copy-paste prompt for an agent adopting and driving ztrack.
 - **[Programmatic API](docs/API.md)** · **[Architecture](ARCHITECTURE.md)** · **[Visualizer](visualizer/README.md)** ([extending it](docs/VISUALIZER.md))
-- **[Roadmap](ROADMAP.md)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)**
+- **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)** · **[Releases](https://github.com/volter-ai/ztrack/releases)**
 
 ## License
 

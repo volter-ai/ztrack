@@ -152,7 +152,7 @@ normalized when hyphenless (`KQ3` → `KQ-3`) with the alias recorded on the sou
 never rewritten.
 
 **WP7 — capstone.** The acceptance-demo e2e over distilled fixtures; docs (SOURCES.md
-dialect section, README, the skill's authoring guidance, CHANGELOG); a manual smoke against
+dialect section, README, the skill's authoring guidance); a manual smoke against
 the real reference repo.
 
 ## Explicitly deferred
