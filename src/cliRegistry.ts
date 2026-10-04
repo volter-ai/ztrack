@@ -98,6 +98,7 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['init'], flags: [
     val('--root'), bool('--list'), val('--preset'), val('--sync'), val('--repo'), val('--policy'),
     bool('--branch'), val('--team'), val('--file'), val('--hermes-home'), val('--board'),
+    val('--site'), val('--jql'), bool('--create'),
   ] },
   { path: ['migrate-local'], flags: [ val('--root') ] },
   { path: ['preset', 'upgrade'], flags: [] },
@@ -115,6 +116,7 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['tx', 'apply'], flags: [ val('--file') ] },
   { path: ['sync', 'github'], flags: [ val('--repo'), bool('--pull'), bool('--push'), val('--policy'), bool('--json') ] },
   { path: ['sync', 'hermes'], flags: [ bool('--dry-run'), bool('--watch'), bool('--json') ] },
+  { path: ['sync', 'jira'], flags: [ bool('--pull'), bool('--push'), val('--policy'), bool('--json') ] },
   { path: ['evidence', 'add'], flags: [
     val('--file'), val('--name'), bool('--attach'), bool('--commit'),
   ] },
