@@ -75,7 +75,7 @@ export type InitTrackerProjectOptions = {
   /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
   sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' }
     | { provider: 'hermes'; file: string; home?: string; board?: string }
-    | { provider: 'jira'; site: string; jql: string; statuses?: Record<string, string>; create?: boolean; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
+    | { provider: 'jira'; site: string; jql: string; statuses?: Record<string, string>; create?: boolean; people?: boolean; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
   /** `shared`: a central, cross-worktree board (for multi-worktree/agent fleets). Default `branch`
    *  (committed, branch-scoped). See TrackerConfig.board. */
   board?: 'branch' | 'shared';

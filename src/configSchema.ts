@@ -93,6 +93,8 @@ const JiraSyncSchema = z.object({
   statuses: z.record(z.string(), z.string()).optional(),
   /** Whether a card with no ticket gets one (default false: a client's Jira is never written a ticket it lacked). */
   create: z.boolean().optional(),
+  /** Whether a ticket's reporter and commenters are kept on its arc as `person:<email>` labels (RFC 0026 decision 5). */
+  people: z.boolean().optional(),
   policy: z.enum(['hub-wins', 'twin-wins', 'merge']).optional(),
 }).strict();
 

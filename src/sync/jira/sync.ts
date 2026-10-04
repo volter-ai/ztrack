@@ -19,7 +19,7 @@ import { boardToJiraStatus, jiraToBoardStatus, sameStatus, type StatusTable } fr
 import { bind, loadStore, saveStore, type JiraFields, type JiraStore } from './store.ts';
 import { loadJiraTwinRuntime, type JiraTwinRuntime } from './twinRuntime.ts';
 
-export type JiraSyncOpts = { projectRoot: string; site: string; jql: string; statuses: StatusTable; create?: boolean; execute: RemoteExecute; client: TrackerClient };
+export type JiraSyncOpts = { projectRoot: string; site: string; jql: string; statuses: StatusTable; create?: boolean; people?: boolean; execute: RemoteExecute; client: TrackerClient };
 export type JiraSyncResult = { pulled: string[]; pushed: string[]; created: Array<{ ztrack: string; key: string }>; comments: number; conflicts: Array<{ issue: string; key: string; fields: string[] }> };
 
 const OBSERVED_AT = '2020-01-01T00:00:00.000Z';
@@ -75,16 +75,20 @@ async function recordChange(o: JiraSyncOpts, twin: JiraTwinRuntime, key: string,
   return recorded;
 }
 
-/** Every comment of a ticket, page by page past the page a search embeds, added once to its arc. */
+/** Every comment of a ticket, page by page past the page a search embeds, added once to its arc. With `people`, the
+ *  ticket's reporter and commenters are kept on the arc as `person:<email>` labels (company RFC 0026 decision 5: a
+ *  card's Room is seated with the ticket's people who hold a seat; the arcs-rooms app reads them). */
 async function pullComments(o: JiraSyncOpts, twin: JiraTwinRuntime, store: JiraStore, key: string, ztrackId: string): Promise<number> {
   const seen = new Set(store.comments[key] ?? []);
+  const people = new Set<string>();
   let added = 0;
   for (let startAt = 0; ; ) {
     const res = await o.execute({ method: 'GET', path: `/rest/api/3/issue/${encodeURIComponent(key)}/comment?startAt=${startAt}&maxResults=100&orderBy=created` });
     if (res.status >= 300) throw new Error(`jira: ${key}'s comments answered ${res.status}`);
-    const page = JSON.parse(res.body) as { comments?: Array<{ id?: string; author?: { displayName?: string }; created?: string; body?: unknown }>; total?: number; maxResults?: number };
+    const page = JSON.parse(res.body) as { comments?: Array<{ id?: string; author?: { displayName?: string; emailAddress?: string }; created?: string; body?: unknown }>; total?: number; maxResults?: number };
     const comments = page.comments ?? [];
     for (const c of comments) {
+      if (c.author?.emailAddress) people.add(c.author.emailAddress.toLowerCase());
       if (!c.id || seen.has(c.id)) continue;
       const text = (typeof c.body === 'string' ? c.body : twin.adfToText(c.body)) ?? '';
       await o.client.issue.comment(ztrackId, `${c.author?.displayName ?? 'Someone'} on ${key}, ${c.created ?? ''} (Jira comment ${c.id}):\n\n${text}`);
@@ -95,6 +99,16 @@ async function pullComments(o: JiraSyncOpts, twin: JiraTwinRuntime, store: JiraS
     if (comments.length === 0 || startAt >= (page.total ?? 0)) break;
   }
   store.comments[key] = [...seen];
+  if (o.people) {
+    const issue = await o.execute({ method: 'GET', path: `/rest/api/3/issue/${encodeURIComponent(key)}?fields=reporter` });
+    if (issue.status < 300) { const email = (JSON.parse(issue.body) as { fields?: { reporter?: { emailAddress?: string } } }).fields?.reporter?.emailAddress; if (email) people.add(email.toLowerCase()); }
+    const current = await o.client.issue.view(ztrackId, { json: 'labels' }) as { labels?: Array<string | { name?: string }> } | null;
+    const labels = (current?.labels ?? []).map((l) => typeof l === 'string' ? l : String(l?.name ?? '')).filter((l) => l.startsWith('person:'));
+    const want = [...people].map((email) => `person:${email}`);
+    const addLabels = want.filter((l) => !labels.includes(l));
+    const removeLabels = labels.filter((l) => !want.includes(l));
+    if (addLabels.length || removeLabels.length) await o.client.issue.edit(ztrackId, { ...(addLabels.length ? { addLabels } : {}), ...(removeLabels.length ? { removeLabels } : {}) });
+  }
   return added;
 }
 

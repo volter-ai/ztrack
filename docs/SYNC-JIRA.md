@@ -23,5 +23,7 @@ JIRA_EMAIL=… JIRA_API_TOKEN=… ztrack sync jira            # both ways; --pul
   unmapped Jira status leaves the board's status as it is.
 - **Comments.** Every comment of a bound ticket is added to its arc once, with its author and time. Comments are paged
   past the page a search embeds, so a long thread is never cut (Peak's `board.py` rule).
+- **People.** With `"people": true`, a ticket's reporter and commenters are kept on its arc as `person:<email>` labels
+  (where Jira shows their address), so the arc's Room can seat the ones who hold a seat (company RFC 0026 decision 5).
 - **Transport.** `JIRA_EMAIL` + `JIRA_API_TOKEN` (Jira Cloud's basic auth), or `JIRA_TOKEN` as a bearer. A Jira twin's
   URL as the site makes a rehearsal of the same sync, with no client system touched.

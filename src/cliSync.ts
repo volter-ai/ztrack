@@ -103,7 +103,7 @@ async function handleJiraSync(args: string[]): Promise<boolean> {
   if (policyFlag && !['hub-wins', 'twin-wins', 'merge'].includes(policyFlag)) throw new Error(`tracker sync: --policy must be merge | hub-wins | twin-wins (got '${policyFlag}')`);
   const onlyPull = args.includes('--pull') && !args.includes('--push');
   const onlyPush = args.includes('--push') && !args.includes('--pull');
-  const r = await jiraSync.syncJira({ projectRoot: root, site: link.site, jql: link.jql, statuses: link.statuses, create: link.create, execute: jiraSync.resolveJiraExecute(link.site), client: createTrackerClient() },
+  const r = await jiraSync.syncJira({ projectRoot: root, site: link.site, jql: link.jql, statuses: link.statuses, create: link.create, people: link.people, execute: jiraSync.resolveJiraExecute(link.site), client: createTrackerClient() },
     (policyFlag as 'hub-wins' | 'twin-wins' | 'merge') || link.policy, { pull: !onlyPush, push: !onlyPull });
   process.stdout.write(`${statusMark('pass')} sync jira: ${r.pulled.length} pulled, ${r.pushed.length} pushed, ${r.created.length} created, ${r.comments} comment(s) brought in\n`);
   for (const c of r.conflicts) process.stdout.write(`${statusMark('warn')} ${ui.yellow(`conflict on ${c.issue} (${c.key})`)} ${ui.dim(`(both sides changed: ${c.fields.join(', ')} — left untouched; edit one side and re-sync)`)}\n`);
