@@ -190,7 +190,9 @@ export async function syncJira(o: JiraSyncOpts, policy: ReconcilePolicy = 'merge
 
   // Comments, for every bound ticket the JQL still finds.
   let comments = 0;
-  if (direction.pull) for (const [key, ztrackId] of Object.entries(store.byKey)) if (realByKey.has(key) && byId.has(ztrackId)) comments += await pullComments(o, twin, store, key, ztrackId);
+  // A ticket that became an arc in this sync brings its comments now, not one sync later.
+  const madeNow = new Set(created.map((c) => c.ztrack));
+  if (direction.pull) for (const [key, ztrackId] of Object.entries(store.byKey)) if (realByKey.has(key) && (byId.has(ztrackId) || madeNow.has(ztrackId))) comments += await pullComments(o, twin, store, key, ztrackId);
 
   // The base advances to what both sides now agree on; a conflicting field stays at its base so it stays a conflict.
   for (const s of plan.subjects) {
