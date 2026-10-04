@@ -1,7 +1,7 @@
 {
   "name": "@volter/ztrack",
-  "version": "2.4.23",
-  "description": "A typechecker for your issue tracker — every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
+  "version": "2.5.0",
+  "description": "A typechecker for your issue tracker \u2014 every checked acceptance criterion must cite a real commit and proof, verified by `ztrack check` (and enforced on coding agents via a loop gate).",
   "type": "module",
   "engines": {
     "node": ">=22.18.0"
@@ -109,6 +109,7 @@
   "peerDependencies": {
     "@volter/supercode-client": "^0.3.60",
     "@volter/twin-github": "^2.0.5",
+    "@volter/twin-jira": "^2.0.37",
     "@volter/world-core": "^2.0.5",
     "react": "^18.3.1 || ^19.0.0"
   },
@@ -117,6 +118,9 @@
       "optional": true
     },
     "@volter/twin-github": {
+      "optional": true
+    },
+    "@volter/twin-jira": {
       "optional": true
     },
     "@volter/world-core": {
@@ -132,6 +136,7 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@volter/twin-github": "^2.0.5",
+    "@volter/twin-jira": "^2.0.37",
     "@volter/world-core": "^2.0.5",
     "happy-dom": "^20.10.6",
     "typescript": "^5.9.0"

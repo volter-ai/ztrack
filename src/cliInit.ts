@@ -9,6 +9,7 @@ import { seedAuditBaseline } from './core/audit.ts';
 import { commandName } from './cliHelp.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 import * as githubSync from './sync/github/index.ts';
+import * as jiraSync from './sync/jira/index.ts';
 
 // The installed preset (.volter/tracker/validation/preset.mts) imports `@volter/ztrack/preset-kit` — a
 // bare specifier resolved (via ESM `import()`, in presetRegistry.ts) by walking up `node_modules`
@@ -66,8 +67,14 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     const home = optionValue(args, '--hermes-home');
     const hermesBoard = optionValue(args, '--board');
     sync = { provider: 'hermes', file, ...(home ? { home } : {}), ...(hermesBoard ? { board: hermesBoard } : {}) };
+  } else if (syncProvider === 'jira') {
+    const site = optionValue(args, '--site');
+    const jql = optionValue(args, '--jql');
+    if (!/^https?:\/\//.test(site ?? '') || !jql) throw new Error('ztrack init --sync jira: --site <https://site.atlassian.net> and --jql "project = KEY" are required');
+    const create = args.includes('--create');
+    sync = { provider: 'jira', site: site!, jql, ...(create ? { create } : {}) };
   } else if (syncProvider) {
-    if (syncProvider !== 'github') throw new Error(`ztrack init: --sync supports 'github' and 'hermes' (got '${syncProvider}')`);
+    if (syncProvider !== 'github') throw new Error(`ztrack init: --sync supports 'github', 'hermes' and 'jira' (got '${syncProvider}')`);
     const repo = optionValue(args, '--repo');
     if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("ztrack init --sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
     const policy = optionValue(args, '--policy');
@@ -94,6 +101,17 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   // a network/auth failure leaves init successful — `ztrack sync` retries later).
   let pulled = false;
   if (sync?.provider === 'hermes') return initHermesDone(root, result, sync, command);
+  if (sync?.provider === 'jira') {
+    process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to jira ${sync.site} (${sync.jql}) — pulling tickets…`)}\n`);
+    try {
+      const r = await jiraSync.syncLinkedJira(root, { pull: true });
+      process.stdout.write(`${statusMark('pass')} ${ui.dim(`${r?.created.length ?? 0} ticket(s) became issues, ${r?.comments ?? 0} comment(s) brought in`)}\n`);
+    } catch (e) {
+      process.stdout.write(`${statusMark('warn')} ${ui.yellow(`initial pull skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim('— run `ztrack sync jira` once JIRA_EMAIL and JIRA_API_TOKEN (or JIRA_TOKEN) are set')}\n`);
+    }
+    process.stdout.write(`${statusMark('info')} ${ui.dim(`${result.configPath}: \`sync.statuses\` maps Jira status names to board statuses; \`${command} sync jira\` keeps both sides in step`)}\n`);
+    return true;
+  }
   if (sync) {
     process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to github ${sync.repo} — pulling issues…`)}\n`);
     try {

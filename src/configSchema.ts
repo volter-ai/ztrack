@@ -81,7 +81,22 @@ const HermesSyncSchema = z.object({
   bin: z.string().optional(),
 }).strict();
 
-const SyncSchema = z.discriminatedUnion('provider', [GithubSyncSchema, HermesSyncSchema]);
+/** A Jira site kept in step with the tracker (`ztrack sync jira`, company RFC 0026 decision 2): a ticket the JQL
+ *  finds is an arc; its status maps through `statuses` (Jira status name -> ztrack status). */
+const JiraSyncSchema = z.object({
+  provider: z.literal('jira'),
+  /** The site: `https://<site>.atlassian.net`, or a Jira twin's URL in a rehearsal. */
+  site: z.string(),
+  /** Which tickets are this board's arcs, e.g. `project = PEAK ORDER BY created`. */
+  jql: z.string(),
+  /** Jira status name -> ztrack status. Absent: a typical Jira Software workflow onto the kanban preset. */
+  statuses: z.record(z.string(), z.string()).optional(),
+  /** Whether a card with no ticket gets one (default false: a client's Jira is never written a ticket it lacked). */
+  create: z.boolean().optional(),
+  policy: z.enum(['hub-wins', 'twin-wins', 'merge']).optional(),
+}).strict();
+
+const SyncSchema = z.discriminatedUnion('provider', [GithubSyncSchema, HermesSyncSchema, JiraSyncSchema]);
 
 const EvidenceSchema = z.object({
   /**
