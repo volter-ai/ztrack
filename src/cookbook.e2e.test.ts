@@ -35,7 +35,7 @@ describe('cookbook: the documented local getting-started recipe', () => {
   beforeAll(() => {
     mine = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-')); root = mine;
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the preset imports '@volter/ztrack/preset-kit'
     gitInit(root);
     // README "Two ways to start (A)" + init next-steps, verbatim:
     expect(zt(['init']).code).toBe(0);
@@ -82,7 +82,7 @@ describe('cookbook: the full taught command surface', () => {
   beforeAll(() => {
     mine = mkdtempSync(join(tmpdir(), 'ztrk-cookbook-surface-')); root = mine;
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitInit(root);
     expect(zt(['init']).code).toBe(0);
     writeFileSync(join(root, 'body.md'), zt(['issue', 'scaffold', '--title', 'First case']).out);

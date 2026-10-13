@@ -14,6 +14,11 @@
 import React from 'react';
 import type { VisualizerExtension } from '../extensions';
 
+// Icons come from the Volter brand site by URL (Lucide names).
+function BrandIcon({ name, label }: { name: string; label?: string }) {
+  return <img className="brand-icon" src={`https://brand.volter.ai/icon/${name}/svg`} width={12} height={12} alt={label ?? ''} aria-hidden={label ? undefined : true} />;
+}
+
 type Task = { id: string; title: string; status: string; parallel?: boolean; commit?: string; dependsOn?: string[] };
 
 function TaskList({ tasks }: { tasks: Task[] }) {
@@ -41,7 +46,7 @@ const speckitExtension: VisualizerExtension = {
     const a = ac as { id: string; text?: string; priority?: string; mvp?: boolean; needsClarification?: boolean };
     return (
       <>
-        {a.priority && <span className="prio-tag">{a.priority}</span>}{a.mvp && <span className="mvp-tag">🎯 MVP</span>}{' '}
+        {a.priority && <span className="prio-tag">{a.priority}</span>}{a.mvp && <span className="mvp-tag"><BrandIcon name="target" /> MVP</span>}{' '}
         <strong>{a.id}</strong> {a.text}
         {a.needsClarification && <span className="clar-tag">NEEDS CLARIFICATION</span>}
       </>
@@ -102,7 +107,7 @@ const speckitExtension: VisualizerExtension = {
           <Panel title="Implementation Plan">
             {plan.technicalContext.length > 0 && <div className="meta-grid">{plan.technicalContext.map((f) => <React.Fragment key={f.field}><span className="primitive-key">{f.field}</span><span>{f.value}</span></React.Fragment>)}</div>}
             {plan.constitutionGates.length > 0 && (
-              <div className="gates"><div className="mini-key">Constitution Check</div>{plan.constitutionGates.map((g, n) => <div className={`gate${g.passed === false ? ' failed' : ' ok'}`} key={n}>{g.passed === false ? '✗' : '✓'} {g.text}</div>)}</div>
+              <div className="gates"><div className="mini-key">Constitution Check</div>{plan.constitutionGates.map((g, n) => <div className={`gate${g.passed === false ? ' failed' : ' ok'}`} key={n}>{g.passed === false ? <BrandIcon name="x" label="failed" /> : <BrandIcon name="check" label="passed" />} {g.text}</div>)}</div>
             )}
           </Panel>
         )}

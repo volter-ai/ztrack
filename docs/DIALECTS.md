@@ -2,10 +2,42 @@
 
 *Status: SHIPPED in 1.2.0 (WP1–WP7; user docs live in
 [SOURCES.md → Dialect lenses](SOURCES.md#dialect-lenses-read-a-repos-own-idiom)). This file
-remains the design record. The stance this implements is the "Dialects" section of
-[ROADMAP.md](../ROADMAP.md): ztrack is to task lists what a gradual typechecker is to untyped
-code — read first, rewrite never (by default), inference over annotation, the ids belong to
-the repo, dialects are data, and a conformance corpus is the definition of done.*
+remains the design record, and the stance below is what it implements.*
+
+## The stance
+
+The stance, stated once (it governs everything below): **ztrack is to task lists what a
+gradual typechecker is to untyped code.** TypeScript won by checking the JavaScript that
+already existed — inference first, annotations as an incremental tightening, never a rewrite
+as the entry price. Repos that have never heard of ztrack already write real task lists in a
+handful of recurring *dialects* (checkbox rosters `- [x] **WS-A: …**`, status-emoji registers
+`**Status**: 🟢/🟡/🔴`, numbered workstream sections `## 2. WS1 — title` with `**Acceptance:**`
+prose bars, decision-log tables keyed `#N`, pre-registered experiment runbooks). The concepts
+map one-to-one onto issues/status/ACs/relations; only the surface grammar differs. So:
+
+- **Read first, rewrite never (by default).** A dialect parse is a read-only *lens*;
+  `import` (materializing into native grammar) stays an opt-in migration step, not the
+  price of admission. The gradient is lens → adopted (dialect + id aliases saved) →
+  materialized (full rigor: evidence, ACs, gating) — value at every rung, each step opt-in.
+- **Inference over annotation.** Absence of `status:` is an inference site, not an error —
+  checkbox state, emoji vocabulary, and `**Acceptance:**` prose infer into status/ACs in the
+  default profiles (simple-sdlc / simple-gh-sdlc); strict rigor levels may still demand declarations.
+  Findings degrade gracefully: an inferred doc gets structural checks (unique ids, resolving
+  relations, status consistency), not evidence discipline it never claimed.
+- **The ids belong to the repo.** Never renumber someone's namespace: adopt native ids
+  (`WS1`, `KQ3`) via per-source aliases so prose cross-references keep resolving. Stamping
+  fresh ids over an existing namespace is data loss.
+- **Dialects are data, not code.** A dialect is a declared per-source profile (id pattern,
+  status vocabulary, AC marker, hierarchy convention) persisted on the source entry in
+  tracker-config — auto-DETECTED and offered (never silently applied, same philosophy as
+  `--register`), deterministic once saved.
+- **Not everything is an issue.** Decision logs, macros, and tuning tables are what issues
+  *cite* — dialect detection must recognize them to exclude and link them, not import them.
+- **The conformance corpus is the definition of done.** Each supported dialect lives in the
+  unit tests as a fixture pair (real-world-shaped input file → expected issues JSON), the way
+  a compiler carries a conformance suite. The bar it operationalizes — what "instantly
+  useful" means: point ztrack at a repo that never heard of it, and one command says
+  something true and helpful about its real task lists while mutating nothing.
 
 ## The acceptance demo (what "instantly useful" means, operationally)
 
@@ -16,16 +48,16 @@ distilled from an actual game-design repo). It keeps kill-questions in an emoji 
 that must NOT be treated as issues. The bar:
 
 ```
-$ npx ztrack init --team AS
-$ npx ztrack check
+$ npx @volter/ztrack init --team AS
+$ npx @volter/ztrack check
 note: PREPRODUCTION.md parses under the 'emoji-register' dialect: 5 issues (KQ1 … KQ5).
       To track it as-is (read-only, file untouched):
         ztrack import PREPRODUCTION.md --register --dialect emoji-register
 note: S1_BUILD.md parses under the 'checkbox-roster' dialect: 4 issues (WS-A … WS-D). …
-$ npx ztrack import PREPRODUCTION.md --register --dialect emoji-register
-$ npx ztrack import S1_BUILD.md --register --dialect checkbox-roster
-$ npx ztrack issue list        # KQ3 done · KQ2 ready · WS-A done · … — true statuses
-$ npx ztrack check             # structural truth, exit 0
+$ npx @volter/ztrack import PREPRODUCTION.md --register --dialect emoji-register
+$ npx @volter/ztrack import S1_BUILD.md --register --dialect checkbox-roster
+$ npx @volter/ztrack issue list        # KQ3 done · KQ2 ready · WS-A done · … — true statuses
+$ npx @volter/ztrack check             # structural truth, exit 0
 $ git status                   # ONLY .volter/tracker-config.json changed. No file rewritten.
 ```
 
@@ -120,7 +152,7 @@ normalized when hyphenless (`KQ3` → `KQ-3`) with the alias recorded on the sou
 never rewritten.
 
 **WP7 — capstone.** The acceptance-demo e2e over distilled fixtures; docs (SOURCES.md
-dialect section, README, the skill's authoring guidance, CHANGELOG); a manual smoke against
+dialect section, README, the skill's authoring guidance); a manual smoke against
 the real reference repo.
 
 ## Explicitly deferred

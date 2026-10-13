@@ -3,8 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CoreRoot, IssueRecord, Preset } from 'ztrack/preset-kit';
-import { assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
+import type { CoreRoot, IssueRecord, Preset } from '@volter/ztrack/preset-kit';
+import { assertAcSubLineFidelity, assertNotePositionFidelity, assertRoundTripFidelity, assertSdlcGrammarConformance, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 import { checkDefault, DefaultPreset, type DefaultRoot, DefaultRootSchema, parseDefault, serializeIssue } from './simple-sdlc.ts';
 
 const HEAD = 'cafe1234beef';
@@ -26,6 +26,22 @@ const REC: IssueRecord = {
 
 // ZTB-5 round-trip fidelity fixtures — see assertRoundTripFidelity/assertNotePositionFidelity.
 const rtPreset = DefaultPreset as unknown as Preset<CoreRoot>;
+
+// An AC carrying a sub-line this preset does not model — the field an operator reaches for to
+// record WHY an AC is being held (a blind-verification refusal, a source caveat). It used to be
+// deleted by the next `ac patch` on any AC of the issue.
+const AC_SUBLINE = '  - note: "held: independent verification returned NOT-PROVEN"';
+const AC_SUBLINE_REC: IssueRecord = {
+  id: 'DEF-4', title: 'A held criterion', status: 'in-progress', assignee: 'otto',
+  body: `Summary: one criterion, deliberately not passing
+
+## Acceptance Criteria
+
+- [ ] AC-1 v1 First criterion
+  - status: pending
+${AC_SUBLINE}
+`,
+};
 
 // two ACs, so editing one has an OTHER AC's lines to prove untouched (edit-locality).
 const EDIT_REC: IssueRecord = {
@@ -94,18 +110,15 @@ describe('simple-sdlc preset', () => {
     expect(fixOf([{ ...REC, body: REC.body.replace(HEAD, 'deadbeef') }], 'evidence_commit_not_found')).toMatch(/ztrack ac patch DEF-1 .*commit that exists/);
     // an issue-level finding → an issue-level action, not ac patch
     expect(fixOf([{ id: 'D-1', title: 'x', status: 'draft', assignee: '', body: '## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n' }], 'issue_missing_assignee')).toMatch(/ztrack issue edit D-1 --assignee/);
-    // ZTB-23 dev/03: a DOCUMENT-sourced issue (origin carries a `line` — only true for a
-    // document source's own section, see core/engine.ts's toFindingOrigin) must NOT be told to
-    // run `issue edit --assignee` (DocumentSource.write fails that closed) — it must point at the
-    // `assignee:` header line in the source file instead.
+    // Document-backed issues use the same task-service mutation; write-back projects it into the
+    // section's `assignee:` header without asking callers to edit tracker persistence.
     const docFix = fixOf([{
       id: 'D-2', title: 'x', status: 'draft', assignee: '',
       body: '## Acceptance Criteria\n\n- [ ] AC-1 v1 do it\n  - status: pending\n',
       origin: { path: '/repo/backlog.md', lineStart: 12 },
     } as IssueRecord], 'issue_missing_assignee');
+    expect(docFix).toMatch(/ztrack issue edit D-2 --assignee <you>/);
     expect(docFix).toMatch(/assignee:/);
-    expect(docFix).toMatch(/backlog\.md/);
-    expect(docFix).not.toMatch(/issue edit \S+ --assignee <you>/); // the RECOMMENDED action must not be the one that fails on a document source
     // a finding the preset gives NO specific hint for still gets the universal FLOOR (located inspect)
     const floor = fixOf([{ id: 'X-1', title: 'a', status: 'draft', assignee: 'me', body: 'x' }, { id: 'X-1', title: 'b', status: 'draft', assignee: 'me', body: 'y' }], 'duplicate_issue_id');
     expect(floor).toMatch(/ztrack issue view X-1/);
@@ -125,6 +138,7 @@ describe('simple-sdlc preset', () => {
     edit: { record: EDIT_REC, acId: 'AC-1', patch: { checked: true, status: 'passed', evidence: [{ id: 'ev1', commit: HEAD, acVersion: 1 }], proof: { explanation: 'ev1 shows it', evidenceRefs: ['ev1'] } } },
   });
   assertNotePositionFidelity({ preset: rtPreset, record: NOTE_BETWEEN_REC });
+  assertAcSubLineFidelity({ preset: rtPreset, record: AC_SUBLINE_REC, acId: 'AC-1', subLine: AC_SUBLINE });
   assertVisualizerSpecConformance(rtPreset);
   test('rule: checkbox disagreeing with explicit status fails', () => {
     const rec: IssueRecord = { id: 'D-1', title: 'x', status: 'draft', assignee: 'otto',

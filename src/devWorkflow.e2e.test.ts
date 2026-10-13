@@ -19,7 +19,7 @@ describe('dev workflow: branch-scoped check/loop in a real git repo', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-dev-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     git('init', '-q'); git('config', 'user.email', 't@t.co'); git('config', 'user.name', 't');
     zt('init');
     writeFileSync(join(root, 'g.md'), zt('issue', 'scaffold', '--title', 'G').out);
@@ -59,7 +59,7 @@ describe('dev workflow: the issue store is committed locally, ignored when linke
   test('a LOCAL tracker commits the store → a fresh clone verifies real issues (no empty false-green)', () => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-commit-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     git('init', '-q'); git('config', 'user.email', 't@t.co'); git('config', 'user.name', 't');
     zt('init');
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).not.toMatch(/tracker\/markdown\//); // store NOT ignored
@@ -72,7 +72,7 @@ describe('dev workflow: the issue store is committed locally, ignored when linke
     const clone = mkdtempSync(join(tmpdir(), 'ztrk-clone-'));
     expect(run('git', ['clone', '-q', root, clone]).status).toBe(0);
     mkdirSync(join(clone, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(clone, 'node_modules', 'ztrack'));
+    mkdirSync(join(clone, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(clone, 'node_modules', '@volter', 'ztrack'));
     const cloneZt = (...a: string[]) => spawnSync('bun', ['run', CLI, ...a], { cwd: clone, encoding: 'utf8' });
     expect(cloneZt('issue', 'list', '--json', 'identifier').stdout).toMatch(/LOCAL-1/); // clone SEES the issue
     expect(cloneZt('check').status).toBe(0);                                            // and verifies it (real, not empty)
@@ -82,7 +82,7 @@ describe('dev workflow: the issue store is committed locally, ignored when linke
   test('a LINKED tracker ignores the store (GitHub is truth)', () => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-linkedig-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     git('init', '-q');
     zt('init', '--sync', 'github', '--repo', 'o/n'); // pull 404s but init succeeds + writes the link
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toMatch(/tracker\/markdown\//); // store IGNORED

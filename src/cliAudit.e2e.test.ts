@@ -30,7 +30,7 @@ function acBody(sha: string): string {
 function freshRepo(prefix: string): { root: string; sha: string } {
   const root = mkdtempSync(join(tmpdir(), prefix));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
   gitIn(root, 'init', '-q');
   gitIn(root, 'config', 'user.email', 't@t.co');
   gitIn(root, 'config', 'user.name', 't');

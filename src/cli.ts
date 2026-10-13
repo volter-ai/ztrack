@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -30,6 +29,11 @@ import { handleLintCommand } from './cliLint.ts';
 import { handleSyncCommand } from './cliSync.ts';
 import { handlePatchCommand } from './cliPatch.ts';
 import { isMutatingCommand, observeAfterMutation } from './cliAudit.ts';
+import {
+  handleProjectHooksCommand,
+  runProjectHooks,
+  shouldRunProjectHooks,
+} from './projectHooks.ts';
 import { rejectUnknownFlags } from './cliRegistry.ts';
 import { heading, statusMark, ui } from './cliStyle.ts';
 
@@ -126,6 +130,18 @@ async function main(): Promise<void> {
   // covers everything. A no-op for any command path not in the registry — that preserves today's
   // existing behavior for ghosts/stubs/genuinely-unknown verbs untouched by this fix.
   rejectUnknownFlags(args);
+
+  if (handleProjectHooksCommand(args, projectRootFrom(), command)) return;
+
+  if (shouldRunProjectHooks(args)) {
+    const project = (args[0] === 'visualizer' || args[0] === 'viz')
+      ? resolve(optionValue(args, '--project') || projectRootFrom())
+      : projectRootFrom();
+    const hooks = runProjectHooks(project, args);
+    for (const warning of hooks.warnings) {
+      process.stderr.write(`${statusMark('warn')} ${ui.yellow(warning)}\n`);
+    }
+  }
 
   if (await handleInitCommand(args)) return;
 
@@ -331,32 +347,13 @@ async function main(): Promise<void> {
   // preset owns the grammar and renders it. The claim is then verified by `ztrack check`.
   if (await handlePatchCommand(args)) return;
 
-  let forwardArgs = args;
-  if (args[0] === 'issue' && args[1] === 'edit') {
-    const expectState = optionValue(args, '--expect-state');
-    const expectBodySha = optionValue(args, '--expect-body-sha');
-    if (expectState || expectBodySha) {
-      const identifier = args[2] ?? '';
-      const view = await client.command(['issue', 'view', identifier, '--json', 'state,body']);
-      const current = JSON.parse(view.stdout) as { state?: string; body?: string };
-      const currentBodySha = createHash('sha256').update(current.body ?? '').digest('hex');
-      const conflicts: string[] = [];
-      if (expectState && current.state !== expectState) {
-        conflicts.push(`state is ${JSON.stringify(current.state ?? null)}, expected ${JSON.stringify(expectState)}`);
-      }
-      if (expectBodySha && currentBodySha !== expectBodySha) {
-        conflicts.push(`body sha256 is ${currentBodySha}, expected ${expectBodySha}`);
-      }
-      if (conflicts.length) {
-        process.stderr.write(`${JSON.stringify({ ok: false, error: 'precondition-failed', issue: identifier, conflicts, currentState: current.state ?? null, currentBodySha }, null, 2)}\n`);
-        process.exitCode = 1;
-        return;
-      }
-      forwardArgs = args.filter((arg, index) =>
-        arg !== '--expect-state' && arg !== '--expect-body-sha' &&
-        args[index - 1] !== '--expect-state' && args[index - 1] !== '--expect-body-sha');
-    }
-  }
+  // `issue edit --expect-state/--expect-body-sha` (optimistic-concurrency preconditions) forward
+  // to the backend UNstripped: the markdown backend enforces them itself, against a fresh re-read
+  // at the last moment before the write (ztrack#20). The old shape here — a separate `issue view`
+  // + compare + strip, then forward — left the whole gap between the pre-check read and the
+  // backend's own write as a race window, which is exactly the stale-snapshot clobber the flags
+  // exist to prevent. The backend emits the same precondition-failed JSON payload on stderr with
+  // no stdout, so the exit-1 behavior below is preserved byte-for-byte at the CLI surface.
 
   // ZTB-24 dev/02 safety net: unknown `help <x>` resources were already rejected config-free right
   // after the resource-help interception up top; this catches the remaining case — one of the five
@@ -367,7 +364,7 @@ async function main(): Promise<void> {
     throw new Error(`ztrack: no help for '${helpRewriteResource}' — try '${command} --help' or one of: ${TOP_LEVEL_RESOURCES.join(', ')}`);
   }
 
-  const result = await client.command(forwardArgs, args[0] === 'extract-issue-ref' ? await readStdinIfPiped() : undefined);
+  const result = await client.command(args, args[0] === 'extract-issue-ref' ? await readStdinIfPiped() : undefined);
   const isCreate = args[0] === 'issue' && args[1] === 'create';
   // `issue create`'s JSON has no trailing newline; without one it glues to the `✓ created` line
   // below. Terminate it so stdout is a clean line (still valid JSON for piping).

@@ -28,8 +28,8 @@ function runIssueList(cwd: string): { exitCode: number; stderr: string } {
 describe('broken-oracle surfacing (issue list still works, but says the gate is dead)', () => {
   test('healthy tracker: no oracle warning on issue list', () => {
     const dir = freshTracker();
-    // make ztrack resolvable from the project, as a real `npm i -D ztrack` install would
-    mkdirSync(join(dir, 'node_modules', 'ztrack'), { recursive: true });
+    // make ztrack resolvable from the project, as a real `npm i -D @volter/ztrack` install would
+    mkdirSync(join(dir, 'node_modules', '@volter', 'ztrack'), { recursive: true });
     const { exitCode, stderr } = runIssueList(dir);
     expect(exitCode).toBe(0);
     expect(stderr).not.toContain('validation oracle');
@@ -37,7 +37,7 @@ describe('broken-oracle surfacing (issue list still works, but says the gate is 
 
   test('missing entrypoint: issue list succeeds AND warns that check/loop are dead', () => {
     const dir = freshTracker();
-    mkdirSync(join(dir, 'node_modules', 'ztrack'), { recursive: true });
+    mkdirSync(join(dir, 'node_modules', '@volter', 'ztrack'), { recursive: true });
     rmSync(join(dir, '.volter', 'tracker', 'validation', 'preset.mts'));
     const { exitCode, stderr } = runIssueList(dir);
     expect(exitCode).toBe(0); // the command itself still works — the warning must not break it
@@ -46,11 +46,11 @@ describe('broken-oracle surfacing (issue list still works, but says the gate is 
   });
 
   test('ztrack not installed as a dependency: the warning names the npm install fix', () => {
-    const dir = freshTracker(); // tmpdir has no node_modules/ztrack anywhere up its walk
+    const dir = freshTracker(); // tmpdir has no node_modules/@volter/ztrack anywhere up its walk
     const { exitCode, stderr } = runIssueList(dir);
     expect(exitCode).toBe(0);
     expect(stderr).toContain('validation oracle cannot run here');
-    expect(stderr).toContain('npm install -D ztrack');
+    expect(stderr).toContain('npm install -D @volter/ztrack');
   });
 
   test('no tracker at all: no probe, no warning, command errors its own way', () => {
@@ -79,7 +79,7 @@ describe('oracleUnavailableReason (the non-executing probe)', () => {
   test('a preset that would CRASH on import is never executed by the probe', () => {
     const dir = mkdtempSync(join(tmpdir(), 'oracle-unit-'));
     mkdirSync(join(dir, '.volter', 'tracker', 'validation'), { recursive: true });
-    mkdirSync(join(dir, 'node_modules', 'ztrack'), { recursive: true });
+    mkdirSync(join(dir, 'node_modules', '@volter', 'ztrack'), { recursive: true });
     writeFileSync(join(dir, '.volter', 'tracker-config.json'), JSON.stringify({
       backend: 'markdown', local: { teamKey: 'T' },
       validation: { entrypoint: '.volter/tracker/validation/preset.mts' },

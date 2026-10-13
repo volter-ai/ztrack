@@ -14,7 +14,7 @@ level deeper each time. **Skim to the depth you need; deeper is rarer and reache
 |---|---|---|
 | (i) Theme the board | Colors only — a CSS override | anyone, no code |
 | (ii) Teach the board your vocabulary | The preset's `visualizer` block (data: columns, field mappings) | preset editors |
-| (iii) Mod the board with code | A repo-owned `extension.tsx` (render-only panels) | dashboard authors |
+| (iii) Mod the board with code | A repo-owned `extension.tsx` (bounded render slots + operational-block policy) | dashboard authors |
 | (iv) Build your own dashboard | The raw `/api/board` payload / GraphQL API | integrators, a whole new client |
 
 ## See it: stock vs. modded (VIZ-11)
@@ -41,24 +41,27 @@ fixed 1400x900 viewport with the same issue (`MOD-1`) open in both.
 ## (i) Theme the board
 
 The board's entire palette is a small set of CSS custom properties declared once, on `:root`
-(`visualizer/client/styles.css:1-17`):
+(`visualizer/client/styles.css:1-17`). Each defaults to a Volter brand role (brand.volter.ai/tokens,
+company decision 0018), from the brand's tokens.css, which `npm run build:brand-tokens` fetches into the package
+at build and the server serves at `/assets/brand/tokens.css`; an embedding host imports it as
+`@volter/ztrack/visualizer-react/tokens.css`:
 
 | Token | Default | Meaning |
 |---|---|---|
-| `--bg` | `#f7f8fa` | page background, behind the sidebar/topbar |
-| `--sidebar` | `#fbfbfc` | the issue-list sidebar's own background |
-| `--panel` | `#ffffff` | card/panel/detail-drawer background |
-| `--panel-soft` | `#fafafb` | a slightly recessed panel surface (nested sections) |
-| `--line` | `#e1e3e8` | the primary border/divider color |
-| `--line-soft` | `#eef0f3` | a lighter divider (inside panels, between rows) |
-| `--text` | `#1f2328` | primary text color |
-| `--muted` | `#68707d` | secondary text (labels, metadata) |
-| `--subtle` | `#8b929f` | tertiary text (timestamps, placeholders) |
-| `--accent` | `#5f55ee` | the one brand color — active tab, links, focus rings |
-| `--green` | `#1f7a4d` | passed / done semantics |
-| `--amber` | `#996f00` | pending / warning semantics |
-| `--red` | `#c73434` | failed / error semantics |
-| `--shadow` | `0 24px 80px rgba(31, 35, 40, 0.18)` | the detail drawer's drop shadow |
+| `--bg` | `var(--volter-surface-page)` | page background, behind the sidebar/topbar |
+| `--sidebar` | `var(--volter-surface-subtle)` | the issue-list sidebar's own background |
+| `--panel` | `var(--volter-surface-raised)` | card/panel/detail-drawer background |
+| `--panel-soft` | `var(--volter-surface-subtle)` | a slightly recessed panel surface (nested sections) |
+| `--line` | `var(--volter-border-default)` | the primary border/divider color |
+| `--line-soft` | `var(--volter-border-subtle)` | a lighter divider (inside panels, between rows) |
+| `--text` | `var(--volter-text-primary)` | primary text color |
+| `--muted` | `var(--volter-text-muted)` | secondary text (labels, metadata) |
+| `--subtle` | `var(--volter-text-tertiary)` | tertiary text (timestamps, placeholders) |
+| `--accent` | `var(--volter-action-default)` | the action colour — active tab, links, focus rings |
+| `--green` | `var(--volter-status-healthy-text)` | passed / done semantics |
+| `--amber` | `var(--volter-status-attention-text)` | pending / warning semantics |
+| `--red` | `var(--volter-status-danger-text)` | failed / error semantics |
+| `--shadow` | `var(--volter-shadow-floating)` | the detail drawer's drop shadow |
 
 Nothing else in the client reaches outside this token set for color — every component references
 one of these fourteen, so overriding them re-themes the whole board.
@@ -132,7 +135,7 @@ const DEFAULT_VISUALIZER: VisualizerSpec = {
 enum (`DefaultIssueStatusSchema`, `boilerplates/presets/simple-sdlc.ts:69`), never a second,
 drift-prone list. Every other member is a **field reference**, not a function: `acText`/`acProof`/
 `acEvidence` name which keys on your OWN `AcceptanceCriteria`/`Evidence`/`Proof` schema hold what —
-literal data only, matching `VisualizerSpec`'s hard boundary (`ztrack/preset-kit`, re-exported from
+literal data only, matching `VisualizerSpec`'s hard boundary (`@volter/ztrack/preset-kit`, re-exported from
 `src/core/engine.ts`): no functions, no markup, ever, in this block.
 
 ### Worked example: add a status to the enum AND the block
@@ -205,12 +208,17 @@ custom panel, a bespoke evidence renderer), the board has a second, narrower ext
 repo-owned `extension.tsx`, compiled into the served bundle by the SAME process that builds the
 rest of the board — no separate build step, no restart on edit.
 
-### The contract (`ztrack/visualizer-kit`)
+### The contract (`@volter/ztrack/visualizer-kit`)
 
-`VisualizerExtension` (`src/visualizerKit.ts:105-116`) is render-only:
+`VisualizerExtension` exposes bounded render slots plus one bounded board policy: a repo may add
+an operational-block predicate/reason and rename the built-in operationally-blocked view. It
+cannot replace the view, filter, rows, cards, or navigation skeleton:
 
 ```ts
 export interface VisualizerExtension {
+  isOperationallyBlocked?(issue: CoreIssue): boolean;
+  operationalBlockLabel?(issue: CoreIssue): string | undefined;
+  blockedViewLabel?: string;
   /** -> css `state-<x>` for the status pill. */
   statusClass?(status: string): string;
   /** The AC label, rendered in the detail AC list. */
@@ -225,10 +233,10 @@ export interface VisualizerExtension {
 ```
 
 Construct one with the blessed identity helper, mirroring `definePreset`'s convention
-(`src/visualizerKit.ts:122-124`):
+(`src/visualizerKit.ts:20-22`):
 
 ```ts
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({ /* … */ });
 ```
@@ -239,6 +247,7 @@ This is the whole reach — nothing else is addressable from `extension.tsx`:
 
 | Member | Reaches | Slot |
 |---|---|---|
+| `isOperationallyBlocked` / `operationalBlockLabel` / `blockedViewLabel` | adds repo-specific issues/reasons to the core operationally-blocked view | built-in view, filter, list/card/detail reason badge |
 | `issuePanels` | a new panel inside the issue detail drawer | `visualizer/client/main.tsx:346` |
 | `acText` / `acProof` / `acEvidence` | the per-AC rendering inside the detail AC list | `visualizer/client/main.tsx:337-340` |
 | `statusClass` | the CSS class on the status pill | `visualizer/client/main.tsx:114` |
@@ -257,7 +266,8 @@ every other data-derived renderer.
 **The engine analogy, stated plainly.** The preset-agnostic SKELETON — columns, list rows, card
 faces, sidebar, topbar — is core-owned, exactly as `src/core/engine.ts` is the core-owned bound
 for presets: a preset supplies data/rules, never the engine that runs them; an extension supplies
-render logic for named slots, never the skeleton around them. Whole-board replacement — your own
+render logic for named slots and may classify an issue into the core-owned operational-blocked
+view, never replace the skeleton around them. Whole-board replacement — your own
 client entirely — is a wider, different seam: depth (iv) below, an honest bound, stated not
 hidden.
 
@@ -279,7 +289,7 @@ verbatim:
 
 ```bash
 ztrack init --team APP                                    # scaffolds the no-op starter
-cp node_modules/ztrack/boilerplates/visualizer/extension.tsx \
+cp node_modules/@volter/ztrack/boilerplates/visualizer/extension.tsx \
    .volter/tracker/visualizer/extension.tsx
 ```
 
@@ -352,12 +362,22 @@ export interface Payload {
   visualizer: VisualizerSpec | null;     // the preset's own vocabulary (depth ii), or null
   visualizerError?: string;              // set when a declared block fails validation
   extensionError?: string;               // set when a repo extension.tsx failed to compile
+  operationalBlocking: Record<string, {  // canonical whole-graph dispatch frontier by issue id
+    blocked: boolean;
+    blockers: Array<{ issue: string; ac?: string }>;
+  }>;
   issues: CoreIssue[]; findings: Finding[];
   audit: Record<string, AuditEntry[]>;
   timestamps: Record<string, Timestamps>;
   error?: string;
 }
 ```
+
+`operationalBlocking` is computed server-side by the same `issueFrontier` graph used by
+`ztrack issue list --actionable|--blocked`. It reports only unmet external dependencies: a
+satisfied referenced issue does not remain blocked, and same-issue AC sequencing remains
+actionable. Dashboard clients should consume this field instead of inferring live blocking from
+the mere presence of `blocked-by` references.
 
 `CoreIssue`/`CoreAC`/`CoreEvidence` (`visualizer/client/model.ts:1-9`) name the CORE fields every
 preset guarantees (`id`, `title`, `summary`, `status`, `acceptanceCriteria`, and per-AC `id`/

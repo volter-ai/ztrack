@@ -104,7 +104,7 @@ describe('docs consistency', () => {
     expect(unknown).toEqual([]);
   });
 
-  // ZTB-25: PR #13 (0.38.0) made `@volter-ai-dev/twin`/`twin-github` OPTIONAL peer dependencies,
+  // ZTB-25: PR #13 (0.38.0) made the twin packages (now `@volter/world-core`/`@volter/twin-github`) OPTIONAL peer dependencies,
   // but the docs kept saying otherwise for a full release — the existence checks above (link,
   // path, command, preset-name) can't catch a doc that's internally consistent but semantically
   // wrong. This phrase list is exactly what dev/01 removed from README.md/docs/EVIDENCE.md/
@@ -204,6 +204,8 @@ describe('docs consistency', () => {
       // `dist` is prepack build output (scripts/build-node-cli.mjs), not committed source — a
       // fresh checkout legitimately doesn't have it yet, so it (and its sub-globs) are exempt.
       if (entry === 'dist' || entry.startsWith('dist/')) continue;
+      // `visualizer/brand` is the brand's tokens and faces, fetched by the build (scripts/build-brand-tokens.mjs).
+      if (entry === 'visualizer/brand') continue;
       // Any negated entry may legitimately point at nothing (there's nothing to exclude yet —
       // e.g. `!visualizer/node_modules` on a fresh clone before the visualizer ever installs);
       // only inclusion entries that resolve to nothing are the phantom-entry bug this guards.

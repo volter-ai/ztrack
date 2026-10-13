@@ -26,11 +26,11 @@ setup() { # $1=name $2=red|green $3=arm|noarm  -> echoes the repo dir
     git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset default >/dev/null
+    npx @volter/ztrack init --team APP --preset default >/dev/null
     local head; head="$(git rev-parse HEAD)"
     [ "$2" = red ] && printf '%s' "${red_body//COMMIT/$head}" > body.md || printf '%s' "$green_body" > body.md
-    npx ztrack issue create --title "Task" --label type:case --state in-progress --assignee tester --body-file body.md >/dev/null
-    [ "$3" = arm ] && npx ztrack loop start APP-1 --max 2 >/dev/null
+    npx @volter/ztrack issue create --title "Task" --label type:case --state in-progress --assignee tester --body-file body.md >/dev/null
+    [ "$3" = arm ] && npx @volter/ztrack loop start APP-1 --max 2 >/dev/null
   )
   printf '%s' "$d"
 }
@@ -40,11 +40,11 @@ setup_multi() { # $1=name $2=arm-issue  -> APP-1 green, APP-2 red; arms $2; echo
     git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset default >/dev/null
+    npx @volter/ztrack init --team APP --preset default >/dev/null
     local head; head="$(git rev-parse HEAD)"
-    printf '%s' "$green_body" > g.md; npx ztrack issue create --title G --label type:case --state in-progress --assignee tester --body-file g.md >/dev/null
-    printf '%s' "${red_body//COMMIT/$head}" > r.md; npx ztrack issue create --title R --label type:case --state in-progress --assignee tester --body-file r.md >/dev/null
-    npx ztrack loop start "$2" --max 2 >/dev/null
+    printf '%s' "$green_body" > g.md; npx @volter/ztrack issue create --title G --label type:case --state in-progress --assignee tester --body-file g.md >/dev/null
+    printf '%s' "${red_body//COMMIT/$head}" > r.md; npx @volter/ztrack issue create --title R --label type:case --state in-progress --assignee tester --body-file r.md >/dev/null
+    npx @volter/ztrack loop start "$2" --max 2 >/dev/null
   )
   printf '%s' "$d"
 }
@@ -72,8 +72,8 @@ out="$(run "$(setup not-armed red noarm)" "$done_prompt")"; t="$(turns "$out")";
 
 echo "=== D. multi-issue scoping: arm the GREEN issue while another is RED → released ==="
 d="$(setup_multi scoping APP-1)"
-g_exit="$( (cd "$d" && ZTRACK_ACTIVE_ISSUE=APP-1 npx ztrack check --auto-scope >/dev/null 2>&1); echo $? )"
-r_exit="$( (cd "$d" && ZTRACK_ACTIVE_ISSUE=APP-2 npx ztrack check --auto-scope >/dev/null 2>&1); echo $? )"
+g_exit="$( (cd "$d" && ZTRACK_ACTIVE_ISSUE=APP-1 npx @volter/ztrack check --auto-scope >/dev/null 2>&1); echo $? )"
+r_exit="$( (cd "$d" && ZTRACK_ACTIVE_ISSUE=APP-2 npx @volter/ztrack check --auto-scope >/dev/null 2>&1); echo $? )"
 echo "   deterministic scoped check: APP-1 exit=$g_exit (want 0), APP-2 exit=$r_exit (want 1)"
 { [ "$g_exit" = 0 ] && [ "$r_exit" = 1 ]; } || { fails=$((fails+1)); echo "   FAIL: scoping override"; }
 out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"; v="$(verdict "$t" -eq 1)"; echo "   agent armed APP-1 → num_turns=$t  $v (released despite APP-2 red)"; [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
@@ -83,21 +83,21 @@ d="$tmp/converge"; mkdir -p "$d"; ( cd "$d"
   git init -q; git config user.email e2e@example.com; git config user.name "loop e2e"
   echo "# c" > README.md; git add README.md; git commit -q -m init
   npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-  npx ztrack init --team APP --preset default >/dev/null
+  npx @volter/ztrack init --team APP --preset default >/dev/null
   # a passed AC with no evidence -> RED (passed_ac_missing_evidence)
   printf '# APP-1: Task\n\nSummary: do the thing\nStatus: in-progress\nAssignee: tester\n\n## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n' > body.md
-  npx ztrack issue create --title "Task" --label type:case --state in-progress --assignee tester --body-file body.md >/dev/null
-  npx ztrack loop start APP-1 --max 6 >/dev/null )
-fix_prompt="The ztrack check is failing on issue APP-1: a passed acceptance criterion has no evidence. In this directory, edit the file body.md so the AC is no longer claimed as passed — change the line \"- [x] dev/01 v1 do the thing\" to \"- [ ] dev/01 v1 do the thing\" AND change its \"  - status: passed\" line to \"  - status: pending\". Then run \"npx ztrack issue edit APP-1 --body-file body.md\". Do it now."
+  npx @volter/ztrack issue create --title "Task" --label type:case --state in-progress --assignee tester --body-file body.md >/dev/null
+  npx @volter/ztrack loop start APP-1 --max 6 >/dev/null )
+fix_prompt="The ztrack check is failing on issue APP-1: a passed acceptance criterion has no evidence. In this directory, edit the file body.md so the AC is no longer claimed as passed — change the line \"- [x] dev/01 v1 do the thing\" to \"- [ ] dev/01 v1 do the thing\" AND change its \"  - status: passed\" line to \"  - status: pending\". Then run \"npx @volter/ztrack issue edit APP-1 --body-file body.md\". Do it now."
 out="$(run "$d" "$fix_prompt")"
-green_exit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"
+green_exit="$( (cd "$d" && npx @volter/ztrack check >/dev/null 2>&1); echo $? )"
 disarmed="$( [ -f "$d/.volter/.ztrack-loop.json" ] && echo NO || echo YES )"
 v="$( { [ "$green_exit" = 0 ] && [ "$disarmed" = YES ]; } && echo PASS || echo FAIL )"
 echo "   after the agent: ztrack check exit=$green_exit (want 0), loop disarmed=$disarmed (want YES)  $v"
 [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
 echo "=== F. disarm escape: arm a red issue, then \`ztrack loop stop\` → agent is FREE ==="
-d="$(setup disarm red arm)"; ( cd "$d" && npx ztrack loop stop >/dev/null )
+d="$(setup disarm red arm)"; ( cd "$d" && npx @volter/ztrack loop stop >/dev/null )
 out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"; v="$(verdict "$t" -eq 1)"; echo "   disarmed before run → num_turns=$t  $v (free, though the issue stays red)"; [ "$v" = PASS ] || { fails=$((fails+1)); echo "$out" | head -c 400; echo; }
 
 echo "=== G. per-session exemption is session-scoped — it does NOT leak across sessions ==="
@@ -119,7 +119,7 @@ echo "=== H. a LIVE agent uses the self-exempt escape; its real file doesn't lea
 # R1: the hook only offers the exempt path past the half-way point of the budget, so the
 # agent must persist a few held turns FIRST — the prompt sets that expectation.
 exempt_prompt="You are working on issue APP-1, but you are completely blocked and cannot make progress. Each time your turn is blocked, briefly say you are still blocked and stop — keep doing this. After a few attempts the hook's message will ALSO print a line: create an empty file at: .volter/.ztrack-loop-exempt-XXXX. The moment you see that line, run exactly: touch <that exact path> (use the path the hook printed), then stop. Do NOT edit body.md or any tracker files; do NOT try to fix the issue."
-d="$(setup exempt-live red arm)"; ( cd "$d" && npx ztrack loop start APP-1 --max 8 >/dev/null )
+d="$(setup exempt-live red arm)"; ( cd "$d" && npx @volter/ztrack loop start APP-1 --max 8 >/dev/null )
 out="$(run "$d" "$exempt_prompt")"; s1="$(sid "$out")"
 exempted="$( [ -n "$s1" ] && [ -f "$d/.volter/.ztrack-loop-exempt-$s1" ] && echo YES || echo NO )"  # the agent created ITS file
 armed_after="$( [ -f "$d/.volter/.ztrack-loop.json" ] && echo YES || echo NO )"                     # loop still armed ⇒ ended via exemption, not green/cap
@@ -133,9 +133,9 @@ echo "=== I. per-finding waiver: a signed waiver for the firing code releases th
 # model, sign-off = git identity); the engine downgrades that finding to 'acknowledged' so the
 # check passes and the armed agent is released.
 d="$(setup waiver red arm)"
-( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "evidence is in the linked PR" >/dev/null )
-wexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # acknowledged → 0
-wby="$( (cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null) | grep -c 'by: loop e2e' )"  # git user.name stamped, not a typed name
+( cd "$d" && npx @volter/ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "evidence is in the linked PR" >/dev/null )
+wexit="$( (cd "$d" && npx @volter/ztrack check >/dev/null 2>&1); echo $? )"   # acknowledged → 0
+wby="$( (cd "$d" && npx @volter/ztrack issue view APP-1 --json body 2>/dev/null) | grep -c 'by: loop e2e' )"  # git user.name stamped, not a typed name
 out="$(run "$d" "$done_prompt")"; t="$(turns "$out")"
 v="$( { [ "$wexit" = 0 ] && [ "${t:-0}" -eq 1 ] && [ "${wby:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
 echo "   signed waiver → check exit=$wexit (want 0), signed-off-as-git-identity=$wby (want ≥1), agent released num_turns=$t (want 1)  $v"
@@ -145,18 +145,18 @@ echo "=== J. the waiver tracks the finding, not HEAD: an unrelated commit does N
 # Per-finding (eslint-disable) model: the waiver is anchored to the code/AC, so unrelated work
 # leaves it honored. (There is no commit-anchored auto-stale in the default model.)
 ( cd "$d" && git commit --allow-empty -q -m "unrelated work moved HEAD" )
-j_commit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"   # unrelated commit → still honored → 0
+j_commit="$( (cd "$d" && npx @volter/ztrack check >/dev/null 2>&1); echo $? )"   # unrelated commit → still honored → 0
 v="$( [ "$j_commit" = 0 ] && echo PASS || echo FAIL )"
 echo "   unrelated commit → exit=$j_commit (want 0, waiver still honored)  $v"
 [ "$v" = PASS ] || fails=$((fails+1))
 
 echo "=== K. an unreasoned waiver is ITSELF an error (it can't silently mute the check) ==="
 d="$(setup unreasoned red noarm)"
-( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null \
+( cd "$d" && npx @volter/ztrack issue view APP-1 --json body 2>/dev/null \
   | python3 -c "import json,sys;print(json.load(sys.stdin)['body'].rstrip()+'\n\n## Waivers\n\n- code: passed_ac_missing_proof by: someone\n')" > unreasoned.md \
-  && npx ztrack issue edit APP-1 --body-file unreasoned.md >/dev/null )
-kexit="$( (cd "$d" && npx ztrack check >/dev/null 2>&1); echo $? )"
-kmiss="$( (cd "$d" && npx ztrack check 2>&1) | grep -c waiver_missing_reason )"
+  && npx @volter/ztrack issue edit APP-1 --body-file unreasoned.md >/dev/null )
+kexit="$( (cd "$d" && npx @volter/ztrack check >/dev/null 2>&1); echo $? )"
+kmiss="$( (cd "$d" && npx @volter/ztrack check 2>&1) | grep -c waiver_missing_reason )"
 v="$( { [ "$kexit" = 1 ] && [ "${kmiss:-0}" -ge 1 ]; } && echo PASS || echo FAIL )"
 echo "   unreasoned waiver → check exit=$kexit (want 1), waiver_missing_reason=$kmiss (want ≥1)  $v"
 [ "$v" = PASS ] || fails=$((fails+1))

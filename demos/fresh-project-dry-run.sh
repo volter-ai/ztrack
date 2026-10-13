@@ -27,21 +27,21 @@ body() { printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do it\n  - status: pa
 # ── default preset: red→green through the real packed CLI ───────────────────
 repo="$(new_repo preset-default)"; cd "$repo"
 sha="$(git rev-parse HEAD)"
-npx ztrack init --team APP --preset default >/dev/null
+npx @volter/ztrack init --team APP --preset default >/dev/null
 body deadbeef
-npx ztrack issue create --title "Dry default" --label type:case --state ready --assignee dry-run --body-file body.md >/dev/null
-set +e; npx ztrack check --json > red.json; red_exit=$?; set -e
+npx @volter/ztrack issue create --title "Dry default" --label type:case --state ready --assignee dry-run --body-file body.md >/dev/null
+set +e; npx @volter/ztrack check --json > red.json; red_exit=$?; set -e
 test "$red_exit" -eq 1
 test "$(json_field red.json findings.0.code)" = "evidence_commit_not_found"
 body "$sha"
-npx ztrack issue edit APP-1 --body-file body.md >/dev/null
-npx ztrack check --json > green.json
+npx @volter/ztrack issue edit APP-1 --body-file body.md >/dev/null
+npx @volter/ztrack check --json > green.json
 test "$(json_field green.json summary.status)" = "pass"
 printf 'default red/green ok\n'
 
 # ── committed validated root: export + re-check --input ─────────────────────
-npx ztrack export --out .volter/root.json >/dev/null
-npx ztrack check --input .volter/root.json --json > root-check.json
+npx @volter/ztrack export --out .volter/root.json >/dev/null
+npx @volter/ztrack check --input .volter/root.json --json > root-check.json
 test "$(json_field root-check.json summary.status)" = "pass"
 printf 'ci root ok\n'
 
@@ -50,8 +50,8 @@ printf 'ci root ok\n'
 repo="$(new_repo cjs-import)"; cd "$repo"
 cat > cjs-import.cjs <<'JS'
 (async () => {
-  const check = await import('ztrack/check');
-  const sdk = await import('ztrack/sdk');
+  const check = await import('@volter/ztrack/check');
+  const sdk = await import('@volter/ztrack/sdk');
   if (typeof check.checkTracker !== 'function' || typeof sdk.createTrackerClient !== 'function') {
     throw new Error('ESM subpath not importable from CommonJS');
   }

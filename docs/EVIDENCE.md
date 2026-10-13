@@ -151,25 +151,50 @@ ztrack evidence verify --bundle envelopes.json --key .volter/keys/evidence-signi
   statement that falsely looks attested).
 - `verify --bundle … --key <public.pem>` checks the envelope signatures.
 
+## A task's source: the message it came from
+
+A claim on a board often comes from someone's words: the owner's line, a Room member's request, a
+message from another session. The kanban preset lets a task cite that message by its **supercode
+mailbox id**, with an optional quote of its words:
+
+```markdown
+- [ ] c3 ztrack cites a mailbox id, verified by `ztrack check`
+  - source: u-63f732c036792fc8462474ae "supercode inbox can be a source cited by ztrack"
+```
+
+supercode files every message a session receives or sends under an id: a line a person typed
+(`u-…`), mail from a session, a Room or a channel (`m-…`), a session's answer (`a-…`).
+`supercode message inbox --session <session>` lists them. `ztrack check` asks supercode for each
+cited message (`supercode message show --json <id>…`; `SUPERCODE_BIN` names another supercode) as
+world events of service `supercode`, and reports `task_source_unverified` for:
+
+- an id no mailbox on this machine holds;
+- a quote that is not in the message's words (whitespace is ignored);
+- supercode not answering at all.
+
+A source is where a task came from, not proof that it is done: the kanban preset stays
+evidence-free, and ticking a task still takes nothing. The check is local to the machine whose
+mailboxes hold the message. A preset of your own rents the same lookup from the kit:
+`supercodeMessages(ids)` and `quoteIn(text, quote)` from `@volter/ztrack/preset-kit`.
+
 ## Advanced: validating against a mirrored world
 
 > **Disambiguation: "world sources" vs. declared `sources`.** This section's "world" and "source
 > books"/"world source rows" name **world event adapters** — read-only mirrors of external SaaS
-> systems (GitHub/Jira/Slack/Linear events, via `@volter-ai-dev/twin`) an installed preset can
+> systems (GitHub/Jira/Slack/Linear events, via `@volter/world-core`) an installed preset can
 > ground claims against. That is a wholly different concept from a **declared source** in
 > `.volter/tracker-config.json`'s `sources: [...]` — where your issues themselves actually live
 > (one or more markdown directories/files; see `docs/SOURCES.md`). The exported package path
-> `ztrack/world-source-books` keeps its name unchanged; only the plain-English term "source" now
+> `@volter/ztrack/world-source-books` keeps its name unchanged; only the plain-English term "source" now
 > also means the tracker-config concept, so read "world source(s)" below as the former, never the
 > latter.
 
 Beyond commit-backed proof, ztrack can validate evidence against a mirrored **world** of external
-systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter-ai-dev/twin`** — since
-0.38.0 this is an **optional peer dependency** of ztrack (also the substrate behind `ztrack sync
-github`) — it does not ship inside the CLI's own install and is absent unless you add it. You must
-`npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github` yourself before any world-backed or
-sync codepath runs — see the [canonical GitHub-sync recipe](GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun) for the
-install + the bun-only invocation `sync github` requires. What's opt-in beyond the install is the
+systems (GitHub, Jira, Slack, Linear). The world/event runtime is **`@volter/world-core`** — an
+**optional peer dependency** of ztrack (also the substrate behind `ztrack sync github`) — it does
+not ship inside the CLI's own install and is absent unless you add it. You must
+`npm install -D @volter/world-core @volter/twin-github` yourself before any world-backed or sync
+codepath runs — see the [canonical GitHub-sync recipe](GUIDE.md#github-sync-install-the-peers). What's opt-in beyond the install is the
 *policy*: a baseline tracker never consults the world. You wire world-backed checks into your
 installed preset only when validation needs claims to trace back to external conversations, tickets,
 reviews, or other mirrored vendor events. Day-one usage (`init` → `scaffold` → `create` → `check`)
@@ -177,10 +202,9 @@ touches none of it, and needs neither peer installed.
 
 **Package boundary:**
 
-- `@volter-ai-dev/twin` (+ `@volter-ai-dev/twin-github`): the external event log, world config, and
+- `@volter/world-core` (+ `@volter/twin-github`): the external event log, world config, and
   service-event APIs — and the engine behind `ztrack sync github`. An **optional peer dependency**
-  on the public npm registry — absent unless you install it explicitly, and (for
-  `@volter-ai-dev/twin-github` specifically) loadable only under bun, never plain node/npx.
+  on the public npm registry — absent unless you install it explicitly.
 - `ztrack`: issue validation and the installed-preset boundary where world source rows can be
   consumed; this half never requires either peer.
 
@@ -188,12 +212,12 @@ touches none of it, and needs neither peer installed.
 ztrack's published world subpaths in its `loadContext`:
 
 ```ts
-import { loadWorldSourceBooks } from 'ztrack/world-source-books';
+import { loadWorldSourceBooks } from '@volter/ztrack/world-source-books';
 // or the annotation adapter:
-import { listAnnotations, isAnnotationExemptEvent } from 'ztrack/world-annotations';
+import { listAnnotations, isAnnotationExemptEvent } from '@volter/ztrack/world-annotations';
 ```
 
-These resolve against `@volter-ai-dev/twin` at runtime, so it must be installed (see above) wherever
+These resolve against `@volter/world-core` at runtime, so it must be installed (see above) wherever
 this preset actually runs — no extra registry configuration beyond the install. A baseline preset
 that imports neither stays world-free and needs no peer installed.
 

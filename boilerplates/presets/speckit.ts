@@ -26,11 +26,11 @@
 // VERIFICATION LAYER (explicit extension beyond stock Spec Kit): a task may cite
 // `(commit: <sha>)`; those are the story's evidence and are checked for existence.
 
-// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
+// A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
   z, toMdast, check as runCheck, rule, gitWorld,
   type Context, type DerivedModel, type IssueRecord, type Preset, type Rule, type VisualizerSpec,
-} from 'ztrack/preset-kit';
+} from '@volter/ztrack/preset-kit';
 
 // ── hard schema (core + speckit-specific, all strict) ───────────────────────
 export const SpeckitEvidenceSchema = z.object({

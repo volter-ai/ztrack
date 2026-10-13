@@ -20,7 +20,6 @@
 // DocumentSource (backends/documentSource.ts) is the only caller — this module owns no I/O and no
 // document-tree walking (that stays in documentParser.ts / markdownDocument.ts).
 import { fromMarkdown } from 'mdast-util-from-markdown';
-import { gfmFromMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
 
 // ── shiftHeadings ────────────────────────────────────────────────────────────────────────────
@@ -39,27 +38,34 @@ const ATX_LINE_RE = /^(#{1,6})(\s.*|)$/;
  *  byte-identical. `delta === 0` is still validated (still throws on a setext heading) so a
  *  caller that relies on "shiftHeadings succeeded" as a writability signal gets it even when the
  *  shift is a no-op (an L=1 document item, whose read/write shift delta is 0). */
-export function shiftHeadings(text: string, delta: number): string {
-  const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+export function shiftHeadings(text: string, delta: number, headingLines?: readonly number[]): string {
   const lines = text.split('\n');
+  // The 0-based lines that start a heading: the caller's, when the document parse that cut `text`
+  // already found them, else the GFM tokenizer's (only heading positions are read; the GFM tree
+  // extensions are not built).
+  let starts = headingLines;
+  if (!starts) {
+    const found: number[] = [];
+    const walk = (node: unknown): void => {
+      const n = node as { type?: string; position?: { start: { line: number } }; children?: unknown[] };
+      if (n.type === 'heading' && n.position) found.push(n.position.start.line - 1); // mdast lines are 1-based
+      for (const c of n.children ?? []) walk(c);
+    };
+    walk(fromMarkdown(text, { extensions: [gfm()] }));
+    starts = found;
+  }
   const edits: Array<{ lineIndex: number; hashes: string; rest: string }> = [];
-  const walk = (node: unknown): void => {
-    const n = node as { type?: string; position?: { start: { line: number } }; children?: unknown[] };
-    if (n.type === 'heading' && n.position) {
-      const lineIndex = n.position.start.line - 1; // mdast lines are 1-based
-      const raw = lines[lineIndex] ?? '';
-      const atx = ATX_LINE_RE.exec(raw);
-      if (!atx) {
-        throw new HeadingShiftError(
-          `shiftHeadings: line ${lineIndex + 1} ("${raw}") is a setext heading (Title\\n===/---), which cannot be ` +
-          'renumbered without risking corruption of surrounding text; the item this belongs to is not splice-writable.',
-        );
-      }
-      edits.push({ lineIndex, hashes: atx[1]!, rest: atx[2] ?? '' });
+  for (const lineIndex of starts) {
+    const raw = lines[lineIndex] ?? '';
+    const atx = ATX_LINE_RE.exec(raw);
+    if (!atx) {
+      throw new HeadingShiftError(
+        `shiftHeadings: line ${lineIndex + 1} ("${raw}") is a setext heading (Title\\n===/---), which cannot be ` +
+        'renumbered without risking corruption of surrounding text; the item this belongs to is not splice-writable.',
+      );
     }
-    for (const c of n.children ?? []) walk(c);
-  };
-  walk(tree);
+    edits.push({ lineIndex, hashes: atx[1]!, rest: atx[2] ?? '' });
+  }
   for (const edit of edits) {
     const newLevel = edit.hashes.length + delta;
     if (newLevel < 1 || newLevel > 6) {
@@ -154,7 +160,8 @@ export function decomposeSection(raw: string): DecomposedSection {
       const m = HEADER_LINE_RE.exec(line.trim());
       if (!m) { aborted = true; break; }
       const key = m[1]!.toLowerCase();
-      meta[key] = m[2]!.trim();
+      // A header line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
+      meta[key] = m[2]!.replace(/\s*\\$/u, '').trim();
       metaLines[key] = idx;
     }
     if (!aborted && Object.keys(meta).length > 0) {
@@ -217,7 +224,7 @@ export function spliceSectionText(
   return newPrefixRaw + shiftedBody + suffixBlanks;
 }
 
-// ── spliceStatusLine ─────────────────────────────────────────────────────────────────────────
+// ── header-field splices ─────────────────────────────────────────────────────────────────────
 
 /** Thrown by `spliceStatusLine` when the section has no `status:` header line to rewrite. No
  *  position is invented for a missing header — `decomposeSection` records no insertion point for
@@ -226,7 +233,8 @@ export function spliceSectionText(
  *  (documentSource.ts's `write()`) turns this into a fail-closed error naming the file/issue. */
 export class NoStatusHeaderError extends Error {}
 
-const STATUS_VALUE_RE = /^(\s*status\s*:\s*)(.*?)(\s*)$/i;
+// The value stops before a Markdown hard break (`\`, a Git Notes page's line break), which a rewrite keeps.
+const STATUS_VALUE_RE = /^(\s*status\s*:\s*)(.*?)(\s*(?:\\)?\s*)$/i;
 
 /** ZTB-16 dev/03: the write-side analogue of `spliceSectionText`, scoped to ONE header field —
  *  given a FRESHLY re-read section `raw` (same staleness contract as `spliceSectionText`), rewrite
@@ -255,5 +263,67 @@ export function spliceStatusLine(raw: string, newStatus: string): string {
     throw new NoStatusHeaderError(`spliceStatusLine: status header line ${lineIndex + 1} ("${line}") did not re-match the expected "status: <value>" shape.`);
   }
   lines[lineIndex] = `${m[1]}${newStatus}${m[3]}`;
+  return lines.join('\n') + (trailingNewline ? '\n' : '');
+}
+
+/** Thrown when a partially recognized, malformed header makes insertion ambiguous. */
+export class NoAssigneeInsertionPointError extends Error {}
+
+const ASSIGNEE_VALUE_RE = /^(\s*assignee\s*:\s*)(.*?)(\s*(?:\\)?\s*)$/i;
+
+/** Rewrite, add, or remove one document item's `assignee:` header line.
+ *
+ *  - Existing line + non-null value: rewrite only its value, preserving casing and whitespace.
+ *  - Existing line + null: remove only that line.
+ *  - Missing line + non-null value: insert after an existing `status:` line, or create a clean
+ *    one-field header at the section's deterministic heading/content boundary.
+ *  - Missing line + null: byte-identical no-op.
+ *
+ *  A partially recognized header that was discarded by the parser still fails closed; inserting
+ *  into that ambiguous shape could accidentally reclassify user prose as metadata. */
+export function spliceAssigneeLine(raw: string, newAssignee: string | null): string {
+  if (newAssignee !== null && (newAssignee.trim() !== newAssignee || newAssignee.includes('\n') || newAssignee.includes('\r') || newAssignee.length === 0)) {
+    throw new Error('spliceAssigneeLine: assignee must be a non-empty, single-line value without leading or trailing whitespace.');
+  }
+
+  const decomposed = decomposeSection(raw);
+  const assigneeLineIndex = decomposed.headerLineIndex.assignee;
+  const { lines, trailingNewline } = toLines(raw);
+
+  if (assigneeLineIndex !== undefined) {
+    if (newAssignee === null) {
+      lines.splice(assigneeLineIndex, 1);
+      return lines.join('\n') + (trailingNewline ? '\n' : '');
+    }
+    const line = lines[assigneeLineIndex]!;
+    const m = ASSIGNEE_VALUE_RE.exec(line);
+    if (!m) {
+      throw new Error(`spliceAssigneeLine: assignee header line ${assigneeLineIndex + 1} ("${line}") did not re-match the expected "assignee: <value>" shape.`);
+    }
+    lines[assigneeLineIndex] = `${m[1]}${newAssignee}${m[3]}`;
+    return lines.join('\n') + (trailingNewline ? '\n' : '');
+  }
+
+  if (newAssignee === null) return raw;
+
+  const statusLineIndex = decomposed.headerLineIndex.status;
+  if (decomposed.header && statusLineIndex !== undefined) {
+    lines.splice(statusLineIndex + 1, 0, `assignee: ${newAssignee}`);
+    return lines.join('\n') + (trailingNewline ? '\n' : '');
+  }
+
+  if (decomposed.discardedHeaderLine !== undefined) {
+    throw new NoAssigneeInsertionPointError(
+      `spliceAssigneeLine: the section has a partially recognized header aborted by "${decomposed.discardedHeaderLine}"; refusing to insert into an ambiguous header.`,
+    );
+  }
+
+  // No header exists. The parser's grammar deterministically skips the blank run immediately
+  // after the heading and begins content at the first non-blank line. Insert a one-field header
+  // plus its required blank terminator at that exact boundary; existing heading/body bytes remain
+  // in the same order and candidate re-parse below proves the new presentation.
+  let contentStart = 1;
+  while (contentStart < lines.length && lines[contentStart] === '') contentStart++;
+  lines.splice(contentStart, 0, `assignee: ${newAssignee}`, '');
   return lines.join('\n') + (trailingNewline ? '\n' : '');
 }

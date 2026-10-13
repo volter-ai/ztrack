@@ -13,7 +13,7 @@ import { activeStatusEnum, resolveTrackerValidation } from './presetRegistry.ts'
 import type { TrackerConfig } from './types.ts';
 
 // A minimal but SHAPE-VALID core preset (name/schema/parse/rules) — deliberately does not import
-// 'ztrack/preset-kit' so this unit test has no node_modules dependency; assertCorePreset only
+// '@volter/ztrack/preset-kit' so this unit test has no node_modules dependency; assertCorePreset only
 // checks the shape, not that `schema` is a real Zod type.
 const FIXTURE_PRESET = `
 export default {

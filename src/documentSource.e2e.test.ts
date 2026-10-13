@@ -54,7 +54,7 @@ describe('document source (ZTB-4 dev/08): read path alongside the default issue-
     root = mkdtempSync(join(tmpdir(), 'ztrk-docsrc-'));
     rootReal = realpathSync(root);
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     expect(ztIn(root, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(docPath(), DOC);
@@ -206,7 +206,7 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     wbRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-'));
     wbRootReal = realpathSync(wbRoot);
     mkdirSync(join(wbRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(wbRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(wbRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(wbRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(wbRoot, 'init', '-q'); gitIn(wbRoot, 'config', 'user.email', 't@t.co'); gitIn(wbRoot, 'config', 'user.name', 't');
     expect(ztIn(wbRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(wbDocPath(), WB_DOC);
@@ -317,11 +317,52 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     expect(parsed.summary.issues).toBeGreaterThan(0);
   });
 
+  test('5a. `issue edit --assignee` rewrites the document header through ztrack', () => {
+    const before = readFileSync(wbDocPath(), 'utf8');
+    const result = ztIn(wbRoot, 'issue', 'edit', 'DOC-1', '--assignee', 'alex');
+    expect(result.code).toBe(0);
+    const after = readFileSync(wbDocPath(), 'utf8');
+    expect(after).toBe(before.replace('assignee: kim', 'assignee: alex'));
+    const view = J(ztIn(wbRoot, 'issue', 'view', 'DOC-1', '--json')) as { assignees: { nodes: Array<{ name: string }> } };
+    expect(view.assignees.nodes.map((a) => a.name)).toEqual(['alex']);
+  });
+
+  test('5aa. `issue edit --assignee` inserts the missing header for an unassigned registered document task', () => {
+    const unassignedRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-assignee-'));
+    try {
+      mkdirSync(join(unassignedRoot, 'node_modules'), { recursive: true });
+      mkdirSync(join(unassignedRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(unassignedRoot, 'node_modules', '@volter', 'ztrack'));
+      gitIn(unassignedRoot, 'init', '-q');
+      gitIn(unassignedRoot, 'config', 'user.email', 't@t.co');
+      gitIn(unassignedRoot, 'config', 'user.name', 't');
+      expect(ztIn(unassignedRoot, 'init', '--team', 'APP').code).toBe(0);
+      const path = join(realpathSync(unassignedRoot), 'proposal.md');
+      const proposal = [
+        '## DOC-9 — Unassigned proposal',
+        '',
+        'status: draft',
+        '',
+        'Proposal body.',
+        '',
+      ].join('\n');
+      writeFileSync(path, proposal);
+      setSources(unassignedRoot, [{ path: '.volter/tracker/markdown' }, { path: 'proposal.md', format: 'document' }]);
+
+      const result = ztIn(unassignedRoot, 'issue', 'edit', 'DOC-9', '--assignee', 'alex');
+      expect(result.code).toBe(0);
+      expect(readFileSync(path, 'utf8')).toBe(proposal.replace('status: draft\n', 'status: draft\nassignee: alex\n'));
+      const view = J(ztIn(unassignedRoot, 'issue', 'view', 'DOC-9', '--json')) as { assignees: { nodes: Array<{ name: string }> } };
+      expect(view.assignees.nodes.map((a) => a.name)).toEqual(['alex']);
+    } finally {
+      rmSync(unassignedRoot, { recursive: true, force: true });
+    }
+  });
+
   test('5b. fail-closed: a document item with NO `status:` header line refuses `--state`, names the file/issue, and writes nothing', () => {
     const noHeaderRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-noheader-'));
     try {
       mkdirSync(join(noHeaderRoot, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(noHeaderRoot, 'node_modules', 'ztrack'));
+      mkdirSync(join(noHeaderRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(noHeaderRoot, 'node_modules', '@volter', 'ztrack'));
       gitIn(noHeaderRoot, 'init', '-q'); gitIn(noHeaderRoot, 'config', 'user.email', 't@t.co'); gitIn(noHeaderRoot, 'config', 'user.name', 't');
       expect(ztIn(noHeaderRoot, 'init', '--team', 'APP').code).toBe(0);
       const noHeaderDoc = [
@@ -361,7 +402,7 @@ describe('document source write-back (ZTB-4 dev/09): byte-diff splice through th
     const umbrellaRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-umbrella-'));
     try {
       mkdirSync(join(umbrellaRoot, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(umbrellaRoot, 'node_modules', 'ztrack'));
+      mkdirSync(join(umbrellaRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(umbrellaRoot, 'node_modules', '@volter', 'ztrack'));
       gitIn(umbrellaRoot, 'init', '-q'); gitIn(umbrellaRoot, 'config', 'user.email', 't@t.co'); gitIn(umbrellaRoot, 'config', 'user.name', 't');
       expect(ztIn(umbrellaRoot, 'init', '--team', 'APP').code).toBe(0);
       const umbrellaDoc = [
@@ -480,7 +521,7 @@ describe('document source write-back (ZTB-9 dev/21): splices land on LEAF items 
     nRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-nest-'));
     nRootReal = realpathSync(nRoot);
     mkdirSync(join(nRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(nRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(nRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(nRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(nRoot, 'init', '-q'); gitIn(nRoot, 'config', 'user.email', 't@t.co'); gitIn(nRoot, 'config', 'user.name', 't');
     expect(ztIn(nRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(nDocPath(), NEST_DOC);
@@ -627,7 +668,7 @@ describe('document source write-back (ZTB-10): bare leading prose survives a rea
     pRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-prose-'));
     pRootReal = realpathSync(pRoot);
     mkdirSync(join(pRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(pRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(pRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(pRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(pRoot, 'init', '-q'); gitIn(pRoot, 'config', 'user.email', 't@t.co'); gitIn(pRoot, 'config', 'user.name', 't');
     expect(ztIn(pRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(pDocPath(), PROSE_DOC);
@@ -739,7 +780,7 @@ describe('document source write-back (ZTB-15 dev/36): prose INSIDE the AC sectio
     qRoot = mkdtempSync(join(tmpdir(), 'ztrk-docwb-acprose-'));
     qRootReal = realpathSync(qRoot);
     mkdirSync(join(qRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(qRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(qRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(qRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(qRoot, 'init', '-q'); gitIn(qRoot, 'config', 'user.email', 't@t.co'); gitIn(qRoot, 'config', 'user.name', 't');
     expect(ztIn(qRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(qDocPath(), AC_PROSE_DOC);
@@ -837,7 +878,7 @@ describe('document source (ZTB-23): missing-assignee fix hint + silently-discard
     zRoot = mkdtempSync(join(tmpdir(), 'ztrk-docsrc-hdr-'));
     zRootReal = realpathSync(zRoot);
     mkdirSync(join(zRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(zRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(zRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(zRoot, 'node_modules', '@volter', 'ztrack'));
     gitIn(zRoot, 'init', '-q'); gitIn(zRoot, 'config', 'user.email', 't@t.co'); gitIn(zRoot, 'config', 'user.name', 't');
     expect(ztIn(zRoot, 'init', '--team', 'APP').code).toBe(0);
     writeFileSync(zDocPath(), ZDOC);
@@ -848,14 +889,13 @@ describe('document source (ZTB-23): missing-assignee fix hint + silently-discard
 
   type CheckPayload = { ok: boolean; findings: Array<{ code: string; issueId?: string; message: string; fix?: string }> };
 
-  test('dev/03: `issue_missing_assignee`\'s fix hint on a document-sourced issue points at the file\'s `assignee:` header line, not `issue edit --assignee`', () => {
+  test('`issue_missing_assignee` routes document-sourced issues through `issue edit --assignee`', () => {
     const payload = JSON.parse(ztIn(zRoot, 'check', '--json').out) as CheckPayload;
     for (const id of ['ZDOC-1', 'ZDOC-2']) {
       const f = payload.findings.find((x) => x.code === 'issue_missing_assignee' && x.issueId === id);
       expect(f).toBeDefined();
       expect(f!.fix).toContain('assignee:');
-      expect(f!.fix).toContain('backlog.md');
-      expect(f!.fix).not.toMatch(/issue edit \S+ --assignee <you>/);
+      expect(f!.fix).toContain(`issue edit ${id} --assignee <you>`);
     }
   });
 

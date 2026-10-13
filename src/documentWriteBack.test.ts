@@ -2,7 +2,16 @@
 // the identity documentSource.ts's write path is built on: decomposeSection(raw) reassembles
 // byte-for-byte, and shiftHeadings is a true inverse of itself for a matched +/-delta pair.
 import { describe, expect, test } from 'bun:test';
-import { decomposeSection, HeadingShiftError, NoStatusHeaderError, shiftHeadings, spliceSectionText, spliceStatusLine } from './documentWriteBack.ts';
+import {
+  decomposeSection,
+  HeadingShiftError,
+  NoAssigneeInsertionPointError,
+  NoStatusHeaderError,
+  shiftHeadings,
+  spliceAssigneeLine,
+  spliceSectionText,
+  spliceStatusLine,
+} from './documentWriteBack.ts';
 
 describe('shiftHeadings', () => {
   test('shifts every ATX heading down (deeper) by delta', () => {
@@ -251,5 +260,47 @@ describe('spliceStatusLine: rewrites ONLY the `status:` header line\'s value', (
     expect(spliced).toContain('status: done\nassignee: kim');
     expect(spliced).toContain('### Context\n\nSome note.');
     expect(spliced).toContain('- [ ] AC-1 v1 First.\n  - status: pending');
+  });
+});
+
+describe('spliceAssigneeLine: rewrites, inserts, and removes only assignee metadata', () => {
+  test('rewrites an existing value while preserving casing and whitespace', () => {
+    const raw = '## DOC-1 — Alpha\n\nstatus: ready\nAssignee:   kim   \n\nBody.\n';
+    expect(spliceAssigneeLine(raw, 'alex')).toBe(
+      '## DOC-1 — Alpha\n\nstatus: ready\nAssignee:   alex   \n\nBody.\n',
+    );
+  });
+
+  test('inserts after an existing status line when the registered document item is unassigned', () => {
+    const raw = '## DOC-2 — Beta\n\nStatus: draft\n\nBody.\n';
+    expect(spliceAssigneeLine(raw, 'alex')).toBe(
+      '## DOC-2 — Beta\n\nStatus: draft\nassignee: alex\n\nBody.\n',
+    );
+  });
+
+  test('removes an existing line without changing any other byte', () => {
+    const raw = '## DOC-3 — Gamma\n\nstatus: ready\nassignee: alex\n\nBody.\n';
+    expect(spliceAssigneeLine(raw, null)).toBe('## DOC-3 — Gamma\n\nstatus: ready\n\nBody.\n');
+  });
+
+  test('clearing an already-unassigned item is a byte-identical no-op', () => {
+    const raw = '## DOC-4 — Delta\n\nstatus: draft\n\nBody.\n';
+    expect(spliceAssigneeLine(raw, null)).toBe(raw);
+  });
+
+  test('adding to a prose-only section creates a clean one-field header at the content boundary', () => {
+    const raw = '## DOC-5 — Epsilon\n\nBody only.\n';
+    expect(spliceAssigneeLine(raw, 'alex')).toBe('## DOC-5 — Epsilon\n\nassignee: alex\n\nBody only.\n');
+  });
+
+  test('a partially recognized malformed header still fails closed', () => {
+    const raw = '## DOC-5A — Epsilon\n\nstatus: draft\nBody without a terminating header blank.\n';
+    expect(() => spliceAssigneeLine(raw, 'alex')).toThrow(NoAssigneeInsertionPointError);
+  });
+
+  test('rejects multiline or padded values instead of creating ambiguous metadata', () => {
+    const raw = '## DOC-6 — Zeta\n\nstatus: draft\n\nBody.\n';
+    expect(() => spliceAssigneeLine(raw, ' alex')).toThrow(/single-line/);
+    expect(() => spliceAssigneeLine(raw, 'alex\nstatus: done')).toThrow(/single-line/);
   });
 });

@@ -18,7 +18,7 @@ d="$tmp/proj"; mkdir -p "$d"
   git init -q; git config user.email ci@x.com; git config user.name "import demo"
   echo "# import demo" > README.md; git add README.md; git commit -q -m init
   npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-  npx ztrack init --team APP >/dev/null
+  npx @volter/ztrack init --team APP >/dev/null
 )
 
 echo "## 1. a messy, freeform backlog file"
@@ -46,7 +46,7 @@ cat "$d/backlog.md"
 
 echo
 echo "## 2. ztrack import --dry-run (preview only — writes nothing)"
-( cd "$d" && npx ztrack import backlog.md --dry-run )
+( cd "$d" && npx @volter/ztrack import backlog.md --dry-run )
 after_dry="$(cat "$d/backlog.md")"
 before_dry="$(cat <<'EOF'
 # Team backlog
@@ -72,7 +72,7 @@ ok "$([ "$after_dry" = "$before_dry" ] && echo same || echo different)" same "--
 
 echo
 echo "## 3. ztrack import (materialize in place) + --register"
-( cd "$d" && npx ztrack import backlog.md --register )
+( cd "$d" && npx @volter/ztrack import backlog.md --register )
 echo "--- backlog.md (after) ---"
 cat "$d/backlog.md"
 echo "--- tracker-config.json ---"
@@ -83,22 +83,22 @@ echo "## 4. add assignees (a document source's assignee is edited in the file di
 sed -i.bak -E 's/^(#+ APP-[0-9]+.*)$/\1\
 \
 assignee: me/' "$d/backlog.md" && rm -f "$d/backlog.md.bak"
-check_out="$( cd "$d" && npx ztrack check 2>&1 )" && check_code=0 || check_code=$?
+check_out="$( cd "$d" && npx @volter/ztrack check 2>&1 )" && check_code=0 || check_code=$?
 echo "$check_out"
 ok "$check_code" 0 "ztrack check is green after import + register + assignee"
 
 echo
 echo "## 5. ztrack issue list — the expected hierarchy"
-( cd "$d" && npx ztrack issue list --json identifier,title,parent )
+( cd "$d" && npx @volter/ztrack issue list --json identifier,title,parent )
 
 echo
 echo "## 6. ztrack ac patch on an imported AC — splice-writes correctly, check stays green"
 sha="$( cd "$d" && git add -A && git commit -q -m 'assign owners' && git rev-parse HEAD )"
-patch_out="$( cd "$d" && npx ztrack ac patch APP-2 dev/01 --json "{\"checked\":true,\"status\":\"passed\",\"evidence\":[{\"id\":\"ev1\",\"commit\":\"$sha\",\"acVersion\":1}],\"proof\":{\"explanation\":\"the seed commit adds the welcome email\",\"evidenceRefs\":[\"ev1\"]}}" )"
+patch_out="$( cd "$d" && npx @volter/ztrack ac patch APP-2 dev/01 --json "{\"checked\":true,\"status\":\"passed\",\"evidence\":[{\"id\":\"ev1\",\"commit\":\"$sha\",\"acVersion\":1}],\"proof\":{\"explanation\":\"the seed commit adds the welcome email\",\"evidenceRefs\":[\"ev1\"]}}" )"
 echo "$patch_out"
 echo "--- backlog.md (after ac patch) ---"
 cat "$d/backlog.md"
-recheck_code=0; ( cd "$d" && npx ztrack check >/dev/null 2>&1 ) || recheck_code=$?
+recheck_code=0; ( cd "$d" && npx @volter/ztrack check >/dev/null 2>&1 ) || recheck_code=$?
 ok "$recheck_code" 0 "ztrack check stays green after ac patch"
 
 echo
@@ -123,8 +123,8 @@ cat > "$d/notes/.volter/skip-me-too.md" <<'EOF'
 
 - [ ] lives under .volter
 EOF
-( cd "$d" && npx ztrack import notes --register )
-folder_out="$( cd "$d" && npx ztrack import notes 2>&1 )"
+( cd "$d" && npx @volter/ztrack import notes --register )
+folder_out="$( cd "$d" && npx @volter/ztrack import notes 2>&1 )"
 echo "$folder_out"
 ok "$(printf '%s' "$folder_out" | grep -c 'no-op (already canonical)')" 1 "re-importing the folder is a whole-batch no-op (excluded files never even appear)"
 

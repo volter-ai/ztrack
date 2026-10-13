@@ -15,10 +15,10 @@
 #      `extension.tsx` (the VIZ-13 seam),
 #   4. boots the real visualizer server and hands off to `dom-check.mjs`, which asserts the
 #      RENDERED difference — the new status column, the modded AC-unit label, and the custom
-#      panel's own heading/content — via the DOM-runtime harness (payload + bundle checks stand
+#      panel's own heading/content — via the DOM-runtime harness (payload + extension-module checks stand
 #      in as its named fallback, not a substitute; see that file's header).
 #
-# Deterministic, no live agent; CI + publish gate (see .github/workflows/ci.yml, publish.yml).
+# Deterministic, no live agent.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -62,7 +62,7 @@ git add README.md
 git commit -q -m "initial commit"
 npm init -y >/dev/null
 npm install "$tarball" >/dev/null
-npx ztrack init --team MOD --preset default >/dev/null
+npx @volter/ztrack init --team MOD --preset default >/dev/null
 
 # ── 1. edit the INSTALLED preset.mts: a new status on the schema enum AND the visualizer block,
 #    plus a changed acUnitLabel. `ztrack init` installs `boilerplates/presets/simple-sdlc.ts`
@@ -126,17 +126,17 @@ Summary: Demonstrates the modded AC-unit label and the VIZ-16 boilerplate's Proo
   - evidence ev1: commit=$sha acv=1
   - proof: "the initial commit backs this AC" -> ev1
 EOF
-npx ztrack issue create --title "Show the modded board" --label type:case --state in-progress --assignee demo --body-file panel.md >/dev/null
+npx @volter/ztrack issue create --title "Show the modded board" --label type:case --state in-progress --assignee demo --body-file panel.md >/dev/null
 
 cat > status.md <<'EOF'
 Summary: Populates the new mod-review status column.
 EOF
-npx ztrack issue create --title "New status column fixture" --label type:case --state "$new_status" --assignee demo --body-file status.md >/dev/null
+npx @volter/ztrack issue create --title "New status column fixture" --label type:case --state "$new_status" --assignee demo --body-file status.md >/dev/null
 
 # ── sanity: check still stays green after the mod. The new status is deliberately absent from
 #    simple-sdlc.ts's own STATE_RANK map (see the rationale note at the bottom of this script), so
 #    the ready/in-review lifecycle gates never fire for it -- silently skipped, not a red flag. ──
-npx ztrack check --json > check.json
+npx @volter/ztrack check --json > check.json
 test "$(json_field check.json summary.status)" = "pass"
 test "$(json_field check.json summary.issues)" -eq 2
 printf 'ztrack check: green with the modded preset (2 issues, new status included)\n'
@@ -154,7 +154,7 @@ done
 test "$up" -eq 1
 printf 'visualizer server up on :%s\n' "$port"
 
-# ── hand off to the single assertion harness: theme.css FLOOR, payload/bundle fallback, and the
+# ── hand off to the single assertion harness: theme.css FLOOR, payload/module fallback, and the
 #    DOM-runtime checks for the new status column, the modded AC-unit label, and the custom
 #    panel's own heading/content. See demos/visualizer-mod/dom-check.mjs for why each of these is
 #    checked the way it is (in particular: why the theme check is a floor, not a computed style,

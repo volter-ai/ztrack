@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
-import { initTrackerPresets, initTrackerProject, presetManifest } from './presetCatalog.ts';
+import { initTrackerPresets, initTrackerProject, presetManifest, type InitTrackerProjectOptions } from './presetCatalog.ts';
+import * as hermesSync from './sync/hermes/index.ts';
 import { ztrackResolvableFrom } from './presetRegistry.ts';
 import { createTrackerClient } from './sdk.ts';
 import { optionValue } from './cliArgs.ts';
@@ -8,15 +9,16 @@ import { seedAuditBaseline } from './core/audit.ts';
 import { commandName } from './cliHelp.ts';
 import { heading, stackedCommand, statusMark, ui } from './cliStyle.ts';
 import * as githubSync from './sync/github/index.ts';
+import * as jiraSync from './sync/jira/index.ts';
 
-// The installed preset (.volter/tracker/validation/preset.mts) imports `ztrack/preset-kit` — a
+// The installed preset (.volter/tracker/validation/preset.mts) imports `@volter/ztrack/preset-kit` — a
 // bare specifier resolved (via ESM `import()`, in presetRegistry.ts) by walking up `node_modules`
-// directories from the project root. A one-off `npx ztrack init` never adds `ztrack` as a project
+// directories from the project root. A one-off `npx @volter/ztrack init` never adds `ztrack` as a project
 // dependency, so `check` fails later with no warning at init time that would have explained why.
 // The walk itself (`ztrackResolvableFrom`) lives in presetRegistry.ts, shared with the
 // oracle-health probe that warns on preset-less commands after init.
 function unresolvableZtrackWarning(): string {
-  return `${statusMark('warn')} ${ui.yellow("'ztrack' isn't resolvable as a project dependency here")} ${ui.dim('— the installed preset imports \'ztrack/preset-kit\', so `ztrack check` will fail until you run `npm install -D ztrack` (a one-off `npx` install is not enough; see README Setup).')}`;
+  return `${statusMark('warn')} ${ui.yellow("'@volter/ztrack' isn't resolvable as a project dependency here")} ${ui.dim('— the installed preset imports \'@volter/ztrack/preset-kit\', so `ztrack check` will fail until you run `npm install -D @volter/ztrack` (a one-off `npx` install is not enough; see README Setup).')}`;
 }
 
 // ZT-issue-12: the scaffolded preset (.volter/tracker/validation/preset.mts) is a Node module that
@@ -53,11 +55,26 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   if (!initTrackerPresets().includes(preset)) {
     throw new Error(`ztrack init: unknown --preset '${preset}'. Run \`${command} init --list\` to see available presets.`);
   }
-  // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`.
+  // Optional permanent link to an external tracker: `ztrack init --sync github --repo o/n`, or a
+  // Hermes kanban behind one board file: `ztrack init --preset kanban --sync hermes [--file arcs.md]
+  // [--hermes-home <dir>] [--board <slug>]`.
   const syncProvider = optionValue(args, '--sync');
-  let sync: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' } | undefined;
-  if (syncProvider) {
-    if (syncProvider !== 'github') throw new Error(`ztrack init: --sync only supports 'github' today (got '${syncProvider}')`);
+  let sync: InitTrackerProjectOptions['sync'];
+  if (syncProvider === 'hermes') {
+    if (preset !== 'kanban') throw new Error('ztrack init --sync hermes: a Hermes-backed board uses the kanban preset — add `--preset kanban`.');
+    const file = optionValue(args, '--file') || 'arcs.md';
+    if (!file.endsWith('.md')) throw new Error(`ztrack init --sync hermes: --file must be a .md file (got '${file}')`);
+    const home = optionValue(args, '--hermes-home');
+    const hermesBoard = optionValue(args, '--board');
+    sync = { provider: 'hermes', file, ...(home ? { home } : {}), ...(hermesBoard ? { board: hermesBoard } : {}) };
+  } else if (syncProvider === 'jira') {
+    const site = optionValue(args, '--site');
+    const jql = optionValue(args, '--jql');
+    if (!/^https?:\/\//.test(site ?? '') || !jql) throw new Error('ztrack init --sync jira: --site <https://site.atlassian.net> and --jql "project = KEY" are required');
+    const create = args.includes('--create');
+    sync = { provider: 'jira', site: site!, jql, ...(create ? { create } : {}) };
+  } else if (syncProvider) {
+    if (syncProvider !== 'github') throw new Error(`ztrack init: --sync supports 'github', 'hermes' and 'jira' (got '${syncProvider}')`);
     const repo = optionValue(args, '--repo');
     if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) throw new Error("ztrack init --sync github: --repo <owner/name> is required (e.g. --repo volter-ai/ztrack)");
     const policy = optionValue(args, '--policy');
@@ -83,6 +100,18 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   // Initial pull so the linked repo's issues populate the fresh tracker (best-effort:
   // a network/auth failure leaves init successful — `ztrack sync` retries later).
   let pulled = false;
+  if (sync?.provider === 'hermes') return initHermesDone(root, result, sync, command);
+  if (sync?.provider === 'jira') {
+    process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to jira ${sync.site} (${sync.jql}) — pulling tickets…`)}\n`);
+    try {
+      const r = await jiraSync.syncLinkedJira(root, { pull: true });
+      process.stdout.write(`${statusMark('pass')} ${ui.dim(`${r?.created.length ?? 0} ticket(s) became issues, ${r?.comments ?? 0} comment(s) brought in`)}\n`);
+    } catch (e) {
+      process.stdout.write(`${statusMark('warn')} ${ui.yellow(`initial pull skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim('— run `ztrack sync jira` once JIRA_EMAIL and JIRA_API_TOKEN (or JIRA_TOKEN) are set')}\n`);
+    }
+    process.stdout.write(`${statusMark('info')} ${ui.dim(`${result.configPath}: \`sync.statuses\` maps Jira status names to board statuses; \`${command} sync jira\` keeps both sides in step`)}\n`);
+    return true;
+  }
   if (sync) {
     process.stdout.write(`${statusMark('info')} ${ui.dim(`linked to github ${sync.repo} — pulling issues…`)}\n`);
     try {
@@ -100,7 +129,7 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
   // Both end on the same step 4: wiring a coding agent is the recommended flow (README
   // § Agent workflows) and was previously absent here — a user who stopped at init's output
   // never learned the gate/skill/MCP existed.
-  const wireAgent = stackedCommand(4, 'Wire a coding agent (optional)', '/plugin marketplace add volter-ai/ztrack', `Then \`/plugin install ztrack@ztrack\` (Claude Code): a Stop-hook gate that holds the agent's turn until \`${command} loop start <issue-id> --until done\` goes genuinely green, plus a skill teaching it the tracker workflow. MCP alternative: \`claude mcp add ztrack -- npx ztrack mcp serve\`.`);
+  const wireAgent = stackedCommand(4, 'Wire a coding agent (optional)', '/plugin marketplace add volter-ai/ztrack', `Then \`/plugin install ztrack@ztrack\` (Claude Code): a Stop-hook gate that holds the agent's turn until \`${command} loop start <issue-id> --until done\` goes genuinely green, plus a skill teaching it the tracker workflow. MCP alternative: \`claude mcp add ztrack -- npx @volter/ztrack mcp serve\`.`);
   const nextSteps = sync
     ? [
         pulled
@@ -134,7 +163,35 @@ export async function handleInitCommand(args: string[]): Promise<boolean> {
     ui.dim(`Check anything: ${command} check <id> · ${command} check ./file.md · ${command} check (in a worktree, auto-scopes to the branch's issue).`),
     ui.dim('Edit the installed validation preset to encode your project rules.'),
     ui.dim('Declare more stores in .volter/tracker-config.json\'s `sources` array — a "document" source is one markdown file holding many issues.'),
-    ui.dim('Read next: the Guide (node_modules/ztrack/docs/GUIDE.md, or github.com/volter-ai/ztrack) — setup → verify → drive an agent to green; agents get docs/AGENT-PLAYBOOK.md.'),
+    ui.dim('Read next: the Guide (node_modules/@volter/ztrack/docs/GUIDE.md, or github.com/volter-ai/ztrack) — setup → verify → drive an agent to green; agents get docs/AGENT-PLAYBOOK.md.'),
+    presetTrustNotice(),
+    ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
+    '',
+  ].join('\n'));
+  return true;
+}
+
+// `init --sync hermes`: the first sync writes the board file from the board (best-effort, like the
+// github pull — a missing `supercode` leaves init successful and `ztrack sync hermes` retries).
+async function initHermesDone(root: string, result: ReturnType<typeof initTrackerProject>, sync: { file: string; home?: string }, command: string): Promise<boolean> {
+  let synced = false;
+  try {
+    const r = await hermesSync.syncLinkedHermes(root);
+    if (r) process.stdout.write(`${statusMark('pass')} ${ui.dim(`wrote ${sync.file}: ${r.pulled.length} card(s) from the board`)}\n`);
+    synced = true;
+  } catch (e) {
+    process.stdout.write(`${statusMark('warn')} ${ui.yellow(`first sync skipped: ${(e as Error).message.split('\n')[0]}`)} ${ui.dim(`— run \`${command} sync hermes\``)}\n`);
+  }
+  process.stdout.write([
+    `${statusMark('pass')} ${heading('Initialized ztrack', `preset kanban • linked to the board${sync.home ? ` at ${sync.home}` : ''}`)}`,
+    `  ${ui.dim(result.configPath)}`,
+    '',
+    ui.bold('Next steps'),
+    stackedCommand(1, synced ? 'Read the board' : 'Write the board file', synced ? `$EDITOR ${sync.file}` : `${command} sync hermes`, 'One section per card: its lane, dependencies, prose and tasks (each a subtask).'),
+    '',
+    stackedCommand(2, 'Keep it in step', `${command} sync hermes --watch`, 'Your edits reach the board the moment you save; the board\'s own moves reach the file.'),
+    '',
+    ui.dim('The file grammar: docs/SYNC-HERMES.md.'),
     presetTrustNotice(),
     ...(ztrackResolvableFrom(root) ? [] : ['', unresolvableZtrackWarning()]),
     '',

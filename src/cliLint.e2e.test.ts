@@ -28,7 +28,7 @@ function gitInit(dir: string): void {
 function freshProject(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
   mkdirSync(join(dir, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(dir, 'node_modules', 'ztrack'));
+  mkdirSync(join(dir, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(dir, 'node_modules', '@volter', 'ztrack'));
   gitInit(dir);
   return dir;
 }

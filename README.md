@@ -1,11 +1,13 @@
+<p align="center"><img src="https://brand.volter.ai/logo/ztrack/svg?size=96" alt="ztrack"></p>
+
 <h1 align="center">ztrack</h1>
 
 <p align="center"><strong>Done is earned, not declared.</strong> A verification gate for AI coding agents — every &ldquo;done&rdquo; backed by a real commit and proof, or it doesn&rsquo;t pass.</p>
 
 <p align="center">
-  <a href="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml"><img src="https://github.com/volter-ai/ztrack/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/v/ztrack.svg" alt="npm"></a>
-  <a href="https://www.npmjs.com/package/ztrack"><img src="https://img.shields.io/npm/dm/ztrack.svg" alt="npm downloads"></a>
+  <a href="https://github.com/volter-ai/ztrack/actions/workflows/publish.yml"><img src="https://github.com/volter-ai/ztrack/actions/workflows/publish.yml/badge.svg?branch=main" alt="publish"></a>
+  <a href="https://www.npmjs.com/package/@volter/ztrack"><img src="https://img.shields.io/npm/v/@volter/ztrack.svg" alt="npm"></a>
+  <a href="https://www.npmjs.com/package/@volter/ztrack"><img src="https://img.shields.io/npm/dm/@volter/ztrack.svg" alt="npm downloads"></a>
   <a href="https://github.com/volter-ai/ztrack/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0"></a>
   <img src="https://img.shields.io/badge/TypeScript-5.9-blue.svg" alt="TypeScript">
   <img src="https://img.shields.io/badge/telemetry-none-brightgreen.svg" alt="no telemetry">
@@ -70,8 +72,8 @@ ztrack is a project dev-dependency — the installed preset imports the mechanis
 like an eslint config imports its plugins (a global or one-off `npx` install is not enough):
 
 ```bash
-npm install -D ztrack       # add ztrack to the project (the preset imports it)
-npx ztrack init             # installs .volter/tracker/validation/preset.mts — real, editable rules
+npm install -D @volter/ztrack       # add ztrack to the project (the preset imports it)
+npx @volter/ztrack init             # installs .volter/tracker/validation/preset.mts — real, editable rules
 ```
 
 That's the whole setup for local verification. Three things you choose here:
@@ -80,7 +82,7 @@ That's the whole setup for local verification. Three things you choose here:
 committed alongside the code. To make your issues *be* GitHub Issues, synced both ways:
 
 ```bash
-npx ztrack init --sync github --repo owner/name   # links + pulls existing issues; check/loop stay synced
+npx @volter/ztrack init --sync github --repo owner/name   # links + pulls existing issues; check/loop stay synced
 ```
 
 **2. Your preset (the ruleset).** `ztrack init` installs the recommended **`simple-sdlc`** baseline.
@@ -98,6 +100,24 @@ plugin once; it's **dormant unless a loop is armed**, so it's safe to leave enab
 Not using Claude Code plugins? Wire the Stop and SubagentStop hooks yourself — see the
 [Guide → drive an agent to green](docs/GUIDE.md#3-usage-drive-an-agent-to-green).
 
+### Optional machine-local project hooks
+
+Independent tools can subscribe to ztrack's `project:invoke` event without becoming a ztrack dependency:
+
+```sh
+ztrack hooks add --event project:invoke --id my-tool --timeout-ms 10000 -- /absolute/path/to/tool arg1
+ztrack hooks list --json
+ztrack hooks remove my-tool
+```
+
+The versioned `ztrack.project-hooks.v1` registry lives at `<git-common-dir>/ztrack/hooks.json`, so it is
+local to one clone, shared by its worktrees, and cannot be enabled by committed repository files. Commands
+are stored as an absolute executable plus a literal argv vector and run without a shell. Each hook is
+bounded to 15 seconds and failures warn without changing the ztrack command's result. ztrack supplies
+`ZTRACK_HOOK_EVENT`, `ZTRACK_PROJECT_ROOT`, and `ZTRACK_COMMAND_JSON` to the child. Help, version,
+completions, hook management, initialization, migration, unrecognized commands, and standalone-file checks
+do not invoke project hooks.
+
 ---
 
 # Usage
@@ -106,8 +126,9 @@ Not using Claude Code plugins? Wire the Stop and SubagentStop hooks yourself —
 
 | You have… | Do |
 |---|---|
-| **GitHub Issues already** | `npx ztrack init --sync github --repo owner/name` — your issues pull in and GitHub stays the source of truth ([linked sync](docs/GUIDE.md#how-linked-sync-works)) |
-| **a pile of tasks, no tracker** | `npx ztrack init`, write the tasks down as you naturally would, then `npx ztrack import notes/tasks.md --register` materializes them into issues (or `issue create` one by one) ([importing](docs/GUIDE.md#importing-a-freeform-backlog)) |
+| **GitHub Issues already** | `npx @volter/ztrack init --sync github --repo owner/name` — your issues pull in and GitHub stays the source of truth ([linked sync](docs/GUIDE.md#how-linked-sync-works)) |
+| **a kanban (Hermes's format, through supercode)** | `npx @volter/ztrack init --preset kanban --sync hermes --hermes-home <home>` — the board is written as one markdown file, each task a subtask card; `ztrack sync hermes --watch` carries each edit to the board, and the board's own moves back, as they happen ([board file](docs/SYNC-HERMES.md)) |
+| **a pile of tasks, no tracker** | `npx @volter/ztrack init`, write the tasks down as you naturally would, then `npx @volter/ztrack import notes/tasks.md --register` materializes them into issues (or `issue create` one by one) ([importing](docs/GUIDE.md#importing-a-freeform-backlog)) |
 | **one issue to finish** | `ztrack loop start <id> --until done` — the Stop-hook gate holds your agent's turn until the work is genuinely done ([drive to green](#drive-to-green--ztrack-loop)) |
 | **a whole backlog to burn down** | groom → order → dispatch one loop-armed subagent per `issue list --actionable` row, wave by wave ([orchestrating a backlog](docs/GUIDE.md#orchestrating-a-whole-backlog-one-long-lived-session-many-issues)) |
 
@@ -155,8 +176,8 @@ Status: ready
   - evidence ev1: commit=deadbeef acv=1
   - proof: "screenshot shows a 200 response" -> ev1
 EOF
-npx ztrack issue create --title "Add /health" --label type:case --state ready --assignee me --body-file body.md
-npx ztrack check                     # ✗ the cited commit isn't in git
+npx @volter/ztrack issue create --title "Add /health" --label type:case --state ready --assignee me --body-file body.md
+npx @volter/ztrack check                     # ✗ the cited commit isn't in git
 ```
 
 ```text
@@ -176,8 +197,8 @@ independently, so editing `body.md` alone isn't enough), and re-check:
 git add -A && git commit -m "add /health endpoint"
 SHA=$(git rev-parse HEAD)
 sed "s/deadbeef/$SHA/" body.md > body.fixed.md          # cite a SHA that exists
-npx ztrack issue edit LOCAL-1 --body-file body.fixed.md  # re-import the corrected body
-npx ztrack check                                         # ✓ now it passes
+npx @volter/ztrack issue edit LOCAL-1 --body-file body.fixed.md  # re-import the corrected body
+npx @volter/ztrack check                                         # ✓ now it passes
 ```
 
 That's the whole idea: a checked acceptance criterion must cite proof that actually exists.
@@ -332,8 +353,8 @@ EOF
 ```
 
 ```bash
-npx ztrack issue list --json identifier,title   # -> APP-1  Add the /health endpoint
-npx ztrack check                                # reads PLAN.md like any other store
+npx @volter/ztrack issue list --json identifier,title   # -> APP-1  Add the /health endpoint
+npx @volter/ztrack check                                # reads PLAN.md like any other store
 ```
 
 `ac patch`/`issue edit` splice a verified change straight back into the doc at the heading's
@@ -367,8 +388,8 @@ spellings keep resolving — see [Sources → Dialect lenses](docs/SOURCES.md#di
 ztrack is built to be an AI agent's **completion oracle** — three ways to wire it, smallest to most
 autonomous:
 
-- **CI gate:** the `volter-ai/ztrack@v1` Action over a committed validated root (or `npx ztrack check --phase gate`) — full recipe, including linked mode, in the [Guide → gate it in CI](docs/GUIDE.md#gate-it-in-ci).
-- **MCP:** `claude mcp add ztrack -- npx ztrack mcp serve` — the agent calls `tracker_check` before finishing.
+- **CI gate:** the `volter-ai/ztrack@v2` Action over a committed validated root (or `npx @volter/ztrack check --phase gate`) — full recipe, including linked mode, in the [Guide → gate it in CI](docs/GUIDE.md#gate-it-in-ci).
+- **MCP:** `claude mcp add ztrack -- npx @volter/ztrack mcp serve` — the agent calls `tracker_check` before finishing.
 - **Autonomy loop:** the [`ztrack loop`](#drive-to-green--ztrack-loop) Stop-hook gate above — the recommended development flow.
 
 Full setup (MCP tools, the loop, the Stop-hook `settings.json`) is in the
@@ -378,7 +399,7 @@ adoption prompt is in the [agent playbook](docs/AGENT-PLAYBOOK.md).
 ## Presets
 
 `ztrack init --preset <name>` installs one editable, **standalone** preset — its own schema, parser,
-and rules, importing only `ztrack/preset-kit`:
+and rules, importing only `@volter/ztrack/preset-kit`:
 
 | Preset | Use when |
 |---|---|
@@ -407,6 +428,30 @@ The board is yours to mod — its vocabulary, theme, and panels are repo-owned c
 preset. See [docs/VISUALIZER.md](docs/VISUALIZER.md) for theming it, teaching it a new status, and
 adding custom panels.
 
+### Embed Project Work
+
+Hosts can render the same validated board without an iframe or a second parser:
+
+```tsx
+import { ZtrackVisualizer } from '@volter/ztrack/visualizer-react';
+import '@volter/ztrack/visualizer-react/tokens.css'; // the Volter brand roles the styles read
+import '@volter/ztrack/visualizer-react/styles.css';
+
+<ZtrackVisualizer variant="embedded" payload={payload} />
+```
+
+`@volter/ztrack/visualizer-node` supplies the configured payload plus confined theme
+and extension loaders for a trusted local server. The React surface is
+browser-safe, rooted under `.ztrack-root`, and styled through `--ztrack-*`
+variables. Use `variant="compact"` for a chat-side summary, `"embedded"` for
+a host-owned work document, and `"standalone"` for ztrack's complete app.
+All three variants render ztrack's real list, board, and detail components;
+there is no separate simplified component set. `@volter/ztrack/supercode` is the
+optional read-only integration seam: it
+resolves exact work-item context or ambient branch/worktree signals, reports
+conflicts and stale references, and projects Volter Harness task activity without
+writing either tracker issues or transcripts.
+
 ## Why believe it
 
 ztrack runs our own autonomous agent fleet in production — it's what we use to ship real code. Every
@@ -415,13 +460,12 @@ release re-proves in CI that a fabricated commit SHA fails the check.
 **Stability & dependencies (be honest before adopting).** Since 1.0.0 ztrack follows semver
 proper: the CLI flag surface, the package-root API, and the bundled preset contracts break only at
 a **major** version — minor and patch releases are safe to take. Still read the
-[CHANGELOG](CHANGELOG.md) before upgrading across a major. The deterministic **local** core
+[release notes](https://github.com/volter-ai/ztrack/releases) before upgrading across a major. The deterministic **local** core
 (check, evidence, presets) depends only on the markdown store and git, and needs nothing beyond
-`ztrack` itself. **GitHub two-way sync** and **world-backed evidence** route through `@volter-ai-dev/twin` (same publisher) — since 0.38.0 that's an **optional
+`ztrack` itself. **GitHub two-way sync** and **world-backed evidence** route through `@volter/world-core` (same publisher) — an **optional
 peer dependency**, not a regular one: adopt only local verification and nothing extra installs or
-runs; adopt sync and you must `npm install -D @volter-ai-dev/twin @volter-ai-dev/twin-github`
-yourself, and run the sync command under **bun** (not npx/node) — see the [canonical
-recipe](docs/GUIDE.md#github-sync-since-038-install-the-peers-run-under-bun).
+runs; adopt sync and you `npm install -D @volter/world-core @volter/twin-github` yourself — see the
+[canonical recipe](docs/GUIDE.md#github-sync-install-the-peers).
 
 ## How it compares
 
@@ -454,10 +498,11 @@ The README is the front door; these go deep:
 - **[Guide](docs/GUIDE.md)** — setup, the two usage patterns, CI gate, agent enforcement, visualize.
 - **[Presets](docs/PRESETS.md)** — choose and customize the ruleset; the grammar; add a rule; build your own preset; `preset upgrade`.
 - **[Sources](docs/SOURCES.md)** — declare where issues live; the document format (one file, many issues); write-back and diagnostics.
+- **[A kanban as one file](docs/SYNC-HERMES.md)** — the `kanban` preset's grammar and `ztrack sync hermes`.
 - **[Evidence](docs/EVIDENCE.md)** — cite, store, and verify proof; in-toto + DSSE attestation.
 - **[Agent playbook](docs/AGENT-PLAYBOOK.md)** — the copy-paste prompt for an agent adopting and driving ztrack.
 - **[Programmatic API](docs/API.md)** · **[Architecture](ARCHITECTURE.md)** · **[Visualizer](visualizer/README.md)** ([extending it](docs/VISUALIZER.md))
-- **[Roadmap](ROADMAP.md)** · **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)**
+- **[Contributing](CONTRIBUTING.md)** · **[Security](SECURITY.md)** · **[Releases](https://github.com/volter-ai/ztrack/releases)**
 
 ## License
 

@@ -1,8 +1,8 @@
-// ZTB-18 dev/40: a one-off `npx ztrack init` (the bare-npx case) never adds `ztrack` as a project
+// ZTB-18 dev/40: a one-off `npx @volter/ztrack init` (the bare-npx case) never adds `ztrack` as a project
 // dependency, so init/scaffold/create all succeed and only later does `ztrack check` fail with
 // "the 'ztrack' package isn't resolvable from this project" (presetRegistry.ts) — a failure init
 // itself never warned about. Regression coverage runs the real CLI's `init` in (a) a bare dir with
-// no node_modules at all, and (b) a project with `node_modules/ztrack` present, and asserts the
+// no node_modules at all, and (b) a project with `node_modules/@volter/ztrack` present, and asserts the
 // warning fires only in (a). Also guards against a `require.resolve`/`createRequire`-style check,
 // which would falsely say "resolvable" on any machine with a global npm-linked `ztrack` (Node's
 // legacy CJS global-folder fallback) even though the real failure is an ESM `import()` that never
@@ -31,13 +31,13 @@ describe('init: warns when \'ztrack\' is not resolvable from the project (ZTB-18
     const r = ztrackIn(root, ['init', '--team', 'ZT']);
     expect(r.code).toBe(0); // warning only — exit 0 unchanged
     expect(r.out).toMatch(WARNING);
-    expect(r.out).toMatch(/npm install -D ztrack/); // names the exact fix command
+    expect(r.out).toMatch(/npm install -D @volter\/ztrack/); // names the exact fix command
   }, 30_000);
 
-  test('project with `node_modules/ztrack` present → no warning', () => {
+  test('project with `node_modules/@volter/ztrack` present → no warning', () => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-init-good-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     const r = ztrackIn(root, ['init', '--team', 'ZT']);
     expect(r.code).toBe(0);
     expect(r.out).not.toMatch(WARNING);

@@ -13,7 +13,7 @@ export function commandName(): string {
 // and `view` (ZTB-24 dev/05) were 100% prose with zero implementation and are gone from here.
 export const TOP_LEVEL_RESOURCES = [
   'init', 'migrate-local', 'issue', 'project', 'api', 'check', 'export', 'import',
-  'fmt', 'lint', 'tx', 'evidence', 'ac', 'mcp', 'sync', 'visualizer', 'loop', 'waiver', 'preset', 'completions',
+  'fmt', 'lint', 'tx', 'evidence', 'ac', 'mcp', 'sync', 'visualizer', 'loop', 'waiver', 'preset', 'hooks', 'completions',
 ];
 
 export function printHelp(): void {
@@ -103,7 +103,7 @@ export function printIssueActionHelp(action: string): boolean {
     view: `${command} issue view <issue> [--json fields]`,
     get: `${command} issue view <issue> [--json fields]`, // `get` is a full alias of `view`
     create: `${command} issue create [--title text] [--body text|--body-file path] [--label name] [--state name] [--assignee name] [--parent id] [--project name]`,
-    edit: `${command} issue edit <issue> [--title text] [--body text|--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent] [--project name] [--remove-project] [--expect-state name] [--expect-body-sha sha256]`,
+    edit: `${command} issue edit <issue> [--title text] [--body text|--body-file path] [--state name] [--assignee name] [--add-label name] [--remove-label name] [--parent id] [--remove-parent] [--project name] [--remove-project] [--expect-state name] [--expect-body-sha sha256] [--dry-run]`,
     close: `${command} issue close <issue> [--reason completed] [--comment text|--comment-file path]`,
     comment: `${command} issue comment <issue> --body text|--body-file path`,
     patch: `${command} issue patch <issue> ${usageFromRegistry(['issue', 'patch'])}`,
@@ -114,7 +114,7 @@ export function printIssueActionHelp(action: string): boolean {
   // refusal of --reason canceled (and of anything else it doesn't recognize).
   const notes: Record<string, string> = {
     create: `If --title is omitted, it is derived from the body's first '# Heading' line; with neither, create refuses (the installed preset rejects an empty title). An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match.`,
-    edit: `An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match, instead of writing a value 'ztrack check' would reject later. --expect-state/--expect-body-sha are optimistic-concurrency preconditions: if the tracker's current state/body sha256 doesn't match, edit refuses with a precondition-failed JSON payload (exit 1) and writes nothing.`,
+    edit: `An explicit --state is checked against the active preset's status vocabulary (when one is configured) and refused with a did-you-mean if it doesn't match, instead of writing a value 'ztrack check' would reject later. --expect-state/--expect-body-sha are optimistic-concurrency preconditions, enforced by the backend against a fresh re-read at the moment of the write: if the tracker's current state/body sha256 doesn't match, edit refuses with a precondition-failed JSON payload (exit 1) and writes nothing. --dry-run runs every gate that can refuse the real write (not-found, --state vocabulary, the preconditions, readonly-source, a document source's write guards) and mutates nothing — a dry-run success is an honest prediction that the real run would be accepted.`,
     close: `--reason accepts only 'completed' (the default) or 'canceled'; any other value is refused. --reason canceled is itself refused: no shipped preset's status vocabulary has a "canceled" state, so use 'issue delete' or assign a real status via 'issue edit' instead.`,
     list: `--actionable: the dispatch frontier — not-done issues with no unmet (transitive) blocker, safe to dispatch right now. --blocked: the complement — not-done AND blocked, each row naming its NEAREST unmet blocker(s) (direct hop, not the whole transitive closure) in a "blockers" field. The two are mutually exclusive over the SAME underlying computation (core/blocking.ts's issueFrontier); neither --parent nor --source is supported on either (the frontier is a whole-graph view over the source-erased validated model). --source name,... (repeatable) scopes a PLAIN list to the named declared source(s), matching by a source's config name, its path, or its path basename; each occurrence may ALSO be comma-separated (ZTB-40) — occurrences and comma-parts union, order-preserving, deduped; a selector matching zero sources fails the whole invocation loud, naming it plus the available names, even when other selectors matched. 'source' is a selectable --json field naming each row's owning source. Default fields are identifier,title,state; --json overrides them (--blocked always includes "blockers").`,
     patch: `Overlays the preset's SCHEMA fields onto the issue (run \`${command} issue view\` to see the shape), then re-serializes through the preset — e.g. --json '{"status":"done"}'. The claim is then verified by \`${command} check\`. --dry-run previews without writing.`,
@@ -128,6 +128,17 @@ export function printIssueActionHelp(action: string): boolean {
 
 export function printResourceHelp(resource: string): boolean {
   const command = commandName();
+  if (resource === 'hooks') {
+    process.stdout.write(
+      `Usage: ${command} hooks <add|remove|list>\n\n` +
+      `  ${command} hooks add --event project:invoke --id <id> [--timeout-ms <100-15000>] -- <absolute-executable> [args...]\n` +
+      `  ${command} hooks remove <id>\n` +
+      `  ${command} hooks list [--json]\n\n` +
+      `Hooks are explicit machine-local integrations stored under Git's common directory. ` +
+      `They run without a shell and cannot be enabled by committed repository files.\n`,
+    );
+    return true;
+  }
   if (resource === 'init') {
     process.stdout.write(`Usage: ${command} init [--root dir] [--team KEY] [--preset <name>] [--branch] [--sync github --repo owner/name] [--policy merge|hub-wins|twin-wins]
 
@@ -255,6 +266,8 @@ set by \`evidence.store\` in the config (default \`commit\`; \`attach\` uploads 
 
 Overlays the preset's AC schema fields onto one acceptance criterion (run \`${command} issue view\`
 to see the shape), then re-serializes through the preset — e.g. \`{"checked":true,"status":"passed"}\`.
+--dry-run evaluates the whole write path — schema validation AND every backend write gate — and
+mutates nothing; it fails exactly where the real run would fail (ztrack#28).
 `);
     return true;
   }
@@ -290,7 +303,7 @@ Plan or apply a batch of model edits (tx.json: {"edits": [{"issue": "A-1", "op":
     process.stdout.write(`Usage: ${command} mcp serve
 
 Starts the MCP server (agent-facing task/evidence tools — check, patch, etc. — over stdio).
-Wire it into an agent with e.g. \`claude mcp add ztrack -- npx ztrack mcp serve\`.
+Wire it into an agent with e.g. \`claude mcp add ztrack -- npx @volter/ztrack mcp serve\`.
 `);
     return true;
   }
@@ -304,6 +317,22 @@ IS the GitHub issue (identity binding stored at .volter/sync/github.json). Same-
 conflicts surface as an unwaivable \`sync_conflict\` that gates check; --policy (default
 merge) sets resolution: hub-wins | twin-wins | merge. Auth uses the gh CLI or
 GITHUB_TOKEN — no prompted PAT.
+
+Usage: ${command} sync hermes [--dry-run | --watch] [--json]
+
+Keeps the board file (\`init --preset kanban --sync hermes\`) and its board in step,
+through supercode's board door (\`supercode workflow\`) only. The file is where the board is
+written: what it changed since the last sync goes to the board, what only the board
+changed (a session's or reviewer's move, the open run) comes to the file. There is no
+conflict state: an edit the board's workflow refuses is reported, and the file shows the
+card as it stands. A new section (any id that isn't a board id) creates a card; a deleted
+section archives it. A card's title and prose (with Session:) are its text, edited in
+place; Machine: is the machine it runs on; its status is reached by whichever event the
+board's workflow says goes there; each task is a subtask card. An edited workspace,
+branch or priority re-creates the card. --dry-run prints the board writes it would make.
+--watch keeps running and syncs the moment the file is saved or the board records an
+event (\`supercode workflow watch\`), one sync at a time; a manual sync waits for it.
+The grammar: docs/SYNC-HERMES.md.
 `);
     return true;
   }

@@ -19,7 +19,7 @@ body:
     attributes:
       label: Install path
       options:
-        - npx ztrack
+        - npx @volter/ztrack
         - npm/global install
         - source checkout
         - GitHub Action

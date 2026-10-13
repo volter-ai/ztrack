@@ -1,5 +1,8 @@
 # Preset Reference
 
+The [message-blocker decision](adr/0001-message-blockers.md) defines external
+message waits in task references without requiring synthetic card nodes.
+
 A ztrack preset is the repo-local rulebook for what "done" means. `ztrack init`
 always installs one editable, **standalone** preset at:
 
@@ -10,7 +13,7 @@ always installs one editable, **standalone** preset at:
 After installation, that file belongs to the target repository. It is real,
 editable code — its OWN strict schema, its OWN markdown parser, its OWN
 `serialize`, and its OWN rules, importing only the mechanism from
-`ztrack/preset-kit`. There is no shared/generic model: the three presets share
+`@volter/ztrack/preset-kit`. There is no shared/generic model: the three presets share
 nothing with each other except the engine. Teams edit the installed preset as
 their workflow becomes more specific.
 
@@ -22,14 +25,16 @@ their workflow becomes more specific.
 | `simple-gh-sdlc` | a GitHub PR-based dev lifecycle (review happens on a PR) | everything `simple-sdlc` enforces, **plus** a PR at in-review and a merged PR for done. *(Stage 2 will also require world annotations + world sources — the mirrored-world adapters in [EVIDENCE.md](EVIDENCE.md#advanced-validating-against-a-mirrored-world), not declared `sources:`.)* |
 | `spec` | issue bodies are lightweight specs | passed ACs cite commit-backed evidence; cited commits exist; ids unique |
 | `speckit` | repos following GitHub Spec Kit conventions | a multi-file feature bundle with required User Scenarios/Stories, Functional Requirements, and Tasks; task commits exist; foundational tasks gate story completion; Constitution Check gate passes (read-only) |
+| `kanban` | a board of cards, not a dev lifecycle — no evidence (e.g. a kanban kept as one file) | cards sit in their board workflow's lanes (todo, running, review, done, cancelled by default); a card's work is its tasks (`- [ ] c1 …`, ticked when done; on a synced board each a subtask card); every `Blocked by:` / task `blocked-by:` target exists and nothing loops; a ticked task's blockers are done (warning); a task's `source:` names a supercode mailbox message that exists and holds its quote ([EVIDENCE.md](EVIDENCE.md#a-tasks-source-the-message-it-came-from)). Supports the supercode ztrack backing directly: `Blocked by:` takes cards and messages, `Paused:` records the pauser and reason, and `Every:` schedules runs; Run/Session state stays in the runtime store |
 
 Install one with:
 
 ```bash
-npx ztrack init --team APP --preset simple-sdlc      # the lean, PR-free baseline
-npx ztrack init --team APP --preset simple-gh-sdlc   # PR-based GitHub flow
-npx ztrack init --team APP --preset spec
-npx ztrack init --team APP --preset speckit
+npx @volter/ztrack init --team APP --preset simple-sdlc      # the lean, PR-free baseline
+npx @volter/ztrack init --team APP --preset simple-gh-sdlc   # PR-based GitHub flow
+npx @volter/ztrack init --team APP --preset spec
+npx @volter/ztrack init --team APP --preset speckit
+npx @volter/ztrack init --preset kanban --sync hermes --hermes-home <home>   # a kanban as one file
 ```
 
 Omitting `--preset` installs `simple-sdlc` (and `--preset default` is an alias for it).
@@ -58,7 +63,7 @@ feature records. It is **read-only** (it defines no `serialize`, so it cannot be
 The installed file is an editable ES module (`.mts`) so a fresh repo can edit it
 without a build step, and so it loads in CommonJS consumer repos under Node
 type-stripping. It is REAL editable code: it imports the engine, the mdast
-mechanism, and the root schema constructor from `ztrack/preset-kit`, and declares
+mechanism, and the root schema constructor from `@volter/ztrack/preset-kit`, and declares
 its rules as records over the derived model.
 
 A preset is a self-contained `Preset { name, schema, parse, serialize?, rules,
@@ -67,12 +72,12 @@ loadContext?, derive?, primitives?, scaffold? }`. Here is the minimal real shape
 (the declared inverse of `parse`), and its own rules:
 
 ```ts
-// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`.
+// A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
   z, toMdast, nodeText, type MdNode,
   rule, gitWorld,
   type Context, type Preset, type IssueRecord, type IssueColumns,
-} from 'ztrack/preset-kit';
+} from '@volter/ztrack/preset-kit';
 
 // ── this preset's OWN strict schema (core fields + preset-specific, all .strict()) ──
 const SpecEvidenceSchema = z.object({
@@ -488,7 +493,7 @@ The sections above cover editing an installed preset. This section is for buildi
 preset system should read it first. Reference standalone presets (the bar to copy):
 `boilerplates/presets/{simple-sdlc,simple-gh-sdlc,spec,speckit}.ts` — each its own schema,
 parser, serialize, rules. The shared mechanism is the core engine (`src/core/engine.ts`); a
-new preset imports only `ztrack/preset-kit`.
+new preset imports only `@volter/ztrack/preset-kit`.
 
 > **Presets are standalone — there is NO universal model.** Each preset is a self-contained
 > `Preset { name, schema, parse, rules, ... }` with its OWN strict schema, its OWN mdast parser,
@@ -642,3 +647,5 @@ first). Produce one ranked must-fix / should-fix / low list, each with file:line
 input. Re-verify until clean: preset tests green (clean fixtures = 0 findings; a perturbation per
 rule), `tsc` clean, and — if porting — world/legacy-validator fidelity on real data where scope
 overlaps. **Ready = contract held + behavior correct on real data, not just fixtures green.**
+
+The public `@volter/ztrack/board-document` codec parses and renders flat board documents through ztrack’s markdown grammar. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.

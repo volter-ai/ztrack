@@ -164,6 +164,7 @@ describe('parseMarkdownDocumentSource — no id-bearing sections and no Title: h
     const issues = parseMarkdownDocumentSource('# Just a doc\n\nNo id-bearing headings here.\n', '/repo/notes.md');
     expect(issues).toEqual([]);
   });
+
 });
 
 // ── ZTB-4 dev/10: the umbrella's Status:/Assignee: header lines surface on the parsed issue ─────

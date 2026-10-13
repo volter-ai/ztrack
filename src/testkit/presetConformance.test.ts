@@ -6,7 +6,7 @@
 // drift, using throwaway in-test fixtures rather than mutating a shipped preset (dev/02).
 import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
-import type { CoreRoot, Preset, VisualizerSpec } from 'ztrack/preset-kit';
+import type { CoreRoot, Preset, VisualizerSpec } from '@volter/ztrack/preset-kit';
 import { assertVisualizerSpecConformance, visualizerSpecConformanceProblems } from './presetConformance.ts';
 
 // A schema + matching visualizer block that maps every optional member — the positive control

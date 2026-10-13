@@ -57,7 +57,7 @@ const LocalSchema = z.object({
   store: z.string().optional(),
 }).strict();
 
-const SyncSchema = z.object({
+const GithubSyncSchema = z.object({
   provider: z.literal('github'),
   repo: z.string(),
   /** Three-way reconcile policy for the bidirectional sync. Default `merge` (field-level:
@@ -65,6 +65,40 @@ const SyncSchema = z.object({
    *  = GitHub authoritative on collision; `twin-wins` = the local tracker authoritative. */
   policy: z.enum(['hub-wins', 'twin-wins', 'merge']).optional(),
 }).strict();
+
+/** A board FILE kept in step with a kanban in Hermes's format (`ztrack sync hermes`,
+ *  docs/SYNC-HERMES.md). The file is a declared `document` source in the kanban preset's grammar;
+ *  the board is read and written only through supercode's board door (`supercode workflow`). */
+const HermesSyncSchema = z.object({
+  provider: z.literal('hermes'),
+  /** The board file, project-root-relative (also declared under `sources` as a document). */
+  file: z.string(),
+  /** The home the board lives in (`supercode workflow --root`; `~` expands). Absent: the environment's. */
+  home: z.string().optional(),
+  /** A named board (`--board <slug>`). Absent: the home's default board. */
+  board: z.string().optional(),
+  /** The `supercode` executable. Default `supercode` on PATH. */
+  bin: z.string().optional(),
+}).strict();
+
+/** A Jira site kept in step with the tracker (`ztrack sync jira`, company RFC 0026 decision 2): a ticket the JQL
+ *  finds is an arc; its status maps through `statuses` (Jira status name -> ztrack status). */
+const JiraSyncSchema = z.object({
+  provider: z.literal('jira'),
+  /** The site: `https://<site>.atlassian.net`, or a Jira twin's URL in a rehearsal. */
+  site: z.string(),
+  /** Which tickets are this board's arcs, e.g. `project = PEAK ORDER BY created`. */
+  jql: z.string(),
+  /** Jira status name -> ztrack status. Absent: a typical Jira Software workflow onto the kanban preset. */
+  statuses: z.record(z.string(), z.string()).optional(),
+  /** Whether a card with no ticket gets one (default false: a client's Jira is never written a ticket it lacked). */
+  create: z.boolean().optional(),
+  /** Whether a ticket's reporter and commenters are kept on its arc as `person:<email>` labels (RFC 0026 decision 5). */
+  people: z.boolean().optional(),
+  policy: z.enum(['hub-wins', 'twin-wins', 'merge']).optional(),
+}).strict();
+
+const SyncSchema = z.discriminatedUnion('provider', [GithubSyncSchema, HermesSyncSchema, JiraSyncSchema]);
 
 const EvidenceSchema = z.object({
   /**
@@ -274,12 +308,16 @@ function collectKnownKeys(schema: z.ZodTypeAny, path: string, out: Record<string
   const unwrapped = unwrapOptional(schema);
   if (unwrapped instanceof z.ZodObject) {
     const shape = unwrapped.shape as Record<string, z.ZodTypeAny>;
-    out[path] = Object.keys(shape);
+    out[path] = [...new Set([...(out[path] ?? []), ...Object.keys(shape)])];
     for (const [key, field] of Object.entries(shape)) collectKnownKeys(field, path ? `${path}.${key}` : key, out);
     return;
   }
   if (unwrapped instanceof z.ZodArray) {
     collectKnownKeys(unwrapped.element as z.ZodTypeAny, `${path}[]`, out);
+  }
+  // A union (e.g. `sync`, one shape per provider): the keys any of its shapes accepts.
+  if (unwrapped instanceof z.ZodUnion) {
+    for (const option of unwrapped.options as z.ZodTypeAny[]) collectKnownKeys(option, path, out);
   }
   // ZodRecord, ZodEnum, ZodString, ZodNumber, ZodBoolean, ZodLiteral, … : nothing enumerable
   // beneath them — stop.

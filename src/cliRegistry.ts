@@ -44,6 +44,9 @@ function bool(name: string, opts: Partial<Pick<FlagSpec, 'aliases' | 'repeatable
 // spec's per-bullet file:line citations). Ordered roughly as the CLI's own dispatch order in
 // cli.ts, for ease of cross-checking.
 export const REGISTRY: CommandSpec[] = [
+  { path: ['hooks', 'add'], flags: [ val('--event'), val('--id'), val('--timeout-ms') ] },
+  { path: ['hooks', 'remove'], flags: [] },
+  { path: ['hooks', 'list'], flags: [ bool('--json') ] },
   { path: ['check'], flags: [
     val('--issues'),
     val('--source', { repeatable: true }),
@@ -82,7 +85,8 @@ export const REGISTRY: CommandSpec[] = [
     val('--title'), val('--body'), val('--body-file'), val('--state'), val('--assignee'),
     val('--project'), bool('--remove-project'), val('--parent'), bool('--remove-parent'),
     val('--add-label', { repeatable: true }), val('--remove-label', { repeatable: true }),
-    val('--expect-state'), val('--expect-body-sha'), // parsed+stripped in cli.ts before forwarding
+    val('--expect-state'), val('--expect-body-sha'), // optimistic-concurrency preconditions, enforced by the backend at the write (ztrack#20)
+    bool('--dry-run'), // run every write gate, mutate nothing (ztrack#28)
   ] },
   { path: ['issue', 'comment'], flags: [ val('--body'), val('--body-file') ] },
   { path: ['issue', 'close'], flags: [ val('--reason'), val('--comment'), val('--comment-file') ] },
@@ -93,7 +97,8 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['snapshot'], flags: [] }, // not yet implemented by the markdown backend; no flags read
   { path: ['init'], flags: [
     val('--root'), bool('--list'), val('--preset'), val('--sync'), val('--repo'), val('--policy'),
-    bool('--branch'), val('--team'),
+    bool('--branch'), val('--team'), val('--file'), val('--hermes-home'), val('--board'),
+    val('--site'), val('--jql'), bool('--create'),
   ] },
   { path: ['migrate-local'], flags: [ val('--root') ] },
   { path: ['preset', 'upgrade'], flags: [] },
@@ -110,6 +115,8 @@ export const REGISTRY: CommandSpec[] = [
   { path: ['tx', 'plan'], flags: [ val('--file') ] },
   { path: ['tx', 'apply'], flags: [ val('--file') ] },
   { path: ['sync', 'github'], flags: [ val('--repo'), bool('--pull'), bool('--push'), val('--policy'), bool('--json') ] },
+  { path: ['sync', 'hermes'], flags: [ bool('--dry-run'), bool('--watch'), bool('--json') ] },
+  { path: ['sync', 'jira'], flags: [ bool('--pull'), bool('--push'), val('--policy'), bool('--json') ] },
   { path: ['evidence', 'add'], flags: [
     val('--file'), val('--name'), bool('--attach'), bool('--commit'),
   ] },
@@ -218,6 +225,10 @@ function walkArgs(spec: CommandSpec, remaining: string[]): WalkedToken[] {
   const out: WalkedToken[] = [];
   for (let i = 0; i < remaining.length; i++) {
     const token = remaining[i]!;
+    if (token === '--') {
+      for (const literal of remaining.slice(i + 1)) out.push({ kind: 'positional', token: literal });
+      break;
+    }
     if (HELP_TOKENS.has(token)) continue;
     if (!token.startsWith('--')) { out.push({ kind: 'positional', token }); continue; }
     const eq = token.indexOf('=');

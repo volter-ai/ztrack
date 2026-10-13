@@ -1,5 +1,5 @@
-// ZTB-27 dev/01: `@volter-ai-dev/twin` is an OPTIONAL peer, and `ztrack/world-annotations` +
-// `ztrack/world-source-books` are PUBLIC subpath exports — importing either one, and calling
+// ZTB-27 dev/01: `@volter/world-core` is an OPTIONAL peer, and `@volter/ztrack/world-annotations` +
+// `@volter/ztrack/world-source-books` are PUBLIC subpath exports — importing either one, and calling
 // any function that touches the world, must surface MISSING_WORLD_TWIN_MESSAGE (never a raw
 // MODULE_NOT_FOUND/resolution crash) when the peer isn't installed. `importTwinModule` is the
 // injectable seam (mirrors src/sync/github/twinRuntime.test.ts): swapping it to a rejecting stub
@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 function unresolvable(): never {
-  const err = new Error("Cannot find package '@volter-ai-dev/twin' imported from worldAnnotations.ts") as Error & { code?: string };
+  const err = new Error("Cannot find package '@volter/world-core' imported from worldAnnotations.ts") as Error & { code?: string };
   err.code = 'ERR_MODULE_NOT_FOUND';
   throw err;
 }
@@ -40,7 +40,7 @@ describe('loadTwinWorldRuntime — missing optional peer', () => {
 
   test('the install hint names the package and the fix', async () => {
     __setImportTwinModuleForTest(unresolvable);
-    await expect(loadTwinWorldRuntime()).rejects.toThrow(/npm install -D @volter-ai-dev\/twin\b/);
+    await expect(loadTwinWorldRuntime()).rejects.toThrow(/npm install -D @volter\/world-core\b/);
   });
 });
 

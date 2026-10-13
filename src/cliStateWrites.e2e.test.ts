@@ -53,7 +53,7 @@ function acBody(sha: string): string {
 function freshRepo(prefix: string): { root: string; sha: string } {
   const root = mkdtempSync(join(tmpdir(), prefix));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the installed preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the installed preset imports '@volter/ztrack/preset-kit'
   gitIn(root, 'init', '-q');
   gitIn(root, 'config', 'user.email', 't@t.co');
   gitIn(root, 'config', 'user.name', 't');
@@ -97,7 +97,7 @@ describe('write-time --state validation against the active preset (ZTB-23 dev/01
     const root = mkdtempSync(join(tmpdir(), 'ztrk-state-create-typo-'));
     try {
       mkdirSync(join(root, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+      mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
       gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
       ztrackIn(root, ['init', '--team', 'ZT']);
 
@@ -118,7 +118,7 @@ describe('write-time --state validation against the active preset (ZTB-23 dev/01
     const root = mkdtempSync(join(tmpdir(), 'ztrk-state-no-entrypoint-'));
     try {
       mkdirSync(join(root, 'node_modules'), { recursive: true });
-      symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+      mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
       gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
       ztrackIn(root, ['init', '--team', 'ZT']);
 

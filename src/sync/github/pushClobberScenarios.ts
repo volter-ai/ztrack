@@ -17,44 +17,16 @@ import { join } from 'node:path';
 import { createTrackerClient } from '../../sdk.ts';
 import { initTrackerProject } from '../../presetCatalog.ts';
 import { push, reconcileSync, type SyncOpts } from './sync.ts';
+import { fakeGithub } from './fakeGithub.ts';
 
 const REPO = join(import.meta.dir, '..', '..', '..'); // src/sync/github -> repo root
-
-type GhIssue = { number: number; title: string; body: string; state: string; updated_at: string };
-
-function fakeGithub() {
-  const issues = new Map<number, GhIssue>();
-  let next = 1;
-  let clock = 0;
-  const ts = () => new Date(Date.UTC(2026, 0, 1, 0, 0, ++clock)).toISOString();
-  const execute = {
-    async request(route: string, params: Record<string, unknown> = {}) {
-      if (route === 'GET /repos/{owner}/{repo}/issues') return { status: 200, data: [...issues.values()] };
-      if (route.startsWith('GET ')) return { status: 200, data: [] };
-      if (route === 'POST /repos/{owner}/{repo}/issues') {
-        const n = next++;
-        issues.set(n, { number: n, title: String(params.title ?? ''), body: String(params.body ?? ''), state: 'open', updated_at: ts() });
-        return { status: 201, data: issues.get(n) };
-      }
-      if (route === 'PATCH /repos/{owner}/{repo}/issues/{issue_number}') {
-        const n = Number(params.issue_number);
-        const cur = issues.get(n) ?? { number: n, title: '', body: '', state: 'open', updated_at: ts() };
-        issues.set(n, { ...cur, ...('title' in params ? { title: String(params.title) } : {}), ...('body' in params ? { body: String(params.body) } : {}), ...('state' in params ? { state: String(params.state) } : {}), updated_at: ts() });
-        return { status: 200, data: issues.get(n) };
-      }
-      throw new Error(`fakeGithub: unhandled ${route}`);
-    },
-  };
-  const ghEdit = (n: number, patch: Partial<GhIssue>) => issues.set(n, { ...issues.get(n)!, ...patch, updated_at: ts() });
-  return { execute, issues, ghEdit };
-}
 
 async function withProject<T>(fn: (ctx: { root: string; client: ReturnType<typeof createTrackerClient>; gh: ReturnType<typeof fakeGithub>; opts: () => SyncOpts }) => Promise<T>): Promise<T> {
   const root = mkdtempSync(join(tmpdir(), 'ztrk-pushclobber-'));
   try {
     initTrackerProject(root, 'ZT');
-    mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true });
+    symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     const client = createTrackerClient({ projectRoot: root });
     const gh = fakeGithub();
     const opts = (): SyncOpts => ({ projectRoot: root, owner: 'o', repo: 'r', execute: gh.execute, client, occurredAt: '2026-01-01T00:00:00Z' });
@@ -78,7 +50,7 @@ export async function runPushClobberScenarios() {
   // and leave GitHub's closed state alone (non-overlapping fields: title changed locally only,
   // state changed remotely only — MERGE, not conflict).
   results.closeSurvivesUnrelatedLocalEdit = await withProject(async ({ client, gh, opts }) => {
-    await gh.execute.request('POST /repos/{owner}/{repo}/issues', { title: 'Title', body: 'Body' });
+    await gh.execute({ method: 'POST', path: '/repos/o/r/issues', body: JSON.stringify({ title: 'Title', body: 'Body' }) });
     await reconcileSync(opts()); // seed: both sides agree, base recorded
     const id = String((await client.issue.list({ state: 'all', json: 'identifier,title' }) as Array<Record<string, unknown>>).find((r) => r.title === 'Title')!.identifier);
     gh.ghEdit(1, { state: 'closed' });                    // GitHub side: maintainer closes it
@@ -101,7 +73,7 @@ export async function runPushClobberScenarios() {
   // last agreed base -> a SURFACED conflict (neither title is touched); `state` changed on
   // GitHub's side only -> cleanly stays closed (not part of the conflict, not reverted).
   results.sameFieldCollisionSurfacedNotClobbered = await withProject(async ({ client, gh, opts }) => {
-    await gh.execute.request('POST /repos/{owner}/{repo}/issues', { title: 'Title', body: 'Body' });
+    await gh.execute({ method: 'POST', path: '/repos/o/r/issues', body: JSON.stringify({ title: 'Title', body: 'Body' }) });
     await reconcileSync(opts()); // seed base: both sides agree (open, "Title")
     const id = String((await client.issue.list({ state: 'all', json: 'identifier,title' }) as Array<Record<string, unknown>>).find((r) => r.title === 'Title')!.identifier);
     gh.ghEdit(1, { state: 'closed', title: 'Title FROM REMOTE' }); // GitHub: closes AND retitles

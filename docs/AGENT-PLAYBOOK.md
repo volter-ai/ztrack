@@ -132,10 +132,10 @@ create prose-only done states.
 ### First pass
 
 ```bash
-npx ztrack init --team APP --preset simple-sdlc
-npx ztrack issue scaffold --title "Adopt ztrack" > body.md
-npx ztrack issue create --title "Adopt ztrack" --label type:case --state ready --assignee agent --body-file body.md
-npx ztrack check
+npx @volter/ztrack init --team APP --preset simple-sdlc
+npx @volter/ztrack issue scaffold --title "Adopt ztrack" > body.md
+npx @volter/ztrack issue create --title "Adopt ztrack" --label type:case --state ready --assignee agent --body-file body.md
+npx @volter/ztrack check
 ```
 
 (`--state`/`--assignee` are shown explicit above for the demo issue; they're not required — a bare
@@ -150,12 +150,12 @@ project-specific rules are added by editing the standalone `.volter/tracker/vali
 1. Create a real git commit or use the current repository HEAD.
 2. Mark one AC passed (`[x]` + `status: passed`) and cite a fake commit in its evidence sub-line:
    `evidence ev1: commit=deadbee acv=1`, plus a `proof:` line. Write it onto the STORED issue —
-   author the body in a local `body.md`, then `npx ztrack issue edit <id> --body-file body.md`
+   author the body in a local `body.md`, then `npx @volter/ztrack issue edit <id> --body-file body.md`
    (the issue is stored independently, so editing your local file alone changes nothing).
-3. Run `npx ztrack check --json`.
+3. Run `npx @volter/ztrack check --json`.
 4. Confirm the finding code is `evidence_commit_not_found`.
 5. Replace `deadbee` with a real commit SHA.
-6. Run `npx ztrack check --json` again.
+6. Run `npx @volter/ztrack check --json` again.
 7. Confirm `summary.status` is `pass`.
 
 Do not commit scratch files created only for the proof, such as `body.md`, `red.json`, or

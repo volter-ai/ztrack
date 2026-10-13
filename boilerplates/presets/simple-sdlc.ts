@@ -15,7 +15,7 @@
 //   in-review    — every AC passed; every passed AC has fresh commit-evidence
 //   done         — terminal (all ACs passed; the reviewer's verdict moved it here)
 
-// A STANDALONE preset: imports ONLY the public mechanism from `ztrack/preset-kit`
+// A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`
 // (no `../core/*`, no `mdast-*`, no `zod`). Its OWN schema, parser, and rules live here.
 import {
   z, toMdast, nodeText, type MdNode,
@@ -24,7 +24,7 @@ import {
   type BlockerFact, type BlockRef, type CompletionFact, type Context, type CycleFact,
   type DerivedModel, type Finding, type IssueColumns, type IssueRecord, type ParseDiagnostic, type Preset, type PresetContextInput, type RawBlockRef,
   type VisualizerSpec,
-} from 'ztrack/preset-kit';
+} from '@volter/ztrack/preset-kit';
 
 // ── the hard schema (core + preset-specific, all strict) ────────────────────
 export const DefaultEvidenceSchema = z.object({
@@ -59,6 +59,19 @@ export const DefaultAcSchema = z.object({
   // OPTIONAL relevance anchor: the repo paths this AC's work concerns (globs ok: *, **). When set,
   // a passed AC's cited commit must TOUCH one of them — so an unrelated real commit can't pass.
   paths: z.array(z.string().min(1)).optional(),
+  // Sub-lines this grammar does not recognize are CARRIED verbatim rather than dropped — the same
+  // choice, and the same rationale, as `notes`/`notesBefore`/`prose` at the issue level: a
+  // patch/fmt round trip must never silently delete human-authored content.
+  //
+  // It used to. The sub-field loop below is an if-chain over status/evidence/proof/blocked-by/
+  // blocks/paths, and every other line fell off the end into nothing — no field, no diagnostic,
+  // exit 0. `ztrack fmt` and every `ztrack ac patch` write re-serialize through this preset, so a
+  // reviewer checking one AC would silently delete an operator's note on a DIFFERENT one.
+  //
+  // Each entry is one raw sub-line, without its `- ` marker. It is text only: a carried line that
+  // merely LOOKS like `proof:`/`evidence` sets no field and moves no AC state, so it can never
+  // talk an unchecked AC into passing.
+  notes: z.array(z.string().min(1)).optional(),
 }).strict();
 
 // primitives the default SDLC implements (issue-level)
@@ -318,6 +331,7 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
         const evidence: unknown[] = [];
         const paths: string[] = [];
         const blockedBy: RawBlockRef[] = [];
+        const carried: string[] = [];
         const blocks: RawBlockRef[] = [];
         const rawList = (raw: string): RawBlockRef[] =>
           splitList(raw).map((t) => parseBlockToken(t, issue.id as string)).filter((r): r is RawBlockRef => r !== null);
@@ -339,6 +353,8 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
           if (bk) { blocks.push(...rawList(bk[1]!)); continue; }
           const pa = /^paths:\s*(.+)$/i.exec(line);
           if (pa) { paths.push(...splitList(pa[1]!)); continue; }
+          // anything else is human-authored and is kept verbatim (see the `notes` schema comment)
+          if (line.trim()) carried.push(line);
         }
         // status defaults from the checkbox; an explicit line can override (and is then guarded by a rule)
         if (!status) status = checked ? 'passed' : 'pending';
@@ -348,6 +364,7 @@ function parseDefaultIssue(record: IssueRecord, diagnostics?: ParseDiagnostic[])
         if (paths.length) ac.paths = paths;
         if (blockedBy.length) ac.blockedBy = blockedBy;
         if (blocks.length) ac.blocks = blocks;
+        if (carried.length) ac.notes = carried;
         acs.push(ac);
       }
       continue;
@@ -403,6 +420,10 @@ export function serializeIssue(issue: DefaultRoot['issues'][number]): { body: st
     if (ac.paths?.length) out.push(`  - paths: ${ac.paths.join(', ')}`);
     if (ac.blockedBy?.length) out.push(`  - blocked-by: ${ac.blockedBy.map(renderRef).join(', ')}`);
     if (ac.blocks?.length) out.push(`  - blocks: ${ac.blocks.map(renderRef).join(', ')}`);
+    // carried-verbatim sub-lines go last: the typed fields above have a canonical order, so an
+    // unrecognized line's ORIGINAL position between them cannot be preserved anyway. Content
+    // survives, which is the whole point (see the `notes` schema comment).
+    for (const note of ac.notes ?? []) out.push(`  - ${note}`);
   }
   // unknown sections that sat AFTER "## Acceptance Criteria" (the common case: appendices/notes) stay after it.
   for (const note of issue.notes ?? []) out.push('', note);
@@ -689,17 +710,7 @@ function defaultFixHint(f: Finding): string | undefined {
     case 'ac_checkbox_status_mismatch':
       return acPatch('{"checked":true,"status":"passed"}', ' — make the [x] checkbox and status agree (or {"checked":false,"status":"pending"})');
     case 'issue_missing_assignee':
-      // ZTB-23 dev/03: a document-sourced issue (many issues in one file, ZTB-4) has no home for
-      // an assignee edit through the CLI — DocumentSource.write fails closed on ANY assignee
-      // change (assigneeNotImplementedError, backends/documentSource.ts) — so telling the agent
-      // to run `issue edit --assignee` here just trades this finding for a second, different
-      // error. `f.origin.line` is present ONLY for a document-sourced issue's own section (an
-      // issue-per-file record's origin never carries a line — see core/engine.ts's
-      // toFindingOrigin); route those to the one remediation that actually works: editing the
-      // file's `assignee:` header line directly.
-      return f.origin?.line !== undefined
-        ? `Fix: ${issue} is a document-sourced issue — \`ztrack issue edit --assignee\` does not work on it (write-back has no assignee splice yet). Add or edit the \`assignee:\` header line under ${issue}'s heading in ${f.origin.path} directly.`
-        : `Fix: assign an owner — \`ztrack issue edit ${issue} --assignee <you>\` for a stored issue, or add an \`Assignee: <you>\` line to the top of the body for a loose file.`;
+      return `Fix: assign an owner through the tracker — \`ztrack issue edit ${issue} --assignee <you>\`; document-backed tasks persist this in their section's \`assignee:\` header.`;
     case 'ready_requires_dev_ac':
       return `Fix: give ${issue} at least one acceptance criterion (a \`## Acceptance Criteria\` item), or move it back to draft`;
     case 'review_requires_all_acs_passed':
@@ -713,7 +724,7 @@ function defaultFixHint(f: Finding): string | undefined {
 // This block is what the visualizer board renders FROM — status columns, what an AC is called,
 // and which fields (above, on DefaultIssueSchema/DefaultAcSchema) hold the assignee, the AC's
 // own id/text/version, its proof, and its evidence entries. Field references and literal labels
-// ONLY (see `VisualizerSpec`, `ztrack/preset-kit`) — no functions, no markup. It is installed
+// ONLY (see `VisualizerSpec`, `@volter/ztrack/preset-kit`) — no functions, no markup. It is installed
 // into your repo verbatim, same as the rest of this file: edit it freely to match a schema
 // change (e.g. renaming a status here AND above keeps them in sync; `ztrack test`/CI catches a
 // drift between the two — see `boilerplates/presets/visualizerVocabulary.test.ts`).
@@ -726,6 +737,25 @@ const DEFAULT_VISUALIZER: VisualizerSpec = {
   acEvidence: { field: 'evidence', image: 'image', commit: 'commit', acVersion: 'acVersion' }, // DefaultAcSchema.evidence[]
   // no `pr`: this preset is PR-free by design (see the header note) — DefaultIssueSchema has no `pr` field.
 };
+
+
+// ztrack#22: `checked` is DEFINED as the GFM mirror of `status === 'passed'` (that is exactly
+// what ac_checkbox_status_mismatch above enforces) — so an `ac patch` that names only one of the
+// two coupled fields must keep the other consistent, instead of writing a row this preset's own
+// rule then immediately flags (`- [x] … status: failed`) and that a REPEAT of the same patch can
+// never repair (the named field alone is already a no-op, so `changed: false`). An explicit
+// field in the caller's patch always wins; a patch naming neither field (evidence/proof/paths/…)
+// passes through untouched. Wired via the preset's `normalizeAcPatch` hook (modelEdit.ts).
+function normalizeDefaultAcPatch(patch: Record<string, unknown>, current: Record<string, unknown>): Record<string, unknown> {
+  if ('status' in patch && !('checked' in patch)) return { ...patch, checked: patch.status === 'passed' };
+  if ('checked' in patch && !('status' in patch)) {
+    // checking implies passed; UNchecking a passed AC demotes it to pending (a current status of
+    // pending/failed is already `[ ]`-consistent and is kept as-is).
+    if (patch.checked === true) return { ...patch, status: 'passed' };
+    if (current.status === 'passed') return { ...patch, status: 'pending' };
+  }
+  return patch;
+}
 
 export const DefaultPreset: Preset<DefaultRoot> = {
   name: 'simple-sdlc',
@@ -760,6 +790,7 @@ export const DefaultPreset: Preset<DefaultRoot> = {
   },
   parse: parseDefault,
   serialize: serializeIssue, // issue -> { body, columns }; the inverse of parse
+  normalizeAcPatch: normalizeDefaultAcPatch, // keep the checkbox mirror and status coupled (ztrack#22)
   // an AC-less issue counts as done (for the block graph's completion gate) only at the terminal state.
   isIssueDone: (i) => i.status === 'done',
   // relation reciprocity + dangling proof refs; the block graph + id aggregates are core.

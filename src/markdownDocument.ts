@@ -149,18 +149,20 @@ function parseCheckboxItems(body: string, sectionLineStart: number): MarkdownChe
   return items;
 }
 
-export function parseMarkdownDocument(text: string): MarkdownDocument {
+/** `checkboxes: false` skips each section's checkbox parse, a second Markdown parse of every
+ *  section body; callers that read only headings and spans (the board codec) opt out. */
+export function parseMarkdownDocument(text: string, options: { checkboxes?: boolean } = {}): MarkdownDocument {
   // Normalize CRLF/CR to LF so line numbers are correct and section bodies don't
   // retain trailing \r (the line model below is LF-based).
   text = text.replace(/\r\n?/g, '\n');
   const offsets = lineOffsets(text);
-  const lines = text.split('\n');
   // Heading detection via mdast (CommonMark): a `#` inside a fenced code block
   // is NOT a heading (the old line-regex mis-detected those), and setext
   // headings are recognized. Title comes from the RAW heading-line slice (not
   // mdast textContent, which strips inline markdown) so section vocabulary
   // matches byte-for-byte; raw/offset feed the existing body-slicing below.
-  const tree = fromMarkdown(text, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
+  // Headings and spans need only the GFM tokenizer; its tree nodes are built when checkbox items are read.
+  const tree = fromMarkdown(text, { extensions: [gfm()], ...(options.checkboxes === false ? {} : { mdastExtensions: [gfmFromMarkdown()] }) });
   const headings: Array<{ level: number; title: string; line: number; offset: number; raw: string }> = [];
   const collectHeadings = (node: any): void => {
     if (node.type === 'heading' && node.position) {
@@ -180,34 +182,40 @@ export function parseMarkdownDocument(text: string): MarkdownDocument {
   collectHeadings(tree);
 
   const preambleEnd = headings[0]?.offset ?? text.length;
+  // One pass: each heading's section ends at the next heading of the same or a lower level,
+  // and its parent is the nearest earlier heading of a lower level.
+  const nextOffsets: number[] = new Array(headings.length).fill(text.length);
+  const parents: Array<number | null> = new Array(headings.length).fill(null);
+  const open: number[] = [];
+  headings.forEach((heading, index) => {
+    while (open.length && headings[open.at(-1)!]!.level >= heading.level) nextOffsets[open.pop()!] = heading.offset;
+    parents[index] = open.at(-1) ?? null;
+    open.push(index);
+  });
+  const lineIndexAt = (offset: number): number => {
+    let low = 0, high = offsets.length;
+    while (low < high) { const mid = (low + high) >> 1; if (offsets[mid]! < offset) low = mid + 1; else high = mid; }
+    return low;
+  };
   const sections = headings.map((heading, index): MarkdownSection => {
     const headingEnd = heading.offset + heading.raw.length;
     const bodyStart = text[headingEnd] === '\n' ? headingEnd + 1 : headingEnd;
-    const nextHeading = headings.slice(index + 1).find((candidate) => candidate.level <= heading.level);
-    const nextOffset = nextHeading?.offset ?? text.length;
+    const nextOffset = nextOffsets[index]!;
     const body = text.slice(bodyStart, nextOffset).replace(/\n$/, '');
     // A setext heading spans two source lines (`Title\n====`), so the body starts one
     // line further down than for a single-line ATX heading. Derive the span from raw so
     // checkbox lineStart/lineEnd (used by mutation splicing) point at the right rows.
     const sectionLineStart = heading.line + 1 + (heading.raw.match(/\n/g)?.length ?? 0);
-    let parentIndex: number | null = null;
-    for (let candidateIndex = index - 1; candidateIndex >= 0; candidateIndex--) {
-      if ((headings[candidateIndex]?.level ?? 0) < heading.level) {
-        parentIndex = candidateIndex;
-        break;
-      }
-    }
-    const endLineIndex = offsets.findIndex((offset) => offset >= nextOffset);
     return {
       level: heading.level,
       title: heading.title.trim(),
       normalizedTitle: normalizeTitle(heading.title),
       body,
       raw: text.slice(heading.offset, nextOffset),
-      parentIndex,
+      parentIndex: parents[index]!,
       lineStart: heading.line,
-      lineEnd: endLineIndex >= 0 ? endLineIndex : lines.length,
-      checkboxItems: parseCheckboxItems(body, sectionLineStart),
+      lineEnd: lineIndexAt(nextOffset),
+      checkboxItems: options.checkboxes === false ? [] : parseCheckboxItems(body, sectionLineStart),
     };
   });
 

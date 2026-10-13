@@ -10,7 +10,8 @@
 // extension.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, normalize, resolve, sep } from 'node:path';
+import { createHash } from 'node:crypto';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Resolve the ztrack core. In a repo checkout (src/*.ts present) import the
@@ -31,9 +32,14 @@ const {
   cacheRoot,
   stateDirName,
   resolveTrackerValidation,
-  loadValidationInput,
   VisualizerSpecSchema,
   bustPresetCacheIfChanged,
+  visualizerOperationalBlocking,
+  classifyProjectPath,
+  normalizeProjectUrlPath,
+  loadVisualizerPayload,
+  buildVisualizerExtensionModule,
+  loadVisualizerTheme,
 } = core;
 
 const PORT = Number(process.env.PORT ?? 3300);
@@ -41,6 +47,10 @@ const PROJECT_DIR = (process.env.PROJECT_DIR ?? process.cwd()).replace(/\/$/, ''
 const PRESET = process.env.PRESET ?? 'default';
 const TRACKER_DIR = join(PROJECT_DIR, 'tracker');
 const NO_STORE = { 'Cache-Control': 'no-store, max-age=0' };
+const BRAND_TOKENS_PATH = join(here, 'brand', 'tokens.css');
+if (!existsSync(BRAND_TOKENS_PATH)) {
+  console.warn('ztrack visualizer: visualizer/brand/tokens.css is missing, so the board has no colours; run `npm run build:brand-tokens` in the ztrack checkout.');
+}
 let clientBundle: Promise<{ text: string; extensionError?: string }> | null = null;
 
 // Optional repo-local theme override (VIZ-6) — fixed conventional path beside the preset
@@ -49,7 +59,10 @@ let clientBundle: Promise<{ text: string; extensionError?: string }> | null = nu
 // file-presence is the opt-in, exactly like preset.mts. This is a CONSTANT, not built from
 // any request field, so the /assets/theme.css route below has no request-path input to abuse.
 const THEME_CSS_PATH = join(PROJECT_DIR, stateDirName(), 'tracker', 'visualizer', 'theme.css');
-
+// Repo-owned raster previews of immutable source pages. The directory name is the
+// canonical source PDF's SHA-256 (without the `sha256:` prefix), so a preview URL
+// is tied to the exact source bytes rather than Chrome's stateful PDF viewer.
+const SOURCE_PREVIEW_DIR = join(PROJECT_DIR, stateDirName(), 'tracker', 'visualizer', 'source-previews');
 // Orphan guard. This server is a child of the `ztrack visualizer` wrapper, which
 // awaits it and is meant to bound its lifetime; the wrapper kills us on its own
 // SIGINT/SIGTERM/exit. But if the wrapper is SIGKILLed no signal reaches us and we
@@ -96,32 +109,8 @@ function documents(preset: string): string[] {
   return existsSync(TRACKER_DIR) ? readdirSync(TRACKER_DIR).filter((f) => f.endsWith('.md')).sort().map((f) => readFileSync(join(TRACKER_DIR, f), 'utf8')) : [];
 }
 
-// Load issues + findings the way `ztrack check`/`export` do: resolve the active
-// preset from the repo's tracker-config `validation.entrypoint` (so a repo-local
-// preset like peak's `peakcore` loads — not "Unknown preset"), and read issues
-// through the configured backend (so a sqlite-backed repo yields its real issues —
-// not an empty board from globbing tracker/*.md). One bundle, one check — the same
-// pipeline the CLI runs. Returns null when there is no tracker-config to honor
-// (e.g. a bare markdown/speckit dir), so the caller falls back to per-document.
-async function configuredBoard(): Promise<{ preset: unknown; presetName: string; issues: unknown[]; findings: unknown[] } | null> {
-  const resolved = await resolveActivePreset();
-  if (!resolved) return null;
-  const { preset, presetName } = resolved;
-  const { records, context } = await loadValidationInput(preset, { projectRoot: PROJECT_DIR });
-  const r = check(preset, records, context);
-  return {
-    preset,
-    presetName,
-    issues: r.export ? [...r.export.issues] : [],
-    findings: [...r.findings],
-  };
-}
-
-// Preset resolution ONLY (no check/loadValidationInput) — shared by `configuredBoard` (which
-// goes on to check()) and the VIZ-13 bundle build (which only needs the RUNNING preset's name, to
-// register the repo extension under it, VIZ-4's per-member merge). Returns null exactly when
-// `configuredBoard` would: no tracker-config, so the caller falls back to the legacy per-document
-// preset/name (`resolvePreset(PRESET)`).
+// Preset resolution for the VIZ-13 standalone app bundle, which needs the running preset's name
+// to register the repo extension under the same key as the shared payload builder.
 async function resolveActivePreset(): Promise<{ preset: unknown; presetName: string } | null> {
   let config: { validation?: { entrypoint?: string } };
   try {
@@ -172,28 +161,38 @@ function resolveVisualizerBlock(preset: unknown): { visualizer: unknown; visuali
 }
 
 async function board() {
-  const configured = await configuredBoard();
+  // Configured projects use the public builder shared with embedding hosts. The legacy no-config
+  // document viewer below remains only for bare `tracker/*.md` / speckit directories.
+  if (existsSync(join(PROJECT_DIR, stateDirName(), 'tracker-config.json'))) {
+    const active = await resolveActivePreset();
+    const { payload } = await loadVisualizerPayload({
+      projectRoot: PROJECT_DIR,
+      ...(active ? { preset: active.preset } : {}),
+    });
+    const [extension, theme] = await Promise.all([
+      buildVisualizerExtensionModule({ projectRoot: PROJECT_DIR }),
+      loadVisualizerTheme({ projectRoot: PROJECT_DIR }),
+    ]);
+    return {
+      ...payload,
+      ...(extension.error ? { extensionError: extension.error } : {}),
+      ...(theme.error ? { themeError: theme.error } : {}),
+    };
+  }
   let preset: unknown;
   let presetName: string;
   const issues: unknown[] = [];
   const findings: unknown[] = [];
-  if (configured) {
-    preset = configured.preset;
-    presetName = configured.presetName;
-    issues.push(...configured.issues);
-    findings.push(...configured.findings);
-  } else {
-    // No tracker-config: legacy per-document path (bare tracker/*.md or speckit specs/).
-    preset = await resolvePreset(PRESET);
-    presetName = (preset as { name?: string }).name ?? PRESET;
-    for (const doc of documents(PRESET)) {
-      // Context is preset-owned: each preset's loadContext gathers exactly the facts
-      // its rules read (git/world/services). The visualizer assumes nothing.
-      const ctx = (await (preset as { loadContext?: (i: unknown) => unknown }).loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
-      const r = check(preset, doc, ctx);
-      if (r.export) issues.push(...r.export.issues);
-      findings.push(...r.findings);
-    }
+  // No tracker-config: legacy per-document path (bare tracker/*.md or speckit specs/).
+  preset = await resolvePreset(PRESET);
+  presetName = (preset as { name?: string }).name ?? PRESET;
+  for (const doc of documents(PRESET)) {
+    // Context is preset-owned: each preset's loadContext gathers exactly the facts
+    // its rules read (git/world/services). The visualizer assumes nothing.
+    const ctx = (await (preset as { loadContext?: (i: unknown) => unknown }).loadContext?.({ projectRoot: PROJECT_DIR, bundle: doc })) ?? {};
+    const r = check(preset, doc, ctx);
+    if (r.export) issues.push(...r.export.issues);
+    findings.push(...r.findings);
   }
   let mtime: string | null = null;
   try { mtime = existsSync(TRACKER_DIR) ? statSync(TRACKER_DIR).mtime.toISOString() : null; } catch { mtime = null; }
@@ -215,6 +214,10 @@ async function board() {
   // VIZ-3: validated pass-through of the preset's dashboard vocabulary (VIZ-1) — see
   // resolveVisualizerBlock above for the validate-or-null-plus-error contract.
   const { visualizer, visualizerError } = resolveVisualizerBlock(preset);
+  const operationalBlocking = visualizerOperationalBlocking(
+    { issues },
+    (preset as { isIssueDone?: (issue: unknown) => boolean }).isIssueDone,
+  );
   // VIZ-13: surface a repo extension.tsx build failure (failure-isolation retry, see
   // getClientBundle) as a payload field the client renders as a notice — independent of whether
   // /assets/app.js has actually been fetched yet (board() drives its own bundle-status check so
@@ -230,6 +233,7 @@ async function board() {
     visualizer,
     visualizerError, // JSON.stringify drops this key entirely when undefined (the no-error case)
     extensionError, // ditto — VIZ-13's repo-extension compile-error notice
+    operationalBlocking,
     projectDir: PROJECT_DIR,
     fetchedAt: new Date().toISOString(),
     trackerChangedAt: mtime,
@@ -241,16 +245,26 @@ async function board() {
   };
 }
 
-function projectFile(pathname: string): string | null {
-  const rel = normalize(decodeURIComponent(pathname.replace(/^\/project\//, ''))).replace(/^\/+/, '');
+function projectRelative(pathname: string): string | null {
+  return normalizeProjectUrlPath(pathname);
+}
+
+function projectFile(rel: string): { abs: string; pinnedArtifact: boolean } | null {
   if (rel.startsWith('..') || rel.includes('/../')) return null;
   // Never serve dotfiles or sensitive stores (.git, .env, .volter signing keys,
-  // the tracker DB). The visualizer only needs tracker markdown + evidence images.
-  if (rel.split('/').some((seg) => seg.startsWith('.')) || /\.(sqlite|pem|key)$/i.test(rel)) return null;
+  // the tracker DB). The one explicit exception is ztrack's own canonical committed
+  // evidence directory (`<stateDir>/evidence/**`): the visualizer's evidence renderer
+  // cannot work when its default `.volter/evidence/**` paths are rejected merely because
+  // the state directory starts with a dot. Only the state-dir segment itself is exempt;
+  // nested dotfiles and sensitive extensions remain blocked.
+  const stateDir = stateDirName();
+  const { segments, canonicalEvidence: isCanonicalEvidence, canonicalSource: isCanonicalSource } = classifyProjectPath(rel, stateDir);
+  const hasForbiddenDotSegment = segments.some((seg, index) => seg.startsWith('.') && !(isCanonicalEvidence && index === 0));
+  if (hasForbiddenDotSegment || /\.(sqlite|pem|key)$/i.test(rel)) return null;
   const abs = join(PROJECT_DIR, rel);
   // resolve symlinks and re-check containment
   try { if (!realpathSync(abs).startsWith(realpathSync(PROJECT_DIR) + sep)) return null; } catch { /* not yet existing — join check below */ }
-  return abs;
+  return { abs, pinnedArtifact: isCanonicalEvidence || isCanonicalSource };
 }
 
 function contentType(p: string): string {
@@ -259,7 +273,286 @@ function contentType(p: string): string {
   if (l.endsWith('.jpg') || l.endsWith('.jpeg')) return 'image/jpeg';
   if (l.endsWith('.webp')) return 'image/webp';
   if (l.endsWith('.gif')) return 'image/gif';
+  if (l.endsWith('.webm')) return 'video/webm';
+  if (l.endsWith('.mp4')) return 'video/mp4';
+  if (l.endsWith('.pdf')) return 'application/pdf';
+  if (l.endsWith('.json')) return 'application/json; charset=utf-8';
+  if (l.endsWith('.txt') || l.endsWith('.md')) return 'text/plain; charset=utf-8';
   return 'application/octet-stream';
+}
+
+// Evidence URLs may carry both the artifact's tracker pin (`sha256`) and the
+// commit that contains it. Resolve commit-pinned files from git so historical
+// evidence remains viewable after it leaves the current working tree, then
+// verify the exact bytes before serving them. Both paths deliberately remain
+// asynchronous: browsers request many artifacts in parallel, and synchronous
+// hashing or `git show` would stall Bun's request loop. In-flight promises are
+// cached too, deduplicating concurrent requests for the same artifact.
+const MAX_CURRENT_ARTIFACT_CACHE_ENTRIES = 32;
+const MAX_CURRENT_ARTIFACT_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_GIT_ARTIFACT_CACHE_ENTRIES = 32;
+const MAX_GIT_ARTIFACT_CACHE_BYTES = 128 * 1024 * 1024;
+const MAX_GIT_ARTIFACT_BYTES = 256 * 1024 * 1024;
+type FileIdentity = { dev: number; ino: number; size: number; mtimeMs: number; ctimeMs: number };
+type CurrentArtifact = { bytes: Uint8Array; digest: string; identity: FileIdentity };
+type GitArtifact = { bytes: Uint8Array; digest: string; commit: string };
+const currentArtifactCache = new Map<string, CurrentArtifact>();
+const currentArtifactInFlight = new Map<string, Promise<CurrentArtifact | null>>();
+const gitArtifactCache = new Map<string, GitArtifact>();
+const gitArtifactInFlight = new Map<string, Promise<GitArtifact | null>>();
+const gitArtifactByDigestInFlight = new Map<string, Promise<GitArtifact | null>>();
+const digestCommitCache = new Map<string, string>();
+let currentArtifactCacheBytes = 0;
+let gitArtifactCacheBytes = 0;
+
+function trimOldest<K, V>(cache: Map<K, V>, maxEntries: number): void {
+  while (cache.size > maxEntries) cache.delete(cache.keys().next().value!);
+}
+
+function fileIdentity(p: string): FileIdentity {
+  const stat = statSync(p);
+  return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs, ctimeMs: stat.ctimeMs };
+}
+
+function sameFileIdentity(a: FileIdentity, b: FileIdentity): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+}
+
+function cacheCurrentArtifact(key: string, artifact: CurrentArtifact): void {
+  if (artifact.bytes.byteLength > MAX_CURRENT_ARTIFACT_CACHE_BYTES) return;
+  const previous = currentArtifactCache.get(key);
+  if (previous) currentArtifactCacheBytes -= previous.bytes.byteLength;
+  currentArtifactCache.delete(key);
+  currentArtifactCache.set(key, artifact);
+  currentArtifactCacheBytes += artifact.bytes.byteLength;
+  while (currentArtifactCache.size > MAX_CURRENT_ARTIFACT_CACHE_ENTRIES || currentArtifactCacheBytes > MAX_CURRENT_ARTIFACT_CACHE_BYTES) {
+    const oldestKey = currentArtifactCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = currentArtifactCache.get(oldestKey);
+    if (oldest) currentArtifactCacheBytes -= oldest.bytes.byteLength;
+    currentArtifactCache.delete(oldestKey);
+  }
+}
+
+function cacheGitArtifact(key: string, artifact: GitArtifact): void {
+  if (artifact.bytes.byteLength > MAX_GIT_ARTIFACT_CACHE_BYTES) return;
+  const previous = gitArtifactCache.get(key);
+  if (previous) gitArtifactCacheBytes -= previous.bytes.byteLength;
+  gitArtifactCache.delete(key);
+  gitArtifactCache.set(key, artifact);
+  gitArtifactCacheBytes += artifact.bytes.byteLength;
+  while (gitArtifactCache.size > MAX_GIT_ARTIFACT_CACHE_ENTRIES || gitArtifactCacheBytes > MAX_GIT_ARTIFACT_CACHE_BYTES) {
+    const oldestKey = gitArtifactCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldest = gitArtifactCache.get(oldestKey);
+    if (oldest) gitArtifactCacheBytes -= oldest.bytes.byteLength;
+    gitArtifactCache.delete(oldestKey);
+  }
+}
+
+// Read, hash, and retain one immutable byte snapshot. The response is built from
+// this same in-memory byte array, so a file replacement can never race between verification and
+// streaming. Device/inode/ctime join mtime+size in the cache identity, and the
+// post-read stat prevents caching bytes from a file that changed mid-read.
+async function currentArtifact(p: string): Promise<CurrentArtifact | null> {
+  let identity: FileIdentity;
+  try { identity = fileIdentity(p); } catch { return null; }
+  const cached = currentArtifactCache.get(p);
+  if (cached && sameFileIdentity(cached.identity, identity)) {
+    currentArtifactCache.delete(p);
+    currentArtifactCache.set(p, cached);
+    return cached;
+  }
+  const inFlight = currentArtifactInFlight.get(p);
+  if (inFlight) return await inFlight;
+  const pending = (async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const before = fileIdentity(p);
+      if (before.size > MAX_GIT_ARTIFACT_BYTES) return null;
+      const bytes = await Bun.file(p).arrayBuffer();
+      const after = fileIdentity(p);
+      if (bytes.byteLength !== before.size || !sameFileIdentity(before, after)) continue;
+      const snapshot = new Uint8Array(bytes);
+      return {
+        bytes: snapshot,
+        digest: `sha256:${createHash('sha256').update(snapshot).digest('hex')}`,
+        identity: after,
+      };
+    }
+    return null;
+  })().catch(() => null);
+  currentArtifactInFlight.set(p, pending);
+  try {
+    const artifact = await pending;
+    if (artifact) cacheCurrentArtifact(p, artifact);
+    return artifact;
+  } finally {
+    if (currentArtifactInFlight.get(p) === pending) currentArtifactInFlight.delete(p);
+  }
+}
+
+async function gitArtifact(commit: string, rel: string): Promise<GitArtifact | null> {
+  const key = `${commit}\u0000${rel}`;
+  const cached = gitArtifactCache.get(key);
+  if (cached) {
+    gitArtifactCache.delete(key);
+    gitArtifactCache.set(key, cached);
+    return cached;
+  }
+  const inFlight = gitArtifactInFlight.get(key);
+  if (inFlight) return await inFlight;
+  const pending = (async () => {
+    const sizeChild = Bun.spawn(['git', 'cat-file', '-s', `${commit}:${rel}`], {
+      cwd: PROJECT_DIR,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [sizeText, sizeExitCode] = await Promise.all([new Response(sizeChild.stdout).text(), sizeChild.exited]);
+    const objectSize = Number(sizeText.trim());
+    if (sizeExitCode !== 0 || !Number.isSafeInteger(objectSize) || objectSize < 0 || objectSize > MAX_GIT_ARTIFACT_BYTES) return null;
+    const child = Bun.spawn(['git', 'show', `${commit}:${rel}`], {
+      cwd: PROJECT_DIR,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [bytes, exitCode] = await Promise.all([new Response(child.stdout).arrayBuffer(), child.exited]);
+    if (exitCode !== 0 || bytes.byteLength !== objectSize) return null;
+    const snapshot = new Uint8Array(bytes);
+    return {
+      bytes: snapshot,
+      digest: `sha256:${createHash('sha256').update(snapshot).digest('hex')}`,
+      commit,
+    };
+  })().catch(() => null);
+  gitArtifactInFlight.set(key, pending);
+  try {
+    const artifact = await pending;
+    if (artifact) cacheGitArtifact(key, artifact);
+    return artifact;
+  } finally {
+    if (gitArtifactInFlight.get(key) === pending) gitArtifactInFlight.delete(key);
+  }
+}
+
+// Older adapter records pin video bytes but do not carry a separate video
+// commit. If the working-tree copy has since been removed, search commits that
+// touched that exact confined path and accept only the blob matching the cited
+// digest. This preserves durable playback without ever guessing by filename.
+async function gitArtifactByDigest(rel: string, expected: string): Promise<GitArtifact | null> {
+  const key = `${rel}\u0000${expected.toLowerCase()}`;
+  const resolvedCommit = digestCommitCache.get(key);
+  if (resolvedCommit) {
+    digestCommitCache.delete(key);
+    digestCommitCache.set(key, resolvedCommit);
+    const artifact = await gitArtifact(resolvedCommit, rel);
+    if (artifact?.digest.toLowerCase() === expected.toLowerCase()) return artifact;
+    digestCommitCache.delete(key);
+  }
+  const inFlight = gitArtifactByDigestInFlight.get(key);
+  if (inFlight) return await inFlight;
+  const pending = (async () => {
+    const child = Bun.spawn(['git', 'log', '--all', '--format=%H', '--', rel], {
+      cwd: PROJECT_DIR,
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'ignore',
+    });
+    const [text, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
+    if (exitCode !== 0) return null;
+    for (const commit of text.split(/\s+/).filter((value) => /^[0-9a-f]{40}$/i.test(value))) {
+      const artifact = await gitArtifact(commit.toLowerCase(), rel);
+      if (artifact?.digest.toLowerCase() === expected.toLowerCase()) {
+        digestCommitCache.set(key, commit.toLowerCase());
+        trimOldest(digestCommitCache, 256);
+        return artifact;
+      }
+    }
+    return null;
+  })().catch(() => null);
+  gitArtifactByDigestInFlight.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (gitArtifactByDigestInFlight.get(key) === pending) gitArtifactByDigestInFlight.delete(key);
+  }
+}
+
+async function projectFileResponse(req: Request, url: URL, p: string, rel: string, pinnedArtifact: boolean): Promise<Response> {
+  const expected = url.searchParams.get('sha256');
+  const commit = url.searchParams.get('commit');
+  if (!pinnedArtifact && (expected || commit)) return new Response('Not Found', { status: 404, headers: NO_STORE });
+  if (expected && !/^sha256:[0-9a-f]{64}$/i.test(expected)) {
+    return new Response('Invalid sha256 pin', { status: 400, headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  if (commit && !/^[0-9a-f]{40}$/i.test(commit)) {
+    return new Response('Invalid evidence commit', { status: 400, headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' } });
+  }
+  let historical = commit ? await gitArtifact(commit.toLowerCase(), rel) : null;
+  if (commit && !historical) return new Response('Evidence not found at cited commit', { status: 404, headers: NO_STORE });
+  if (!historical && !existsSync(p) && expected) historical = await gitArtifactByDigest(rel, expected);
+  if (!historical && !existsSync(p)) return new Response('Not Found', { status: 404, headers: NO_STORE });
+
+  let current = !historical && expected ? await currentArtifact(p) : null;
+  if (!historical && expected && !current) {
+    return new Response('Evidence changed while verifying or exceeds the artifact size limit', {
+      status: 409,
+      headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+  }
+  if (!historical && !commit && expected && current?.digest.toLowerCase() !== expected.toLowerCase()) {
+    historical = await gitArtifactByDigest(rel, expected);
+    if (historical) current = null;
+  }
+
+  const bytes = historical?.bytes ?? current?.bytes;
+  const diskFile = bytes ? null : Bun.file(p);
+  let digest: string | null = historical?.digest ?? current?.digest ?? null;
+  if (expected) {
+    if (digest.toLowerCase() !== expected.toLowerCase()) {
+      return new Response('Evidence sha256 mismatch', {
+        status: 409,
+        headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8', 'X-Ztrack-Artifact-Sha256': digest },
+      });
+    }
+  }
+
+  const size = bytes?.byteLength ?? diskFile!.size;
+  const headers: Record<string, string> = {
+    ...NO_STORE,
+    'Accept-Ranges': 'bytes',
+    'Content-Type': contentType(p),
+    'X-Content-Type-Options': 'nosniff',
+    ...(digest ? { 'X-Ztrack-Artifact-Sha256': digest, ETag: `"${digest}"` } : {}),
+    ...(historical ? { 'X-Ztrack-Artifact-Commit': historical.commit } : {}),
+  };
+  const range = req.headers.get('range');
+  if (!range) {
+    headers['Content-Length'] = String(size);
+    return new Response(req.method === 'HEAD' ? null : (bytes ?? diskFile!), { headers });
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!match) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+  let start: number;
+  let end: number;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    if (!Number.isInteger(suffix) || suffix <= 0) return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Number(match[2]) : size - 1;
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= size || end < start) {
+    return new Response(null, { status: 416, headers: { ...headers, 'Content-Range': `bytes */${size}` } });
+  }
+  end = Math.min(end, size - 1);
+  headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+  headers['Content-Length'] = String(end - start + 1);
+  return new Response(req.method === 'HEAD' ? null : (bytes ? bytes.slice(start, end + 1) : diskFile!.slice(start, end + 1)), { status: 206, headers });
 }
 
 // VIZ-4: `Bun.build` has NO glob/virtual-module facility, and multiple entrypoints produce
@@ -368,7 +661,7 @@ function writeGeneratedEntry(repoExt: { path: string; presetName: string } | nul
     lines.push(`import repoExt from ${JSON.stringify(repoExt.path)};`);
     lines.push(`registerExtension(${JSON.stringify(repoExt.presetName)}, repoExt);`);
   }
-  lines.push(`import ${JSON.stringify(join(CLIENT_DIR, 'main.tsx'))};`);
+  lines.push(`import ${JSON.stringify(join(CLIENT_DIR, 'entry.tsx'))};`);
   writeFileSync(entryPath, lines.join('\n') + '\n');
   return entryPath;
 }
@@ -390,10 +683,10 @@ async function runBuild(repoExt: { path: string; presetName: string } | null): P
 }
 
 // Turn a raw Bun.build failure (thrown AggregateError, or the defensive `{success:false}` Error
-// above) into the SAME `npm install -D ztrack` translation the preset loader gives
+// above) into the SAME `npm install -D @volter/ztrack` translation the preset loader gives
 // (presetRegistry.ts:110-115) when the failure is specifically an unresolvable
-// 'ztrack/visualizer-kit' — Bun's own resolver message is
-// `Could not resolve: "ztrack/visualizer-kit". Maybe you need to "bun install"?` (verified
+// '@volter/ztrack/visualizer-kit' — Bun's own resolver message is
+// `Could not resolve: "@volter/ztrack/visualizer-kit". Maybe you need to "bun install"?` (verified
 // empirically). Any other build failure (a syntax error, a bad JSX tag, …) is reported as-is,
 // prefixed with which file it came from.
 function translateExtensionBuildError(err: unknown, extPath: string): string {
@@ -401,10 +694,10 @@ function translateExtensionBuildError(err: unknown, extPath: string): string {
   const messages = (err && typeof err === 'object' && Array.isArray((err as { errors?: unknown }).errors))
     ? (err as { errors: Array<{ message?: string }> }).errors.map((e) => e.message ?? '').join('\n')
     : raw;
-  if (/Could not resolve:\s*"ztrack\/visualizer-kit"|Cannot find package ['"]ztrack['"]|Cannot find module ['"]ztrack/.test(messages)) {
+  if (/Could not resolve:\s*"@volter\/ztrack\/visualizer-kit"|Cannot find package ['"]@volter\/ztrack['"]|Cannot find module ['"]@volter\/ztrack/.test(messages)) {
     return (
-      `The visualizer extension (${extPath}) imports 'ztrack/visualizer-kit', but the 'ztrack' package isn't resolvable from this project. `
-      + `Install it as a dependency so the extension can load it:\n\n    npm install -D ztrack\n\n`
+      `The visualizer extension (${extPath}) imports '@volter/ztrack/visualizer-kit', but the '@volter/ztrack' package isn't resolvable from this project. `
+      + `Install it as a dependency so the extension can load it:\n\n    npm install -D @volter/ztrack\n\n`
       + `(ztrack works like eslint — the extension is your dashboard mod and imports the mechanism from the installed package; a global or one-off 'npx' install is not enough.)`
     );
   }
@@ -418,33 +711,21 @@ function translateExtensionBuildError(err: unknown, extPath: string): string {
 let lastExtensionMtime: number | null | undefined; // undefined = not checked yet (forces the first build)
 
 async function getClientBundle(): Promise<{ text: string; extensionError?: string }> {
-  const mtime = extensionMtimeMs();
-  if (mtime !== lastExtensionMtime) { clientBundle = null; lastExtensionMtime = mtime; }
   if (!clientBundle) {
-    clientBundle = (async () => {
-      const extPath = resolveExtensionPath(); // throws ExtensionConfinementError — NOT isolated, propagates as-is
-      if (!extPath) return { text: await runBuild(null) };
-      const presetName = await activePresetName();
-      try {
-        return { text: await runBuild({ path: extPath, presetName }) };
-      } catch (err) {
-        // FAILURE ISOLATION (VIZ-13): a malformed extension, or one whose own
-        // 'ztrack/visualizer-kit' import doesn't resolve, must not take the board down — rebuild
-        // WITHOUT it and surface the (translated) error as a payload/notice field instead.
-        const extensionError = translateExtensionBuildError(err, extPath);
-        const text = await runBuild(null); // truly broken even without the extension -> propagates, no further isolation
-        return { text, extensionError };
-      }
-    })().catch((error) => { clientBundle = null; throw error; });
+    // The SPA shell is stable. Repo presentation is compiled independently by the public
+    // extension loader and fetched from /assets/extension.js, exactly as embedding hosts do.
+    clientBundle = runBuild(null).then((text) => ({ text })).catch((error) => { clientBundle = null; throw error; });
   }
   return clientBundle;
 }
 
 const SHELL = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>tracker · core</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2324262d'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='11' font-weight='700' fill='white'%3E◆%3C/text%3E%3C/svg%3E">
+<title>Ztrack</title>
+<link rel="icon" type="image/svg+xml" href="https://brand.volter.ai/logo/ztrack/svg?size=64&variant=mono">
+<link rel="stylesheet" href="/assets/brand/tokens.css">
 <link rel="stylesheet" href="/assets/styles.css">
+<link rel="stylesheet" href="/assets/visualizer-react.css">
 <link rel="stylesheet" href="/assets/theme.css"></head>
 <body><div id="root"></div><script type="module" src="/assets/app.js"></script></body></html>`;
 
@@ -458,8 +739,34 @@ const server = Bun.serve({
       try { return new Response((await getClientBundle()).text, { headers: { 'Content-Type': 'text/javascript; charset=utf-8', ...NO_STORE } }); }
       catch (e) { return new Response(String(e), { status: 500 }); }
     }
+    // The brand's tokens and faces (company decision 0018), generated into visualizer/brand/ at build
+    // time by scripts/build-brand-tokens.mjs; both stylesheets read their colours from them.
+    if (url.pathname === '/assets/brand/tokens.css') {
+      if (!existsSync(BRAND_TOKENS_PATH)) return new Response('', { status: 404 });
+      return new Response(Bun.file(BRAND_TOKENS_PATH), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+    }
+    const brandFace = /^\/assets\/brand\/fonts\/([A-Za-z0-9-]+\.woff2)$/.exec(url.pathname);
+    if (brandFace) {
+      const face = join(here, 'brand', 'fonts', brandFace[1]!);
+      if (!existsSync(face)) return new Response('Not Found', { status: 404 });
+      return new Response(Bun.file(face), { headers: { 'Content-Type': 'font/woff2', 'Cache-Control': 'public, max-age=86400' } });
+    }
     if (url.pathname === '/assets/styles.css') {
       return new Response(Bun.file(new URL('./client/styles.css', import.meta.url)), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+    }
+    if (url.pathname === '/assets/visualizer-react.css') {
+      return new Response(Bun.file(new URL('../src/visualizerReact.css', import.meta.url)), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+    }
+    if (url.pathname === '/assets/extension.js') {
+      const built = await buildVisualizerExtensionModule({ projectRoot: PROJECT_DIR });
+      if (built.error || !built.code) {
+        return new Response('export default {};', { headers: { 'Content-Type': 'text/javascript; charset=utf-8', ...NO_STORE } });
+      }
+      return new Response(built.code, { headers: {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'ETag': `"${built.contentHash}"`,
+        ...NO_STORE,
+      } });
     }
     if (url.pathname === '/assets/theme.css') {
       // Read PER REQUEST (no memo) so an edit to the repo-local file shows on the next reload —
@@ -469,12 +776,37 @@ const server = Bun.serve({
       // THEME_CSS_PATH is a fixed constant, not derived from the request, so there is no
       // request-path input for a traversal to act on.
       if (!existsSync(THEME_CSS_PATH)) return new Response('', { status: 404 });
-      return new Response(Bun.file(THEME_CSS_PATH), { headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE } });
+      return new Response(Bun.file(THEME_CSS_PATH), {
+        headers: { 'Content-Type': 'text/css; charset=utf-8', ...NO_STORE },
+      });
+    }
+    const sourcePreview = /^\/assets\/source-previews\/([0-9a-f]{64})\/page-([1-9]\d*)\.png$/.exec(url.pathname);
+    if (sourcePreview) {
+      const [, sourceDigest, pageText] = sourcePreview;
+      const page = Number(pageText);
+      if (!Number.isSafeInteger(page) || page > 9999) return new Response('Not Found', { status: 404 });
+      const previewPath = join(SOURCE_PREVIEW_DIR, sourceDigest!, `page-${String(page).padStart(2, '0')}.png`);
+      if (!existsSync(previewPath)) return new Response('Not Found', { status: 404 });
+      try {
+        if (!realpathSync(previewPath).startsWith(realpathSync(PROJECT_DIR) + sep)) return new Response('Not Found', { status: 404 });
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
+      return new Response(Bun.file(previewPath), {
+        headers: {
+          'Content-Type': 'image/png',
+          'X-Ztrack-Source-Sha256': `sha256:${sourceDigest}`,
+          'X-Ztrack-Source-Page': String(page),
+          ...NO_STORE,
+        },
+      });
     }
     if (url.pathname.startsWith('/project/')) {
-      const p = projectFile(url.pathname);
-      if (!p || !existsSync(p)) return new Response('Not Found', { status: 404 });
-      return new Response(Bun.file(p), { headers: { 'Content-Type': contentType(p) } });
+      const rel = projectRelative(url.pathname);
+      if (rel === null) return new Response('Invalid project path', { status: 400, headers: { ...NO_STORE, 'Content-Type': 'text/plain; charset=utf-8' } });
+      const project = projectFile(rel);
+      if (!project) return new Response('Not Found', { status: 404 });
+      return projectFileResponse(req, url, project.abs, rel, project.pinnedArtifact);
     }
     if (url.pathname === '/api/board') {
       try { return Response.json(await board()); }

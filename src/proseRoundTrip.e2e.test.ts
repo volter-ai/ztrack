@@ -23,7 +23,7 @@ describe('R4: ac patch no longer drops bare leading prose (ZTB-10)', () => {
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-prose-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     git('init', '-q'); git('config', 'user.email', 't@t.co'); git('config', 'user.name', 't');
     zt('init');
   }, 30_000);

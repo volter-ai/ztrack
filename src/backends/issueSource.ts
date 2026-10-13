@@ -30,8 +30,14 @@ export interface IssueSource {
   /** Persist `c` into this source. A `document` source (ZTB-4 dev/09 — documentSource.ts) accepts
    *  only a narrow delta (`body`/`title`, splicing into the issue's recorded span) and fails
    *  closed, naming the file and the reason, for anything wider (status/assignee/labels/
-   *  project/parent/children/comments, an excised subtree, the umbrella issue, a stale read). */
-  write(c: CanonicalIssue): void;
+   *  project/parent/children/comments, an excised subtree, the umbrella issue, a stale read).
+   *
+   *  `opts.dryRun` (ztrack#28): run EVERY gate this write would run — the document source's
+   *  structural/delta/staleness/integrity guards included — but stop short of the final
+   *  filesystem mutation (and any in-memory view refresh). A dry run that returns without
+   *  throwing is therefore an honest prediction that the real write would be accepted; a dry
+   *  run must never succeed where the real write would refuse. */
+  write(c: CanonicalIssue, opts?: { dryRun?: boolean }): void;
   /** Remove `id` from this source. A `document` source always throws (removing a section is a
    *  file edit, not a tracker op — see documentSource.ts's `documentDeleteError`). */
   delete(id: string): void;

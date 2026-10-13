@@ -75,7 +75,7 @@ async function main() {
   log(`# simulating ${FEATURES} features across ${STREAMS} parallel worktrees`);
   const root = mkdtempSync(join(tmpdir(), 'ztrk-sim-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
   git(root, 'init', '-q'); git(root, 'config', 'user.email', 's@s.co'); git(root, 'config', 'user.name', 's');
   writeFileSync(join(root, 'README.md'), '# project\n'); git(root, 'add', '-A'); git(root, 'commit', '-q', '-m', 'base');
   zt(root, 'init', '--team', 'PROJ');
@@ -98,7 +98,7 @@ async function main() {
     const wt = join(root, `..`, `wt-${k}-${process.pid}`);
     await withGit(() => git(root, 'worktree', 'add', '-q', '-b', `stream-${k}`, wt, 'HEAD'));
     mkdirSync(join(wt, 'node_modules'), { recursive: true });
-    try { symlinkSync(REPO, join(wt, 'node_modules', 'ztrack')); } catch { /* */ }
+    try { mkdirSync(join(wt, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(wt, 'node_modules', '@volter', 'ztrack')); } catch { /* */ }
     for (;;) {
       const item = queue[next++];
       if (!item) break;

@@ -5,7 +5,7 @@
 // auth) never breaks the underlying command — ztrack must keep working without the network.
 import { loadTrackerConfig } from '../../config.ts';
 import { createTrackerClient } from '../../sdk.ts';
-import type { ReconcilePolicy } from '@volter-ai-dev/twin';
+import type { ReconcilePolicy } from './reconcile.ts';
 import { resolveGithubExecute } from './execute.ts';
 import { pull, push, reconcileSync } from './sync.ts';
 
@@ -19,7 +19,7 @@ export function linkedRepo(projectRoot: string): string | null {
 
 /** The configured reconcile policy for the link (default `merge`). */
 export function linkedPolicy(projectRoot: string): ReconcilePolicy {
-  try { return loadTrackerConfig(projectRoot).sync?.policy ?? 'merge'; } catch { return 'merge'; }
+  try { const sync = loadTrackerConfig(projectRoot).sync; return sync?.provider === 'github' ? sync.policy ?? 'merge' : 'merge'; } catch { return 'merge'; }
 }
 
 /** Pull and/or push the linked GitHub repo. No-op when the project has no github link. */

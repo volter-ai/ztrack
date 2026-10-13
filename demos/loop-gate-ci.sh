@@ -16,20 +16,20 @@ new_repo() { # $1=name [$2=preset] -> echoes dir; fresh git repo with ztrack ins
     git init -q; git config user.email ci@example.com; git config user.name "loop ci"
     echo "# $1" > README.md; git add README.md; git commit -q -m init
     npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-    npx ztrack init --team APP --preset "${2:-default}" >/dev/null )
+    npx @volter/ztrack init --team APP --preset "${2:-default}" >/dev/null )
   printf '%s' "$d"
 }
-mk_issue() { local body="${2//COMMIT/$(cd "$1" && git rev-parse HEAD)}"; printf '%s' "$body" > "$1/body.md"; ( cd "$1" && npx ztrack issue create --title Task --label type:case --state ready --assignee t --body-file body.md >/dev/null ); }
-arm()  { ( cd "$1" && npx ztrack loop start APP-1 --max "${2:-5}" >/dev/null ); }
+mk_issue() { local body="${2//COMMIT/$(cd "$1" && git rev-parse HEAD)}"; printf '%s' "$body" > "$1/body.md"; ( cd "$1" && npx @volter/ztrack issue create --title Task --label type:case --state ready --assignee t --body-file body.md >/dev/null ); }
+arm()  { ( cd "$1" && npx @volter/ztrack loop start APP-1 --max "${2:-5}" >/dev/null ); }
 # helpers that CAPTURE a non-zero exit (so `set -e` doesn't abort): cmd && rc=0 || rc=$?
 fire() { local rc; ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$hook" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
 fire_msg() { ( cd "$1" && printf '{"session_id":"%s"}' "$2" | bash "$hook" 2>&1 >/dev/null ) || true; }  # echoes the hook's held message
 count_state() { find "$1/.volter" -maxdepth 1 \( -name '.ztrack-loop-iter-*' -o -name '.ztrack-loop-exempt-*' \) 2>/dev/null | wc -l | tr -d ' '; }
-chk()  { local rc; ( cd "$1" && npx ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+chk()  { local rc; ( cd "$1" && npx @volter/ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
 armed(){ [ -f "$1/.volter/.ztrack-loop.json" ] && echo YES || echo NO; }
 # Count FINDINGS of a code, not raw text hits: self-documenting fix hints (the `↳ Fix:` line)
 # also mention the code (e.g. `waiver sign … --code <code>`), so exclude those hint lines.
-greps(){ ( cd "$1" && npx ztrack check 2>&1 ) | grep "$2" | grep -cv '↳' || true; }
+greps(){ ( cd "$1" && npx @volter/ztrack check 2>&1 ) | grep "$2" | grep -cv '↳' || true; }
 
 # default grammar: a passed AC with REAL-commit evidence but NO proof -> exactly one
 # (waivable) finding, `passed_ac_missing_proof` (COMMIT is substituted with the repo HEAD by
@@ -91,11 +91,11 @@ ok "$(fire "$d" S1)" 2 "a bare-S1 payload after two A1-held turns is STILL held 
 ok "$(armed "$d")" YES "per-actor counters: A1's held turns didn't push the bare session's counter past the cap"
 
 echo "## arm-collision refusal (src/cliLoop.ts \`loop start\`)"
-collision_rc()  { local rc; ( cd "$1" && npx ztrack loop start "$2" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
-collision_msg() { ( cd "$1" && npx ztrack loop start "$2" 2>&1 >/dev/null ) || true; }
+collision_rc()  { local rc; ( cd "$1" && npx @volter/ztrack loop start "$2" >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+collision_msg() { ( cd "$1" && npx @volter/ztrack loop start "$2" 2>&1 >/dev/null ) || true; }
 
 d="$(new_repo collision)"; mk_issue "$d" "$red"
-( cd "$d" && npx ztrack issue create --title Second --label type:case --state ready --assignee t --body-file body.md >/dev/null )  # APP-2
+( cd "$d" && npx @volter/ztrack issue create --title Second --label type:case --state ready --assignee t --body-file body.md >/dev/null )  # APP-2
 arm "$d"   # arms APP-1
 before="$(cat "$d/.volter/.ztrack-loop.json")"
 ok "$(collision_rc "$d" APP-2)" 1 "arming a DIFFERENT target while armed refuses (nonzero exit)"
@@ -122,20 +122,20 @@ ok "$([ "$(printf '%s' "$warn_msg" | grep -c 'ZTRACK_TRACKER_ROOT')" -ge 1 ] && 
 echo "## waiver CLI round-trip (eslint-disable-style: per-finding, signed off as git identity)"
 d="$(new_repo waiver)"; mk_issue "$d" "$red"
 ok "$(chk "$d")" 1 "the unwaived issue is red (passed AC, no proof)"
-( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof is in the linked PR" >/dev/null )
+( cd "$d" && npx @volter/ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof is in the linked PR" >/dev/null )
 ok "$(chk "$d")" 0 "a signed waiver for that finding -> acknowledged -> passes"
 ( cd "$d" && git commit --allow-empty -q -m "unrelated work" )
 ok "$(chk "$d")" 0 "an unrelated commit does NOT affect it (the waiver tracks the finding, not HEAD)"
 
 d="$(new_repo unused)"; mk_issue "$d" "$green"
-( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "preemptive" >/dev/null )
+( cd "$d" && npx @volter/ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "preemptive" >/dev/null )
 ok "$([ "$(greps "$d" waiver_unused)" -ge 1 ] && echo YES || echo NO)" YES "a waiver that matches no finding reports waiver_unused"
 ok "$(chk "$d")" 0 "but waiver_unused is a warning — check still passes"
 
 d="$(new_repo unreasoned)"; mk_issue "$d" "$red"
-( cd "$d" && npx ztrack issue view APP-1 --json body 2>/dev/null \
+( cd "$d" && npx @volter/ztrack issue view APP-1 --json body 2>/dev/null \
   | python3 -c "import json,sys;print(json.load(sys.stdin)['body'].rstrip()+'\n\n## Waivers\n\n- code: passed_ac_missing_proof by: someone\n')" > u.md \
-  && npx ztrack issue edit APP-1 --body-file u.md >/dev/null )
+  && npx @volter/ztrack issue edit APP-1 --body-file u.md >/dev/null )
 ok "$(chk "$d")" 1 "an unreasoned waiver does not pass"
 ok "$([ "$(greps "$d" waiver_missing_reason)" -ge 1 ] && echo YES || echo NO)" YES "and it reports waiver_missing_reason"
 
@@ -144,15 +144,15 @@ echo "## review-fix regressions — through the REAL packed+installed ztrack CLI
 echo "# H1: exactly one missing-blocker (dev/99); a real blocker on dev/01 is resolved, not a phantom"
 d="$(new_repo h1)"
 printf '## Acceptance Criteria\n\n- [ ] dev/01 v1 First.\n  - status: pending\n- [ ] dev/02 v1 Wait.\n  - status: pending\n  - blocked-by: dev/01\n- [ ] dev/03 v1 Y.\n  - status: pending\n  - blocked-by: dev/99\n' > "$d/body.md"
-( cd "$d" && npx ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
+( cd "$d" && npx @volter/ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
 ok "$(greps "$d" 'ac_blocker_missing')" 1 "exactly one missing-blocker (dev/99); dev/01 is resolved, not a phantom"
 
 echo "# H2: a per-finding waiver clears a readiness error but NOT a structural self-block"
 d="$(new_repo h2)"
 printf '## Acceptance Criteria\n\n- [x] dev/01 v1 do the thing\n  - status: passed\n  - evidence ev1: commit=deadbeef acv=1\n- [ ] dev/02 v1 Loop.\n  - status: pending\n  - blocked-by: dev/02\n' > "$d/body.md"
-( cd "$d" && npx ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
+( cd "$d" && npx @volter/ztrack issue create --title T --label type:case --state ready --assignee t --body-file body.md >/dev/null )
 ok "$(chk "$d")" 1 "unwaived: red (missing proof + self-block)"
-( cd "$d" && npx ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof in PR" >/dev/null )
+( cd "$d" && npx @volter/ztrack waiver sign APP-1 --code passed_ac_missing_proof --reason "proof in PR" >/dev/null )
 ok "$(chk "$d")" 1 "after waiving the proof finding: STILL red — the self-block is non-waivable"
 ok "$([ "$(greps "$d" 'ac_self_block')" -ge 1 ] && echo YES || echo NO)" YES "ac_self_block is still reported (not acknowledged) post-waiver"
 
@@ -171,8 +171,8 @@ ok "$(fire "$d" R2)" 0 "the turn past --max releases (exit 0, not trapped)"
 ok "$(armed "$d")" NO "the cap removes the arm marker"
 ok "$([ -f "$d/.volter/.ztrack-loop-capped.json" ] && echo YES || echo NO)" YES "and leaves a capped breadcrumb"
 ok "$(fire "$d" FRESH)" 0 "a fresh session is not trapped after a cap (not armed -> exit 0)"
-ok "$([ "$( ( cd "$d" && npx ztrack loop status ) | grep -c capped )" -ge 1 ] && echo YES || echo NO)" YES "loop status reports the cap"
-( cd "$d" && npx ztrack loop start APP-1 --max 2 >/dev/null )
+ok "$([ "$( ( cd "$d" && npx @volter/ztrack loop status ) | grep -c capped )" -ge 1 ] && echo YES || echo NO)" YES "loop status reports the cap"
+( cd "$d" && npx @volter/ztrack loop start APP-1 --max 2 >/dev/null )
 ok "$([ -f "$d/.volter/.ztrack-loop-capped.json" ] && echo YES || echo NO)" NO "re-arming clears the breadcrumb"
 
 echo "## R3: any disarm sweeps EVERY session's iter/exempt files (no stale litter)"
@@ -182,7 +182,7 @@ fire "$d" R3 >/dev/null                                       # green -> disarm 
 ok "$(count_state "$d")" 0 "going green sweeps every session's iter/exempt files"
 d="$(new_repo r3stop)"; mk_issue "$d" "$red"; arm "$d" 5
 : > "$d/.volter/.ztrack-loop-iter-X"; : > "$d/.volter/.ztrack-loop-exempt-X"
-( cd "$d" && npx ztrack loop stop >/dev/null )
+( cd "$d" && npx @volter/ztrack loop stop >/dev/null )
 ok "$(count_state "$d")" 0 "loop stop sweeps stray iter/exempt files"
 
 echo "# gitignore migration: loop start re-adds the ignore patterns on a repo that lacked them"
@@ -190,7 +190,7 @@ d="$(new_repo gi)"
 grep -v 'ztrack-loop' "$d/.gitignore" > "$d/.gi.tmp" && mv "$d/.gi.tmp" "$d/.gitignore"   # simulate a pre-loop init
 ok "$(grep -c 'ztrack-loop' "$d/.gitignore" || true)" 0 "precondition: loop ignore lines absent"
 mk_issue "$d" "$red"
-( cd "$d" && npx ztrack loop start APP-1 --max 5 >/dev/null )
+( cd "$d" && npx @volter/ztrack loop start APP-1 --max 5 >/dev/null )
 ok "$([ "$(grep -c 'ztrack-loop-exempt' "$d/.gitignore")" -ge 1 ] && echo YES || echo NO)" YES "loop start migrated the .gitignore (exempt files now ignored)"
 
 echo

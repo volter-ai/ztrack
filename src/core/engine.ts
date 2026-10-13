@@ -22,6 +22,9 @@ import type { RuleCategory, RuleDepth } from '../checkRules.ts';
 import { blockCycles, blockerRefProblems, completionViolations, nodeIndex } from './blocking.ts';
 import { formatRef } from './ref.ts';
 import { splitIssueBundle } from './bundle.ts';
+import type { VisualizerSpec } from '../visualizerModel.ts';
+export { VisualizerSpecSchema } from '../visualizerModel.ts';
+export type { VisualizerSpec } from '../visualizerModel.ts';
 
 // ── optional task-management primitives ─────────────────────────────────────
 // Standard shapes every task system has. They are NOT required: a preset opts
@@ -52,6 +55,7 @@ export interface CoreAC {
   proof?: Proof;            // primitive
   blockedBy?: BlockRef[];   // primitive: nodes that must land before this one
   blocks?: BlockRef[];      // primitive: nodes this one must land before
+  waitingOn?: string;       // primitive: the message (m-… or a-…) whose answer this waits for
 }
 export interface CoreIssue {
   id: string; title: string; summary: string; status: string; acceptanceCriteria: CoreAC[];
@@ -59,6 +63,8 @@ export interface CoreIssue {
   relations?: Relation[];       // primitive
   children?: string[];          // primitive
   sources?: Source[];           // primitive
+  paused?: { by: string; reason: string }; // card flag, independent of lifecycle
+  waitingOn?: string;           // primitive: the message (m-… or a-…) whose answer this waits for
   // (waivers are NOT a primitive on the issue — they live in context.waivers; see WaiverDirective)
 }
 export interface CoreRoot { issues: CoreIssue[] }
@@ -370,62 +376,6 @@ export interface PresetContextInput {
   root?: CoreRoot;   // present when validating an already-exported root
 }
 
-// VIZ-1: the dashboard's vocabulary, as DATA. `visualizer/client/presets/default.tsx:5-40` (the
-// richest shipped view extension) is entirely field references and literal labels — statusOrder,
-// an AC-unit label, an optional status→css-class map, and which issue/AC fields hold the
-// assignee, the PR link, the AC's own id/text/version, its proof, and its evidence entries. This
-// block is that vocabulary expressed as plain, JSON-serializable data so it can live in the
-// user's own `preset.mts` (mechanically checkable against the schema's status enum, VIZ-7)
-// instead of a second, drift-prone code file. HARD BOUNDARY: every leaf below is a string, a
-// string array, or a flat record of strings — there is no `z.function()`/`z.any()` anywhere in
-// `VisualizerSpecSchema`, so a function- or markup-valued member fails validation structurally,
-// not by convention. Irreducible RENDER logic (e.g. speckit's issue panels) is layer 2's job —
-// the `VisualizerExtension` code seam (VIZ-13/VIZ-14) — which this contract deliberately cannot
-// express (no statusOrder/acUnitLabel/field-mapping members there, by construction).
-const VisualizerAcTextSchema = z.object({
-  id: z.string(),                 // AC field holding its id, e.g. "id"
-  text: z.string(),               // AC field holding its prose text, e.g. "text"
-  version: z.string().optional(), // AC field holding its version number, e.g. "version" — optional:
-                                  // only simple-sdlc's AC schema HAS one (spec/speckit don't)
-}).strict();
-
-const VisualizerPrSchema = z.object({
-  field: z.string(),    // issue field holding the PR object, e.g. "pr"
-  urlField: z.string(), // field on THAT object holding the URL, e.g. "url" -> issue.pr.url
-}).strict();
-
-const VisualizerAcProofSchema = z.object({
-  field: z.string(),       // AC field holding the proof object, e.g. "proof"
-  explanation: z.string(), // field on the proof object holding the explanation string
-  evidenceRefs: z.string(), // field on the proof object holding the string[] of evidence refs
-}).strict();
-
-const VisualizerAcEvidenceSchema = z.object({
-  field: z.string(),     // AC field holding the evidence array, e.g. "evidence"
-  image: z.string(),     // field on each evidence entry holding the image path
-  commit: z.string(),    // field on each evidence entry holding the commit sha
-  acVersion: z.string(), // field on each evidence entry holding the AC version it backs
-}).strict();
-
-/** The zod validator for `Preset.visualizer` — see the block comment above for the design intent
- *  and the hard boundary it enforces. Re-exported from `ztrack/preset-kit` (presetKit.ts) so an
- *  installed `preset.mts` imports only the kit, never this module directly. */
-export const VisualizerSpecSchema = z.object({
-  statusOrder: z.array(z.string()),           // column / group / view order (VIZ-7: must equal the issue-status enum)
-  acUnitLabel: z.string(),                    // what an AC is called, e.g. "Dev ACs", "User Stories"
-  statusClass: z.record(z.string(), z.string()).optional(), // status -> css class; omitted = identity
-  assignee: z.string().optional(),            // issue field holding the assignee string, e.g. "assignee"
-  pr: VisualizerPrSchema.optional(),          // issue field(s) holding the PR link
-  acText: VisualizerAcTextSchema.optional(),  // AC fields for the label (id + text [+ version]); omitted = core default rendering
-  acProof: VisualizerAcProofSchema.optional(),       // AC's proof sub-object field names
-  acEvidence: VisualizerAcEvidenceSchema.optional(), // AC's evidence-array field names
-}).strict();
-
-/** Inferred from `VisualizerSpecSchema` — the ONE authored copy of the shape (no hand-written
- *  interface to drift from the schema, matching this repo's schema-is-the-type convention,
- *  configSchema.ts). Re-exported from `ztrack/preset-kit`. */
-export type VisualizerSpec = z.infer<typeof VisualizerSpecSchema>;
-
 // A preset: a hard schema (core + its own strict fields), an mdast parse that
 // fills it, and rules over it. `R extends CoreRoot` is what guarantees the CLI's
 // core affordances work against any preset.
@@ -458,6 +408,19 @@ export interface Preset<R extends CoreRoot> {
   // an external source-of-truth (e.g. speckit over Spec-Kit's own files) is read-ONLY and
   // omits it, so `fmt` and the structured-mutation tools are unavailable for it by design.
   serialize?: (issue: R['issues'][number]) => { body: string; columns: IssueColumns };
+  // Optional AC-patch normalization (ztrack#22): given the schema-shaped fragment an `ac patch`
+  // is about to overlay and the CURRENT AC object it targets, return the fragment to actually
+  // apply. This is where a preset keeps its own INTERNALLY-COUPLED fields consistent when a
+  // patch names only one of them — e.g. simple-sdlc's `checked` is defined as the GFM mirror of
+  // `status === 'passed'`, so a `{"status":"failed"}` patch must also flip the checkbox rather
+  // than write a `[x] … status: failed` row its own `ac_checkbox_status_mismatch` rule then
+  // flags (and that a repeat of the same patch can never repair, because the status field alone
+  // is already a no-op). Preset-owned because which fields mirror which is the preset's grammar;
+  // the hook must be PURE and must only ADD/ADJUST fields derived from the given patch + current
+  // AC (an explicit field in the caller's patch always wins — see the shipped implementations).
+  // Omit for a preset with no coupled AC fields (spec derives status FROM the checkbox at parse,
+  // so it has no mirror to desynchronize).
+  normalizeAcPatch?: (patch: Record<string, unknown>, current: Record<string, unknown>) => Record<string, unknown>;
   rules: Rule<R>[];
   // Preset-specific analyzed facts: given the engine's core DerivedModel, return extra
   // fact lists (keyed by name) for this preset's rules to `select` over. This is where
@@ -861,10 +824,24 @@ export function checkRoot<R extends CoreRoot>(preset: Preset<R>, root: unknown, 
 // repo-local preset built against a different zod major) must surface as a finding,
 // not a raw crash of `ztrack check`.
 function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, root: unknown, isExportedRoot: boolean, originById: Map<string, Origin> = new Map()): CheckResult<R> {
+  // Waivers are core-owned (parsed from `## Waivers` by the CORE, never per-preset), so
+  // they are validated against the core WaiverDirectiveSchema here and kept out of the
+  // per-preset contextSchema parse entirely. Routing them through preset schemas broke
+  // both ways: z.object() silently STRIPS undeclared keys, so a preset contextSchema
+  // without a `waivers` field no-oped every signed waiver before applyWaivers ever saw
+  // it, and a .strict() schema without the field would instead fail the whole check.
+  const { waivers: rawWaivers, ...bareCtx } = ctx;
+  let waivers: WaiverDirective[] = [];
+  const waiverFindings: Finding[] = [];
+  if (rawWaivers?.length) {
+    const revalidated = z.array(WaiverDirectiveSchema).safeParse(rawWaivers);
+    if (revalidated.success) waivers = revalidated.data;
+    else waiverFindings.push({ code: 'waivers_context_invalid', severity: 'error', message: `context.waivers does not match the core waiver schema (issueId/code/reason/approvedBy strings, optional acId/ref): ${revalidated.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}` });
+  }
   let result: ReturnType<z.ZodType<ValidationInput<R>>['safeParse']>;
   try {
     const inputSchema = makeValidationInputSchema(preset.schema, preset.contextSchema);
-    result = inputSchema.safeParse({ context: ctx, root });
+    result = inputSchema.safeParse({ context: bareCtx, root });
   } catch (error) {
     return { ok: false, findings: [{ code: 'schema_error', severity: 'error', message: `Could not validate against the preset schema (a preset/zod version mismatch?): ${String((error as Error)?.message ?? error)}` }], examinedIssues: countCandidateIssues(root) };
   }
@@ -874,5 +851,9 @@ function validateAndRun<R extends CoreRoot>(preset: Preset<R>, ctx: Context, roo
       ? { ok: false, findings: [{ code: 'root_shape_invalid', severity: 'error', message: 'Input does not match the preset root schema. If this is an old exported snapshot, re-run `ztrack export`.' }, ...shapeFindings(result.error, root, originById)], examinedIssues }
       : { ok: false, findings: shapeFindings(result.error, root, originById), examinedIssues };
   }
-  return runRules(preset, result.data, originById);
+  const data = result.data as ValidationInput<R>;
+  if (waivers.length) (data.context as Context).waivers = waivers;
+  const ran = runRules(preset, data, originById);
+  if (!waiverFindings.length) return ran;
+  return { ...ran, ok: false, findings: [...waiverFindings, ...ran.findings] };
 }

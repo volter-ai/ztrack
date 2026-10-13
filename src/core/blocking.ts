@@ -129,6 +129,9 @@ export interface NodeBlockStatus {
   blocked: boolean;
   /** the unsatisfied nodes upstream in the dependency closure — what's holding it up. */
   blockers: BlockRef[];
+  /** the messages whose answers it (or, for an issue, one of its own ACs) waits for: a wait beside the blockers,
+   *  ended by an answer, not by any node landing. */
+  waitingOn?: string[];
 }
 
 /** Per node, its transitive blocked state: the closure of upstream dependencies that
@@ -152,7 +155,9 @@ export function blockStatuses(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
       }
     };
     walk(startKey);
-    out.set(startKey, { blocked: unmet.size > 0, blockers: [...unmet].map((k) => nodeRef(nodes.get(k)!)) });
+    const node = nodes.get(startKey)!;
+    const waiting = messageWaits(node.kind === 'issue' ? node.issue : node.ac!);
+    out.set(startKey, { blocked: unmet.size > 0 || waiting.length > 0 || (node.kind === 'issue' && !!node.issue.paused), blockers: [...unmet].map((k) => nodeRef(nodes.get(k)!)), ...(waiting.length ? { waitingOn: waiting } : {}) });
   }
   return out;
 }
@@ -215,7 +220,9 @@ export function issueFrontier(root: CoreRoot, opts: BlockingOpts = {}): Map<stri
       const k = refKey(b);
       if (!seen.has(k)) { seen.add(k); blockers.push(b); }
     }
-    out.set(issue.id, { blocked: blockers.length > 0, blockers });
+    // a wait on an answer holds the issue up as a blocker does: its own, or one of its ACs'
+    const waitingOn = [...new Set([...messageWaits(issue), ...issue.acceptanceCriteria.flatMap(messageWaits)])];
+    out.set(issue.id, { blocked: blockers.length > 0 || waitingOn.length > 0 || !!issue.paused, blockers, ...(waitingOn.length ? { waitingOn } : {}) });
   }
   return out;
 }
@@ -248,6 +255,7 @@ export function blockerRefProblems(root: CoreRoot): RefProblem[] {
     for (const ac of issue.acceptanceCriteria) {
       const selfKey = formatRef({ issue: issue.id, ac: ac.id });
       for (const ref of [...(ac.blockedBy ?? []), ...(ac.blocks ?? [])]) {
+        if (ac.blockedBy?.includes(ref) && ref.ac === undefined && /^[ma]-[0-9a-f]{6,}$/.test(ref.issue)) continue;
         const key = refKey(ref);
         if (key === selfKey) out.push({ issueId: issue.id, acId: ac.id, ref, kind: 'self' });
         else if (!nodes.has(key)) out.push({ issueId: issue.id, acId: ac.id, ref, kind: 'missing' });
@@ -283,6 +291,7 @@ export function normalizeBlockRefs(issues: ParsedIssue[]): void {
   for (const i of issues) for (const ac of i.acceptanceCriteria) acKeys.add(formatRef({ issue: i.id, ac: ac.id }));
   const classify = (r: RawBlockRef): BlockRef => {
     if (!r.bare) return { issue: r.issue, ac: r.ac };
+    if (/^[ma]-[0-9a-f]{6,}$/.test(r.ac)) return { issue: r.ac };
     if (acKeys.has(formatRef({ issue: r.issue, ac: r.ac }))) return { issue: r.issue, ac: r.ac }; // local AC
     if (issueIds.has(r.ac)) return { issue: r.ac };                                                // whole issue
     return { issue: r.issue, ac: r.ac };                                                           // dangling local AC
@@ -293,4 +302,11 @@ export function normalizeBlockRefs(issues: ParsedIssue[]): void {
       if (ac.blocks) ac.blocks = ac.blocks.map(classify) as unknown as RawBlockRef[];
     }
   }
+}
+
+
+// A message target participates in blocking without inventing a card node for a mailbox thread.
+function messageWaits(node: { waitingOn?: string; relations?: { type: string; issueId: string }[]; blockedBy?: BlockRef[] }): string[] {
+  const refs = [node.waitingOn, ...(node.relations ?? []).filter((r) => r.type === 'blocked-by').map((r) => r.issueId), ...(node.blockedBy ?? []).map((r) => r.issue)];
+  return [...new Set(refs.filter((id): id is string => !!id && /^[ma]-[0-9a-f]{6,}$/.test(id)))];
 }

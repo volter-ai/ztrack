@@ -15,7 +15,7 @@ trap cleanup EXIT
 
 # Consume the real packed CLI (the shipped path), exactly like the other gated demos.
 tarball="$(cd "$repo_root" && npm pack --pack-destination "$tmp" --silent)"
-ztrack=(npx ztrack)
+ztrack=(npx @volter/ztrack)
 
 cd "$tmp"
 git init -q

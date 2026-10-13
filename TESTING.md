@@ -28,8 +28,10 @@ actual `ztrack` binary. No mocks; the only thing that isn't real is the live age
 Reserved for complex pure logic, and for code the CLI can't reach:
 
 - the block graph (`src/core/blocking.test.ts`), active-issue scope resolution
-  (`src/core/scope.test.ts`), the ref grammar (`src/core/ref.test.ts`), AC mutations +
-  AC-Version stamping (`src/modelEdit.test.ts`);
+  (`src/core/scope.test.ts`), the ref grammar (`src/core/ref.test.ts`), AC mutations
+  (`src/modelEdit.test.ts`), and the explicit-`v<N>` single-source AC-version invariant
+  (`src/acVersionSingleSource.test.ts` — there is no computed AC-version stamping anywhere;
+  see ztrack#21);
 - the mdast parser's exact structured output and the waiver freshness-fingerprint / `waivable`
   logic and the parser regression edge cases (`src/markdownDocument.test.ts`) — **not** the
   rule-firing behaviors, which live in `check-e2e.sh`;

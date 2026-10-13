@@ -7,8 +7,9 @@
     "noEmit": false,
     "outDir": "dist/src",
     "rewriteRelativeImportExtensions": true,
+    "jsx": "react-jsx",
     "rootDir": "src"
   },
-  "include": ["src/**/*.ts", "types/**/*.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "types/**/*.d.ts"],
   "exclude": ["src/**/*.test.ts"]
 }

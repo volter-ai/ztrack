@@ -73,7 +73,9 @@ export function resolvePresetName(preset: string): string {
 export type InitTrackerProjectOptions = {
   preset?: string;
   /** Permanently link an external tracker (e.g. { provider: 'github', repo: 'o/n' }). */
-  sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
+  sync?: { provider: 'github'; repo: string; policy?: 'hub-wins' | 'twin-wins' | 'merge' }
+    | { provider: 'hermes'; file: string; home?: string; board?: string }
+    | { provider: 'jira'; site: string; jql: string; statuses?: Record<string, string>; create?: boolean; people?: boolean; policy?: 'hub-wins' | 'twin-wins' | 'merge' };
   /** `shared`: a central, cross-worktree board (for multi-worktree/agent fleets). Default `branch`
    *  (committed, branch-scoped). See TrackerConfig.board. */
   board?: 'branch' | 'shared';
@@ -81,7 +83,7 @@ export type InitTrackerProjectOptions = {
 
 // The standalone preset's editable source, shipped at `boilerplates/presets/<preset>.ts`.
 // `ztrack init` copies it verbatim — it is REAL code (its OWN schema/parser/rules),
-// importing only `ztrack/preset-kit`. No template substitution, no flags.
+// importing only `@volter/ztrack/preset-kit`. No template substitution, no flags.
 function presetTemplate(preset: string): string {
   return readFileSync(join(PRESETS_DIR, `${resolvePresetName(preset)}.ts`), 'utf8');
 }
@@ -128,19 +130,19 @@ export function trackerVisualizerExtensionBasePath(projectRoot: string): string 
 // `registerExtension` to merge in (visualizerKit.ts's `VisualizerExtension` — every member
 // optional), so a fresh board renders IDENTICALLY to having no extension.tsx at all. It exists
 // purely so every repo has the seam ready to edit — REAL code (no template substitution),
-// importing only `ztrack/visualizer-kit`, mirroring `presetTemplate`'s own convention.
+// importing only `@volter/ztrack/visualizer-kit`, mirroring `presetTemplate`'s own convention.
 const STARTER_EXTENSION_TEMPLATE = `// Your repo-owned dashboard extension (see docs/VISUALIZER.md). It compiles into the served
 // board automatically — no config, no restart. Every member below is optional; this file ships
 // as a no-op, so the stock board is what you get until you fill one in.
 //
-// import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+// import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 //
 // export default defineVisualizerExtension({
 //   issuePanels: (issue) => <section className="panel">...</section>,
 //   acText: (ac) => ac.id,
 // });
 
-import { defineVisualizerExtension } from 'ztrack/visualizer-kit';
+import { defineVisualizerExtension } from '@volter/ztrack/visualizer-kit';
 
 export default defineVisualizerExtension({});
 `;
@@ -288,6 +290,8 @@ export function initTrackerProject(
     // author who DOES declare categories still gets `--categories` filtering; init just stops
     // writing this particular dead block.
     ...(options.sync ? { sync: options.sync } : {}),
+    // A Hermes-linked board is one document-source FILE (`ztrack sync hermes`, docs/SYNC-HERMES.md).
+    ...(options.sync?.provider === 'hermes' ? { sources: [{ path: options.sync.file, format: 'document' as const, name: 'board' }] } : {}),
     // Record the board scope explicitly (default 'shared' — a central, cross-worktree board); linked
     // trackers ignore it (they already have one central store), so only record it for an unlinked tracker.
     ...(options.sync ? {} : { board: options.board ?? 'shared' }),

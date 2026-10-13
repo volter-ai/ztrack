@@ -3,7 +3,12 @@
 // `render.e2e.test.tsx`.
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { buildEffectiveExtension, registerExtension, UPGRADE_NOTICE } from './extensions';
+import {
+  buildEffectiveExtension,
+  registerExtension,
+  replaceExtension,
+  UPGRADE_NOTICE,
+} from './extensions';
 import type { CoreAC, CoreIssue, Payload } from './model';
 
 function issue(overrides: Partial<CoreIssue> & Record<string, unknown> = {}): CoreIssue {
@@ -15,7 +20,7 @@ function ac(overrides: Partial<CoreAC> & Record<string, unknown> = {}): CoreAC {
 function payload(overrides: Partial<Payload> = {}): Payload {
   return {
     title: 'tracker', preset: 'simple-sdlc', projectDir: '/x', fetchedAt: 'now', trackerChangedAt: null, ok: true,
-    primitives: {}, visualizer: null, issues: [], findings: [], audit: {}, timestamps: {}, ...overrides,
+    primitives: {}, visualizer: null, operationalBlocking: {}, issues: [], findings: [], audit: {}, timestamps: {}, ...overrides,
   };
 }
 
@@ -114,6 +119,20 @@ describe('buildEffectiveExtension', () => {
     expect(renderToStaticMarkup(<>{withCode.issuePanels?.(issue(), (p) => p)}</>)).toBe('PANEL');
   });
 
+  test('operational-block policy and view label come only from the registered code extension', () => {
+    registerExtension('viz4-unit-test-operational-block', {
+      isOperationallyBlocked: (candidate) => candidate.status === 'human-required',
+      operationalBlockLabel: () => 'awaiting owner action',
+      blockedViewLabel: 'Owner action',
+    });
+    const blocked = issue({ status: 'human-required' });
+    const { ext } = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-operational-block' }));
+
+    expect(ext.isOperationallyBlocked?.(blocked)).toBe(true);
+    expect(ext.operationalBlockLabel?.(blocked)).toBe('awaiting owner action');
+    expect(ext.blockedViewLabel).toBe('Owner action');
+  });
+
   test('repeat registration merges PER MEMBER — later wins where present, other members survive (VIZ-13 layering seam)', () => {
     // The VIZ-13 scenario: a first-party extension (e.g. speckit) registers acText + issuePanels;
     // a repo extension later registers ONLY issuePanels under the same name. Per the spec's
@@ -125,5 +144,17 @@ describe('buildEffectiveExtension', () => {
     const { ext } = buildEffectiveExtension(payload({ preset: 'viz4-unit-test-preset-merge', visualizer: { statusOrder: [], acUnitLabel: 'x' } }));
     expect(renderToStaticMarkup(<>{ext.issuePanels?.(issue(), (p) => p)}</>)).toBe('REPO-PANEL'); // the later (repo) member wins
     expect(renderToStaticMarkup(<>{ext.acText?.(ac())}</>)).toBe('FIRST-PARTY-ACTEXT'); // the earlier member SURVIVES the re-registration
+  });
+
+  test('hot reload replaces the complete compiled extension so removed members disappear', () => {
+    replaceExtension('viz-hot-reload', {
+      acText: () => 'VERSION-ONE',
+      issuePanels: () => 'REMOVED-PANEL',
+    });
+    replaceExtension('viz-hot-reload', { acText: () => 'VERSION-TWO' });
+
+    const { ext } = buildEffectiveExtension(payload({ preset: 'viz-hot-reload' }));
+    expect(renderToStaticMarkup(<>{ext.acText?.(ac())}</>)).toBe('VERSION-TWO');
+    expect(ext.issuePanels).toBeUndefined();
   });
 });

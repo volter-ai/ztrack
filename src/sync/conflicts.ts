@@ -10,7 +10,8 @@ import { dirname, join } from 'node:path';
 import type { Finding } from '../core/engine.ts';
 import { syncStateDir } from '../config.ts';
 
-export type ConflictRecord = { field: string; local: string; remote: string };
+/** `resolve`: the provider's own resolution sentence (absent: the github sync's `--policy` names). */
+export type ConflictRecord = { field: string; local: string; remote: string; resolve?: string };
 export type ConflictStore = { issues: Record<string, ConflictRecord[]> };
 
 const storePath = (projectRoot: string) => join(syncStateDir(projectRoot), 'conflicts.json');
@@ -76,7 +77,7 @@ export function conflictFindings(projectRoot: string, inScope?: Set<string>): Fi
         severity: 'error',
         issueId,
         waivable: false,
-        message: `Sync conflict on ${r.field}: local "${trunc(r.local)}" vs remote "${trunc(r.remote)}". Resolve by editing the issue, then re-sync with \`--policy twin-wins\` (keep local) or \`--policy hub-wins\` (take remote).`,
+        message: `Sync conflict on ${r.field}: local "${trunc(r.local)}" vs remote "${trunc(r.remote)}". ${r.resolve ?? 'Resolve by editing the issue, then re-sync with `--policy twin-wins` (keep local) or `--policy hub-wins` (take remote).'}`,
       });
     }
   }

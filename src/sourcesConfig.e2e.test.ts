@@ -30,7 +30,7 @@ describe('config-declared sources (ZTB-3): union list, cross-source id conflict,
   beforeAll(() => {
     root = mkdtempSync(join(tmpdir(), 'ztrk-sources-'));
     mkdirSync(join(root, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+    mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
     gitIn(root, 'init', '-q'); gitIn(root, 'config', 'user.email', 't@t.co'); gitIn(root, 'config', 'user.name', 't');
     expect(ztIn(root, 'init', '--team', 'APP').code).toBe(0);
     // Two plain declared sources, neither at the implicit default store path — no board/worktree

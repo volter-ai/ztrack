@@ -18,7 +18,7 @@ import { parseMarkdownDocument, type MarkdownDocument, type MarkdownSection } fr
 // OPTIONAL separator (em dash, middot, or colon, each optionally surrounded by whitespace) or
 // just whitespace precedes the title remainder; nothing past the separator is interpreted further
 // — `## ZL-A5 · P0 · title` yields title `"P0 · title"` verbatim, not a parsed priority field.
-const ID_HEADING_RE = /^([A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+)\b\s*(?:[—·:]\s*)?(.*)$/;
+const ID_HEADING_RE = /^([A-Za-z][A-Za-z0-9_-]*[-_][A-Za-z0-9]+)\b\s*(?:[—·:]\s*)?(.*)$/;
 
 // Mirrors src/check.ts's `HEADER_LINE`/`fileToRecord` header-block scan exactly (same regex, same
 // abort-on-first-non-match semantics) but applied only to the document's PREAMBLE (the text before
@@ -48,13 +48,20 @@ export interface DocumentParsedIssue {
    *  documentWriteBack.ts, not here), so these stay unset for them — one source of truth each. */
   status?: string;
   assignee?: string;
+  /** The 0-based lines of `body` that start a heading (its own first), as the document's parse
+   *  found them; set only when nothing was excised (`body === raw`), so they index `body` exactly. */
+  headingLines?: number[];
 }
 
+const childIndex = new WeakMap<MarkdownDocument, Map<number | null, number[]>>();
 function directChildIndices(doc: MarkdownDocument, parentIndex: number | null): number[] {
-  return doc.sections.reduce<number[]>((acc, section, index) => {
-    if (section.parentIndex === parentIndex) acc.push(index);
-    return acc;
-  }, []);
+  let children = childIndex.get(doc);
+  if (!children) {
+    children = new Map();
+    doc.sections.forEach((section, index) => children!.set(section.parentIndex, [...(children!.get(section.parentIndex) ?? []), index]));
+    childIndex.set(doc, children);
+  }
+  return children.get(parentIndex) ?? [];
 }
 
 // A section's OWN leading content (before its first direct child heading). `section.body` already
@@ -110,7 +117,8 @@ function parseHeaderBlock(preamble: string): { title?: string; status?: string; 
     if (line.trim() === '') { i++; break; }
     const m = HEADER_LINE.exec(line.trim());
     if (!m) { aborted = true; i = 0; break; } // not a header block after all — nothing consumed
-    meta[m[1]!.toLowerCase()] = m[2]!.trim();
+    // A header line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
+    meta[m[1]!.toLowerCase()] = m[2]!.replace(/\s*\\$/u, '').trim();
   }
   // status/assignee ride along with title: fileToRecord (src/check.ts) — which this scan
   // deliberately mirrors — USES all three; dropping two of them left the umbrella issue
@@ -133,14 +141,42 @@ function umbrellaBody(doc: MarkdownDocument, headerLineCount: number, isIdBearin
   return out;
 }
 
+// The lines (0-based, from the section's own heading) of every heading in section `index`'s
+// subtree: its descendants follow it contiguously in document order.
+function subtreeHeadingLines(doc: MarkdownDocument, index: number): number[] {
+  const start = doc.sections[index]!.lineStart;
+  const within = (j: number): boolean => {
+    for (let p = doc.sections[j]!.parentIndex; p !== null; p = doc.sections[p]!.parentIndex) if (p === index) return true;
+    return false;
+  };
+  const lines = [0];
+  for (let j = index + 1; j < doc.sections.length && within(j); j++) lines.push(doc.sections[j]!.lineStart - start);
+  return lines;
+}
+
 /** Parse one document source's text into its issue tree. `filePath` is used only for the
  *  umbrella issue's id (mirrors `fileToRecord`'s `basename(path).replace(/\.[^.]+$/, '')`). */
+// One command reads a document through several doors (mode detection, then the source); the
+// Markdown parse of the same text is done once per process. Its result is only read.
+const parsedDocuments: Array<{ text: string; doc: MarkdownDocument }> = [];
+function parsedOnce(text: string): MarkdownDocument {
+  const known = parsedDocuments.find((entry) => entry.text === text);
+  if (known) return known.doc;
+  // Issues carry headings and spans only; section checkbox items are never read here.
+  const doc = parseMarkdownDocument(text, { checkboxes: false });
+  parsedDocuments.unshift({ text, doc });
+  parsedDocuments.length = Math.min(parsedDocuments.length, 4);
+  return doc;
+}
+
 export function parseMarkdownDocumentSource(text: string, filePath: string): DocumentParsedIssue[] {
-  const doc = parseMarkdownDocument(text);
+  const doc = parsedOnce(text);
 
   const idBearing = new Map<number, { id: string; title: string }>();
   doc.sections.forEach((section, index) => {
-    const m = ID_HEADING_RE.exec(section.title);
+    // The heading as Markdown reads it: a backslash-escaped punctuation character is that character (CommonMark 2.4), so
+    // an editor that writes `t\_651ec10b` (Git Notes does) names the same card.
+    const m = ID_HEADING_RE.exec(section.title.replace(/\\([!-\/:-@[-`{-~])/g, '$1'));
     if (m) idBearing.set(index, { id: m[1]!, title: (m[2] ?? '').trim() });
   });
   const isIdBearing = (i: number): boolean => idBearing.has(i);
@@ -170,11 +206,13 @@ export function parseMarkdownDocumentSource(text: string, filePath: string): Doc
     const parentId = ancestorIndex !== null ? idBearing.get(ancestorIndex)!.id : umbrellaId;
     if (parentId) addChild(parentId, id);
     const section = doc.sections[index]!;
+    const body = subtreeExcisingIdBearing(doc, index, isIdBearing);
     issues.push({
       id, title, parent: parentId, children: [], // children filled below, once every parent is known
-      body: subtreeExcisingIdBearing(doc, index, isIdBearing),
+      body,
       lineStart: section.lineStart, lineEnd: section.lineEnd,
       level: section.level, raw: section.raw,
+      ...(body === section.raw ? { headingLines: subtreeHeadingLines(doc, index) } : {}),
     });
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { buildSpeckitBundle, checkSpeckit, parseSpeckit, SpeckitPreset, SpeckitRootSchema } from './speckit.ts';
-import { checkRoot, type CoreRoot, type IssueRecord, type Preset } from 'ztrack/preset-kit';
+import { checkRoot, type CoreRoot, type IssueRecord, type Preset } from '@volter/ztrack/preset-kit';
 import { assertReadOnlyRoundTripExemption, assertVisualizerSpecConformance } from '../../src/testkit/presetConformance.ts';
 
 const HEAD = 'cafe1234beef';

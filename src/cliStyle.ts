@@ -205,7 +205,7 @@ export function renderCheckReport(result: CheckResult<CoreRoot>, options: { erro
 
   const exitHint = !failed
     ? `${statusMark('pass')} ${ui.dim('exit 0')}`
-    : `${statusMark('fail')} ${ui.dim('exit 1: produce evidence or lower the configured rigor')}`;
+    : `${statusMark('fail')} ${ui.dim('exit 1: fix the errors above or lower the configured rigor')}`;
   lines.push('', exitHint);
   return `${lines.join('\n')}\n`;
 }

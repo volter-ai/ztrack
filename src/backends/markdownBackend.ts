@@ -5,6 +5,7 @@
 // `backend: "markdown"`. Validation reads this store through `issue list/view`
 // (the loader frames those rows into the validation bundle); the project-manager
 // `snapshot` report verb is the one backend command not yet implemented here.
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { TrackerBackend, TrackerCommandResult } from '../types.ts';
@@ -178,7 +179,10 @@ class MarkdownSource implements IssueSource {
   origin(id: string): SourceOrigin { return { path: this.originPath(id) }; }
   // Write the committed md to THIS checkout (board stays in git, on this branch); in shared mode (re)point
   // the central index symlink at it — making this worktree the live owner of the issue.
-  write(c: CanonicalIssue): void {
+  // ztrack#28: a dry run stops before the filesystem mutation — for an issue-per-file source the
+  // write itself has no further gates, so there is nothing left to predict past this point.
+  write(c: CanonicalIssue, opts: { dryRun?: boolean } = {}): void {
+    if (opts.dryRun) return;
     const real = issueFile(this.dir, c.identifier);
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(real, serializeIssue(c));
@@ -338,6 +342,9 @@ export class MarkdownBackend implements TrackerBackend {
     return this.sources.filter((s) => selectors.some((sel) => sel === s.name || sel === basename(s.location)));
   }
   private loadAll(): CanonicalIssue[] { return this.loadAllRaw().map((r) => r.c); }
+  /** Read-only id projection for infrastructure that needs the exact backend/source union without
+   * executing a validation preset or duplicating source/index/document resolution. */
+  issueIds(): string[] { return this.loadAllRaw().map((record) => record.c.identifier); }
   // The full origin (path + optional line span) id's content actually resolved from (first source
   // that has it — see sourceOf). Every caller has already confirmed the id exists (via loadOne),
   // so the fallback to sources[0] (always non-empty — see the constructor) is unreachable in
@@ -350,11 +357,11 @@ export class MarkdownBackend implements TrackerBackend {
   // Resolve the owning source of an EXISTING issue and write it there, after confirming that
   // source isn't `readonly: true`. Used by edit/comment/close — never by create (see
   // mintTargetSource: a NEW issue has no existing source to route to).
-  private writeIssue(c: CanonicalIssue): void {
+  private writeIssue(c: CanonicalIssue, opts: { dryRun?: boolean } = {}): void {
     const source = this.sourceOf(c.identifier);
     if (!source) throw new Error(`markdown backend: cannot resolve the source of issue ${c.identifier}.`);
     this.requireSourceWritable(source);
-    source.write(c);
+    source.write(c, opts);
   }
   private deleteIssue(id: string): void {
     const source = this.sourceOf(id);
@@ -487,15 +494,55 @@ export class MarkdownBackend implements TrackerBackend {
       // A reparent (either direction) keeps the OLD and NEW parents' `children` views in sync —
       // see reparentChildren above.
       const pa = flagVal(args, 'parent'); const removeParent = args.includes('--remove-parent');
+      // The reparent side-writes are DEFERRED until after the precondition check below, so a
+      // refused edit leaves the parents' `children` views untouched too.
+      let reparent: { from: string | null; to: string | null } | undefined;
       if (pa || removeParent) {
         const newParent = removeParent ? null : pa!;
-        this.reparentChildren(c.identifier, c.parent, newParent);
+        reparent = { from: c.parent, to: newParent };
         c.parent = newParent;
       }
       for (const l of flagAll(args, 'add-label')) if (!c.labels.includes(l)) c.labels.push(l);
       const rm = new Set(flagAll(args, 'remove-label')); c.labels = c.labels.filter((l) => !rm.has(l));
       c.updatedAt = new Date().toISOString();
-      this.writeIssue(c);
+      // ztrack#20: `--expect-state`/`--expect-body-sha` are optimistic-concurrency preconditions,
+      // enforced HERE — against a FRESH re-read, at the last moment before the write — not as a
+      // separate read-then-check round trip (the old cli.ts pre-check left the whole edit
+      // computation as a race window). A read-modify-write caller (`ac patch`/`issue patch`, a
+      // scripted `issue view` → `issue edit` sequence) passes the sha256 of the body it computed
+      // from; if anything else wrote the issue in between, the edit refuses with a
+      // machine-readable precondition-failed payload and NOTHING is written — the concurrent
+      // write is never silently clobbered by a wholesale body replacement computed from a stale
+      // snapshot.
+      const expectState = flagVal(args, 'expect-state');
+      const expectBodySha = flagVal(args, 'expect-body-sha');
+      if (expectState !== undefined || expectBodySha !== undefined) {
+        const fresh = this.loadOne(rest[0]!);
+        const currentBodySha = createHash('sha256').update(fresh?.body ?? '').digest('hex');
+        const conflicts: string[] = [];
+        if (expectState !== undefined && fresh?.state !== expectState) {
+          conflicts.push(`state is ${JSON.stringify(fresh?.state ?? null)}, expected ${JSON.stringify(expectState)}`);
+        }
+        if (expectBodySha !== undefined && currentBodySha !== expectBodySha) {
+          conflicts.push(`body sha256 is ${currentBodySha}, expected ${expectBodySha}`);
+        }
+        if (conflicts.length) {
+          return {
+            stdout: '',
+            stderr: `${JSON.stringify({ ok: false, error: 'precondition-failed', issue: c.identifier, conflicts, currentState: fresh?.state ?? null, currentBodySha }, null, 2)}\n`,
+          };
+        }
+      }
+      // ztrack#28: `--dry-run` runs the WHOLE edit path — the not-found guard, the --state
+      // vocabulary check, the precondition check above, source resolution, the readonly-source
+      // gate, and (for a document source) every structural/delta/staleness/integrity write guard
+      // — stopping only at the final filesystem mutation. A dry run that succeeds is therefore an
+      // honest prediction that the real run would be accepted; it can never print an unqualified
+      // success immediately before a real-run refusal. Reparent side-writes are skipped (they are
+      // writes), but their own gate is the same writeIssue path evaluated here for the child.
+      const dryRun = args.includes('--dry-run');
+      if (!dryRun && reparent) this.reparentChildren(c.identifier, reparent.from, reparent.to);
+      this.writeIssue(c, { dryRun });
       return ok(JSON.stringify(viewJson(c, this.originPath(c.identifier)), null, 2));
     }
     if (verb === 'issue' && sub === 'comment') {

@@ -48,7 +48,7 @@ assignee: me
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'ztrk-cdf-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack')); // the preset imports 'ztrack/preset-kit'
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack')); // the preset imports '@volter/ztrack/preset-kit'
   ztrack(['init', '--team', 'ZT']);
 });
 afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }); });
@@ -144,7 +144,7 @@ describe('unregistered document sibling warning', () => {
   beforeAll(() => {
     sibRoot = mkdtempSync(join(tmpdir(), 'ztrk-sib-'));
     mkdirSync(join(sibRoot, 'node_modules'), { recursive: true });
-    symlinkSync(REPO, join(sibRoot, 'node_modules', 'ztrack'));
+    mkdirSync(join(sibRoot, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(sibRoot, 'node_modules', '@volter', 'ztrack'));
     sib(['init', '--team', 'ZT']);
     mkdirSync(join(sibRoot, 'backlog'));
     writeFileSync(join(sibRoot, 'backlog', 'workstream-a.md'), GREEN_ITEM);

@@ -34,7 +34,7 @@ const PLAN = `# Kill questions
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), 'ztrk-lens-e2e-'));
   mkdirSync(join(root, 'node_modules'), { recursive: true });
-  symlinkSync(REPO, join(root, 'node_modules', 'ztrack'));
+  mkdirSync(join(root, 'node_modules', '@volter'), { recursive: true }); symlinkSync(REPO, join(root, 'node_modules', '@volter', 'ztrack'));
   ztrack(['init', '--team', 'ZT']);
   writeFileSync(join(root, 'PLAN.md'), PLAN);
   const configPath = join(root, '.volter', 'tracker-config.json');

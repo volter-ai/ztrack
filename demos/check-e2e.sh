@@ -16,14 +16,14 @@ new_repo() { local d="$tmp/$1"; mkdir -p "$d"; ( cd "$d"
   git init -q; git config user.email ci@x.com; git config user.name "check e2e"
   echo "# $1" > README.md; git add README.md; git commit -q -m init
   npm init -y >/dev/null; npm install "$tmp/$tarball" >/dev/null
-  npx ztrack init --team APP --preset "${2:-default}" >/dev/null ); printf '%s' "$d"; }
+  npx @volter/ztrack init --team APP --preset "${2:-default}" >/dev/null ); printf '%s' "$d"; }
 # mkissue <repo> <title> <body> [state=ready] [assignee=t]  (pass assignee="" to create an
 # EXPLICITLY unassigned issue — a bare create with no --assignee now defaults the assignee
 # from git identity (ZTB-7), so the flag must be passed, empty, to mint an unassigned record)
 mkissue() { local asg="${5-t}"; ( cd "$1" && printf '%b' "$3" > _b.md \
-  && npx ztrack issue create --title "$2" --label type:case --state "${4:-ready}" ${asg+--assignee "$asg"} --body-file _b.md >/dev/null ); }
-check_out() { ( cd "$1" && npx ztrack check 2>&1 ) || true; }
-chk() { local rc; ( cd "$1" && npx ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
+  && npx @volter/ztrack issue create --title "$2" --label type:case --state "${4:-ready}" ${asg+--assignee "$asg"} --body-file _b.md >/dev/null ); }
+check_out() { ( cd "$1" && npx @volter/ztrack check 2>&1 ) || true; }
+chk() { local rc; ( cd "$1" && npx @volter/ztrack check >/dev/null 2>&1 ) && rc=0 || rc=$?; echo "$rc"; }
 has() { printf '%s' "$1" | grep -c "$2" || true; }
 sha() { ( cd "$1" && git rev-parse HEAD ); }
 
@@ -56,18 +56,18 @@ ok "$(chk "$d")" 0 "a fully-cited green issue passes"
 echo "## default preset — commit verification (on by default) catches a cited-but-nonexistent commit"
 d="$(new_repo verify)"
 mkissue "$d" v '## Acceptance Criteria\n\n- [x] dev/01 v1 x\n  - status: passed\n  - evidence ev1: commit=deadbeef1234 acv=1\n  - proof: "x" -> ev1\n'
-vout="$( ( cd "$d" && npx ztrack check 2>&1 ) || true )"
+vout="$( ( cd "$d" && npx @volter/ztrack check 2>&1 ) || true )"
 ok "$(yn "$(has "$vout" 'evidence_commit_not_found')")" Y "a nonexistent cited commit fires under default commit verification"
 
 echo "## shell completions — the generated scripts are valid and cover the commands"
 d="$(new_repo completions)"
-( cd "$d" && npx ztrack completions bash > c.bash 2>/dev/null )
+( cd "$d" && npx @volter/ztrack completions bash > c.bash 2>/dev/null )
 ok "$( bash -n "$d/c.bash" >/dev/null 2>&1 && echo Y || echo N )" Y "bash completion script is syntactically valid (bash -n)"
 ok "$(yn "$(grep -c 'complete -F' "$d/c.bash")")" Y "bash script registers a completion function"
 ok "$(yn "$(grep -cE '\bloop\b.*\bwaiver\b|\bwaiver\b.*\bloop\b' "$d/c.bash")")" Y "completes the loop + waiver commands"
-( cd "$d" && npx ztrack completions zsh > c.zsh 2>/dev/null )
+( cd "$d" && npx @volter/ztrack completions zsh > c.zsh 2>/dev/null )
 ok "$(yn "$(grep -c '#compdef ztrack' "$d/c.zsh")")" Y "zsh completion script has a #compdef header"
-zexit="$( ( cd "$d" && npx ztrack completions fish >/dev/null 2>&1 ); echo $? )"
+zexit="$( ( cd "$d" && npx @volter/ztrack completions fish >/dev/null 2>&1 ); echo $? )"
 ok "$zexit" 1 "an unsupported shell exits nonzero with a clear error"
 
 echo
