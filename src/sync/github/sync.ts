@@ -287,7 +287,8 @@ export async function reconcileSync(o: SyncOpts, policy: ReconcilePolicy = 'merg
   if (plan.toPush.length) await deploy(o, twin);
 
   // creates (one-sided issues — no conflict possible)
-  const created = [...await createInTracker(o, b, real), ...await createOnGithub(o, b, unboundForkRows(rows, b), twin)];
+  // a push (applyPull false) writes nothing to the tracker: an unbound GitHub issue is imported only by a sync that pulls
+  const created = [...(applyPull ? await createInTracker(o, b, real) : []), ...await createOnGithub(o, b, unboundForkRows(rows, b), twin)];
   // Seed the base for each created issue to its now-agreed content, or the NEXT sync sees both
   // sides as "changed from nothing" and the differing fields collide as phantom conflicts.
   for (const c of created) {
