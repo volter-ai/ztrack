@@ -10,8 +10,9 @@ import { homedir } from 'node:os';
 /** One card as the board holds it (the fields the sync reads; the rest stay the board's). */
 export interface BoardCard {
   id: string;                 // t_65a8d101
-  /** The short number the board gave the card (`#42`), when it numbers its cards. */
+  /** The short number the board gave the card, when it numbers its cards, and the board's key it reads with (`VO-42`). */
   number: number | null;
+  key: string | null;
   title: string;
   body: string;
   /** The status the board's workflow names (its own statuses: `stopped`, `reviewing`, …). */
@@ -76,6 +77,7 @@ export async function readBoard(exec: BoardExec): Promise<BoardCard[]> {
     return {
       id: String(row.id),
       number: typeof row.number === 'number' ? row.number : null,
+      key: typeof row.key === 'string' && /^[A-Z][A-Z0-9]+$/.test(row.key) ? row.key : null,
       title: String(row.title ?? ''),
       body: str(row.body) ?? '',
       status: String(row.workflow_status ?? row.status),

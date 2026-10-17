@@ -48,7 +48,7 @@
 // The metadata block is the body's leading paragraphs made wholly of the keys above; anything
 // else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>` (or another letter prefix and
 // number, `s1`), and a task written without one gets the next free `c<N>` of its card. On a board that numbers its
-// cards, the task's own card number comes first: `- [ ] #2836 c3 <text>`. `blocked-by` names tasks
+// cards, the task's own card number comes first, with the board's key: `- [ ] VO-2836 c3 <text>` (or `#2836`). `blocked-by` names tasks
 // (`c1` in this card, `<card>:<task>` in another) or whole cards.
 //
 // A `source` names the message a task came from, by its supercode mailbox id (a line a person
@@ -75,8 +75,9 @@ export const KanbanStatusSchema = z.string().regex(/^[a-z][a-z_]*$/);
 // `passed` is a ticked task, `pending` an open one.
 export const KanbanTaskSchema = z.object({
   id: z.string().regex(/^[a-z]+\d+$/),                   // core: `c3`, or any letter prefix and number (`s1`)
-  /** The task's own card number on a board that numbers its cards (`- [ ] #2836 c3 …`). */
+  /** The task's own card number on a board that numbers its cards (`- [ ] VO-2836 c3 …`), and its board's key. */
   number: z.number().int().positive().optional(),
+  key: z.string().regex(/^[A-Z][A-Z0-9]+$/).optional(),
   status: z.enum(['pending', 'passed']),                 // core
   evidence: z.array(z.never()),                          // core: a task carries no evidence, ever
   text: z.string().min(1),
@@ -136,8 +137,8 @@ const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
 const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):)/i;
-// a task's number is read only before its id (`#2836 c3 …`), so a text that starts with `#3` stays its text
-const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:#(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
+// a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
+const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 const WAITING_LINE = /^\s{2,}[-*] waiting-on:\s*(\S+)\s*$/i;
 const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
@@ -153,7 +154,7 @@ const trimBlankLines = (lines: string[]) => {
 
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string };
-type ParsedTask = { metadata?: Record<string, unknown>; id: string; number?: number; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
+type ParsedTask = { metadata?: Record<string, unknown>; id: string; number?: number; key?: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
 
 // A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
 // inside it are kept, and its first two spaces of indent are the list's, not the brief's.
@@ -181,7 +182,7 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     const pendingBlanks = blanks; blanks = 0;
     const t = TASK_LINE.exec(line);
     if (t) {
-      const task: ParsedTask = { id: t[3] ?? '', ...(t[2] ? { number: Number(t[2]) } : {}), status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[4]!.trim() };
+      const task: ParsedTask = { id: t[4] ?? '', ...(t[3] ? { number: Number(t[3]) } : {}), ...(t[2] ? { key: t[2] } : {}), status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[5]!.trim() };
       tasks.push(task);
       if (!task.id) unnamed.push(task);
       inBrief = false;
@@ -325,7 +326,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
     // a ref into this card is written bare (`c1`), anything else in full (`t-…:c2`, `t-…`)
     const renderRef = (r: BlockRef) => (r.ac !== undefined && r.issue === card.id ? r.ac : formatRef(r));
     for (const t of card.acceptanceCriteria) {
-      out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.number ? `#${t.number} ` : ''}${t.id} ${t.text}`);
+      out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.number ? `${t.key ? `${t.key}-` : '#'}${t.number} ` : ''}${t.id} ${t.text}`);
       if (t.metadata && Object.keys(t.metadata).length) out.push(`  - metadata: ${JSON.stringify(t.metadata)}`);
       if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
       if (t.waitingOn) out.push(`  - waiting-on: ${t.waitingOn}`);
