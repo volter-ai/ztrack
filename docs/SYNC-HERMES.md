@@ -108,7 +108,8 @@ What stands: the manager's arcs live in arcs.md, backed by its board.
   checkbox lines of the card's text, so the board's workflow can hold a close until every one is
   ticked.
 - **`### Tasks`** holds the card's tasks (the working session's plan), one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
-  done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A task written without
+  done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A board document that numbers its
+  cards writes a task's own card number before its id, `- [ ] #2836 c3 <text>` (supercode's does). A task written without
   one gets the card's next free `c<N>` on the next sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
   of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented
   `- waiting-on: <m-/a- id>` line names the message whose answer it waits for. An indented checkbox,
