@@ -73,7 +73,8 @@ type Field = typeof FIELDS[number];
 /** Fields only a new card can carry (the board has no edit door for them). */
 const CREATION_FIELDS: Field[] = ['workspace', 'branch', 'priority'];
 
-const CARD_HEADING = /^[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+\b/;
+// a card's heading: its id, after the board's number for it when the board numbers its cards (`## #42 t-… — …`)
+const CARD_HEADING = /^(?:#\d+\s+)?[A-Za-z][A-Za-z0-9-]*-[A-Za-z0-9]+\b/;
 const FILE_ID = /^t-[0-9a-f]+$/;
 const TASK_TITLE = /^([a-z]+\d+)\s+([\s\S]+)$/;
 export const toFileId = (boardId: string) => boardId.replace(/^t_/, 't-');
@@ -95,7 +96,7 @@ const byTaskId = (a: Task, b: Task) => a.id.replace(/\d+$/, '').localeCompare(b.
 
 /** A card of the kanban preset's validated root (the fields the sync reads). */
 interface FileCard {
-  id: string; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
+  id: string; number?: number; title: string; status: string; assignee?: string; relations?: Array<{ type: string; issueId: string }>;
   workspace?: string; branch?: string; priority?: number; run?: string; machine?: string; session?: string; waitingOn?: string; body: string;
   acceptance?: TaskLine[];
   acceptanceCriteria: Array<{ id: string; status: string; text: string; blockedBy?: BlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[] }>;
@@ -279,11 +280,11 @@ export function setRefusedNote(text: string, lines: string[]): string {
 const LANE_ORDER = ['running', 'triaging', 'reviewing', 'review', 'ready', 'todo', 'triage', 'blocked', 'stopped', 'scheduled', 'standing', 'done', 'archived'];
 const laneRank = (s: string) => { const i = LANE_ORDER.indexOf(s); return i < 0 ? LANE_ORDER.indexOf('done') - 0.5 : i; };
 
-function renderSection(preset: Preset<CoreRoot>, card: FileCard): string {
+function renderSection(preset: Preset<CoreRoot>, { number, ...card }: FileCard): string {
   const { body } = preset.serialize!({ ...card, summary: '' } as unknown as CoreRoot['issues'][number]);
   const header = [`status: ${card.status}`, ...(card.assignee ? [`assignee: ${card.assignee}`] : [])].join('\n');
   const content = body.trim() ? `\n${shiftHeadings(body.replace(/\n+$/, ''), 1)}\n` : '';
-  return `## ${card.id} — ${card.title}\n\n${header}\n${content}`;
+  return `## ${number ? `#${number} ` : ''}${card.id} — ${card.title}\n\n${header}\n${content}`;
 }
 
 function renderFile(preset: Preset<CoreRoot>, preamble: string, cards: FileCard[]): string {
@@ -297,7 +298,7 @@ function stamp(epochSeconds: number): string {
 function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<string, TaskSource[]>): FileCard {
   const toRef = (ref: string): BlockRef => { const [issue, ac] = ref.split(':'); return { issue: issue!, ...(ac ? { ac } : {}) }; };
   return {
-    id: toFileId(c.id), title: s.title, status: s.status, ...(s.assignee ? { assignee: s.assignee } : {}),
+    id: toFileId(c.id), ...(c.number ? { number: c.number } : {}), title: s.title, status: s.status, ...(s.assignee ? { assignee: s.assignee } : {}),
     ...(s.parents.length ? { relations: s.parents.map((p) => ({ type: 'blocked-by', issueId: toFileId(p) })) } : {}),
     ...(s.workspace !== 'scratch' ? { workspace: s.workspace } : {}),
     ...(s.branch ? { branch: s.branch } : {}),

@@ -4,21 +4,25 @@ import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documen
 import { decomposeSection, shiftHeadings } from './documentWriteBack.ts';
 import type { IssueRecord } from './core/engine.ts';
 
-function recordOf(item: DocumentParsedIssue): IssueRecord {
+/** A card as its section reads: an issue record, and the board's number for it when its heading
+ *  gives one (`## #42 t_4406c88a — title`). */
+export type BoardRecord = IssueRecord & { number?: number };
+
+function recordOf(item: DocumentParsedIssue): BoardRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
   const section = decomposeSection(item.raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return {id:item.id,title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:shiftHeadings(section.middle,1-item.level)};
+  return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:shiftHeadings(section.middle,1-item.level)};
 }
-export function parseBoardDocument(text: string, path = 'arcs.md'): IssueRecord[] {
+export function parseBoardDocument(text: string, path = 'arcs.md'): BoardRecord[] {
   return parseMarkdownDocumentSource(text,path).map(recordOf);
 }
 
 /** Replace supplied cards, remove absent cards, preserve all text outside their spans.
  * Unchanged cards retain their exact bytes. Archived cards are omitted by the caller. */
-export function renderBoardDocument(text: string, records: IssueRecord[], path = 'arcs.md', preserveIds: string[] = []): string {
+export function renderBoardDocument(text: string, records: BoardRecord[], path = 'arcs.md', preserveIds: string[] = []): string {
   const parsed = parseMarkdownDocumentSource(text, path);
-  const before = new Map<string,IssueRecord>();
+  const before = new Map<string,BoardRecord>();
   for(const item of parsed) {try {before.set(item.id,recordOf(item));}catch{ /* opaque preserved card */ }}
   const preserve = new Set(preserveIds);
   const wanted = new Map(records.map((r) => [r.id, r]));
@@ -43,10 +47,10 @@ export function renderBoardDocument(text: string, records: IssueRecord[], path =
 /** One card's section text at heading `level`, checked on its own: it reads back as exactly this
  * card, and a heading after it still starts a new section (no unclosed code block or HTML block
  * swallows what follows), so it can be spliced in place of the card's old span. */
-export function renderBoardCard(record: IssueRecord, level = 2, path = 'arcs.md'): string {
+export function renderBoardCard(record: BoardRecord, level = 2, path = 'arcs.md'): string {
   const text = renderCard(record, level);
   const items = parseMarkdownDocumentSource(`${text}# end\n`, path);
-  if (items.length !== 1 || items[0]!.id !== record.id) throw new Error('board rendering changed card identities');
+  if (items.length !== 1 || items[0]!.id !== record.id || items[0]!.number !== record.number) throw new Error('board rendering changed card identities');
   recordOf(items[0]!);
   if (items[0]!.raw !== text) throw new Error(`board card ${record.id} would run into the next section: its text holds a heading at the card's level or an unclosed code or HTML block`);
   return text;
@@ -121,16 +125,17 @@ export function rechunkBoardDocument(old: BoardChunk[], text: string, path = 'ar
   }
 }
 
-function renderCard(record: IssueRecord, level: number): string {
+function renderCard(record: BoardRecord, level: number): string {
   for (const value of [record.id, record.title, record.status, record.assignee ?? '']) {
     if (/[\r\n]/.test(value)) throw new Error('board headings and metadata must be single-line values');
   }
-  return `${'#'.repeat(level)} ${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${shiftHeadings(record.body, level - 1).trimEnd()}\n\n`;
+  if (record.number !== undefined && !(Number.isSafeInteger(record.number) && record.number > 0)) throw new Error(`board card ${record.id}: its number is a positive whole number, not ${record.number}`);
+  return `${'#'.repeat(level)} ${record.number !== undefined ? `#${record.number} ` : ''}${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${shiftHeadings(record.body, level - 1).trimEnd()}\n\n`;
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
-export function inspectBoardDocument(text: string, path = 'arcs.md'): { records: IssueRecord[]; errors: { id: string; reason: string }[] } {
-  const records: IssueRecord[] = [], errors: { id: string; reason: string }[] = [];
+export function inspectBoardDocument(text: string, path = 'arcs.md'): { records: BoardRecord[]; errors: { id: string; reason: string }[] } {
+  const records: BoardRecord[] = [], errors: { id: string; reason: string }[] = [];
   const items = parseMarkdownDocumentSource(text, path);
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.id, (counts.get(item.id) ?? 0) + 1);
