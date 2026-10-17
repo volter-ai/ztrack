@@ -172,9 +172,10 @@ you intend to `ac patch` on leaf items.
 - A heading whose text **starts with an id token** (`APP-1`, `ZL-A5`, …: a hyphenated
   alphanumeric token) starts an issue. The token becomes the id; an optional separator (em dash
   `—`, middot `·`, colon `:`, or just whitespace) and the remainder becomes the title. Nothing
-  past the separator is parsed further. The token may follow the issue's number, `#` and digits
-  (`## #42 t_4406c88a — title`, as a board numbers its cards); the number is read as the issue's
-  `number`, and the token after it is still the id.
+  past the separator is parsed further. The token may follow the issue's number, as a board numbers
+  its cards: `#` and digits (`## #42 APP-1 — title`), or before a board card's id (`t_…`, `t-…`) the
+  board's key, a hyphen and digits (`## VO-42 t_4406c88a — title`). The number is read as the issue's
+  `number` (and the key as its `key`), and the token after it is still the id.
 - The heading's subtree (everything through the next same-or-shallower heading) is the issue's
   body — **except** any nested id-bearing heading inside it, which becomes a **child issue**
   instead (the nesting is the parent link) and is excised from the parent's body.
