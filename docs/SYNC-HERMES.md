@@ -75,7 +75,9 @@ What stands: the manager's arcs live in arcs.md, backed by its board.
 
 - **A card** is a level-2 heading `## <id> — <title>`. The id of a card on the board is its
   board id with `-` for `_` (`t_65a8d101` is `t-65a8d101`). The title is the card's whole title:
-  the outcome.
+  the outcome. A board that numbers its cards writes the card's number first, `## #42 <id> — <title>`
+  (supercode's board document does); the number is the board's, and an edit to it is not a change
+  to the card.
 - **Its header block** follows the heading after one blank line: `status: <lane>` and, when the card
   has one, `assignee: <profile>`, one per line, ending at a blank line. The blank line is required:
   without it the lines read as prose, the card as an unassigned `todo`, and both `ztrack check`
