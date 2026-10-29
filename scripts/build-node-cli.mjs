@@ -104,3 +104,8 @@ if (kitCjs.status !== 0) {
 // The board backing consumes the installed kanban grammar without a TypeScript loader.
 const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
 if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout); process.exit(kanban.status ?? 1); }
+
+// One self-contained public reader contains the actual parser/heading/protocol closure. The
+// SDK fingerprints these shipped bytes, rather than assuming a version identifies behavior.
+const board = spawnSync('bun', ['build', 'src/boardDocument.ts', '--target=node', '--format=cjs', '--outfile=dist/board-document.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
+if (board.status !== 0) { process.stderr.write(board.stderr || board.stdout); process.exit(board.status ?? 1); }

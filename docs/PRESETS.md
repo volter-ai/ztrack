@@ -58,6 +58,32 @@ feature records. It is **read-only** (it defines no `serialize`, so it cannot be
 `fmt`'d or patched) and adapts a multi-file feature bundle
 (`specs/<slug>/spec.md` + `tasks.md` + `plan.md` + …).
 
+## Board document encodings
+
+`@volter/ztrack/board-document` owns the board's physical card spans. The
+reader-first 2.4 bridge reads both ef4 documents and cards explicitly marked
+`<!-- ztrack-board-body: escaped-headings-v1 -->` immediately after their raw
+heading and before `status:`. Unmarked cards retain the ef4 parser and literal
+backslash semantics. Unknown or malformed markers are inspection errors;
+`inspectBoardEncodingSlots` exposes every reserved slot so a product can refuse
+ambiguous marker text while upgrading a legacy predecessor.
+
+The bridge still writes only through the frozen ef4 renderer and validation
+closure. It refuses a new rendering unless ef4 reads the same id, title, status,
+assignee and body back, allowing only terminal blank-line normalization (LFs,
+never spaces or Markdown hard breaks). Unchanged marked or opaque spans remain
+byte-preserved.
+The final writer is a separate immutable source revision. Both preserve the
+[message-blocker contract](adr/0001-message-blockers.md): message waits remain
+external references, additional waits are retained, and the product caller
+translates runtime identifiers to document identifiers before serialization.
+
+`@volter/ztrack/board-protocol` exports `boardDocumentContract()`. Its descriptor
+names the exact protocol and hashes the shipped board-document, kanban-preset,
+preset-kit and board-protocol artifacts. Consumers verify the selected public
+exports independently; package versions and ordinary rendering samples do not
+identify the reader's behavior. Missing artifacts refuse the claim.
+
 ## Installed Contract
 
 The installed file is an editable ES module (`.mts`) so a fresh repo can edit it
@@ -648,4 +674,4 @@ input. Re-verify until clean: preset tests green (clean fixtures = 0 findings; a
 rule), `tsc` clean, and — if porting — world/legacy-validator fidelity on real data where scope
 overlaps. **Ready = contract held + behavior correct on real data, not just fixtures green.**
 
-The public `@volter/ztrack/board-document` codec parses and renders flat board documents through ztrack’s markdown grammar; a board’s cards are its outermost id-bearing sections, so a heading inside a card (`### Follow-ups`) is the card’s text. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.
+The public `@volter/ztrack/board-document` codec parses and renders board documents through ztrack’s markdown grammar. Unmarked cards retain ef4’s section rules; explicitly marked cards own their nested headings as body text. See [Board document encodings](#board-document-encodings) for the reader-first migration contract. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.

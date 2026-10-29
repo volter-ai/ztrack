@@ -1,18 +1,72 @@
 /** A board's document codec, shared by ztrack and supercode's document backing.
  * Callers own the file's hash/transaction; this module only parses and renders text. */
-import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParser.ts';
+import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParserEf4.ts';
+import { parseBoardDocument as parseEf4BoardDocument, renderBoardCard as renderEf4BoardCard } from './boardDocumentEf4.ts';
+import { boardEncodingSlot, BOARD_ENCODING_MARKER, BOARD_WRITE_MODE } from './boardEncoding.ts';
 import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
+import { decomposeSection as decomposeEf4Section, shiftHeadings as shiftEf4Headings } from './documentWriteBackEf4.ts';
 import type { IssueRecord } from './core/engine.ts';
 
-// A board's cards are its outermost id-bearing sections: a heading inside a card is the card's text, however its words
-// read (`### Follow-ups` is a section of the card's body, not a card named Follow-ups).
-const cards = (text: string, path: string): DocumentParsedIssue[] => parseMarkdownDocumentSource(text, path, { outermost: true });
+// The four *Ef4 modules are frozen from be866b90b7b36ebf36ff998b510291a167a3ff2e;
+// only their local imports were retargeted, keeping the predecessor closure together.
+/** Immutable writer selection; the bridge and final writer are separate source commits. */
+export const boardDocumentProtocol = Object.freeze({
+  envelope: BOARD_ENCODING_MARKER,
+  readModes: Object.freeze(['ef4', 'escaped-headings-v1'] as const),
+  writer: BOARD_WRITE_MODE,
+});
+
+// Keep ef4's exact section grammar for unmarked cards. Only a marked card owns id-shaped body
+// headings; physical spans identify ancestors even when malformed input repeats an id.
+function cards(text: string, path: string): DocumentParsedIssue[] {
+  const items = parseMarkdownDocumentSource(text, path);
+  let markedThrough = 0;
+  const selected: DocumentParsedIssue[] = [];
+  for (const item of items) {
+    if (item.lineStart !== undefined && item.lineStart <= markedThrough) continue;
+    const slot = boardEncodingSlot(item.raw ?? '');
+    if (slot.marker !== undefined) {
+      markedThrough = item.lineEnd ?? 0;
+      selected.push({ ...item, body: item.raw ?? item.body, children: [] });
+    } else selected.push(item);
+  }
+  return selected;
+}
+
+/** Reserved slots, including invalid ones. A legacy predecessor must have none at preparation:
+ * even an exact marker could be its literal body text, so it cannot be silently reinterpreted. */
+export function inspectBoardEncodingSlots(text: string, path = 'arcs.md'): Array<{ id: string; line: number; marker: string; encoding: 'ef4' | 'escaped-headings-v1'; error?: string }> {
+  return cards(text, path).flatMap((item) => {
+    const slot = boardEncodingSlot(item.raw ?? '');
+    return slot.marker === undefined ? [] : [{ id: item.id, line: (item.lineStart ?? 0) + 1,
+      marker: slot.marker, encoding: slot.encoding, ...(slot.error ? { error: slot.error } : {}) }];
+  });
+}
 
 function recordOf(item: DocumentParsedIssue): IssueRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
-  const section = decomposeSection(item.raw);
+  const slot = boardEncodingSlot(item.raw);
+  if (slot.error) throw new Error(`${item.id}: ${slot.error}`);
+  if (slot.encoding === 'ef4') {
+    const section = decomposeEf4Section(item.raw);
+    if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
+    return { id: item.id, title: item.title, status: section.header?.status ?? 'todo',
+      ...(section.header?.assignee ? { assignee: section.header.assignee } : {}),
+      body: shiftEf4Headings(section.middle, 1 - item.level) };
+  }
+  const at = item.raw.indexOf('\n') + 1;
+  const raw = item.raw.slice(0, at) + item.raw.slice(at + BOARD_ENCODING_MARKER.length + 1);
+  const section = decomposeSection(raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return {id:item.id,title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:unnestHeadings(section.middle,item.level-1)};
+  return { id: item.id, title: item.title, status: section.header?.status ?? 'todo',
+    ...(section.header?.assignee ? { assignee: section.header.assignee } : {}),
+    body: unnestHeadings(section.middle, item.level - 1) };
+}
+
+function sameRecord(a: IssueRecord, b: IssueRecord): boolean {
+  return a.id === b.id && a.title === b.title && a.status === b.status &&
+    (a.assignee || undefined) === (b.assignee || undefined) &&
+    a.body.replace(/\n*$/, '') === b.body.replace(/\n*$/, '');
 }
 export function parseBoardDocument(text: string, path = 'arcs.md'): IssueRecord[] {
   return cards(text,path).map(recordOf);
@@ -48,10 +102,20 @@ export function renderBoardDocument(text: string, records: IssueRecord[], path =
  * card, and a heading after it still starts a new section (no unclosed code block or HTML block
  * swallows what follows), so it can be spliced in place of the card's old span. */
 export function renderBoardCard(record: IssueRecord, level = 2, path = 'arcs.md'): string {
+  if (BOARD_WRITE_MODE === 'ef4') {
+    // This whole writer/validation closure is the exact predecessor's. The additional semantic
+    // guard refuses an otherwise accepted rendering that would change the record it represents.
+    const text = renderEf4BoardCard(record, level, path);
+    const read = parseEf4BoardDocument(text, path);
+    if (read.length !== 1 || !sameRecord(record, read[0]!)) throw new Error(`board card ${record.id} cannot be represented unchanged by the ef4 writer`);
+    if (boardEncodingSlot(text).marker !== undefined) throw new Error('legacy board writer cannot publish a reserved encoding slot');
+    return text;
+  }
   const text = renderCard(record, level);
   const items = cards(`${text}# end\n`, path);
   if (items.length !== 1 || items[0]!.id !== record.id) throw new Error('board rendering changed card identities');
-  recordOf(items[0]!);
+  const read = recordOf(items[0]!);
+  if (!sameRecord(record, read)) throw new Error(`board card ${record.id} would not read back unchanged`);
   if (items[0]!.raw !== text) throw new Error(`board card ${record.id} would run into the next section: its text holds a heading at the card's level or an unclosed code or HTML block`);
   return text;
 }
@@ -129,7 +193,7 @@ function renderCard(record: IssueRecord, level: number): string {
   for (const value of [record.id, record.title, record.status, record.assignee ?? '']) {
     if (/[\r\n]/.test(value)) throw new Error('board headings and metadata must be single-line values');
   }
-  return `${'#'.repeat(level)} ${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
+  return `${'#'.repeat(level)} ${record.id} — ${record.title}\n${BOARD_ENCODING_MARKER}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */

@@ -112,11 +112,28 @@ function headingsOf(text: string): Array<{ start: number; end: number; depth: nu
   return found;
 }
 
+// The line-wise escape protocol never owns code or HTML bytes. Record their CommonMark
+// spans before changing anything, and apply the same exclusion when reading encoded text.
+function opaqueLines(text: string): Set<number> {
+  const lines = new Set<number>();
+  const walk = (node: unknown): void => {
+    const n = node as { type?: string; position?: { start: { line: number }; end: { line: number } }; children?: unknown[] };
+    if ((n.type === 'code' || n.type === 'html') && n.position) {
+      for (let i = n.position.start.line - 1; i < n.position.end.line; i++) lines.add(i);
+      return;
+    }
+    for (const child of n.children ?? []) walk(child);
+  };
+  walk(fromMarkdown(text, { extensions: [gfm()] }));
+  return lines;
+}
+
 /** `text` written `delta` heading levels down, as a card at level `delta + 1` holds it (see above).
  *  Throws HeadingShiftError only when the result would not read back as `text`. */
 export function nestHeadings(text: string, delta: number): string {
   const lines = text.split('\n');
   let escaped = false;
+  const opaque = opaqueLines(text);
   const escape = (index: number): void => {
     const line = lines[index] ?? '';
     const lead = LEAD_RE.exec(line)![0];
@@ -127,7 +144,7 @@ export function nestHeadings(text: string, delta: number): string {
     lines[index] = written;
     escaped = true;
   };
-  lines.forEach((line, index) => { if (ESCAPED_LINE_RE.test(line)) escape(index); });
+  lines.forEach((line, index) => { if (!opaque.has(index) && ESCAPED_LINE_RE.test(line)) escape(index); });
   const kept = new Set<number>();
   for (const heading of headingsOf(text)) {
     const level = heading.depth + delta;
@@ -164,6 +181,7 @@ export function nestHeadings(text: string, delta: number): string {
 /** The inverse of `nestHeadings`: a card's text as it is held at level `delta + 1`, read back. */
 export function unnestHeadings(text: string, delta: number): string {
   const lines = text.split('\n');
+  const opaque = opaqueLines(text);
   for (const heading of headingsOf(text)) {
     if (heading.end > heading.start) {
       if (delta === 0) continue;
@@ -178,7 +196,7 @@ export function unnestHeadings(text: string, delta: number): string {
     lines[heading.start] = `${atx[1] ?? ''}${'#'.repeat(level)}${atx[3] ?? ''}`;
   }
   lines.forEach((line, index) => {
-    if (!ESCAPED_LINE_RE.test(line)) return;
+    if (opaque.has(index) || !ESCAPED_LINE_RE.test(line)) return;
     const lead = LEAD_RE.exec(line)![0];
     lines[index] = lead + line.slice(lead.length + 1);
   });
