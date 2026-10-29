@@ -98,22 +98,26 @@ export const KanbanTaskSchema = z.object({
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
 
-const NonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, {
-  message: 'Must contain non-whitespace text.',
+const AttributionLineSchema = z.string().min(1).refine((value) => value === value.trim()
+  && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(value) && !value.endsWith('\\'), {
+  message: 'Must be one nonblank trimmed line without control characters or a final backslash.',
+});
+const ActorLineSchema = AttributionLineSchema.refine((value) => !/\s+—\s+/u.test(value), {
+  message: 'An actor cannot contain the attribution delimiter ( — ).',
 });
 
 /** A stopped card's attributed pause; old documents may omit both deadline fields. */
 export const KanbanPauseSchema = z.object({
-  by: NonBlankStringSchema, reason: NonBlankStringSchema,
+  by: ActorLineSchema, reason: AttributionLineSchema,
   until: z.number().int().positive().optional(),
-  generation: NonBlankStringSchema.optional(),
+  generation: AttributionLineSchema.optional(),
 }).strict().refine((pause) => (pause.until === undefined) === (pause.generation === undefined), {
   message: 'A bounded pause needs both its deadline and generation.',
 });
 
 /** Backlog is a scheduling property, never a sixth lifecycle status. */
 export const KanbanBacklogSchema = z.object({
-  by: NonBlankStringSchema, reason: NonBlankStringSchema, since: z.number().int().nonnegative(),
+  by: ActorLineSchema, reason: AttributionLineSchema, since: z.number().int().nonnegative(),
 }).strict();
 
 export const KanbanCardSchema = z.object({
@@ -331,6 +335,13 @@ export function parseKanban(records: IssueRecord[]): unknown {
 
 // ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
 export function serializeKanbanCard(card: KanbanCard): { body: string; columns: IssueColumns } {
+  // Serialization is a public door too: callers need not have run the root schema first.
+  for (const value of [card, ...card.acceptanceCriteria.map((task) => task.metadata?.card)]) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const holds = value as { paused?: unknown; backlog?: unknown };
+    if (holds.paused !== undefined) KanbanPauseSchema.parse(holds.paused);
+    if (holds.backlog !== undefined) KanbanBacklogSchema.parse(holds.backlog);
+  }
   const out: string[] = [];
   const blockers = [...new Set([...(card.relations ?? []).map((r) => r.issueId), ...(card.waitingOn ? [card.waitingOn] : [])])];
   if (blockers.length) out.push(`Blocked by: ${blockers.join(', ')}`);
