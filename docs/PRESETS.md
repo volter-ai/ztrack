@@ -659,3 +659,5 @@ The `3.0.1-reader.0` retained-reader bridge keeps its default reader and writer 
 `inspectBoardRestingSlots(text, path)` identifies structured root and task metadata slots with file, line, kind and card/task identity before a reader is selected. `@volter/ztrack/board-protocol` exports `boardDocumentContract()`: the immutable default writer, supported read modes and SHA-256 hashes of the installed codec, its local dependencies and preset bundles. Native admission binds and verifies that exact contract; a reader claim alone never authorizes a new-format write.
 
 The installed kanban preset remains one self-contained editable file. Its frozen compatibility parser/serializer and immutable default live in that file; its only import is the public `preset-kit` mechanism. The board mode API reads the same source default from the bundled preset, and the installed artifact contract also binds the shipped editable template.
+
+Every board-document byte writer, including three-way recovery merge, checks its complete legacy-mode result for unsupported structured hold and body-encoding slots. Explicit admitted preservation is the only path that may write those slots.
