@@ -68,12 +68,15 @@ backslash semantics. Unknown or malformed markers are inspection errors;
 `inspectBoardEncodingSlots` exposes every reserved slot so a product can refuse
 ambiguous marker text while upgrading a legacy predecessor.
 
-The bridge still writes only through the frozen ef4 renderer and validation
+The 2.4.27 bridge writes only through the frozen ef4 renderer and validation
 closure. It refuses a new rendering unless ef4 reads the same id, title, status,
 assignee and body back, allowing only terminal blank-line normalization (LFs,
 never spaces or Markdown hard breaks). Unchanged marked or opaque spans remain
 byte-preserved.
-The final writer is a separate immutable source revision. Both preserve the
+The 2.4.28 final writer is a separate immutable source revision: new or changed
+cards use the explicit marker and escaped-heading codec, while unchanged cards
+retain their original bytes. Its rollback reader is the 2.4.27 bridge; ef4 cannot
+read the new encoding. Both preserve the
 [message-blocker contract](adr/0001-message-blockers.md): message waits remain
 external references, additional waits are retained, and the product caller
 translates runtime identifiers to document identifiers before serialization.

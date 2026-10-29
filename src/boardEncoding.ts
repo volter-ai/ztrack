@@ -1,6 +1,6 @@
 /** The board encoding is selected by one reserved structural slot, never by its body text. */
 export const BOARD_ENCODING_MARKER = '<!-- ztrack-board-body: escaped-headings-v1 -->';
-export const BOARD_WRITE_MODE: 'ef4' | 'escaped-headings-v1' = 'ef4';
+export const BOARD_WRITE_MODE: 'ef4' | 'escaped-headings-v1' = 'escaped-headings-v1';
 export type BoardEncoding = 'ef4' | 'escaped-headings-v1';
 export type BoardEncodingSlot = { encoding: BoardEncoding; marker?: string; error?: string };
 
