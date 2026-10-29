@@ -661,3 +661,5 @@ The final `3.0.1` codec defaults to `backlog-bounded-pause-v1`. Its companion `3
 The installed kanban preset remains one self-contained editable file. Its frozen compatibility parser/serializer and immutable default live in that file; its only import is the public `preset-kit` mechanism. The board mode API reads the same source default from the bundled preset, and the installed artifact contract also binds the shipped editable template.
 
 Every board-document byte writer, including three-way recovery merge, checks its complete legacy-mode result for unsupported structured hold and body-encoding slots. Explicit admitted preservation is the only path that may write those slots.
+
+The modern kanban reader decodes only a leading metadata escape that its serializer writes. It preserves literal backslashes before headings, fenced examples, and metadata-like lines later in the body. Heading quoting is owned by the versioned board-document codec. The frozen predecessor grammar is unchanged.
