@@ -67,6 +67,13 @@ heading and before `status:`. Unmarked cards retain the ef4 parser and literal
 backslash semantics. Unknown or malformed markers are inspection errors;
 `inspectBoardEncodingSlots` exposes every reserved slot so a product can refuse
 ambiguous marker text while upgrading a legacy predecessor.
+Parsed/inspected records and card chunks carry the nonenumerable
+`BOARD_RECORD_ENCODING` symbol (also exported by `preset-kit`). Its value comes
+only from the raw envelope. The kanban preset retains ef4 interpretation for an
+explicitly ef4-tagged document record; marked records and untagged runtime
+records preserve code/HTML literals. Mixed documents select per card. The tag is
+outside JSON and record hashes; callers must parse a retained raw span again
+rather than use a spread/JSON copy as a document record.
 
 The 2.4.27 bridge writes only through the frozen ef4 renderer and validation
 closure. It refuses a new rendering unless ef4 reads the same id, title, status,

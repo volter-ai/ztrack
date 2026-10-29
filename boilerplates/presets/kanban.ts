@@ -61,7 +61,7 @@
 import {
   z, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
   supercodeMessages, quoteIn, SUPERCODE_SERVICE, type PresetContextInput,
-  toMdast, type MdNode,
+  toMdast, BOARD_RECORD_ENCODING, type MdNode,
   type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
 
@@ -243,9 +243,12 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
 function parseCard(record: IssueRecord): Record<string, unknown> {
   const text = record.body.replace(/\r\n?/g, '\n');
   const lines = text.split('\n');
-  const literal = literalLines(text);
-  const at = lines.findIndex((l, i) => !literal.has(i) && TASKS_HEADING.test(l));
-  const acc = lines.findIndex((l, i) => !literal.has(i) && ACCEPTANCE_HEADING.test(l));
+  // Only the board codec's explicit raw-envelope decision selects legacy interpretation.
+  // Untagged records are runtime input; their code/HTML bytes belong to the caller.
+  const legacy = (record as IssueRecord & { [BOARD_RECORD_ENCODING]?: string })[BOARD_RECORD_ENCODING] === 'ef4';
+  const literal = legacy ? null : literalLines(text);
+  const at = lines.findIndex((l, i) => (!literal || !literal.has(i)) && TASKS_HEADING.test(l));
+  const acc = lines.findIndex((l, i) => (!literal || !literal.has(i)) && ACCEPTANCE_HEADING.test(l));
   // the prose runs to the first of the card's two sections; Acceptance runs to Tasks (or the end), Tasks to the end
   const firstSection = [at, acc].filter((i) => i >= 0).reduce((m, i) => Math.min(m, i), lines.length);
   const head = lines.slice(0, firstSection);
@@ -275,8 +278,8 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
     while (at2 < content.length && content[at2]!.trim() === '') at2++;
   }
   const body = trimBlankLines(content.slice(at2));
-  const bodyLiteral = literalLines(body.join('\n'));
-  const bodyLines = body.map((l, i) => bodyLiteral.has(i) ? l : l.replace(ESCAPED, ''));
+  const bodyLiteral = legacy ? null : literalLines(body.join('\n'));
+  const bodyLines = body.map((l, i) => bodyLiteral?.has(i) ? l : l.replace(ESCAPED, ''));
 
   const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail);
   const unparsed = [...accUnparsed, ...taskUnparsed];

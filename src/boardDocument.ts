@@ -2,11 +2,12 @@
  * Callers own the file's hash/transaction; this module only parses and renders text. */
 import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParserEf4.ts';
 import { parseBoardDocument as parseEf4BoardDocument, renderBoardCard as renderEf4BoardCard } from './boardDocumentEf4.ts';
-import { boardEncodingSlot, BOARD_ENCODING_MARKER, BOARD_WRITE_MODE } from './boardEncoding.ts';
+import { boardEncodingSlot, BOARD_ENCODING_MARKER, BOARD_RECORD_ENCODING, BOARD_WRITE_MODE, type BoardEncoding } from './boardEncoding.ts';
 import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
 import { decomposeSection as decomposeEf4Section, shiftHeadings as shiftEf4Headings } from './documentWriteBackEf4.ts';
 import { parseKanban as parseEf4Kanban } from '../boilerplates/presets/kanbanEf4.ts';
 import type { IssueRecord } from './core/engine.ts';
+export { BOARD_RECORD_ENCODING } from './boardEncoding.ts';
 
 // The four *Ef4 modules are frozen from be866b90b7b36ebf36ff998b510291a167a3ff2e;
 // only their local imports were retargeted, keeping the predecessor closure together.
@@ -16,6 +17,11 @@ export const boardDocumentProtocol = Object.freeze({
   readModes: Object.freeze(['ef4', 'escaped-headings-v1'] as const),
   writer: BOARD_WRITE_MODE,
 });
+
+function tagged<T extends object>(record: T, encoding: BoardEncoding): T {
+  Object.defineProperty(record, BOARD_RECORD_ENCODING, { value: encoding });
+  return record;
+}
 
 // Keep ef4's exact section grammar for unmarked cards. Only a marked card owns id-shaped body
 // headings; physical spans identify ancestors even when malformed input repeats an id.
@@ -51,17 +57,17 @@ function recordOf(item: DocumentParsedIssue): IssueRecord {
   if (slot.encoding === 'ef4') {
     const section = decomposeEf4Section(item.raw);
     if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-    return { id: item.id, title: item.title, status: section.header?.status ?? 'todo',
+    return tagged({ id: item.id, title: item.title, status: section.header?.status ?? 'todo',
       ...(section.header?.assignee ? { assignee: section.header.assignee } : {}),
-      body: shiftEf4Headings(section.middle, 1 - item.level) };
+      body: shiftEf4Headings(section.middle, 1 - item.level) }, slot.encoding);
   }
   const at = item.raw.indexOf('\n') + 1;
   const raw = item.raw.slice(0, at) + item.raw.slice(at + BOARD_ENCODING_MARKER.length + 1);
   const section = decomposeSection(raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return { id: item.id, title: item.title, status: section.header?.status ?? 'todo',
+  return tagged({ id: item.id, title: item.title, status: section.header?.status ?? 'todo',
     ...(section.header?.assignee ? { assignee: section.header.assignee } : {}),
-    body: unnestHeadings(section.middle, item.level - 1) };
+    body: unnestHeadings(section.middle, item.level - 1) }, slot.encoding);
 }
 
 function sameRecord(a: IssueRecord, b: IssueRecord): boolean {
@@ -131,7 +137,7 @@ export function renderBoardCard(record: IssueRecord, level = 2, path = 'arcs.md'
 /** A board document tiled into spans: each outermost card section (`id`), and the text between
  * them (`id: null`: the preamble and sections that are not cards). Joined, the spans are the
  * document. A card span starts at a heading, so it reads the same on its own. */
-export type BoardChunk = { id: string | null; level: number; text: string };
+export type BoardChunk = { id: string | null; level: number; text: string; readonly [BOARD_RECORD_ENCODING]?: BoardEncoding };
 
 export function chunkBoardDocument(text: string, path = 'arcs.md'): BoardChunk[] {
   const chunks = tile(text, path);
@@ -150,7 +156,7 @@ function tile(text: string, path: string): BoardChunk[] {
   for (const span of spans) {
     if (span.start < at) continue; // nested inside an outer card's span
     if (span.start > at) chunks.push({ id: null, level: 0, text: text.slice(at, span.start) });
-    chunks.push({ id: span.id, level: span.level, text: span.text });
+    chunks.push(tagged({ id: span.id, level: span.level, text: span.text }, boardEncodingSlot(span.text).encoding));
     at = span.start + span.text.length;
   }
   if (at < text.length) chunks.push({ id: null, level: 0, text: text.slice(at) });

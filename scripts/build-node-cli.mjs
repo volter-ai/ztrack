@@ -115,6 +115,7 @@ if (board.status !== 0) { process.stderr.write(board.stderr || board.stdout); pr
 const boardFile = resolve(packageRoot, 'dist/board-document.cjs');
 writeFileSync(boardFile, readFileSync(boardFile, 'utf8') + `
 0 && (module.exports = {
+  BOARD_RECORD_ENCODING,
   boardDocumentProtocol,
   inspectBoardEncodingSlots,
   parseBoardDocument,
