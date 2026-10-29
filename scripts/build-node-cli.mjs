@@ -91,9 +91,12 @@ if (vizCore.status !== 0) {
 // (`"type": "module"`), so the `./preset-kit` export's `require` condition points here
 // rather than at a `require()` of an ES module. Bundling zod/mdast in keeps it free of
 // external ESM.
+// Bun's whitespace minifier also omits dependency source-marker comments. Their
+// paths depend on the installation layout (flat or pnpm), so keeping them would
+// give identical codec code different source-bound artifact contracts.
 const kitCjs = spawnSync(
   'bun',
-  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
+  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--minify-whitespace', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
   { cwd: packageRoot, encoding: 'utf8', env: production },
 );
 if (kitCjs.status !== 0) {
