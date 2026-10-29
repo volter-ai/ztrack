@@ -3,6 +3,12 @@
 import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParser.ts';
 import { decomposeSection, nestHeadings, shiftHeadings, unnestHeadings } from './documentWriteBack.ts';
 import type { IssueRecord } from './core/engine.ts';
+import * as legacy from './legacyBoard/boardDocument.ts';
+import { createRequire } from 'node:module';
+import { preservesRestingState as preserving, type BoardCodecOptions } from './boardMode.ts';
+
+export type { BoardCodecOptions } from './boardMode.ts';
+const require = createRequire(import.meta.url);
 
 // A heading inside a card stays its body, even when its text resembles an issue id.
 const cards = (text: string, path: string): DocumentParsedIssue[] => parseMarkdownDocumentSource(text, path, { outermost: true });
@@ -30,13 +36,19 @@ function recordOf(item: DocumentParsedIssue): BoardRecord {
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
   return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:quoted?unnestHeadings(section.middle,item.level-1):shiftHeadings(section.middle,1-item.level)};
 }
-export function parseBoardDocument(text: string, path = 'arcs.md'): BoardRecord[] {
+export function parseBoardDocument(text: string, path = 'arcs.md', options: BoardCodecOptions = {}): BoardRecord[] {
+  if (!preserving(options)) return legacy.parseBoardDocument(text, path);
   return cards(text,path).map(recordOf);
 }
 
 /** Replace supplied cards, remove absent cards, preserve all text outside their spans.
  * Unchanged cards retain their exact bytes. Archived cards are omitted by the caller. */
-export function renderBoardDocument(text: string, records: BoardRecord[], path = 'arcs.md', preserveIds: string[] = []): string {
+export function renderBoardDocument(text: string, records: BoardRecord[], path = 'arcs.md', preserveIds: string[] = [], options: BoardCodecOptions = {}): string {
+  if (!preserving(options)) {
+    const result = legacy.renderBoardDocument(text, records, path, preserveIds);
+    assertLegacySlots(result, path);
+    return result;
+  }
   const parsed = cards(text, path);
   const before = new Map<string,BoardRecord>();
   for(const item of parsed) {try {before.set(item.id,recordOf(item));}catch{ /* opaque preserved card */ }}
@@ -54,16 +66,21 @@ export function renderBoardDocument(text: string, records: BoardRecord[], path =
     if (record && JSON.stringify(record) === JSON.stringify(before.get(item.id))) continue;
     const start = offsets[item.lineStart! - 1]!;
     // The parser's raw is the exact span; it includes its trailing blank lines.
-    result = result.slice(0, start) + (record ? renderBoardCard(record, item.level!, path) : '') + result.slice(start + item.raw!.length);
+    result = result.slice(0, start) + (record ? renderBoardCard(record, item.level!, path, options) : '') + result.slice(start + item.raw!.length);
   }
-  for (const record of wanted.values()) result += `${result.endsWith('\n\n') || !result ? '' : '\n'}${renderBoardCard(record, 2, path)}`;
+  for (const record of wanted.values()) result += `${result.endsWith('\n\n') || !result ? '' : '\n'}${renderBoardCard(record, 2, path, options)}`;
   return result;
 }
 
 /** One card's section text at heading `level`, checked on its own: it reads back as exactly this
  * card, and a heading after it still starts a new section (no unclosed code block or HTML block
  * swallows what follows), so it can be spliced in place of the card's old span. */
-export function renderBoardCard(record: BoardRecord, level = 2, path = 'arcs.md'): string {
+export function renderBoardCard(record: BoardRecord, level = 2, path = 'arcs.md', options: BoardCodecOptions = {}): string {
+  if (!preserving(options)) {
+    const result = legacy.renderBoardCard(record, level, path);
+    assertLegacySlots(result, path);
+    return result;
+  }
   const text = renderCard(record, level);
   const items = cards(`${text}# end\n`, path);
   if (items.length !== 1 || items[0]!.id !== record.id || items[0]!.number !== record.number || items[0]!.key !== record.key) throw new Error('board rendering changed card identities');
@@ -77,7 +94,8 @@ export function renderBoardCard(record: BoardRecord, level = 2, path = 'arcs.md'
  * document. A card span starts at a heading, so it reads the same on its own. */
 export type BoardChunk = { id: string | null; level: number; text: string };
 
-export function chunkBoardDocument(text: string, path = 'arcs.md'): BoardChunk[] {
+export function chunkBoardDocument(text: string, path = 'arcs.md', options: BoardCodecOptions = {}): BoardChunk[] {
+  if (!preserving(options)) return legacy.chunkBoardDocument(text, path);
   const chunks = tile(text, path);
   if (chunks.map((chunk) => chunk.text).join('') !== text) throw new Error('board document spans do not tile its text');
   return chunks;
@@ -105,10 +123,11 @@ function tile(text: string, path: string): BoardChunk[] {
  * last changed bytes, one span before them (an edit on a span's first line can join it to the
  * text before), and the first unchanged span after, which must read back unchanged or the region
  * grows. Old spans [from, oldTo) became new spans [from, to). */
-export function rechunkBoardDocument(old: BoardChunk[], text: string, path = 'arcs.md'): { chunks: BoardChunk[]; from: number; oldTo: number; to: number } {
+export function rechunkBoardDocument(old: BoardChunk[], text: string, path = 'arcs.md', options: BoardCodecOptions = {}): { chunks: BoardChunk[]; from: number; oldTo: number; to: number } {
+  if (!preserving(options)) return legacy.rechunkBoardDocument(old, text, path);
   const oldText = old.map((chunk) => chunk.text).join('');
   if (oldText === text) return { chunks: old, from: 0, oldTo: 0, to: 0 };
-  if (!old.length) { const chunks = chunkBoardDocument(text, path); return { chunks, from: 0, oldTo: 0, to: chunks.length }; }
+  if (!old.length) { const chunks = chunkBoardDocument(text, path, options); return { chunks, from: 0, oldTo: 0, to: chunks.length }; }
   const limit = Math.min(oldText.length, text.length);
   let prefix = 0;
   while (prefix < limit && oldText.charCodeAt(prefix) === text.charCodeAt(prefix)) prefix++;
@@ -151,7 +170,8 @@ function renderCard(record: BoardRecord, level: number): string {
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
-export function inspectBoardDocument(text: string, path = 'arcs.md'): { records: BoardRecord[]; errors: { id: string; reason: string }[] } {
+export function inspectBoardDocument(text: string, path = 'arcs.md', options: BoardCodecOptions = {}): { records: BoardRecord[]; errors: { id: string; reason: string }[] } {
+  if (!preserving(options)) return legacy.inspectBoardDocument(text, path);
   const records: BoardRecord[] = [], errors: { id: string; reason: string }[] = [];
   const items = cards(text, path);
   const counts = new Map<string, number>();
@@ -166,7 +186,8 @@ export function inspectBoardDocument(text: string, path = 'arcs.md'): { records:
 }
 
 /** Three-way recovery: retain editor changes, applying only untouched card spans. */
-export function mergeBoardDocument(base: string, current: string, desired: string, path = 'arcs.md', blockedIds: string[] = []): { text: string; conflicts: string[] } {
+export function mergeBoardDocument(base: string, current: string, desired: string, path = 'arcs.md', blockedIds: string[] = [], options: BoardCodecOptions = {}): { text: string; conflicts: string[] } {
+  if (!preserving(options)) return legacy.mergeBoardDocument(base, current, desired, path, blockedIds);
   const blocked = new Set(blockedIds);
   const spans = (text: string) => cards(text, path);
   const before = new Map(spans(base).map(item => [item.id, item.raw ?? '']));
@@ -191,4 +212,27 @@ export function mergeBoardDocument(base: string, current: string, desired: strin
     text += `${text.endsWith('\n\n') || !text ? '' : '\n'}${target}`;
   }
   return { text, conflicts: [...new Set(conflicts)] };
+}
+
+export type BoardRestingSlot = { path: string; line: number; kind: 'backlog' | 'bounded-pause' | 'body-encoding'; cardId: string; taskId?: string };
+
+/** Inspect actual metadata slots before selecting a reader. No schema coercion or body unescaping. */
+export function inspectBoardRestingSlots(text: string, path = 'arcs.md'): BoardRestingSlot[] {
+  const preset = require('@volter/ztrack/kanban-preset') as {
+    inspectKanbanRestingSlots(records: IssueRecord[]): Array<{ line: number; kind: BoardRestingSlot['kind']; cardId: string; taskId?: string }>;
+  };
+  return cards(text, path).flatMap((item) => {
+    const header = item.raw!.split('\n')[1] ?? '';
+    const markers: BoardRestingSlot[] = header.startsWith('body-encoding:')
+      ? [{ path, line: item.lineStart! + 1, kind: 'body-encoding', cardId: item.id }] : [];
+    if (markers.length && header !== BODY_ENCODING) return markers;
+    const { section, quoted } = boardSection(item.raw!);
+    const offset = item.lineStart! - 1 + (section.prefixRaw.match(/\n/g)?.length ?? 0) + Number(quoted);
+    return [...markers, ...preset.inspectKanbanRestingSlots([recordOf(item)]).map((slot) => ({ ...slot, path, line: offset + slot.line }))];
+  });
+}
+
+function assertLegacySlots(text: string, path: string): void {
+  const slot = inspectBoardRestingSlots(text, path)[0];
+  if (slot) throw new Error(`${slot.path}:${slot.line}: legacy-holds writer refuses ${slot.kind}; preserve requires compatible-reader admission`);
 }

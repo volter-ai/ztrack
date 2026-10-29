@@ -64,10 +64,14 @@
 
 // A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
-  z, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
+  z, toMdast, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
   supercodeMessages, quoteIn, SUPERCODE_SERVICE, type PresetContextInput,
   type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
+import * as legacy from '../../src/legacyBoard/kanban.ts';
+import { preservesRestingState as preserving, type BoardCodecOptions } from '../../src/boardMode.ts';
+
+export type KanbanCodecOptions = BoardCodecOptions;
 
 // ── the hard schema (core + preset-specific, all strict) ─────────────────────────────────────
 // A lane is a status of the board's workflow (Hermes's nine, or the ones a supercode board's workflow
@@ -184,11 +188,23 @@ const trimBlankLines = (lines: string[]) => {
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string };
 type ParsedTask = { metadata?: Record<string, unknown>; id: string; number?: number; key?: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
+type RestingObservation = { line: number; kind: 'backlog' | 'bounded-pause'; task?: ParsedTask };
+type RestingObserver = (slot: RestingObservation) => void;
+
+function restingKinds(value: unknown): RestingObservation['kind'][] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+  const card = value as { backlog?: unknown; paused?: unknown };
+  const kinds: RestingObservation['kind'][] = [];
+  if (card.backlog !== undefined) kinds.push('backlog');
+  if (card.paused != null && (typeof card.paused !== 'object' || Array.isArray(card.paused)
+    || Object.keys(card.paused).some((key) => key !== 'by' && key !== 'reason'))) kinds.push('bounded-pause');
+  return kinds;
+}
 
 // A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
 // inside it are kept, and its first two spaces of indent are the list's, not the brief's.
 const BRIEF_LINE = /^ {2,}\S/;
-function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
+function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, literal = new Set<number>()): { tasks: ParsedTask[]; unparsed: string[] } {
   const tasks: ParsedTask[] = [];
   const unparsed: string[] = [];
   const unnamed: ParsedTask[] = [];
@@ -206,9 +222,14 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     briefs.set(last, brief);
     inBrief = true;
   };
-  for (const line of lines) {
+  for (const [lineIndex, line] of lines.entries()) {
     if (line.trim() === '') { blanks++; continue; }
     const pendingBlanks = blanks; blanks = 0;
+    if (literal.has(lineIndex)) {
+      if (tasks.length && BRIEF_LINE.test(line)) addBrief(line, pendingBlanks);
+      else unparsed.push(line);
+      continue;
+    }
     const t = TASK_LINE.exec(line);
     if (t) {
       const task: ParsedTask = { id: t[4] ?? '', ...(t[3] ? { number: Number(t[3]) } : {}), ...(t[2] ? { key: t[2] } : {}), status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[5]!.trim() };
@@ -222,7 +243,12 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     if (metadata && tasks.length) {
       let parsed: unknown;
       try { parsed = JSON.parse(metadata[1]!); } catch { parsed = undefined; }
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) { tasks[tasks.length - 1]!.metadata = parsed as Record<string, unknown>; continue; }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const task = tasks[tasks.length - 1]!;
+        task.metadata = parsed as Record<string, unknown>;
+        if (observe) for (const kind of restingKinds(task.metadata.card)) observe({ line: lineIndex + 1, kind, task });
+        continue;
+      }
       if (BRIEF_LINE.test(line)) { addBrief(line, pendingBlanks); continue; }
     }
     const b = BLOCKED_LINE.exec(line);
@@ -258,10 +284,19 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
   return { tasks, unparsed };
 }
 
-function parseCard(record: IssueRecord): Record<string, unknown> {
+function parseCard(record: IssueRecord, observe?: RestingObserver): Record<string, unknown> {
   const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
-  const at = lines.findIndex((l) => TASKS_HEADING.test(l));
-  const acc = lines.findIndex((l) => ACCEPTANCE_HEADING.test(l));
+  // Fenced/indented code and HTML remain literal even when their lines resemble section or task controls.
+  type PositionedNode = { type: string; children?: PositionedNode[]; position?: { start: { line: number }; end: { line: number } } };
+  const literal = new Set<number>();
+  const visit = (node: PositionedNode) => {
+    if (['code', 'html'].includes(node.type) && node.position) {
+      for (let line = node.position.start.line - 1; line < node.position.end.line; line++) literal.add(line);
+    } else for (const child of node.children ?? []) visit(child);
+  };
+  visit(toMdast(lines.join('\n')) as PositionedNode);
+  const at = lines.findIndex((l, index) => !literal.has(index) && TASKS_HEADING.test(l));
+  const acc = lines.findIndex((l, index) => !literal.has(index) && ACCEPTANCE_HEADING.test(l));
   // the prose runs to the first of the card's two sections; Acceptance runs to Tasks (or the end), Tasks to the end
   const firstSection = [at, acc].filter((i) => i >= 0).reduce((m, i) => Math.min(m, i), lines.length);
   const head = lines.slice(0, firstSection);
@@ -278,6 +313,7 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   // The metadata block: the leading paragraphs made wholly of metadata lines (written as one
   // paragraph, read from several, so a blank line inside the block loses nothing).
   const content = trimBlankLines(head);
+  const leading = head.findIndex((line) => line.trim() !== '');
   const meta: Record<string, string> = {};
   let at2 = 0;
   for (;;) {
@@ -286,13 +322,20 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
     const para = content.slice(at2, end);
     if (!para.length || !para.every((l) => META_LINE.test(l))) break;
     // A metadata line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
-    for (const l of para) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.replace(/\s*\\$/u, '').trim(); }
+    for (const [index, l] of para.entries()) {
+      const m = META_LINE.exec(l)!;
+      const key = m[1]!.toLowerCase();
+      meta[META_KEYS[key]!] = m[2]!.replace(/\s*\\$/u, '').trim();
+      if (observe && ['pause until', 'pause generation', 'backlog', 'backlog since'].includes(key)) observe({
+        line: leading + at2 + index + 1, kind: key.startsWith('backlog') ? 'backlog' : 'bounded-pause',
+      });
+    }
     at2 = end;
     while (at2 < content.length && content[at2]!.trim() === '') at2++;
   }
   const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
 
-  const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail);
+  const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail, observe ? (slot) => observe({ ...slot, line: at + 1 + slot.line }) : undefined, new Set([...literal].map((line) => line - at - 1)));
   const unparsed = [...accUnparsed, ...taskUnparsed];
   const card: Record<string, unknown> = {
     id: record.id,
@@ -326,21 +369,41 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   return card;
 }
 
-export function parseKanban(records: IssueRecord[]): unknown {
-  const issues = records.map(parseCard);
+export function parseKanban(records: IssueRecord[], options: KanbanCodecOptions = {}): unknown {
+  if (!preserving(options)) return legacy.parseKanban(records);
+  const issues = records.map((record) => parseCard(record));
   // Bare task refs resolve now that every card and task is known: a task of this card, else a card.
   normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]);
   return { issues };
 }
 
+/** Slots, not keyword matches: task brief lines and prose after the metadata block remain text. */
+export function inspectKanbanRestingSlots(records: IssueRecord[]): Array<{ line: number; kind: RestingObservation['kind']; cardId: string; taskId?: string }> {
+  return records.flatMap((record) => {
+    const slots: RestingObservation[] = [];
+    parseCard(record, (slot) => slots.push(slot));
+    return slots.map(({ line, kind, task }) => ({ line, kind, cardId: record.id, ...(task ? { taskId: task.id } : {}) }));
+  });
+}
+
 // ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
-export function serializeKanbanCard(card: KanbanCard): { body: string; columns: IssueColumns } {
+export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOptions = {}): { body: string; columns: IssueColumns } {
   // Serialization is a public door too: callers need not have run the root schema first.
   for (const value of [card, ...card.acceptanceCriteria.map((task) => task.metadata?.card)]) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const holds = value as { paused?: unknown; backlog?: unknown };
     if (holds.paused !== undefined) KanbanPauseSchema.parse(holds.paused);
     if (holds.backlog !== undefined) KanbanBacklogSchema.parse(holds.backlog);
+  }
+  if (!preserving(options)) {
+    const kinds = [...restingKinds(card), ...card.acceptanceCriteria.flatMap((task) => restingKinds(task.metadata?.card))];
+    if (kinds.length) throw new Error(`legacy-holds writer refuses ${[...new Set(kinds)].join(', ')}; preserve requires compatible-reader admission`);
+    const stored = legacy.serializeKanbanCard(card);
+    const record: IssueRecord = { id: card.id, title: card.title, status: card.status, ...stored.columns, body: stored.body };
+    if (inspectKanbanRestingSlots([record]).length) throw new Error('legacy-holds writer cannot encode metadata-like body text without a reader collision');
+    const read = (legacy.parseKanban([record]) as { issues: Array<{ body: string }> }).issues[0]!;
+    if (read.body !== card.body) throw new Error('legacy-holds writer cannot preserve this body; literal escapes and reserved sections require compatible-reader admission');
+    return stored;
   }
   const out: string[] = [];
   const blockers = [...new Set([...(card.relations ?? []).map((r) => r.issueId), ...(card.waitingOn ? [card.waitingOn] : [])])];
