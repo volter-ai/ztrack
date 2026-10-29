@@ -6,6 +6,8 @@
 //                                  at any indent and inside list items and block quotes
 //                                  (a fenced-code `## fake` is never touched; a level pushed
 //                                  outside [1,6], or a setext heading in the way, throws).
+//   nestHeadings / unnestHeadings — the same move for a board card's text, losslessly: a heading
+//                                  that cannot move is written as text and read back as itself.
 //   decomposeSection(raw)        — split one parsed issue's section text (heading + subtree, the
 //                                  same string documentParser.ts calls `raw`/`body`) into a
 //                                  PREFIX (heading line + optional `status:`/`assignee:` header
@@ -79,6 +81,107 @@ export function shiftHeadings(text: string, delta: number, headingLines?: readon
     }
     lines[edit.lineIndex] = `${edit.lead}${'#'.repeat(newLevel)}${edit.rest}`;
   }
+  return lines.join('\n');
+}
+
+// ── nestHeadings / unnestHeadings ────────────────────────────────────────────────────────────
+//
+// A board card at heading level L holds its text with each heading moved down L-1 levels, so it
+// sits under the card's heading. Three headings cannot move: a setext heading (it has no `#` run),
+// a level-1 heading (it would land on the card's own level and end the card) and one that would
+// pass level 6. Each is written as text instead: one `\` goes before its `#` run, or before a
+// setext heading's underline, and Markdown reads that line as a paragraph's, showing the
+// characters as typed. Reading removes the `\`. A line that already starts, after its containers,
+// with `\`s and then a `#` run or an underline (ESCAPED_LINE_RE) gets one more `\` on the way out
+// and loses one on the way back, so every text reads back as it was written. A text with none of
+// these headings and none of these lines comes out exactly as shiftHeadings writes it.
+
+const ESCAPED_LINE_RE = /^((?:[ \t]|>|(?:[-*+]|\d{1,9}[.)])(?=[ \t]))*)\\+(?:#{1,6}(?:\s|$)|(?:=+|-+)[ \t]*$)/;
+const LEAD_RE = /^(?:[ \t]|>|(?:[-*+]|\d{1,9}[.)])(?=[ \t]))*/;
+
+// Each heading Markdown finds in `text`: its first and last 0-based line (a setext heading's last
+// line is its underline) and its level.
+function headingsOf(text: string): Array<{ start: number; end: number; depth: number }> {
+  const found: Array<{ start: number; end: number; depth: number }> = [];
+  const walk = (node: unknown): void => {
+    const n = node as { type?: string; depth?: number; position?: { start: { line: number }; end: { line: number } }; children?: unknown[] };
+    if (n.type === 'heading' && n.position) found.push({ start: n.position.start.line - 1, end: n.position.end.line - 1, depth: n.depth! });
+    for (const c of n.children ?? []) walk(c);
+  };
+  walk(fromMarkdown(text, { extensions: [gfm()] }));
+  return found;
+}
+
+/** `text` written `delta` heading levels down, as a card at level `delta + 1` holds it (see above).
+ *  Throws HeadingShiftError only when the result would not read back as `text`. */
+export function nestHeadings(text: string, delta: number): string {
+  const lines = text.split('\n');
+  let escaped = false;
+  const escape = (index: number): void => {
+    const line = lines[index] ?? '';
+    const lead = LEAD_RE.exec(line)![0];
+    const written = `${lead}\\${line.slice(lead.length)}`;
+    if (!ESCAPED_LINE_RE.test(written)) {
+      throw new HeadingShiftError(`nestHeadings: line ${index + 1} ("${line}") is a heading that cannot be written as text.`);
+    }
+    lines[index] = written;
+    escaped = true;
+  };
+  lines.forEach((line, index) => { if (ESCAPED_LINE_RE.test(line)) escape(index); });
+  const kept = new Set<number>();
+  for (const heading of headingsOf(text)) {
+    const level = heading.depth + delta;
+    if (heading.end > heading.start) {
+      // A setext heading stays only where it needs no move: a level-2 one in a level-1 card's text.
+      if (delta === 0 && level > 1) kept.add(heading.start);
+      else escape(heading.end);
+      continue;
+    }
+    const atx = ATX_LINE_RE.exec(lines[heading.start] ?? '');
+    if (!atx) throw new HeadingShiftError(`nestHeadings: line ${heading.start + 1} ("${lines[heading.start]}") is a heading with no # run.`);
+    if (level > delta + 1 && level <= 6) {
+      lines[heading.start] = `${atx[1] ?? ''}${'#'.repeat(level)}${atx[3] ?? ''}`;
+      kept.add(heading.start);
+    } else escape(heading.start);
+  }
+  // Only `#` runs changed: the text reads as it did, one level for another (shiftHeadings' case).
+  if (!escaped) return lines.join('\n');
+  // A heading written as text is a paragraph's line, and a paragraph reads the lines after it
+  // differently (a following `===` underlines it; an HTML block can no longer start after it), so
+  // a heading the text did not have can appear. Each such heading is written as text too.
+  for (;;) {
+    const found = headingsOf(lines.join('\n')).filter((heading) => !kept.has(heading.start));
+    if (!found.length) break;
+    for (const heading of found) escape(heading.end);
+  }
+  const result = lines.join('\n');
+  if (unnestHeadings(result, delta) !== text) {
+    throw new HeadingShiftError(`nestHeadings: the text's headings cannot be written ${delta} level(s) down so that it reads back unchanged.`);
+  }
+  return result;
+}
+
+/** The inverse of `nestHeadings`: a card's text as it is held at level `delta + 1`, read back. */
+export function unnestHeadings(text: string, delta: number): string {
+  const lines = text.split('\n');
+  for (const heading of headingsOf(text)) {
+    if (heading.end > heading.start) {
+      if (delta === 0) continue;
+      throw new HeadingShiftError(`unnestHeadings: line ${heading.start + 1} ("${lines[heading.start]}") is a setext heading inside a card at level ${delta + 1}.`);
+    }
+    const atx = ATX_LINE_RE.exec(lines[heading.start] ?? '');
+    if (!atx) throw new HeadingShiftError(`unnestHeadings: line ${heading.start + 1} ("${lines[heading.start]}") is a heading with no # run.`);
+    const level = atx[2]!.length - delta;
+    if (level < 1 || level > 6) {
+      throw new HeadingShiftError(`unnestHeadings: line ${heading.start + 1} would shift from level ${atx[2]!.length} to ${level}, outside the valid [1,6] range.`);
+    }
+    lines[heading.start] = `${atx[1] ?? ''}${'#'.repeat(level)}${atx[3] ?? ''}`;
+  }
+  lines.forEach((line, index) => {
+    if (!ESCAPED_LINE_RE.test(line)) return;
+    const lead = LEAD_RE.exec(line)![0];
+    lines[index] = lead + line.slice(lead.length + 1);
+  });
   return lines.join('\n');
 }
 

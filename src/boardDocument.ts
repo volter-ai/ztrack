@@ -1,7 +1,7 @@
 /** A board's document codec, shared by ztrack and supercode's document backing.
  * Callers own the file's hash/transaction; this module only parses and renders text. */
 import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParser.ts';
-import { decomposeSection, shiftHeadings } from './documentWriteBack.ts';
+import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
 import type { IssueRecord } from './core/engine.ts';
 
 /** A card as its section reads: an issue record, and the board's number for it when its heading
@@ -16,7 +16,7 @@ function recordOf(item: DocumentParsedIssue): BoardRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
   const section = decomposeSection(item.raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:shiftHeadings(section.middle,1-item.level)};
+  return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:unnestHeadings(section.middle,item.level-1)};
 }
 export function parseBoardDocument(text: string, path = 'arcs.md'): BoardRecord[] {
   return cards(text,path).map(recordOf);
@@ -135,7 +135,7 @@ function renderCard(record: BoardRecord, level: number): string {
   }
   if (record.number !== undefined && !(Number.isSafeInteger(record.number) && record.number > 0)) throw new Error(`board card ${record.id}: its number is a positive whole number, not ${record.number}`);
   if (record.key !== undefined && (record.number === undefined || !/^[A-Z][A-Z0-9]+$/.test(record.key))) throw new Error(`board card ${record.id}: its key is two or more capitals and digits written with its number, not ${record.key}`);
-  return `${'#'.repeat(level)} ${record.number !== undefined ? `${record.key ? `${record.key}-` : '#'}${record.number} ` : ''}${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${shiftHeadings(record.body, level - 1).trimEnd()}\n\n`;
+  return `${'#'.repeat(level)} ${record.number !== undefined ? `${record.key ? `${record.key}-` : '#'}${record.number} ` : ''}${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
