@@ -187,7 +187,11 @@ export function inspectBoardDocument(text: string, path = 'arcs.md', options: Bo
 
 /** Three-way recovery: retain editor changes, applying only untouched card spans. */
 export function mergeBoardDocument(base: string, current: string, desired: string, path = 'arcs.md', blockedIds: string[] = [], options: BoardCodecOptions = {}): { text: string; conflicts: string[] } {
-  if (!preserving(options)) return legacy.mergeBoardDocument(base, current, desired, path, blockedIds);
+  if (!preserving(options)) {
+    const result = legacy.mergeBoardDocument(base, current, desired, path, blockedIds);
+    assertLegacySlots(result.text, path);
+    return result;
+  }
   const blocked = new Set(blockedIds);
   const spans = (text: string) => cards(text, path);
   const before = new Map(spans(base).map(item => [item.id, item.raw ?? '']));
