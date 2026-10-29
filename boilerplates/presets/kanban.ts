@@ -549,13 +549,14 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, 
 
 function parseCard(record: IssueRecord, observe?: RestingObserver): Record<string, unknown> {
   const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
-  // Fenced/indented code and HTML remain literal even when their lines resemble section or task controls.
+  // Fenced/indented code and HTML blocks remain literal even when their lines resemble section or task controls.
+  // Inline HTML belongs to its surrounding text, so an outcome containing <take> is still an outcome.
   type PositionedNode = { type: string; children?: PositionedNode[]; position?: { start: { line: number }; end: { line: number } } };
   const literal = new Set<number>();
-  const visit = (node: PositionedNode) => {
-    if (['code', 'html'].includes(node.type) && node.position) {
+  const visit = (node: PositionedNode, phrasing = false) => {
+    if ((node.type === 'code' || (node.type === 'html' && !phrasing)) && node.position) {
       for (let line = node.position.start.line - 1; line < node.position.end.line; line++) literal.add(line);
-    } else for (const child of node.children ?? []) visit(child);
+    } else for (const child of node.children ?? []) visit(child, phrasing || ['paragraph', 'heading', 'tableCell'].includes(node.type));
   };
   visit(toMdast(lines.join('\n')) as PositionedNode);
   const at = lines.findIndex((l, index) => !literal.has(index) && TASKS_HEADING.test(l));
