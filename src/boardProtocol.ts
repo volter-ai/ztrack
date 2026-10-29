@@ -22,6 +22,7 @@ export function boardDocumentContract() {
   return {
     version: 1,
     readModes: ['legacy-holds', 'backlog-bounded-pause-v1'],
+    formatFeatures: ['acceptance-layout-v1'],
     defaultReader: BOARD_DEFAULT_MODE,
     writer: BOARD_DEFAULT_MODE,
     legacySource: 'be866b90b7b36ebf36ff998b510291a167a3ff2e',
