@@ -109,3 +109,20 @@ if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout);
 // SDK fingerprints these shipped bytes, rather than assuming a version identifies behavior.
 const board = spawnSync('bun', ['build', 'src/boardDocument.ts', '--target=node', '--format=cjs', '--outfile=dist/board-document.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
 if (board.status !== 0) { process.stderr.write(board.stderr || board.stdout); process.exit(board.status ?? 1); }
+// Bun's dynamic export map is valid CommonJS, but Node's ESM loader discovers named
+// exports lexically. This unreachable declaration names the public API without assigning
+// Bun's getter-backed exports or adding another reader artifact to the protocol closure.
+const boardFile = resolve(packageRoot, 'dist/board-document.cjs');
+writeFileSync(boardFile, readFileSync(boardFile, 'utf8') + `
+0 && (module.exports = {
+  boardDocumentProtocol,
+  inspectBoardEncodingSlots,
+  parseBoardDocument,
+  renderBoardDocument,
+  renderBoardCard,
+  chunkBoardDocument,
+  rechunkBoardDocument,
+  inspectBoardDocument,
+  mergeBoardDocument,
+});
+`);
