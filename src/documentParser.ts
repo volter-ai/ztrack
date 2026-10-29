@@ -18,7 +18,10 @@ import { parseMarkdownDocument, type MarkdownDocument, type MarkdownSection } fr
 // OPTIONAL separator (em dash, middot, or colon, each optionally surrounded by whitespace) or
 // just whitespace precedes the title remainder; nothing past the separator is interpreted further
 // — `## ZL-A5 · P0 · title` yields title `"P0 · title"` verbatim, not a parsed priority field.
-const ID_HEADING_RE = /^([A-Za-z][A-Za-z0-9_-]*[-_][A-Za-z0-9]+)\b\s*(?:[—·:]\s*)?(.*)$/;
+// The id token may follow the issue's number, the short sequential number a board gives each card: `#` and digits
+// (`## #42 APP-1 — title`), or the board's key, a hyphen and digits before a board card's id
+// (`## VO-42 t_4406c88a — title`). It is read as the issue's `number` (and `key`); the token after it is the id.
+const ID_HEADING_RE = /^(?:#(\d+)\s+|([A-Z][A-Z0-9]+)-(\d+)\s+(?=t[-_][0-9a-f]+\b))?([A-Za-z][A-Za-z0-9_-]*[-_][A-Za-z0-9]+)\b\s*(?:[—·:]\s*)?(.*)$/;
 
 // Mirrors src/check.ts's `HEADER_LINE`/`fileToRecord` header-block scan exactly (same regex, same
 // abort-on-first-non-match semantics) but applied only to the document's PREAMBLE (the text before
@@ -28,6 +31,10 @@ const HEADER_LINE = /^(title|status|assignee):\s*(.+)$/i;
 
 export interface DocumentParsedIssue {
   id: string;
+  /** The number written before the id token in the issue's heading (`## #42 t_… — …`, `## VO-42 t_… — …`), when one is. */
+  number?: number;
+  /** The board key the number was written with (`VO` in `VO-42`), when it was. */
+  key?: string;
   title: string;
   body: string;
   parent: string | null;
@@ -177,7 +184,7 @@ export interface DocumentParseOptions { outermost?: boolean }
 export function parseMarkdownDocumentSource(text: string, filePath: string, options: DocumentParseOptions = {}): DocumentParsedIssue[] {
   const doc = parsedOnce(text);
 
-  const idBearing = new Map<number, { id: string; title: string }>();
+  const idBearing = new Map<number, { id: string; number?: number; key?: string; title: string }>();
   const insideItem = (index: number): boolean => {
     for (let p = doc.sections[index]!.parentIndex; p !== null; p = doc.sections[p]!.parentIndex) if (idBearing.has(p)) return true;
     return false;
@@ -188,7 +195,7 @@ export function parseMarkdownDocumentSource(text: string, filePath: string, opti
     // The heading as Markdown reads it: a backslash-escaped punctuation character is that character (CommonMark 2.4), so
     // an editor that writes `t\_651ec10b` (Git Notes does) names the same card.
     const m = ID_HEADING_RE.exec(section.title.replace(/\\([!-\/:-@[-`{-~])/g, '$1'));
-    if (m) idBearing.set(index, { id: m[1]!, title: (m[2] ?? '').trim() });
+    if (m) idBearing.set(index, { id: m[4]!, ...(m[1] || m[3] ? { number: Number(m[1] ?? m[3]) } : {}), ...(m[2] ? { key: m[2] } : {}), title: (m[5] ?? '').trim() });
   });
   const isIdBearing = (i: number): boolean => idBearing.has(i);
 
@@ -212,14 +219,14 @@ export function parseMarkdownDocumentSource(text: string, filePath: string, opti
   };
 
   const issues: DocumentParsedIssue[] = [];
-  for (const [index, { id, title }] of idBearing) {
+  for (const [index, { id, number, key, title }] of idBearing) {
     const ancestorIndex = nearestIdBearingAncestor(index);
     const parentId = ancestorIndex !== null ? idBearing.get(ancestorIndex)!.id : umbrellaId;
     if (parentId) addChild(parentId, id);
     const section = doc.sections[index]!;
     const body = subtreeExcisingIdBearing(doc, index, isIdBearing);
     issues.push({
-      id, title, parent: parentId, children: [], // children filled below, once every parent is known
+      id, ...(number !== undefined ? { number } : {}), ...(key !== undefined ? { key } : {}), title, parent: parentId, children: [], // children filled below, once every parent is known
       body,
       lineStart: section.lineStart, lineEnd: section.lineEnd,
       level: section.level, raw: section.raw,

@@ -75,7 +75,10 @@ What stands: the manager's arcs live in arcs.md, backed by its board.
 
 - **A card** is a level-2 heading `## <id> — <title>`. The id of a card on the board is its
   board id with `-` for `_` (`t_65a8d101` is `t-65a8d101`). The title is the card's whole title:
-  the outcome.
+  the outcome. When the board numbers its cards (its `list --json` gives each a `number` and the
+  board's `key`), the heading starts with the card's number read with the key, the way Jira and
+  Linear name an issue: `## VO-42 <id> — <title>`. The number is the board's: a sync writes the
+  board's, and an edit to it is not a change to the card.
 - **Its header block** follows the heading after one blank line: `status: <lane>` and, when the card
   has one, `assignee: <profile>`, one per line, ending at a blank line. The blank line is required:
   without it the lines read as prose, the card as an unassigned `todo`, and both `ztrack check`
@@ -106,7 +109,8 @@ What stands: the manager's arcs live in arcs.md, backed by its board.
   checkbox lines of the card's text, so the board's workflow can hold a close until every one is
   ticked.
 - **`### Tasks`** holds the card's tasks (the working session's plan), one per line: `- [ ] <id> <text>` open, `- [x] <id> <text>`
-  done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A task written without
+  done. The id is `c<N>` (or another letter prefix and number, such as `s1`). A board document that numbers its
+  cards writes a task's own card number before its id, with the board's key, `- [ ] VO-2836 c3 <text>` (supercode's does). A task written without
   one gets the card's next free `c<N>` on the next sync. An indented `- blocked-by: <refs>` line under a task names what it waits on: `c1` (a task
   of this card), `t-…:c2` (a task of another card), or `t-…` (a whole card). An indented
   `- waiting-on: <m-/a- id>` line names the message whose answer it waits for. An indented checkbox,

@@ -4,25 +4,28 @@ import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documen
 import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
 import type { IssueRecord } from './core/engine.ts';
 
-// A board's cards are its outermost id-bearing sections: a heading inside a card is the card's text, however its words
-// read (`### Follow-ups` is a section of the card's body, not a card named Follow-ups).
+// A heading inside a card stays its body, even when its text resembles an issue id.
 const cards = (text: string, path: string): DocumentParsedIssue[] => parseMarkdownDocumentSource(text, path, { outermost: true });
 
-function recordOf(item: DocumentParsedIssue): IssueRecord {
+/** A card as its section reads: an issue record, and the board's number for it when its heading
+ *  gives one (`## VO-42 t_4406c88a — title`, its board's key with it; or `## #42 …`). */
+export type BoardRecord = IssueRecord & { number?: number; key?: string };
+
+function recordOf(item: DocumentParsedIssue): BoardRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
   const section = decomposeSection(item.raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return {id:item.id,title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:unnestHeadings(section.middle,item.level-1)};
+  return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:unnestHeadings(section.middle,item.level-1)};
 }
-export function parseBoardDocument(text: string, path = 'arcs.md'): IssueRecord[] {
+export function parseBoardDocument(text: string, path = 'arcs.md'): BoardRecord[] {
   return cards(text,path).map(recordOf);
 }
 
 /** Replace supplied cards, remove absent cards, preserve all text outside their spans.
  * Unchanged cards retain their exact bytes. Archived cards are omitted by the caller. */
-export function renderBoardDocument(text: string, records: IssueRecord[], path = 'arcs.md', preserveIds: string[] = []): string {
+export function renderBoardDocument(text: string, records: BoardRecord[], path = 'arcs.md', preserveIds: string[] = []): string {
   const parsed = cards(text, path);
-  const before = new Map<string,IssueRecord>();
+  const before = new Map<string,BoardRecord>();
   for(const item of parsed) {try {before.set(item.id,recordOf(item));}catch{ /* opaque preserved card */ }}
   const preserve = new Set(preserveIds);
   const wanted = new Map(records.map((r) => [r.id, r]));
@@ -47,10 +50,10 @@ export function renderBoardDocument(text: string, records: IssueRecord[], path =
 /** One card's section text at heading `level`, checked on its own: it reads back as exactly this
  * card, and a heading after it still starts a new section (no unclosed code block or HTML block
  * swallows what follows), so it can be spliced in place of the card's old span. */
-export function renderBoardCard(record: IssueRecord, level = 2, path = 'arcs.md'): string {
+export function renderBoardCard(record: BoardRecord, level = 2, path = 'arcs.md'): string {
   const text = renderCard(record, level);
   const items = cards(`${text}# end\n`, path);
-  if (items.length !== 1 || items[0]!.id !== record.id) throw new Error('board rendering changed card identities');
+  if (items.length !== 1 || items[0]!.id !== record.id || items[0]!.number !== record.number || items[0]!.key !== record.key) throw new Error('board rendering changed card identities');
   recordOf(items[0]!);
   if (items[0]!.raw !== text) throw new Error(`board card ${record.id} would run into the next section: its text holds a heading at the card's level or an unclosed code or HTML block`);
   return text;
@@ -125,16 +128,18 @@ export function rechunkBoardDocument(old: BoardChunk[], text: string, path = 'ar
   }
 }
 
-function renderCard(record: IssueRecord, level: number): string {
+function renderCard(record: BoardRecord, level: number): string {
   for (const value of [record.id, record.title, record.status, record.assignee ?? '']) {
     if (/[\r\n]/.test(value)) throw new Error('board headings and metadata must be single-line values');
   }
-  return `${'#'.repeat(level)} ${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
+  if (record.number !== undefined && !(Number.isSafeInteger(record.number) && record.number > 0)) throw new Error(`board card ${record.id}: its number is a positive whole number, not ${record.number}`);
+  if (record.key !== undefined && (record.number === undefined || !/^[A-Z][A-Z0-9]+$/.test(record.key))) throw new Error(`board card ${record.id}: its key is two or more capitals and digits written with its number, not ${record.key}`);
+  return `${'#'.repeat(level)} ${record.number !== undefined ? `${record.key ? `${record.key}-` : '#'}${record.number} ` : ''}${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
-export function inspectBoardDocument(text: string, path = 'arcs.md'): { records: IssueRecord[]; errors: { id: string; reason: string }[] } {
-  const records: IssueRecord[] = [], errors: { id: string; reason: string }[] = [];
+export function inspectBoardDocument(text: string, path = 'arcs.md'): { records: BoardRecord[]; errors: { id: string; reason: string }[] } {
+  const records: BoardRecord[] = [], errors: { id: string; reason: string }[] = [];
   const items = cards(text, path);
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.id, (counts.get(item.id) ?? 0) + 1);

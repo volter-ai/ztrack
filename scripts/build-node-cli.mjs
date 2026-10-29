@@ -39,7 +39,7 @@ function rewriteDeclarations(dir) {
 }
 rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 
-// twin (@volter/world-core, @volter/twin-github) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
+// twin (@volter/world-core, @volter/twin-github, @volter/twin-jira) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
 // ztrack` must not pull in its transitive tree (react/react-dom) or its stray
 // `volter-twin`/`world-github` bins. `sync.ts` only ever reaches it through a lazy `import()`
 // (twinRuntime.ts) — `--external` here keeps that import() a real, unresolved-until-runtime
@@ -50,7 +50,7 @@ rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 // export condition, and micromark's development build runs debug calls and assertions on every
 // token of every parse.
 const production = { ...process.env, NODE_ENV: 'production' };
-const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/world-core', '--external=@volter/twin-github', '--outfile=dist/cli.js'], {
+const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/world-core', '--external=@volter/twin-github', '--external=@volter/twin-jira', '--outfile=dist/cli.js'], {
   cwd: packageRoot,
   encoding: 'utf8',
   env: production,

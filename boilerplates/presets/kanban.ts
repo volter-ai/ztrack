@@ -13,7 +13,11 @@
 //
 //   Blocked by: t-954aa1da                  optional: cards that must be done first
 //   Blocked by: m-f17fd1c2                  message waits share the blocking relation
-//   Paused: sc:host:codex:session — waiting for owner
+//   Paused: sc:host:codex:session — external observation due
+//   Pause until: 1793257200                 optional pair: UTC epoch seconds and revision
+//   Pause generation: p-123
+//   Backlog: sc:host:agent:manager — accepted for later
+//   Backlog since: 1793250000               UTC epoch seconds
 //   Every: 2h                              recurring role runs
 //   Workspace: worktree:volter-ai/editor    optional: scratch | worktree:<repository> | dir:<repository>
 //   Branch: wt/t6-wire                      optional
@@ -47,7 +51,8 @@
 //
 // The metadata block is the body's leading paragraphs made wholly of the keys above; anything
 // else is the prose. A task is `- [ ] <id> <text>`: the id is `c<N>` (or another letter prefix and
-// number, `s1`), and a task written without one gets the next free `c<N>` of its card. `blocked-by` names tasks
+// number, `s1`), and a task written without one gets the next free `c<N>` of its card. On a board that numbers its
+// cards, the task's own card number comes first, with the board's key: `- [ ] VO-2836 c3 <text>` (or `#2836`). `blocked-by` names tasks
 // (`c1` in this card, `<card>:<task>` in another) or whole cards.
 //
 // A `source` names the message a task came from, by its supercode mailbox id (a line a person
@@ -74,6 +79,9 @@ export const KanbanStatusSchema = z.string().regex(/^[a-z][a-z_]*$/);
 // `passed` is a ticked task, `pending` an open one.
 export const KanbanTaskSchema = z.object({
   id: z.string().regex(/^[a-z]+\d+$/),                   // core: `c3`, or any letter prefix and number (`s1`)
+  /** The task's own card number on a board that numbers its cards (`- [ ] VO-2836 c3 …`), and its board's key. */
+  number: z.number().int().positive().optional(),
+  key: z.string().regex(/^[A-Z][A-Z0-9]+$/).optional(),
   status: z.enum(['pending', 'passed']),                 // core
   evidence: z.array(z.never()),                          // core: a task carries no evidence, ever
   text: z.string().min(1),
@@ -89,6 +97,20 @@ export const KanbanTaskSchema = z.object({
 }).strict();
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
+
+/** A stopped card's attributed pause; old documents may omit both deadline fields. */
+export const KanbanPauseSchema = z.object({
+  by: z.string().min(1), reason: z.string().min(1),
+  until: z.number().int().positive().optional(),
+  generation: z.string().min(1).optional(),
+}).strict().refine((pause) => (pause.until === undefined) === (pause.generation === undefined), {
+  message: 'A bounded pause needs both its deadline and generation.',
+});
+
+/** Backlog is a scheduling property, never a sixth lifecycle status. */
+export const KanbanBacklogSchema = z.object({
+  by: z.string().min(1), reason: z.string().min(1), since: z.number().int().nonnegative(),
+}).strict();
 
 export const KanbanCardSchema = z.object({
   id: z.string().min(1),                                 // core
@@ -111,7 +133,8 @@ export const KanbanCardSchema = z.object({
   /** The message (m-… or a-…) whose answer the card's block waits for; the board unblocks it when one lands. */
   waitingOn: z.string().regex(/^[ma]-[0-9a-f]{6,}$/).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
-  paused: z.object({ by: z.string().min(1), reason: z.string().min(1) }).strict().optional(),
+  paused: KanbanPauseSchema.optional(),
+  backlog: KanbanBacklogSchema.optional(),
   every: z.string().regex(/^[1-9]\d*(?:\.\d+)?\s*(?:s|m|h|d|w)?$/).optional(),
   body: z.string(),
   /** Lines under Tasks that are not a task; kept verbatim and reported by `kanban_line_unparsed`. */
@@ -125,15 +148,17 @@ export type KanbanCard = KanbanRoot['issues'][number];
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
 const META_KEYS: Record<string, string> = {
   'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
-  run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', every: 'every', metadata: 'metadata',
+  run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', 'pause until': 'pauseUntil', 'pause generation': 'pauseGeneration',
+  backlog: 'backlog', 'backlog since': 'backlogSince', every: 'every', metadata: 'metadata',
 };
-const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):\s*(.*)$/i;
+const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):\s*(.*)$/i;
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // The escape a body line carries so it can't read as a heading or as a metadata line.
-const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):)/i;
-const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
+// a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
+const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
 const WAITING_LINE = /^\s{2,}[-*] waiting-on:\s*(\S+)\s*$/i;
 const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
@@ -149,7 +174,7 @@ const trimBlankLines = (lines: string[]) => {
 
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string };
-type ParsedTask = { metadata?: Record<string, unknown>; id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
+type ParsedTask = { metadata?: Record<string, unknown>; id: string; number?: number; key?: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
 
 // A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
 // inside it are kept, and its first two spaces of indent are the list's, not the brief's.
@@ -177,7 +202,7 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
     const pendingBlanks = blanks; blanks = 0;
     const t = TASK_LINE.exec(line);
     if (t) {
-      const task: ParsedTask = { id: t[2] ?? '', status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[3]!.trim() };
+      const task: ParsedTask = { id: t[4] ?? '', ...(t[3] ? { number: Number(t[3]) } : {}), ...(t[2] ? { key: t[2] } : {}), status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[5]!.trim() };
       tasks.push(task);
       if (!task.id) unnamed.push(task);
       inBrief = false;
@@ -276,9 +301,16 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
   for (const k of ['workspace', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
   if (meta.metadata) card.metadata = JSON.parse(meta.metadata);
-  if (meta.paused) {
-    const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused);
-    card.paused = pause ? { by: pause[1], reason: pause[2] } : { by: '', reason: meta.paused };
+  if (meta.paused !== undefined || meta.pauseUntil !== undefined || meta.pauseGeneration !== undefined) {
+    const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused ?? '');
+    card.paused = { ...(pause ? { by: pause[1], reason: pause[2] } : { by: '', reason: meta.paused ?? '' }),
+      ...(meta.pauseUntil !== undefined ? { until: /^\d+$/.test(meta.pauseUntil) ? Number(meta.pauseUntil) : meta.pauseUntil } : {}),
+      ...(meta.pauseGeneration !== undefined ? { generation: meta.pauseGeneration } : {}) };
+  }
+  if (meta.backlog !== undefined || meta.backlogSince !== undefined) {
+    const backlog = /^(.+?)\s+—\s+(.+)$/.exec(meta.backlog ?? '');
+    card.backlog = { ...(backlog ? { by: backlog[1], reason: backlog[2] } : { by: '', reason: meta.backlog ?? '' }),
+      since: /^\d+$/.test(meta.backlogSince ?? '') ? Number(meta.backlogSince) : meta.backlogSince };
   }
   if (meta.priority) card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
   if (unparsed.length) card.unparsed = unparsed;
@@ -298,7 +330,12 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   const blockers = [...new Set([...(card.relations ?? []).map((r) => r.issueId), ...(card.waitingOn ? [card.waitingOn] : [])])];
   if (blockers.length) out.push(`Blocked by: ${blockers.join(', ')}`);
   if (card.metadata && Object.keys(card.metadata).length) out.push(`Metadata: ${JSON.stringify(card.metadata)}`);
-  if (card.paused) out.push(`Paused: ${card.paused.by} — ${card.paused.reason}`);
+  if (card.paused) {
+    out.push(`Paused: ${card.paused.by} — ${card.paused.reason}`);
+    if (card.paused.until !== undefined) out.push(`Pause until: ${card.paused.until}`);
+    if (card.paused.generation !== undefined) out.push(`Pause generation: ${card.paused.generation}`);
+  }
+  if (card.backlog) out.push(`Backlog: ${card.backlog.by} — ${card.backlog.reason}`, `Backlog since: ${card.backlog.since}`);
   if (card.every) out.push(`Every: ${card.every}`);
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
@@ -321,7 +358,7 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
     // a ref into this card is written bare (`c1`), anything else in full (`t-…:c2`, `t-…`)
     const renderRef = (r: BlockRef) => (r.ac !== undefined && r.issue === card.id ? r.ac : formatRef(r));
     for (const t of card.acceptanceCriteria) {
-      out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.id} ${t.text}`);
+      out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.number ? `${t.key ? `${t.key}-` : '#'}${t.number} ` : ''}${t.id} ${t.text}`);
       if (t.metadata && Object.keys(t.metadata).length) out.push(`  - metadata: ${JSON.stringify(t.metadata)}`);
       if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
       if (t.waitingOn) out.push(`  - waiting-on: ${t.waitingOn}`);
