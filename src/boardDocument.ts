@@ -5,7 +5,7 @@ import { parseBoardDocument as parseEf4BoardDocument, renderBoardCard as renderE
 import { boardEncodingSlot, BOARD_ENCODING_MARKER, BOARD_RECORD_ENCODING, BOARD_WRITE_MODE, type BoardEncoding } from './boardEncoding.ts';
 import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
 import { decomposeSection as decomposeEf4Section, shiftHeadings as shiftEf4Headings } from './documentWriteBackEf4.ts';
-import { parseKanban as parseEf4Kanban } from '../boilerplates/presets/kanbanEf4.ts';
+import { parseKanban as parseEf4Kanban } from './kanbanPresetEf4.ts';
 import type { IssueRecord } from './core/engine.ts';
 export { BOARD_RECORD_ENCODING } from './boardEncoding.ts';
 
