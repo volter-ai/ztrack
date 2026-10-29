@@ -98,18 +98,22 @@ export const KanbanTaskSchema = z.object({
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
 
+const NonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, {
+  message: 'Must contain non-whitespace text.',
+});
+
 /** A stopped card's attributed pause; old documents may omit both deadline fields. */
 export const KanbanPauseSchema = z.object({
-  by: z.string().min(1), reason: z.string().min(1),
+  by: NonBlankStringSchema, reason: NonBlankStringSchema,
   until: z.number().int().positive().optional(),
-  generation: z.string().min(1).optional(),
+  generation: NonBlankStringSchema.optional(),
 }).strict().refine((pause) => (pause.until === undefined) === (pause.generation === undefined), {
   message: 'A bounded pause needs both its deadline and generation.',
 });
 
 /** Backlog is a scheduling property, never a sixth lifecycle status. */
 export const KanbanBacklogSchema = z.object({
-  by: z.string().min(1), reason: z.string().min(1), since: z.number().int().nonnegative(),
+  by: NonBlankStringSchema, reason: NonBlankStringSchema, since: z.number().int().nonnegative(),
 }).strict();
 
 export const KanbanCardSchema = z.object({
