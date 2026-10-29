@@ -118,6 +118,7 @@ writeFileSync(boardFile, readFileSync(boardFile, 'utf8') + `
   boardDocumentProtocol,
   inspectBoardEncodingSlots,
   parseBoardDocument,
+  parseEf4KanbanBoard,
   renderBoardDocument,
   renderBoardCard,
   chunkBoardDocument,
