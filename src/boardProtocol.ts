@@ -8,7 +8,7 @@ const ARTIFACTS = [
   './boardProtocol.js', './boardMode.js', './boardDocument.js', './documentParser.js', './documentWriteBack.js', './markdownDocument.js',
   './legacyBoard/boardDocument.js', './legacyBoard/documentParser.js', './legacyBoard/documentWriteBack.js',
   './legacyBoard/markdownDocument.js', './legacyBoard/kanban.js',
-  '../kanban-preset.cjs', '../preset-kit.cjs',
+  '../kanban-preset.cjs', '../preset-kit.cjs', '../../boilerplates/presets/kanban.ts',
 ] as const;
 
 /** Hash the installed public artifacts, including the reader's local dependency closure. */

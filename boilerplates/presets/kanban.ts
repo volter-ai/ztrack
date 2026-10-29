@@ -68,10 +68,16 @@ import {
   supercodeMessages, quoteIn, SUPERCODE_SERVICE, type PresetContextInput,
   type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
-import * as legacy from '../../src/legacyBoard/kanban.ts';
-import { preservesRestingState as preserving, type BoardCodecOptions } from '../../src/boardMode.ts';
-
-export type KanbanCodecOptions = BoardCodecOptions;
+// The editable preset owns its source-bound default as well as both compatibility grammars.
+// Board-document's mode API reads this same constant from the built public preset.
+export const KANBAN_DEFAULT_MODE: 'legacy-holds' | 'backlog-bounded-pause-v1' = 'legacy-holds';
+export type KanbanCodecOptions = { resting?: 'legacy' | 'preserve' };
+function preserving(options: KanbanCodecOptions): boolean {
+  if (options.resting === 'preserve') return true;
+  if (options.resting === 'legacy') return false;
+  if (options.resting !== undefined) throw new Error('unknown board resting-state codec mode');
+  return KANBAN_DEFAULT_MODE === 'backlog-bounded-pause-v1';
+}
 
 // ── the hard schema (core + preset-specific, all strict) ─────────────────────────────────────
 // A lane is a status of the board's workflow (Hermes's nine, or the ones a supercode board's workflow
@@ -156,6 +162,228 @@ export const KanbanCardSchema = z.object({
 export const KanbanRootSchema = z.object({ issues: z.array(KanbanCardSchema) }).strict();
 export type KanbanRoot = z.infer<typeof KanbanRootSchema>;
 export type KanbanCard = KanbanRoot['issues'][number];
+
+// This preset's frozen 2.4.23 reader/writer, copied from the labelled source snapshot.
+// Keep it local: init and preset upgrade install this editable file without package-private sources.
+const legacy = (() => {
+// ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
+const META_KEYS: Record<string, string> = {
+  'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
+  run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', every: 'every', metadata: 'metadata',
+};
+const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):\s*(.*)$/i;
+const TASKS_HEADING = /^##\s+Tasks\s*$/i;
+const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
+const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
+// The escape a body line carries so it can't read as a heading or as a metadata line.
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Every|Metadata):)/i;
+const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:([a-z]+\d+)\s+)?(.+)$/;
+const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
+const WAITING_LINE = /^\s{2,}[-*] waiting-on:\s*(\S+)\s*$/i;
+const SOURCE_LINE = /^\s{2,}[-*] source:\s*(\S+)(?:\s+"(.*)")?\s*$/i;
+const CRITERION_LINE = /^\s{2,}[-*] \[( |x|X)\]\s+(.+)$/;
+
+const splitList = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
+const trimBlankLines = (lines: string[]) => {
+  let a = 0; let b = lines.length;
+  while (a < b && lines[a]!.trim() === '') a++;
+  while (b > a && lines[b - 1]!.trim() === '') b--;
+  return lines.slice(a, b);
+};
+
+type TaskSource = { id: string; quote?: string };
+type TaskLine = { checked: boolean; text: string };
+type ParsedTask = { metadata?: Record<string, unknown>; id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
+
+// A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
+// inside it are kept, and its first two spaces of indent are the list's, not the brief's.
+const BRIEF_LINE = /^ {2,}\S/;
+function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unparsed: string[] } {
+  const tasks: ParsedTask[] = [];
+  const unparsed: string[] = [];
+  const unnamed: ParsedTask[] = [];
+  const briefs = new Map<ParsedTask, string[]>();
+  let blanks = 0;
+  // A task's marked lines (metadata, blocked-by, waiting-on, sources, criteria) sit directly under it; once its brief has
+  // begun (a blank line, or a line that is none of them), every indented line is the brief's, whatever it reads like:
+  // Markdown in a brief is arbitrary (company RFC 0025 decisions 1 and 4).
+  let inBrief = false;
+  const addBrief = (line: string, pendingBlanks: number) => {
+    const last = tasks[tasks.length - 1]!;
+    const brief = briefs.get(last) ?? [];
+    if (brief.length) for (let i = 0; i < pendingBlanks; i++) brief.push('');
+    brief.push(line.slice(2));
+    briefs.set(last, brief);
+    inBrief = true;
+  };
+  for (const line of lines) {
+    if (line.trim() === '') { blanks++; continue; }
+    const pendingBlanks = blanks; blanks = 0;
+    const t = TASK_LINE.exec(line);
+    if (t) {
+      const task: ParsedTask = { id: t[2] ?? '', status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[3]!.trim() };
+      tasks.push(task);
+      if (!task.id) unnamed.push(task);
+      inBrief = false;
+      continue;
+    }
+    if (tasks.length && (inBrief || pendingBlanks > 0) && BRIEF_LINE.test(line)) { addBrief(line, pendingBlanks); continue; }
+    const metadata = /^\s{2,}[-*] metadata:\s*(.+)$/.exec(line);
+    if (metadata && tasks.length) {
+      let parsed: unknown;
+      try { parsed = JSON.parse(metadata[1]!); } catch { parsed = undefined; }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) { tasks[tasks.length - 1]!.metadata = parsed as Record<string, unknown>; continue; }
+      if (BRIEF_LINE.test(line)) { addBrief(line, pendingBlanks); continue; }
+    }
+    const b = BLOCKED_LINE.exec(line);
+    if (b && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      last.blockedBy = [...(last.blockedBy ?? []), ...splitList(b[1]!).map((tok) => parseBlockToken(tok, cardId)).filter((r): r is RawBlockRef => r !== null)];
+      continue;
+    }
+    const w = WAITING_LINE.exec(line);
+    if (w && tasks.length) {
+      tasks[tasks.length - 1]!.waitingOn = w[1]!;
+      continue;
+    }
+    const crit = CRITERION_LINE.exec(line);
+    if (crit && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      last.lines = [...(last.lines ?? []), { checked: crit[1] !== ' ', text: crit[2]!.trim() }];
+      continue;
+    }
+    const src = SOURCE_LINE.exec(line);
+    if (src && tasks.length) {
+      const last = tasks[tasks.length - 1]!;
+      last.sources = [...(last.sources ?? []), { id: src[1]!, ...(src[2] ? { quote: src[2] } : {}) }];
+      continue;
+    }
+    if (BRIEF_LINE.test(line) && tasks.length) { addBrief(line, pendingBlanks); continue; }
+    unparsed.push(line);
+  }
+  for (const [task, brief] of briefs) task.brief = brief.join('\n');
+  // A task written without an id takes the card's next free `c<N>`, in line order.
+  let next = tasks.reduce((m, t) => Math.max(m, /^c\d+$/.test(t.id) ? Number(t.id.slice(1)) : 0), 0);
+  for (const t of unnamed) t.id = `c${++next}`;
+  return { tasks, unparsed };
+}
+
+function parseCard(record: IssueRecord): Record<string, unknown> {
+  const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
+  const at = lines.findIndex((l) => TASKS_HEADING.test(l));
+  const acc = lines.findIndex((l) => ACCEPTANCE_HEADING.test(l));
+  // the prose runs to the first of the card's two sections; Acceptance runs to Tasks (or the end), Tasks to the end
+  const firstSection = [at, acc].filter((i) => i >= 0).reduce((m, i) => Math.min(m, i), lines.length);
+  const head = lines.slice(0, firstSection);
+  const tail = at < 0 ? [] : lines.slice(at + 1, acc > at ? acc : lines.length);
+  const outcomeLines = acc < 0 ? [] : lines.slice(acc + 1, at > acc ? at : lines.length);
+  const acceptance: Array<{ checked: boolean; text: string }> = [];
+  const accUnparsed: string[] = [];
+  for (const l of outcomeLines) {
+    const m = OUTCOME_LINE.exec(l);
+    if (m) acceptance.push({ checked: m[1] !== ' ', text: m[2]!.trim() });
+    else if (l.trim() !== '') accUnparsed.push(l);
+  }
+
+  // The metadata block: the leading paragraphs made wholly of metadata lines (written as one
+  // paragraph, read from several, so a blank line inside the block loses nothing).
+  const content = trimBlankLines(head);
+  const meta: Record<string, string> = {};
+  let at2 = 0;
+  for (;;) {
+    let end = content.slice(at2).findIndex((l) => l.trim() === '');
+    end = end < 0 ? content.length : at2 + end;
+    const para = content.slice(at2, end);
+    if (!para.length || !para.every((l) => META_LINE.test(l))) break;
+    // A metadata line edited as a page (Git Notes) may end in a Markdown hard break, `\`: it is not part of the value.
+    for (const l of para) { const m = META_LINE.exec(l)!; meta[META_KEYS[m[1]!.toLowerCase()]!] = m[2]!.replace(/\s*\\$/u, '').trim(); }
+    at2 = end;
+    while (at2 < content.length && content[at2]!.trim() === '') at2++;
+  }
+  const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
+
+  const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail);
+  const unparsed = [...accUnparsed, ...taskUnparsed];
+  const card: Record<string, unknown> = {
+    id: record.id,
+    title: record.title,
+    summary: '',
+    // A document item with no `status:` line reads as `draft`; on a board that is a card not yet
+    // started — `todo`.
+    status: !record.status || record.status === 'draft' ? 'todo' : record.status,
+    acceptanceCriteria: tasks,
+    body: bodyLines.join('\n'),
+  };
+  if (acceptance.length) card.acceptance = acceptance;
+  if (record.assignee) card.assignee = record.assignee;
+  const blockers = [...new Set([...splitList(meta.blockedBy ?? ''), ...splitList(meta.waitingOn ?? '')])];
+  if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
+  for (const k of ['workspace', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
+  if (meta.metadata) card.metadata = JSON.parse(meta.metadata);
+  if (meta.paused) {
+    const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused);
+    card.paused = pause ? { by: pause[1], reason: pause[2] } : { by: '', reason: meta.paused };
+  }
+  if (meta.priority) card.priority = /^-?\d+$/.test(meta.priority) ? Number(meta.priority) : meta.priority;
+  if (unparsed.length) card.unparsed = unparsed;
+  return card;
+}
+
+function parseKanban(records: IssueRecord[]): unknown {
+  const issues = records.map(parseCard);
+  // Bare task refs resolve now that every card and task is known: a task of this card, else a card.
+  normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]);
+  return { issues };
+}
+
+// ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
+function serializeKanbanCard(card: KanbanCard): { body: string; columns: IssueColumns } {
+  const out: string[] = [];
+  const blockers = [...new Set([...(card.relations ?? []).map((r) => r.issueId), ...(card.waitingOn ? [card.waitingOn] : [])])];
+  if (blockers.length) out.push(`Blocked by: ${blockers.join(', ')}`);
+  if (card.metadata && Object.keys(card.metadata).length) out.push(`Metadata: ${JSON.stringify(card.metadata)}`);
+  if (card.paused) out.push(`Paused: ${card.paused.by} — ${card.paused.reason}`);
+  if (card.every) out.push(`Every: ${card.every}`);
+  if (card.workspace) out.push(`Workspace: ${card.workspace}`);
+  if (card.branch) out.push(`Branch: ${card.branch}`);
+  if (card.priority !== undefined) out.push(`Priority: ${card.priority}`);
+  if (card.machine) out.push(`Machine: ${card.machine}`);
+  if (card.body) {
+    if (out.length) out.push('');
+    // The document codec owns heading nesting. Escaping headings here turned
+    // real Acceptance sections into prose in the workflow's body projection.
+    out.push(...card.body.split('\n').map((l, i) => (i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
+  }
+  if (card.acceptance?.length) {
+    if (out.length) out.push('');
+    out.push('## Acceptance', '');
+    for (const o of card.acceptance) out.push(`- [${o.checked ? 'x' : ' '}] ${o.text}`);
+  }
+  if (card.acceptanceCriteria.length || card.unparsed?.length) {
+    if (out.length) out.push('');
+    out.push('## Tasks', '');
+    // a ref into this card is written bare (`c1`), anything else in full (`t-…:c2`, `t-…`)
+    const renderRef = (r: BlockRef) => (r.ac !== undefined && r.issue === card.id ? r.ac : formatRef(r));
+    for (const t of card.acceptanceCriteria) {
+      out.push(`- [${t.status === 'passed' ? 'x' : ' '}] ${t.id} ${t.text}`);
+      if (t.metadata && Object.keys(t.metadata).length) out.push(`  - metadata: ${JSON.stringify(t.metadata)}`);
+      if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
+      if (t.waitingOn) out.push(`  - waiting-on: ${t.waitingOn}`);
+      for (const src of t.sources ?? []) out.push(`  - source: ${src.id}${src.quote ? ` "${src.quote}"` : ''}`);
+      for (const l of t.lines ?? []) out.push(`  - [${l.checked ? 'x' : ' '}] ${l.text}`);
+      // The brief, indented under its task as a paragraph of the list item, set apart by blank lines.
+      if (t.brief) out.push('', ...t.brief.split('\n').map((l) => (l === '' ? '' : `  ${l}`)), '');
+    }
+    out.push(...(card.unparsed ?? []));
+  }
+  return {
+    body: out.length ? `${out.join('\n')}\n` : '',
+    columns: { title: card.title, status: card.status, ...(card.assignee ? { assignee: card.assignee } : {}) },
+  };
+}
+
+  return { parseKanban, serializeKanbanCard };
+})();
 
 // ── parse: one card's record -> the schema shape (line grammar, no prose mining) ─────────────
 const META_KEYS: Record<string, string> = {
