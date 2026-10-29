@@ -29,6 +29,7 @@ export { formatRef, BlockRefSchema } from './core/ref.ts';
 export { splitIssueBundle } from './core/bundle.ts';
 export { normalizeBlockRefs, parseBlockToken } from './core/blocking.ts';
 export type { RawBlockRef } from './core/blocking.ts';
+export { BOARD_RECORD_ENCODING } from './boardEncoding.ts';
 
 // World annotations pull in `@volter/world-core`, so they are deliberately NOT re-exported
 // here — keeping preset-kit (and thus every baseline installed preset) from loading twin's
