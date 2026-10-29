@@ -395,9 +395,9 @@ const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priori
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
-// Keep the established unversioned preset escape grammar. The document codec's
-// separately versioned heading quote layer is not a preset body escape.
-const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
+// Only the first body line can be a serializer-generated metadata escape. Heading
+// quoting belongs to the document codec; a literal backslash before # stays text.
+const ESCAPED_META = /^\\(?=(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
 // a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
@@ -561,7 +561,7 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
     at2 = end;
     while (at2 < content.length && content[at2]!.trim() === '') at2++;
   }
-  const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
+  const bodyLines = trimBlankLines(content.slice(at2)).map((line, index) => index === 0 ? line.replace(ESCAPED_META, '') : line);
 
   const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail, observe ? (slot) => observe({ ...slot, line: at + 1 + slot.line }) : undefined, new Set([...literal].map((line) => line - at - 1)));
   const unparsed = [...accUnparsed, ...taskUnparsed];
