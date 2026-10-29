@@ -2,7 +2,8 @@
 // (dev/08) into a real write path. Two grammar-free primitives live here, independent of
 // documentParser.ts's id-heading grammar and of any preset:
 //
-//   shiftHeadings(text, delta)   — renumber every ATX heading INSIDE `text` by `delta` levels
+//   shiftHeadings(text, delta)   — renumber every ATX heading INSIDE `text` by `delta` levels,
+//                                  at any indent and inside list items and block quotes
 //                                  (a fenced-code `## fake` is never touched; a level pushed
 //                                  outside [1,6], or a setext heading in the way, throws).
 //   decomposeSection(raw)        — split one parsed issue's section text (heading + subtree, the
@@ -31,7 +32,10 @@ import { gfm } from 'micromark-extension-gfm';
  *  this as "this item cannot be safely spliced" rather than attempting a lossy rewrite. */
 export class HeadingShiftError extends Error {}
 
-const ATX_LINE_RE = /^(#{1,6})(\s.*|)$/;
+// A heading's line: the containers it sits in (indentation, block-quote `>` and list markers, as in a task's brief
+// indented under its list item, `  ### Acceptance`), then its `#` run. The containers never hold a `#`, so the run is
+// the line's first one and only it is renumbered.
+const ATX_LINE_RE = /^((?:[ \t]|>|(?:[-*+]|\d{1,9}[.)])(?=[ \t]))*)(#{1,6})(\s.*|)$/;
 
 /** Renumber every REAL ATX heading (mdast/CommonMark heading detection — a `#` inside a fenced or
  *  indented code block is not a heading) inside `text` by `delta` levels, leaving everything else
@@ -54,7 +58,7 @@ export function shiftHeadings(text: string, delta: number, headingLines?: readon
     walk(fromMarkdown(text, { extensions: [gfm()] }));
     starts = found;
   }
-  const edits: Array<{ lineIndex: number; hashes: string; rest: string }> = [];
+  const edits: Array<{ lineIndex: number; lead: string; hashes: string; rest: string }> = [];
   for (const lineIndex of starts) {
     const raw = lines[lineIndex] ?? '';
     const atx = ATX_LINE_RE.exec(raw);
@@ -64,7 +68,7 @@ export function shiftHeadings(text: string, delta: number, headingLines?: readon
         'renumbered without risking corruption of surrounding text; the item this belongs to is not splice-writable.',
       );
     }
-    edits.push({ lineIndex, hashes: atx[1]!, rest: atx[2] ?? '' });
+    edits.push({ lineIndex, lead: atx[1] ?? '', hashes: atx[2]!, rest: atx[3] ?? '' });
   }
   for (const edit of edits) {
     const newLevel = edit.hashes.length + delta;
@@ -73,7 +77,7 @@ export function shiftHeadings(text: string, delta: number, headingLines?: readon
         `shiftHeadings: line ${edit.lineIndex + 1} would shift from level ${edit.hashes.length} to ${newLevel}, outside the valid [1,6] range.`,
       );
     }
-    lines[edit.lineIndex] = `${'#'.repeat(newLevel)}${edit.rest}`;
+    lines[edit.lineIndex] = `${edit.lead}${'#'.repeat(newLevel)}${edit.rest}`;
   }
   return lines.join('\n');
 }
