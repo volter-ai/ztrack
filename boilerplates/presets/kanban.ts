@@ -159,8 +159,9 @@ const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priori
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
-// The escape a body line carries so it can't read as a heading or as a metadata line.
-const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
+// One quoting layer before a heading/metadata line; an already quoted line gets
+// another layer on write, so literal backslashes survive the preset round trip.
+const ESCAPED = /^\\(?=\\*(?:#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):))/i;
 // a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
@@ -347,9 +348,9 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.machine) out.push(`Machine: ${card.machine}`);
   if (card.body) {
     if (out.length) out.push('');
-    // The document codec owns heading nesting. Escaping headings here turned
-    // real Acceptance sections into prose in the workflow's body projection.
-    out.push(...card.body.split('\n').map((l, i) => (i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
+    // The document codec owns real headings. Only quote a first metadata line
+    // or an existing literal escape; parseCard removes exactly this one layer.
+    out.push(...card.body.split('\n').map((l, i) => (ESCAPED.test(l) || (i === 0 && META_LINE.test(l)) ? `\\${l}` : l)));
   }
   if (card.acceptance?.length) {
     if (out.length) out.push('');
