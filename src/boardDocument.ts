@@ -1,7 +1,7 @@
 /** A board's document codec, shared by ztrack and supercode's document backing.
  * Callers own the file's hash/transaction; this module only parses and renders text. */
 import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParser.ts';
-import { decomposeSection, shiftHeadings } from './documentWriteBack.ts';
+import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
 import type { IssueRecord } from './core/engine.ts';
 
 // A board's cards are its outermost id-bearing sections: a heading inside a card is the card's text, however its words
@@ -12,7 +12,7 @@ function recordOf(item: DocumentParsedIssue): IssueRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
   const section = decomposeSection(item.raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return {id:item.id,title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:shiftHeadings(section.middle,1-item.level)};
+  return {id:item.id,title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:unnestHeadings(section.middle,item.level-1)};
 }
 export function parseBoardDocument(text: string, path = 'arcs.md'): IssueRecord[] {
   return cards(text,path).map(recordOf);
@@ -129,7 +129,7 @@ function renderCard(record: IssueRecord, level: number): string {
   for (const value of [record.id, record.title, record.status, record.assignee ?? '']) {
     if (/[\r\n]/.test(value)) throw new Error('board headings and metadata must be single-line values');
   }
-  return `${'#'.repeat(level)} ${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${shiftHeadings(record.body, level - 1).trimEnd()}\n\n`;
+  return `${'#'.repeat(level)} ${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
