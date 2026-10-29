@@ -1,7 +1,7 @@
 /** A board's document codec, shared by ztrack and supercode's document backing.
  * Callers own the file's hash/transaction; this module only parses and renders text. */
 import { parseMarkdownDocumentSource, type DocumentParsedIssue } from './documentParser.ts';
-import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
+import { decomposeSection, nestHeadings, shiftHeadings, unnestHeadings } from './documentWriteBack.ts';
 import type { IssueRecord } from './core/engine.ts';
 import * as legacy from './legacyBoard/boardDocument.ts';
 import { createRequire } from 'node:module';
@@ -17,11 +17,24 @@ const cards = (text: string, path: string): DocumentParsedIssue[] => parseMarkdo
  *  gives one (`## VO-42 t_4406c88a — title`, its board's key with it; or `## #42 …`). */
 export type BoardRecord = IssueRecord & { number?: number; key?: string };
 
+// An old writer always puts status immediately after the heading. The distinct header
+// slot versions the quote layer without mistaking old body text for an encoding marker.
+const BODY_ENCODING = 'body-encoding: ztrack-quote-v1';
+function boardSection(raw: string) {
+  const start = raw.indexOf('\n') + 1;
+  const end = raw.indexOf('\n', start);
+  const line = raw.slice(start, end < 0 ? raw.length : end);
+  const quoted = line === BODY_ENCODING;
+  if (quoted && end < 0) throw new Error('board body encoding header has no following header or body');
+  if (line.startsWith('body-encoding:') && !quoted) throw new Error(`unsupported board body encoding: ${line}`);
+  return { section: decomposeSection(quoted ? raw.slice(0, start) + raw.slice(end + 1) : raw), quoted };
+}
+
 function recordOf(item: DocumentParsedIssue): BoardRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
-  const section = decomposeSection(item.raw);
+  const { section, quoted } = boardSection(item.raw);
   if (section.discardedHeaderLine) throw new Error(`malformed header for ${item.id}: ${section.discardedHeaderLine}`);
-  return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:unnestHeadings(section.middle,item.level-1)};
+  return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:quoted?unnestHeadings(section.middle,item.level-1):shiftHeadings(section.middle,1-item.level)};
 }
 export function parseBoardDocument(text: string, path = 'arcs.md', options: BoardCodecOptions = {}): BoardRecord[] {
   if (!preserving(options)) return legacy.parseBoardDocument(text, path);
@@ -153,7 +166,7 @@ function renderCard(record: BoardRecord, level: number): string {
   }
   if (record.number !== undefined && !(Number.isSafeInteger(record.number) && record.number > 0)) throw new Error(`board card ${record.id}: its number is a positive whole number, not ${record.number}`);
   if (record.key !== undefined && (record.number === undefined || !/^[A-Z][A-Z0-9]+$/.test(record.key))) throw new Error(`board card ${record.id}: its key is two or more capitals and digits written with its number, not ${record.key}`);
-  return `${'#'.repeat(level)} ${record.number !== undefined ? `${record.key ? `${record.key}-` : '#'}${record.number} ` : ''}${record.id} — ${record.title}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
+  return `${'#'.repeat(level)} ${record.number !== undefined ? `${record.key ? `${record.key}-` : '#'}${record.number} ` : ''}${record.id} — ${record.title}\n${BODY_ENCODING}\nstatus: ${record.status}\n${record.assignee ? `assignee: ${record.assignee}\n` : ''}\n${nestHeadings(record.body, level - 1).trimEnd()}\n\n`;
 }
 
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
@@ -201,7 +214,7 @@ export function mergeBoardDocument(base: string, current: string, desired: strin
   return { text, conflicts: [...new Set(conflicts)] };
 }
 
-export type BoardRestingSlot = { path: string; line: number; kind: 'backlog' | 'bounded-pause'; cardId: string; taskId?: string };
+export type BoardRestingSlot = { path: string; line: number; kind: 'backlog' | 'bounded-pause' | 'body-encoding'; cardId: string; taskId?: string };
 
 /** Inspect actual metadata slots before selecting a reader. No schema coercion or body unescaping. */
 export function inspectBoardRestingSlots(text: string, path = 'arcs.md'): BoardRestingSlot[] {
@@ -209,9 +222,13 @@ export function inspectBoardRestingSlots(text: string, path = 'arcs.md'): BoardR
     inspectKanbanRestingSlots(records: IssueRecord[]): Array<{ line: number; kind: BoardRestingSlot['kind']; cardId: string; taskId?: string }>;
   };
   return cards(text, path).flatMap((item) => {
-    const section = decomposeSection(item.raw!);
-    const offset = item.lineStart! - 1 + (section.prefixRaw.match(/\n/g)?.length ?? 0);
-    return preset.inspectKanbanRestingSlots([recordOf(item)]).map((slot) => ({ ...slot, path, line: offset + slot.line }));
+    const header = item.raw!.split('\n')[1] ?? '';
+    const markers: BoardRestingSlot[] = header.startsWith('body-encoding:')
+      ? [{ path, line: item.lineStart! + 1, kind: 'body-encoding', cardId: item.id }] : [];
+    if (markers.length && header !== BODY_ENCODING) return markers;
+    const { section, quoted } = boardSection(item.raw!);
+    const offset = item.lineStart! - 1 + (section.prefixRaw.match(/\n/g)?.length ?? 0) + Number(quoted);
+    return [...markers, ...preset.inspectKanbanRestingSlots([recordOf(item)]).map((slot) => ({ ...slot, path, line: offset + slot.line }))];
   });
 }
 

@@ -64,7 +64,7 @@
 
 // A STANDALONE preset: imports ONLY the public mechanism from `@volter/ztrack/preset-kit`.
 import {
-  z, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
+  z, toMdast, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
   supercodeMessages, quoteIn, SUPERCODE_SERVICE, type PresetContextInput,
   type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
@@ -102,22 +102,26 @@ export const KanbanTaskSchema = z.object({
 
 export const KanbanRelationSchema = z.object({ type: z.literal('blocked-by'), issueId: z.string().min(1) }).strict();
 
-const NonBlankStringSchema = z.string().min(1).refine((value) => value.trim().length > 0, {
-  message: 'Must contain non-whitespace text.',
+const AttributionLineSchema = z.string().min(1).refine((value) => value === value.trim()
+  && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u.test(value) && !value.endsWith('\\'), {
+  message: 'Must be one nonblank trimmed line without control characters or a final backslash.',
+});
+const ActorLineSchema = AttributionLineSchema.refine((value) => !/\s+—\s+/u.test(value), {
+  message: 'An actor cannot contain the attribution delimiter ( — ).',
 });
 
 /** A stopped card's attributed pause; old documents may omit both deadline fields. */
 export const KanbanPauseSchema = z.object({
-  by: NonBlankStringSchema, reason: NonBlankStringSchema,
+  by: ActorLineSchema, reason: AttributionLineSchema,
   until: z.number().int().positive().optional(),
-  generation: NonBlankStringSchema.optional(),
+  generation: AttributionLineSchema.optional(),
 }).strict().refine((pause) => (pause.until === undefined) === (pause.generation === undefined), {
   message: 'A bounded pause needs both its deadline and generation.',
 });
 
 /** Backlog is a scheduling property, never a sixth lifecycle status. */
 export const KanbanBacklogSchema = z.object({
-  by: NonBlankStringSchema, reason: NonBlankStringSchema, since: z.number().int().nonnegative(),
+  by: ActorLineSchema, reason: AttributionLineSchema, since: z.number().int().nonnegative(),
 }).strict();
 
 export const KanbanCardSchema = z.object({
@@ -163,9 +167,9 @@ const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priori
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
-// One quoting layer before a heading/metadata line; an already quoted line gets
-// another layer on write, so literal backslashes survive the preset round trip.
-const ESCAPED = /^\\(?=\\*(?:#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):))/i;
+// Keep the established unversioned preset escape grammar. The document codec's
+// separately versioned heading quote layer is not a preset body escape.
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
 // a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
@@ -200,7 +204,7 @@ function restingKinds(value: unknown): RestingObservation['kind'][] {
 // A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
 // inside it are kept, and its first two spaces of indent are the list's, not the brief's.
 const BRIEF_LINE = /^ {2,}\S/;
-function parseTasks(cardId: string, lines: string[], observe?: RestingObserver): { tasks: ParsedTask[]; unparsed: string[] } {
+function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, literal = new Set<number>()): { tasks: ParsedTask[]; unparsed: string[] } {
   const tasks: ParsedTask[] = [];
   const unparsed: string[] = [];
   const unnamed: ParsedTask[] = [];
@@ -221,6 +225,11 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver):
   for (const [lineIndex, line] of lines.entries()) {
     if (line.trim() === '') { blanks++; continue; }
     const pendingBlanks = blanks; blanks = 0;
+    if (literal.has(lineIndex)) {
+      if (tasks.length && BRIEF_LINE.test(line)) addBrief(line, pendingBlanks);
+      else unparsed.push(line);
+      continue;
+    }
     const t = TASK_LINE.exec(line);
     if (t) {
       const task: ParsedTask = { id: t[4] ?? '', ...(t[3] ? { number: Number(t[3]) } : {}), ...(t[2] ? { key: t[2] } : {}), status: t[1] === ' ' ? 'pending' : 'passed', evidence: [], text: t[5]!.trim() };
@@ -277,8 +286,17 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver):
 
 function parseCard(record: IssueRecord, observe?: RestingObserver): Record<string, unknown> {
   const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
-  const at = lines.findIndex((l) => TASKS_HEADING.test(l));
-  const acc = lines.findIndex((l) => ACCEPTANCE_HEADING.test(l));
+  // Fenced/indented code and HTML remain literal even when their lines resemble section or task controls.
+  type PositionedNode = { type: string; children?: PositionedNode[]; position?: { start: { line: number }; end: { line: number } } };
+  const literal = new Set<number>();
+  const visit = (node: PositionedNode) => {
+    if (['code', 'html'].includes(node.type) && node.position) {
+      for (let line = node.position.start.line - 1; line < node.position.end.line; line++) literal.add(line);
+    } else for (const child of node.children ?? []) visit(child);
+  };
+  visit(toMdast(lines.join('\n')) as PositionedNode);
+  const at = lines.findIndex((l, index) => !literal.has(index) && TASKS_HEADING.test(l));
+  const acc = lines.findIndex((l, index) => !literal.has(index) && ACCEPTANCE_HEADING.test(l));
   // the prose runs to the first of the card's two sections; Acceptance runs to Tasks (or the end), Tasks to the end
   const firstSection = [at, acc].filter((i) => i >= 0).reduce((m, i) => Math.min(m, i), lines.length);
   const head = lines.slice(0, firstSection);
@@ -317,7 +335,7 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
   }
   const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
 
-  const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail, observe ? (slot) => observe({ ...slot, line: at + 1 + slot.line }) : undefined);
+  const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail, observe ? (slot) => observe({ ...slot, line: at + 1 + slot.line }) : undefined, new Set([...literal].map((line) => line - at - 1)));
   const unparsed = [...accUnparsed, ...taskUnparsed];
   const card: Record<string, unknown> = {
     id: record.id,
@@ -370,11 +388,18 @@ export function inspectKanbanRestingSlots(records: IssueRecord[]): Array<{ line:
 
 // ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
 export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOptions = {}): { body: string; columns: IssueColumns } {
+  // Serialization is a public door too: callers need not have run the root schema first.
+  for (const value of [card, ...card.acceptanceCriteria.map((task) => task.metadata?.card)]) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const holds = value as { paused?: unknown; backlog?: unknown };
+    if (holds.paused !== undefined) KanbanPauseSchema.parse(holds.paused);
+    if (holds.backlog !== undefined) KanbanBacklogSchema.parse(holds.backlog);
+  }
   if (!preserving(options)) {
     const kinds = [...restingKinds(card), ...card.acceptanceCriteria.flatMap((task) => restingKinds(task.metadata?.card))];
     if (kinds.length) throw new Error(`legacy-holds writer refuses ${[...new Set(kinds)].join(', ')}; preserve requires compatible-reader admission`);
     const stored = legacy.serializeKanbanCard(card);
-    const record = { id: card.id, ...stored.columns, body: stored.body };
+    const record: IssueRecord = { id: card.id, title: card.title, status: card.status, ...stored.columns, body: stored.body };
     if (inspectKanbanRestingSlots([record]).length) throw new Error('legacy-holds writer cannot encode metadata-like body text without a reader collision');
     const read = (legacy.parseKanban([record]) as { issues: Array<{ body: string }> }).issues[0]!;
     if (read.body !== card.body) throw new Error('legacy-holds writer cannot preserve this body; literal escapes and reserved sections require compatible-reader admission');
@@ -397,9 +422,9 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
   if (card.machine) out.push(`Machine: ${card.machine}`);
   if (card.body) {
     if (out.length) out.push('');
-    // The document codec owns real headings. Only quote a first metadata line
-    // or an existing literal escape; parseCard removes exactly this one layer.
-    out.push(...card.body.split('\n').map((l, i) => (ESCAPED.test(l) || (i === 0 && META_LINE.test(l)) ? `\\${l}` : l)));
+    // The document codec owns heading quoting. This quotes only a first
+    // metadata line; bodies needing another preset escape layer are refused below.
+    out.push(...card.body.split('\n').map((l, i) => (i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
   }
   if (card.acceptance?.length) {
     if (out.length) out.push('');
@@ -423,10 +448,13 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
     }
     out.push(...(card.unparsed ?? []));
   }
-  return {
+  const stored = {
     body: out.length ? `${out.join('\n')}\n` : '',
     columns: { title: card.title, status: card.status, ...(card.assignee ? { assignee: card.assignee } : {}) },
   };
+  const read = parseCard({ id: card.id, ...stored.columns, body: stored.body });
+  if (read.body !== card.body) throw new Error('Kanban body cannot be represented without changing its established escape or section meaning.');
+  return stored;
 }
 
 // ── rules: declarative records over the engine's derived model ───────────────────────────────
