@@ -40,7 +40,14 @@ export type { RawBlockRef } from './core/blocking.ts';
 
 // ── mdast mechanism: a standalone preset's parser walks this tree ─────────────
 // The `mdast-*` deps live in the kit, not in each installed preset.
-export type MdNode = { type: string; depth?: number; checked?: boolean | null; children?: MdNode[]; value?: string };
+export type MdNode = {
+  type: string;
+  depth?: number;
+  checked?: boolean | null;
+  children?: MdNode[];
+  value?: string;
+  position?: { start: { line: number }; end: { line: number } };
+};
 
 /** Build a GFM mdast tree. */
 export function toMdast(markdown: string): MdNode {

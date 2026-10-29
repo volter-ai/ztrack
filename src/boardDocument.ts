@@ -5,6 +5,7 @@ import { parseBoardDocument as parseEf4BoardDocument, renderBoardCard as renderE
 import { boardEncodingSlot, BOARD_ENCODING_MARKER, BOARD_WRITE_MODE } from './boardEncoding.ts';
 import { decomposeSection, nestHeadings, unnestHeadings } from './documentWriteBack.ts';
 import { decomposeSection as decomposeEf4Section, shiftHeadings as shiftEf4Headings } from './documentWriteBackEf4.ts';
+import { parseKanban as parseEf4Kanban } from '../boilerplates/presets/kanbanEf4.ts';
 import type { IssueRecord } from './core/engine.ts';
 
 // The four *Ef4 modules are frozen from be866b90b7b36ebf36ff998b510291a167a3ff2e;
@@ -70,6 +71,13 @@ function sameRecord(a: IssueRecord, b: IssueRecord): boolean {
 }
 export function parseBoardDocument(text: string, path = 'arcs.md'): IssueRecord[] {
   return cards(text,path).map(recordOf);
+}
+
+/** The complete predecessor's board and kanban read path, for a backing's bridge write admission.
+ * The standalone preset is frozen from the same ef4 source as the four board modules above;
+ * its public preset-kit mechanism is unchanged at runtime. This reader never sees a new envelope. */
+export function parseEf4KanbanBoard(text: string, path = 'arcs.md'): unknown {
+  return parseEf4Kanban(parseEf4BoardDocument(text, path));
 }
 
 /** Replace supplied cards, remove absent cards, preserve all text outside their spans.

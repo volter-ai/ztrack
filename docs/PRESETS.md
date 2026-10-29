@@ -73,6 +73,12 @@ closure. It refuses a new rendering unless ef4 reads the same id, title, status,
 assignee and body back, allowing only terminal blank-line normalization (LFs,
 never spaces or Markdown hard breaks). Unchanged marked or opaque spans remain
 byte-preserved.
+The public `parseEf4KanbanBoard(text, path)` composes the frozen ef4 board reader
+and its frozen kanban preset. A board backing uses this full semantic readback
+before publishing a bridge write: board-level equality alone misses values the
+predecessor preset would reinterpret. The current preset keeps literal code and
+HTML bytes while reading body escapes; the bridge must refuse a new rendering
+when ef4's preset would change those bytes on import.
 The 2.4.28 final writer is a separate immutable source revision: new or changed
 cards use the explicit marker and escaped-heading codec, while unchanged cards
 retain their original bytes. Its rollback reader is the 2.4.27 bridge; ef4 cannot

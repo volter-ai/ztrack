@@ -61,6 +61,7 @@
 import {
   z, check as runCheck, rule, formatRef, BlockRefSchema, normalizeBlockRefs, parseBlockToken,
   supercodeMessages, quoteIn, SUPERCODE_SERVICE, type PresetContextInput,
+  toMdast, type MdNode,
   type BlockRef, type Context, type IssueColumns, type IssueRecord, type Preset, type RawBlockRef, type VisualizerSpec,
 } from '@volter/ztrack/preset-kit';
 
@@ -147,6 +148,21 @@ const trimBlankLines = (lines: string[]) => {
   return lines.slice(a, b);
 };
 
+// Metadata/section escapes belong to prose, never to the literal bytes of a code or HTML block.
+// Use the public Markdown mechanism so fences, indentation and container nesting share its grammar.
+function literalLines(text: string): Set<number> {
+  const lines = new Set<number>();
+  const walk = (node: MdNode): void => {
+    if ((node.type === 'code' || node.type === 'html') && node.position) {
+      for (let i = node.position.start.line - 1; i < node.position.end.line; i++) lines.add(i);
+      return;
+    }
+    for (const child of node.children ?? []) walk(child);
+  };
+  walk(toMdast(text));
+  return lines;
+}
+
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string };
 type ParsedTask = { metadata?: Record<string, unknown>; id: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
@@ -225,9 +241,11 @@ function parseTasks(cardId: string, lines: string[]): { tasks: ParsedTask[]; unp
 }
 
 function parseCard(record: IssueRecord): Record<string, unknown> {
-  const lines = record.body.replace(/\r\n?/g, '\n').split('\n');
-  const at = lines.findIndex((l) => TASKS_HEADING.test(l));
-  const acc = lines.findIndex((l) => ACCEPTANCE_HEADING.test(l));
+  const text = record.body.replace(/\r\n?/g, '\n');
+  const lines = text.split('\n');
+  const literal = literalLines(text);
+  const at = lines.findIndex((l, i) => !literal.has(i) && TASKS_HEADING.test(l));
+  const acc = lines.findIndex((l, i) => !literal.has(i) && ACCEPTANCE_HEADING.test(l));
   // the prose runs to the first of the card's two sections; Acceptance runs to Tasks (or the end), Tasks to the end
   const firstSection = [at, acc].filter((i) => i >= 0).reduce((m, i) => Math.min(m, i), lines.length);
   const head = lines.slice(0, firstSection);
@@ -256,7 +274,9 @@ function parseCard(record: IssueRecord): Record<string, unknown> {
     at2 = end;
     while (at2 < content.length && content[at2]!.trim() === '') at2++;
   }
-  const bodyLines = trimBlankLines(content.slice(at2)).map((l) => l.replace(ESCAPED, ''));
+  const body = trimBlankLines(content.slice(at2));
+  const bodyLiteral = literalLines(body.join('\n'));
+  const bodyLines = body.map((l, i) => bodyLiteral.has(i) ? l : l.replace(ESCAPED, ''));
 
   const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail);
   const unparsed = [...accUnparsed, ...taskUnparsed];
