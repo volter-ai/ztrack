@@ -218,7 +218,7 @@ export function mergeBoardDocument(base: string, current: string, desired: strin
   return { text, conflicts: [...new Set(conflicts)] };
 }
 
-export type BoardRestingSlot = { path: string; line: number; kind: 'backlog' | 'bounded-pause' | 'body-encoding'; cardId: string; taskId?: string };
+export type BoardRestingSlot = { path: string; line: number; kind: 'backlog' | 'bounded-pause' | 'acceptance-layout' | 'body-encoding'; cardId: string; taskId?: string };
 
 /** Inspect actual metadata slots before selecting a reader. No schema coercion or body unescaping. */
 export function inspectBoardRestingSlots(text: string, path = 'arcs.md'): BoardRestingSlot[] {
