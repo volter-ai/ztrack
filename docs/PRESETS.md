@@ -648,4 +648,4 @@ input. Re-verify until clean: preset tests green (clean fixtures = 0 findings; a
 rule), `tsc` clean, and — if porting — world/legacy-validator fidelity on real data where scope
 overlaps. **Ready = contract held + behavior correct on real data, not just fixtures green.**
 
-The public `@volter/ztrack/board-document` codec parses and renders flat board documents through ztrack’s markdown grammar. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.
+The public `@volter/ztrack/board-document` codec parses and renders flat board documents through ztrack’s markdown grammar; a board’s cards are its outermost id-bearing sections, so a heading inside a card (`### Follow-ups`) is the card’s text. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.

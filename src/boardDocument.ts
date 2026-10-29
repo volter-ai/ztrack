@@ -8,6 +8,10 @@ import type { IssueRecord } from './core/engine.ts';
  *  gives one (`## VO-42 t_4406c88a — title`, its board's key with it; or `## #42 …`). */
 export type BoardRecord = IssueRecord & { number?: number; key?: string };
 
+// A board's cards are its outermost id-bearing sections: a heading inside a card is the card's text, however its words
+// read (`### Follow-ups` is a section of the card's body, not a card named Follow-ups).
+const cards = (text: string, path: string): DocumentParsedIssue[] => parseMarkdownDocumentSource(text, path, { outermost: true });
+
 function recordOf(item: DocumentParsedIssue): BoardRecord {
   if (!item.raw || !item.level || item.children.length) throw new Error(`board card ${item.id} must be one flat document section`);
   const section = decomposeSection(item.raw);
@@ -15,13 +19,13 @@ function recordOf(item: DocumentParsedIssue): BoardRecord {
   return {id:item.id,...(item.number!==undefined?{number:item.number}:{}),...(item.key!==undefined?{key:item.key}:{}),title:item.title,status:section.header?.status??'todo',...(section.header?.assignee?{assignee:section.header.assignee}:{}),body:shiftHeadings(section.middle,1-item.level)};
 }
 export function parseBoardDocument(text: string, path = 'arcs.md'): BoardRecord[] {
-  return parseMarkdownDocumentSource(text,path).map(recordOf);
+  return cards(text,path).map(recordOf);
 }
 
 /** Replace supplied cards, remove absent cards, preserve all text outside their spans.
  * Unchanged cards retain their exact bytes. Archived cards are omitted by the caller. */
 export function renderBoardDocument(text: string, records: BoardRecord[], path = 'arcs.md', preserveIds: string[] = []): string {
-  const parsed = parseMarkdownDocumentSource(text, path);
+  const parsed = cards(text, path);
   const before = new Map<string,BoardRecord>();
   for(const item of parsed) {try {before.set(item.id,recordOf(item));}catch{ /* opaque preserved card */ }}
   const preserve = new Set(preserveIds);
@@ -49,7 +53,7 @@ export function renderBoardDocument(text: string, records: BoardRecord[], path =
  * swallows what follows), so it can be spliced in place of the card's old span. */
 export function renderBoardCard(record: BoardRecord, level = 2, path = 'arcs.md'): string {
   const text = renderCard(record, level);
-  const items = parseMarkdownDocumentSource(`${text}# end\n`, path);
+  const items = cards(`${text}# end\n`, path);
   if (items.length !== 1 || items[0]!.id !== record.id || items[0]!.number !== record.number || items[0]!.key !== record.key) throw new Error('board rendering changed card identities');
   recordOf(items[0]!);
   if (items[0]!.raw !== text) throw new Error(`board card ${record.id} would run into the next section: its text holds a heading at the card's level or an unclosed code or HTML block`);
@@ -68,7 +72,7 @@ export function chunkBoardDocument(text: string, path = 'arcs.md'): BoardChunk[]
 }
 
 function tile(text: string, path: string): BoardChunk[] {
-  const items = parseMarkdownDocumentSource(text, path).filter((item) => item.raw !== undefined && item.lineStart !== undefined);
+  const items = cards(text, path).filter((item) => item.raw !== undefined && item.lineStart !== undefined);
   const offsets = [0];
   for (let index = 0; index < text.length; index++) if (text.charCodeAt(index) === 10) offsets.push(index + 1);
   const spans = items.map((item) => ({ id: item.id, level: item.level!, start: text.indexOf(item.raw!, offsets[item.lineStart! - 1]!), text: item.raw! }))
@@ -137,7 +141,7 @@ function renderCard(record: BoardRecord, level: number): string {
 /** Read each card independently. A malformed card remains an opaque span for write-back. */
 export function inspectBoardDocument(text: string, path = 'arcs.md'): { records: BoardRecord[]; errors: { id: string; reason: string }[] } {
   const records: BoardRecord[] = [], errors: { id: string; reason: string }[] = [];
-  const items = parseMarkdownDocumentSource(text, path);
+  const items = cards(text, path);
   const counts = new Map<string, number>();
   for (const item of items) counts.set(item.id, (counts.get(item.id) ?? 0) + 1);
   for (const item of items) {
@@ -152,7 +156,7 @@ export function inspectBoardDocument(text: string, path = 'arcs.md'): { records:
 /** Three-way recovery: retain editor changes, applying only untouched card spans. */
 export function mergeBoardDocument(base: string, current: string, desired: string, path = 'arcs.md', blockedIds: string[] = []): { text: string; conflicts: string[] } {
   const blocked = new Set(blockedIds);
-  const spans = (text: string) => parseMarkdownDocumentSource(text, path);
+  const spans = (text: string) => cards(text, path);
   const before = new Map(spans(base).map(item => [item.id, item.raw ?? '']));
   const wanted = new Map(spans(desired).map(item => [item.id, item.raw ?? '']));
   const currentItems = spans(current);
