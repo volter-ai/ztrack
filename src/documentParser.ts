@@ -169,11 +169,22 @@ function parsedOnce(text: string): MarkdownDocument {
   return doc;
 }
 
-export function parseMarkdownDocumentSource(text: string, filePath: string): DocumentParsedIssue[] {
+/** `outermost`: only a heading outside every id-bearing section bears an id, so an id-shaped
+ *  heading inside an item (`### Follow-ups` in a board card's body) is that item's text. A board
+ *  document's cards are flat sections (boardDocument.ts), so it reads its cards this way. */
+export interface DocumentParseOptions { outermost?: boolean }
+
+export function parseMarkdownDocumentSource(text: string, filePath: string, options: DocumentParseOptions = {}): DocumentParsedIssue[] {
   const doc = parsedOnce(text);
 
   const idBearing = new Map<number, { id: string; title: string }>();
+  const insideItem = (index: number): boolean => {
+    for (let p = doc.sections[index]!.parentIndex; p !== null; p = doc.sections[p]!.parentIndex) if (idBearing.has(p)) return true;
+    return false;
+  };
   doc.sections.forEach((section, index) => {
+    // Sections come in document order, so an ancestor's id is already known here.
+    if (options.outermost && insideItem(index)) return;
     // The heading as Markdown reads it: a backslash-escaped punctuation character is that character (CommonMark 2.4), so
     // an editor that writes `t\_651ec10b` (Git Notes does) names the same card.
     const m = ID_HEADING_RE.exec(section.title.replace(/\\([!-\/:-@[-`{-~])/g, '$1'));
