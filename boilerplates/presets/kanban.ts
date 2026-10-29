@@ -85,6 +85,12 @@ function preserving(options: KanbanCodecOptions): boolean {
 // moved there leaves the board.
 export const KanbanStatusSchema = z.string().regex(/^[a-z][a-z_]*$/);
 
+// Acceptance's surrounding Markdown remains with its outcome, in source order.
+const KanbanStoredLineSchema = z.string().regex(/^[^\r\n]*$/);
+const KanbanOutcomeSchema = z.object({
+  checked: z.boolean(), text: z.string().min(1), continuation: z.array(KanbanStoredLineSchema).optional(),
+}).strict();
+
 // A task is the core's AC shape (so the engine's blocking graph covers it) with no evidence:
 // `passed` is a ticked task, `pending` an open one.
 export const KanbanTaskSchema = z.object({
@@ -101,7 +107,7 @@ export const KanbanTaskSchema = z.object({
   waitingOn: z.string().regex(/^[ma]-[0-9a-f]{6,}$/).optional(), // primitive
   sources: z.array(z.object({ id: z.string().regex(/^[a-z]-[0-9a-f]+$/), quote: z.string().min(1).optional() }).strict()).optional(),
   /** The task's acceptance lines (`  - [ ] <criterion>` under it), each checked off with its evidence on the line. */
-  lines: z.array(z.object({ checked: z.boolean(), text: z.string().min(1) }).strict()).optional(),
+  lines: z.array(KanbanOutcomeSchema).optional(),
   /** The task's brief: Markdown indented under it, read as prose (a page editor shows it as the task's text). */
   brief: z.string().min(1).optional(),
 }).strict();
@@ -137,7 +143,9 @@ export const KanbanCardSchema = z.object({
   status: KanbanStatusSchema,                            // core (a lane name)
   acceptanceCriteria: z.array(KanbanTaskSchema),         // core: the card's tasks (the session's plan)
   /** The card's acceptance criteria: outcomes, each ticked with one pointer to where it was seen (`- [x] <outcome>: <pointer>`). */
-  acceptance: z.array(z.object({ checked: z.boolean(), text: z.string().min(1) }).strict()).optional(),
+  acceptance: z.array(KanbanOutcomeSchema).optional(),
+  /** Markdown before Acceptance's first outcome; never part of Tasks. */
+  acceptancePreamble: z.array(KanbanStoredLineSchema).optional(),
   assignee: z.string().min(1).optional(),
   relations: z.array(KanbanRelationSchema).optional(),   // primitive: `Blocked by:`
   workspace: z.string().regex(/^(scratch|worktree|worktree:.+|dir:.+)$/).optional(),
@@ -414,9 +422,9 @@ const trimBlankLines = (lines: string[]) => {
 };
 
 type TaskSource = { id: string; quote?: string };
-type TaskLine = { checked: boolean; text: string };
+type TaskLine = { checked: boolean; text: string; continuation?: string[] };
 type ParsedTask = { metadata?: Record<string, unknown>; id: string; number?: number; key?: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
-type RestingObservation = { line: number; kind: 'backlog' | 'bounded-pause'; task?: ParsedTask };
+type RestingObservation = { line: number; kind: 'backlog' | 'bounded-pause' | 'acceptance-layout'; task?: ParsedTask };
 type RestingObserver = (slot: RestingObservation) => void;
 
 function restingKinds(value: unknown): RestingObservation['kind'][] {
@@ -424,9 +432,17 @@ function restingKinds(value: unknown): RestingObservation['kind'][] {
   const card = value as { backlog?: unknown; paused?: unknown };
   const kinds: RestingObservation['kind'][] = [];
   if (card.backlog !== undefined) kinds.push('backlog');
+  if (hasAcceptanceLayout(value)) kinds.push('acceptance-layout');
   if (card.paused != null && (typeof card.paused !== 'object' || Array.isArray(card.paused)
     || Object.keys(card.paused).some((key) => key !== 'by' && key !== 'reason'))) kinds.push('bounded-pause');
   return kinds;
+}
+
+function hasAcceptanceLayout(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const card = value as { acceptancePreamble?: string[]; acceptance?: TaskLine[]; lines?: TaskLine[] };
+  return !!card.acceptancePreamble?.some((line) => line.trim())
+    || [...(card.acceptance ?? []), ...(card.lines ?? [])].some((outcome) => outcome.continuation?.some((line) => line.trim()));
 }
 
 // A task's brief is its Markdown indented under it (two spaces or more) that is none of its marked lines; blank lines
@@ -437,6 +453,8 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, 
   const unparsed: string[] = [];
   const unnamed: ParsedTask[] = [];
   const briefs = new Map<ParsedTask, string[]>();
+  const layouts = new Map<ParsedTask, number[]>();
+  let remaining = 0;
   let blanks = 0;
   // A task's marked lines (metadata, blocked-by, waiting-on, sources, criteria) sit directly under it; once its brief has
   // begun (a blank line, or a line that is none of them), every indented line is the brief's, whatever it reads like:
@@ -451,6 +469,12 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, 
     inBrief = true;
   };
   for (const [lineIndex, line] of lines.entries()) {
+    if (remaining) {
+      if (line !== '' && !/^ {2}/.test(line)) throw new Error('Malformed acceptance layout: continuation lines stay indented under their task.');
+      (tasks.at(-1)!.lines!.at(-1)!.continuation ??= []).push(line === '' ? '' : line.slice(2));
+      remaining--;
+      continue;
+    }
     if (line.trim() === '') { blanks++; continue; }
     const pendingBlanks = blanks; blanks = 0;
     if (literal.has(lineIndex)) {
@@ -467,6 +491,15 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, 
       continue;
     }
     if (tasks.length && (inBrief || pendingBlanks > 0) && BRIEF_LINE.test(line)) { addBrief(line, pendingBlanks); continue; }
+    const layout = /^ {2}[-*] acceptance-layout-v1:\s*(.+)$/.exec(line);
+    if (layout && tasks.length) {
+      const lengths: unknown = JSON.parse(layout[1]!);
+      if (!Array.isArray(lengths) || !lengths.every((length) => Number.isSafeInteger(length) && length >= 0)) throw new Error('Malformed acceptance layout: expected nonnegative continuation line counts.');
+      const task = tasks.at(-1)!;
+      layouts.set(task, lengths as number[]);
+      observe?.({ line: lineIndex + 1, kind: 'acceptance-layout', task });
+      continue;
+    }
     const metadata = /^\s{2,}[-*] metadata:\s*(.+)$/.exec(line);
     if (metadata && tasks.length) {
       let parsed: unknown;
@@ -494,6 +527,7 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, 
     if (crit && tasks.length) {
       const last = tasks[tasks.length - 1]!;
       last.lines = [...(last.lines ?? []), { checked: crit[1] !== ' ', text: crit[2]!.trim() }];
+      remaining = layouts.get(last)?.[last.lines.length - 1] ?? 0;
       continue;
     }
     const src = SOURCE_LINE.exec(line);
@@ -505,6 +539,7 @@ function parseTasks(cardId: string, lines: string[], observe?: RestingObserver, 
     if (BRIEF_LINE.test(line) && tasks.length) { addBrief(line, pendingBlanks); continue; }
     unparsed.push(line);
   }
+  if (remaining || [...layouts].some(([task, lengths]) => lengths.length !== task.lines?.length)) throw new Error('Malformed acceptance layout: criterion and continuation counts do not match.');
   for (const [task, brief] of briefs) task.brief = brief.join('\n');
   // A task written without an id takes the card's next free `c<N>`, in line order.
   let next = tasks.reduce((m, t) => Math.max(m, /^c\d+$/.test(t.id) ? Number(t.id.slice(1)) : 0), 0);
@@ -530,12 +565,20 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
   const head = lines.slice(0, firstSection);
   const tail = at < 0 ? [] : lines.slice(at + 1, acc > at ? acc : lines.length);
   const outcomeLines = acc < 0 ? [] : lines.slice(acc + 1, at > acc ? at : lines.length);
-  const acceptance: Array<{ checked: boolean; text: string }> = [];
-  const accUnparsed: string[] = [];
-  for (const l of outcomeLines) {
-    const m = OUTCOME_LINE.exec(l);
-    if (m) acceptance.push({ checked: m[1] !== ' ', text: m[2]!.trim() });
-    else if (l.trim() !== '') accUnparsed.push(l);
+  const acceptance: TaskLine[] = [];
+  const acceptancePreamble: string[] = [];
+  // Keep source/prose lines at the exact outcome they follow, including blank lines.
+  // Literal examples cannot introduce outcomes merely by resembling checkboxes.
+  let outcomeEnd = outcomeLines.length;
+  while (outcomeEnd && outcomeLines[outcomeEnd - 1]!.trim() === '') outcomeEnd--;
+  for (const [index, line] of outcomeLines.slice(0, outcomeEnd).entries()) {
+    const match = !literal.has(acc + 1 + index) && OUTCOME_LINE.exec(line);
+    if (match) acceptance.push({ checked: match[1] !== ' ', text: match[2]!.trim() });
+    else {
+      if (acceptance.length) (acceptance.at(-1)!.continuation ??= []).push(line);
+      else acceptancePreamble.push(line);
+      if (line.trim()) observe?.({ line: acc + 2 + index, kind: 'acceptance-layout' });
+    }
   }
 
   // The metadata block: the leading paragraphs made wholly of metadata lines (written as one
@@ -564,7 +607,7 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
   const bodyLines = trimBlankLines(content.slice(at2)).map((line, index) => index === 0 ? line.replace(ESCAPED_META, '') : line);
 
   const { tasks, unparsed: taskUnparsed } = parseTasks(record.id, tail, observe ? (slot) => observe({ ...slot, line: at + 1 + slot.line }) : undefined, new Set([...literal].map((line) => line - at - 1)));
-  const unparsed = [...accUnparsed, ...taskUnparsed];
+  const unparsed = taskUnparsed;
   const card: Record<string, unknown> = {
     id: record.id,
     title: record.title,
@@ -576,6 +619,7 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
     body: bodyLines.join('\n'),
   };
   if (acceptance.length) card.acceptance = acceptance;
+  if (acc >= 0) card.acceptancePreamble = acceptancePreamble;
   if (record.assignee) card.assignee = record.assignee;
   const blockers = [...new Set([...splitList(meta.blockedBy ?? ''), ...splitList(meta.waitingOn ?? '')])];
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
@@ -617,6 +661,8 @@ export function inspectKanbanRestingSlots(records: IssueRecord[]): Array<{ line:
 // ── serialize: the validated card -> its STORED form (content body + metadata columns) ───────
 export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOptions = {}): { body: string; columns: IssueColumns } {
   // Serialization is a public door too: callers need not have run the root schema first.
+  for (const outcome of [...(card.acceptance ?? []), ...card.acceptanceCriteria.flatMap((task) => task.lines ?? [])]) KanbanOutcomeSchema.parse(outcome);
+  if (card.acceptancePreamble) z.array(KanbanStoredLineSchema).parse(card.acceptancePreamble);
   for (const value of [card, ...card.acceptanceCriteria.map((task) => task.metadata?.card)]) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const holds = value as { paused?: unknown; backlog?: unknown };
@@ -624,7 +670,7 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
     if (holds.backlog !== undefined) KanbanBacklogSchema.parse(holds.backlog);
   }
   if (!preserving(options)) {
-    const kinds = [...restingKinds(card), ...card.acceptanceCriteria.flatMap((task) => restingKinds(task.metadata?.card))];
+    const kinds = [...restingKinds(card), ...card.acceptanceCriteria.flatMap((task) => [...restingKinds(task.metadata?.card), ...(hasAcceptanceLayout(task) ? ['acceptance-layout' as const] : [])])];
     if (kinds.length) throw new Error(`legacy-holds writer refuses ${[...new Set(kinds)].join(', ')}; preserve requires compatible-reader admission`);
     const stored = legacy.serializeKanbanCard(card);
     const record: IssueRecord = { id: card.id, title: card.title, status: card.status, ...stored.columns, body: stored.body };
@@ -654,10 +700,12 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
     // metadata line; bodies needing another preset escape layer are refused below.
     out.push(...card.body.split('\n').map((l, i) => (i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
   }
-  if (card.acceptance?.length) {
+  if (card.acceptance?.length || card.acceptancePreamble !== undefined) {
     if (out.length) out.push('');
-    out.push('## Acceptance', '');
-    for (const o of card.acceptance) out.push(`- [${o.checked ? 'x' : ' '}] ${o.text}`);
+    out.push('## Acceptance', ...(card.acceptancePreamble ?? ['']));
+    for (const outcome of card.acceptance ?? []) {
+      out.push(`- [${outcome.checked ? 'x' : ' '}] ${outcome.text}`, ...(outcome.continuation ?? []));
+    }
   }
   if (card.acceptanceCriteria.length || card.unparsed?.length) {
     if (out.length) out.push('');
@@ -670,7 +718,11 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
       if (t.blockedBy?.length) out.push(`  - blocked-by: ${t.blockedBy.map(renderRef).join(', ')}`);
       if (t.waitingOn) out.push(`  - waiting-on: ${t.waitingOn}`);
       for (const src of t.sources ?? []) out.push(`  - source: ${src.id}${src.quote ? ` "${src.quote}"` : ''}`);
-      for (const l of t.lines ?? []) out.push(`  - [${l.checked ? 'x' : ' '}] ${l.text}`);
+      if (t.lines?.some((line) => line.continuation?.length)) out.push(`  - acceptance-layout-v1: ${JSON.stringify(t.lines.map((line) => line.continuation?.length ?? 0))}`);
+      for (const line of t.lines ?? []) {
+        out.push(`  - [${line.checked ? 'x' : ' '}] ${line.text}`);
+        out.push(...(line.continuation ?? []).map((extra) => extra === '' ? '' : `  ${extra}`));
+      }
       // The brief, indented under its task as a paragraph of the list item, set apart by blank lines.
       if (t.brief) out.push('', ...t.brief.split('\n').map((l) => (l === '' ? '' : `  ${l}`)), '');
     }

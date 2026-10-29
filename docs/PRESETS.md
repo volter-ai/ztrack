@@ -663,3 +663,7 @@ The installed kanban preset remains one self-contained editable file. Its frozen
 Every board-document byte writer, including three-way recovery merge, checks its complete legacy-mode result for unsupported structured hold and body-encoding slots. Explicit admitted preservation is the only path that may write those slots.
 
 The modern kanban reader decodes only a leading metadata escape that its serializer writes. It preserves literal backslashes before headings, fenced examples, and metadata-like lines later in the body. Heading quoting is owned by the versioned board-document codec. The frozen predecessor grammar is unchanged.
+
+Modern kanban outcomes retain `continuation` lines after each checkbox and an `acceptancePreamble` before the first one. These arrays preserve source annotations, prose, literal examples, and their positions in Acceptance. Nested task criteria use the same continuation shape. They are editable independently of the checkbox text and checked state, and are never moved into Tasks or filed as new tasks.
+
+Nested criteria with continuation lines carry an `acceptance-layout-v1` line-count record before their checkbox lines. This makes the boundaries explicit: existing task metadata and briefs keep their established interpretation. The legacy writer refuses Acceptance annotations/layout fields that the predecessor cannot preserve, and the document inspector reports their actual slots for admission.
