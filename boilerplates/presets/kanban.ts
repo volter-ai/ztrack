@@ -163,9 +163,9 @@ const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priori
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
-// One quoting layer before a heading/metadata line; an already quoted line gets
-// another layer on write, so literal backslashes survive the preset round trip.
-const ESCAPED = /^\\(?=\\*(?:#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):))/i;
+// Keep the established unversioned preset escape grammar. The document codec's
+// separately versioned heading quote layer is not a preset body escape.
+const ESCAPED = /^\\(?=#|(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
 // a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
@@ -359,9 +359,9 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
   if (card.machine) out.push(`Machine: ${card.machine}`);
   if (card.body) {
     if (out.length) out.push('');
-    // The document codec owns real headings. Only quote a first metadata line
-    // or an existing literal escape; parseCard removes exactly this one layer.
-    out.push(...card.body.split('\n').map((l, i) => (ESCAPED.test(l) || (i === 0 && META_LINE.test(l)) ? `\\${l}` : l)));
+    // The document codec owns heading quoting. This quotes only a first
+    // metadata line; bodies needing another preset escape layer are refused below.
+    out.push(...card.body.split('\n').map((l, i) => (i === 0 && META_LINE.test(l) ? `\\${l}` : l)));
   }
   if (card.acceptance?.length) {
     if (out.length) out.push('');
@@ -385,10 +385,13 @@ export function serializeKanbanCard(card: KanbanCard): { body: string; columns: 
     }
     out.push(...(card.unparsed ?? []));
   }
-  return {
+  const stored = {
     body: out.length ? `${out.join('\n')}\n` : '',
     columns: { title: card.title, status: card.status, ...(card.assignee ? { assignee: card.assignee } : {}) },
   };
+  const read = parseCard({ id: card.id, ...stored.columns, body: stored.body });
+  if (read.body !== card.body) throw new Error('Kanban body cannot be represented without changing its established escape or section meaning.');
+  return stored;
 }
 
 // ── rules: declarative records over the engine's derived model ───────────────────────────────

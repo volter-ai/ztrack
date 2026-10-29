@@ -650,4 +650,6 @@ overlaps. **Ready = contract held + behavior correct on real data, not just fixt
 
 The public `@volter/ztrack/board-document` codec parses and renders flat board documents through ztrack’s markdown grammar; a board’s cards are its outermost id-bearing sections, so a heading inside a card (`### Follow-ups`) is the card’s text. `@volter/ztrack/kanban-preset` exposes the same preset used by `preset upgrade`; board backings need no duplicate parser or sync watcher.
 
-Kanban body text uses one quoting backslash before a leading metadata line. Literal body lines that already carry backslashes before a heading or metadata key receive one more on write and lose one on read, preserving their original escapes.
+Attributed pause/backlog strings use one trimmed line, without control characters or a terminal backslash; an actor cannot contain the ` — ` attribution delimiter. Both schemas and serialization refuse values outside that representable domain. Kanban body text retains its established escape grammar; serialization refuses a body when reading its stored representation would change that text.
+
+New board-document cards declare `body-encoding: ztrack-quote-v1` immediately after their heading. Only that explicit header enables the reversible heading quote layer. Unversioned cards keep the established AST heading-shift reader, so literal backslashes in existing code and prose survive reading and an unrelated edit.
