@@ -734,6 +734,13 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
   };
   const read = parseCard({ id: card.id, ...stored.columns, body: stored.body });
   if (read.body !== card.body) throw new Error('Kanban body cannot be represented without changing its established escape or section meaning.');
+  // Root annotations are editable Markdown, but must not introduce outcomes or Tasks on reread.
+  // An omitted preamble uses the serializer's blank separator; explicitly supplied lines remain exact.
+  const outcomes = (value: KanbanCard['acceptance']) => (value ?? []).map(({ checked, text, continuation }) => ({ checked, text, continuation: continuation ?? [] }));
+  if (JSON.stringify(outcomes(read.acceptance as KanbanCard['acceptance'])) !== JSON.stringify(outcomes(card.acceptance))
+      || (card.acceptancePreamble !== undefined && JSON.stringify(read.acceptancePreamble ?? []) !== JSON.stringify(card.acceptancePreamble))
+      || JSON.stringify((read.acceptanceCriteria as KanbanCard['acceptanceCriteria']).map((task) => task.id)) !== JSON.stringify(card.acceptanceCriteria.map((task) => task.id)))
+    throw new Error('Kanban Acceptance annotations cannot be represented without changing their outcomes, preamble or Tasks.');
   return stored;
 }
 
