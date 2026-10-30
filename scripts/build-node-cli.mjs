@@ -2,7 +2,15 @@
 import { chmodSync, existsSync, readdirSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync as spawnProgram } from 'node:child_process';
+
+// npx and npm's bun are command shims on Windows (npx.cmd, bun.cmd), which a shell-free spawn cannot start: there they
+// run through the shell (every argument here is a fixed flag or a path without spaces). A start that fails says why.
+const spawnSync = (command, args, options) => {
+  const result = spawnProgram(command, args, { ...options, shell: process.platform === 'win32' });
+  return result.error ? { ...result, stderr: `${command}: ${result.error.message}
+` } : result;
+};
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = resolve(packageRoot, 'dist/cli.js');
