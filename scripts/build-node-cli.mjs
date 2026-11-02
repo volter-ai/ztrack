@@ -2,12 +2,13 @@
 import { chmodSync, existsSync, readdirSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { spawnSync as spawnProgram } from 'node:child_process';
 
-// npx and npm's bun are command shims on Windows (npx.cmd, bun.cmd), which a shell-free spawn cannot start: there they
-// run through the shell (every argument here is a fixed flag or a path without spaces). A start that fails says why.
+// npm's bun can be a command shim on Windows (bun.cmd), which a shell-free spawn cannot start: there it
+// runs through the shell (every argument here is a fixed flag or a path without spaces). A start that fails says why.
 const spawnSync = (command, args, options) => {
-  const result = spawnProgram(command, args, { ...options, shell: process.platform === 'win32' });
+  const result = spawnProgram(command, args, { shell: process.platform === 'win32', ...options, windowsHide: true });
   return result.error ? { ...result, stderr: `${command}: ${result.error.message}
 ` } : result;
 };
@@ -21,9 +22,10 @@ if (!existsSync(resolve(packageRoot, 'src/cli.ts'))) {
 }
 
 rmSync(resolve(packageRoot, 'dist/src'), { recursive: true, force: true });
-const lib = spawnSync('npx', ['tsc', '-p', 'tsconfig.build.json'], {
+const lib = spawnSync(process.execPath, [createRequire(import.meta.url).resolve('typescript/bin/tsc'), '-p', 'tsconfig.build.json'], {
   cwd: packageRoot,
   encoding: 'utf8',
+  shell: false,
 });
 
 if (lib.status !== 0) {
