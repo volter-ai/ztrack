@@ -3,9 +3,19 @@ import { chmodSync, existsSync, readdirSync, rmSync, readFileSync, statSync, wri
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 
+const require = createRequire(import.meta.url);
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = resolve(packageRoot, 'dist/cli.js');
+
+function checkBuild(result, label) {
+  if (result.error) throw new Error(`${label} could not start`, { cause: result.error });
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr || result.stdout || `${label} failed${result.signal ? ` (${result.signal})` : ''}\n`);
+    process.exit(result.status ?? 1);
+  }
+}
 
 if (!existsSync(resolve(packageRoot, 'src/cli.ts'))) {
   console.log('ztrack ships prebuilt artifacts in the npm package; clone the repository to rebuild from source.');
@@ -13,15 +23,12 @@ if (!existsSync(resolve(packageRoot, 'src/cli.ts'))) {
 }
 
 rmSync(resolve(packageRoot, 'dist/src'), { recursive: true, force: true });
-const lib = spawnSync('npx', ['tsc', '-p', 'tsconfig.build.json'], {
+const lib = spawnSync(process.execPath, [require.resolve('typescript/bin/tsc'), '-p', 'tsconfig.build.json'], {
   cwd: packageRoot,
   encoding: 'utf8',
 });
 
-if (lib.status !== 0) {
-  process.stderr.write(lib.stderr || lib.stdout || 'tsc build failed\n');
-  process.exit(lib.status ?? 1);
-}
+checkBuild(lib, 'TypeScript library build');
 
 function rewriteDeclarations(dir) {
   for (const entry of readdirSync(dir)) {
@@ -56,10 +63,7 @@ const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--exter
   env: production,
 });
 
-if (build.status !== 0) {
-  process.stderr.write(build.stderr || build.stdout || 'bun build failed\n');
-  process.exit(build.status ?? 1);
-}
+checkBuild(build, 'CLI bundle');
 
 let text = readFileSync(outFile, 'utf8');
 if (!text.startsWith('#!/usr/bin/env bun\n')) {
@@ -80,10 +84,7 @@ const vizCore = spawnSync(
   ['build', 'visualizer/serverCore.ts', '--target=bun', '--outfile=visualizer/core.js'],
   { cwd: packageRoot, encoding: 'utf8' },
 );
-if (vizCore.status !== 0) {
-  process.stderr.write(vizCore.stderr || vizCore.stdout || 'visualizer core bundle failed\n');
-  process.exit(vizCore.status ?? 1);
-}
+checkBuild(vizCore, 'visualizer core bundle');
 
 // A self-contained CommonJS bundle of preset-kit. The installed preset is ESM
 // (preset.mts, `import '@volter/ztrack/preset-kit'`), but a CommonJS consumer that does
@@ -99,11 +100,8 @@ const kitCjs = spawnSync(
   ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--minify-whitespace', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
   { cwd: packageRoot, encoding: 'utf8', env: production },
 );
-if (kitCjs.status !== 0) {
-  process.stderr.write(kitCjs.stderr || kitCjs.stdout || 'preset-kit CJS bundle failed\n');
-  process.exit(kitCjs.status ?? 1);
-}
+checkBuild(kitCjs, 'preset-kit CJS bundle');
 
 // The board backing consumes the installed kanban grammar without a TypeScript loader.
 const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
-if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout); process.exit(kanban.status ?? 1); }
+checkBuild(kanban, 'kanban preset bundle');
