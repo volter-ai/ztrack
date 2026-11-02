@@ -2,11 +2,12 @@
 import { chmodSync, existsSync, readdirSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = resolve(packageRoot, 'dist/cli.js');
-// npm's npx and Bun can be .cmd shims on Windows; Node cannot exec those
+// Bun can be a .cmd shim on Windows; Node cannot exec it
 // directly. All arguments below are fixed build inputs, not caller shell text.
 const launch = { shell: process.platform === 'win32', windowsHide: true };
 function failed(result, fallback) {
@@ -21,10 +22,10 @@ if (!existsSync(resolve(packageRoot, 'src/cli.ts'))) {
 }
 
 rmSync(resolve(packageRoot, 'dist/src'), { recursive: true, force: true });
-const lib = spawnSync('npx', ['tsc', '-p', 'tsconfig.build.json'], {
+const lib = spawnSync(process.execPath, [createRequire(import.meta.url).resolve('typescript/bin/tsc'), '-p', 'tsconfig.build.json'], {
   cwd: packageRoot,
   encoding: 'utf8',
-  ...launch,
+  windowsHide: true,
 });
 
 if (lib.status !== 0) {
