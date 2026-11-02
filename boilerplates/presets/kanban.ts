@@ -23,6 +23,7 @@
 //   Branch: wt/t6-wire                      optional
 //   Priority: 2                             optional integer
 //   Machine: aarons-mac-mini                optional
+//   Machine migration: {"version":1,...}   retained native operation; never scheduling authority
 //
 //   What stands: the card's context, verbatim. A line of it that starts with `#` is
 //   written `\#` so it can never read as a heading, and a first line that starts like a
@@ -136,6 +137,10 @@ export const KanbanBacklogSchema = z.object({
   by: ActorLineSchema, reason: AttributionLineSchema, since: z.number().int().nonnegative(),
 }).strict();
 
+// The native owner validates operation semantics. The codec retains every field,
+// including unknown effects, so document reconstruction cannot drop a hold.
+export const KanbanMachineMigrationSchema = z.object({ version: z.literal(1) }).catchall(z.unknown());
+
 export const KanbanCardSchema = z.object({
   id: z.string().min(1),                                 // core
   title: z.string().min(1),                              // core
@@ -161,6 +166,7 @@ export const KanbanCardSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
   paused: KanbanPauseSchema.optional(),
   backlog: KanbanBacklogSchema.optional(),
+  machineMigration: KanbanMachineMigrationSchema.optional(),
   every: z.string().regex(/^[1-9]\d*(?:\.\d+)?\s*(?:s|m|h|d|w)?$/).optional(),
   body: z.string(),
   /** Lines under Tasks that are not a task; kept verbatim and reported by `kanban_line_unparsed`. */
@@ -397,15 +403,15 @@ function serializeKanbanCard(card: KanbanCard): { body: string; columns: IssueCo
 const META_KEYS: Record<string, string> = {
   'blocked by': 'blockedBy', workspace: 'workspace', branch: 'branch', priority: 'priority',
   run: 'run', machine: 'machine', session: 'session', 'waiting on': 'waitingOn', paused: 'paused', 'pause until': 'pauseUntil', 'pause generation': 'pauseGeneration',
-  backlog: 'backlog', 'backlog since': 'backlogSince', every: 'every', metadata: 'metadata',
+  backlog: 'backlog', 'backlog since': 'backlogSince', 'machine migration': 'machineMigration', every: 'every', metadata: 'metadata',
 };
-const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):\s*(.*)$/i;
+const META_LINE = /^(Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Machine migration|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):\s*(.*)$/i;
 const TASKS_HEADING = /^##\s+Tasks\s*$/i;
 const ACCEPTANCE_HEADING = /^##\s+Acceptance\s*$/i;
 const OUTCOME_LINE = /^[-*] \[( |x|X)\]\s+(.+)$/;
 // Only the first body line can be a serializer-generated metadata escape. Heading
 // quoting belongs to the document codec; a literal backslash before # stays text.
-const ESCAPED_META = /^\\(?=(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
+const ESCAPED_META = /^\\(?=(?:Blocked by|Waiting on|Workspace|Worktree path|Branch|Priority|Run|Machine|Machine migration|Session|Paused|Pause until|Pause generation|Backlog|Backlog since|Every|Metadata):)/i;
 // a task's number is read only before its id (`VO-2836 c3 …`, `#2836 c3 …`), so a text that starts with `#3` stays its text
 const TASK_LINE = /^[-*] \[( |x|X)\]\s+(?:(?:#|([A-Z][A-Z0-9]+)-)(\d+)\s+(?=[a-z]+\d+\s))?(?:([a-z]+\d+)\s+)?(.+)$/;
 const BLOCKED_LINE = /^\s{2,}[-*] blocked-by:\s*(.+)$/i;
@@ -424,14 +430,15 @@ const trimBlankLines = (lines: string[]) => {
 type TaskSource = { id: string; quote?: string };
 type TaskLine = { checked: boolean; text: string; continuation?: string[] };
 type ParsedTask = { metadata?: Record<string, unknown>; id: string; number?: number; key?: string; status: 'pending' | 'passed'; evidence: never[]; text: string; blockedBy?: RawBlockRef[]; waitingOn?: string; sources?: TaskSource[]; lines?: TaskLine[]; brief?: string };
-type RestingObservation = { line: number; kind: 'backlog' | 'bounded-pause' | 'acceptance-layout'; task?: ParsedTask };
+type RestingObservation = { line: number; kind: 'backlog' | 'bounded-pause' | 'acceptance-layout' | 'machine-migration'; task?: ParsedTask };
 type RestingObserver = (slot: RestingObservation) => void;
 
 function restingKinds(value: unknown): RestingObservation['kind'][] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-  const card = value as { backlog?: unknown; paused?: unknown };
+  const card = value as { backlog?: unknown; paused?: unknown; machineMigration?: unknown };
   const kinds: RestingObservation['kind'][] = [];
   if (card.backlog !== undefined) kinds.push('backlog');
+  if (card.machineMigration !== undefined) kinds.push('machine-migration');
   if (hasAcceptanceLayout(value)) kinds.push('acceptance-layout');
   if (card.paused != null && (typeof card.paused !== 'object' || Array.isArray(card.paused)
     || Object.keys(card.paused).some((key) => key !== 'by' && key !== 'reason'))) kinds.push('bounded-pause');
@@ -601,6 +608,7 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
       if (observe && ['pause until', 'pause generation', 'backlog', 'backlog since'].includes(key)) observe({
         line: leading + at2 + index + 1, kind: key.startsWith('backlog') ? 'backlog' : 'bounded-pause',
       });
+      if (observe && key === 'machine migration') observe({ line: leading + at2 + index + 1, kind: 'machine-migration' });
     }
     at2 = end;
     while (at2 < content.length && content[at2]!.trim() === '') at2++;
@@ -626,6 +634,7 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
   if (blockers.length) card.relations = blockers.map((issueId) => ({ type: 'blocked-by', issueId }));
   for (const k of ['workspace', 'branch', 'machine', 'every'] as const) if (meta[k]) card[k] = meta[k];
   if (meta.metadata) card.metadata = JSON.parse(meta.metadata);
+  if (meta.machineMigration !== undefined) card.machineMigration = KanbanMachineMigrationSchema.parse(JSON.parse(meta.machineMigration));
   if (meta.paused !== undefined || meta.pauseUntil !== undefined || meta.pauseGeneration !== undefined) {
     const pause = /^(.+?)\s+—\s+(.+)$/.exec(meta.paused ?? '');
     card.paused = { ...(pause ? { by: pause[1], reason: pause[2] } : { by: '', reason: meta.paused ?? '' }),
@@ -643,7 +652,11 @@ function parseCard(record: IssueRecord, observe?: RestingObserver): Record<strin
 }
 
 export function parseKanban(records: IssueRecord[], options: KanbanCodecOptions = {}): unknown {
-  if (!preserving(options)) return legacy.parseKanban(records);
+  if (!preserving(options)) {
+    if (inspectKanbanRestingSlots(records).some((slot) => slot.kind === 'machine-migration'))
+      throw new Error('legacy-holds reader cannot interpret machine-migration state; compatible-reader admission is required');
+    return legacy.parseKanban(records);
+  }
   const issues = records.map((record) => parseCard(record));
   // Bare task refs resolve now that every card and task is known: a task of this card, else a card.
   normalizeBlockRefs(issues as unknown as Parameters<typeof normalizeBlockRefs>[0]);
@@ -666,9 +679,10 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
   if (card.acceptancePreamble) z.array(KanbanStoredLineSchema).parse(card.acceptancePreamble);
   for (const value of [card, ...card.acceptanceCriteria.map((task) => task.metadata?.card)]) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
-    const holds = value as { paused?: unknown; backlog?: unknown };
+    const holds = value as { paused?: unknown; backlog?: unknown; machineMigration?: unknown };
     if (holds.paused !== undefined) KanbanPauseSchema.parse(holds.paused);
     if (holds.backlog !== undefined) KanbanBacklogSchema.parse(holds.backlog);
+    if (holds.machineMigration !== undefined) KanbanMachineMigrationSchema.parse(holds.machineMigration);
   }
   if (!preserving(options)) {
     const kinds = [...restingKinds(card), ...card.acceptanceCriteria.flatMap((task) => [...restingKinds(task.metadata?.card), ...(hasAcceptanceLayout(task) ? ['acceptance-layout' as const] : [])])];
@@ -690,6 +704,7 @@ export function serializeKanbanCard(card: KanbanCard, options: KanbanCodecOption
     if (card.paused.generation !== undefined) out.push(`Pause generation: ${card.paused.generation}`);
   }
   if (card.backlog) out.push(`Backlog: ${card.backlog.by} — ${card.backlog.reason}`, `Backlog since: ${card.backlog.since}`);
+  if (card.machineMigration) out.push(`Machine migration: ${JSON.stringify(card.machineMigration)}`);
   if (card.every) out.push(`Every: ${card.every}`);
   if (card.workspace) out.push(`Workspace: ${card.workspace}`);
   if (card.branch) out.push(`Branch: ${card.branch}`);
