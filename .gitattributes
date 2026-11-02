@@ -1,0 +1,5 @@
+# Every text file checks out with LF endings on every machine, whatever core.autocrlf or core.eol says. The board codec
+# contract (src/boardProtocol.ts boardDocumentContract) hashes package.json, boilerplates/presets/kanban.ts and the
+# dist files built from src/, and supercode's board format digests that contract: a CRLF checkout (Git for Windows'
+# core.autocrlf=true) would compute a format no release registered. eol=lf also strips CR from a Windows commit.
+* text=auto eol=lf

@@ -2,18 +2,18 @@
 import { chmodSync, existsSync, readdirSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawnSync as spawnProgram } from 'node:child_process';
+
+// npx and npm's bun are command shims on Windows (npx.cmd, bun.cmd), which a shell-free spawn cannot start: there they
+// run through the shell (every argument here is a fixed flag or a path without spaces). A start that fails says why.
+const spawnSync = (command, args, options) => {
+  const result = spawnProgram(command, args, { ...options, shell: process.platform === 'win32', windowsHide: true });
+  return result.error ? { ...result, stderr: `${command}: ${result.error.message}
+` } : result;
+};
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = resolve(packageRoot, 'dist/cli.js');
-// npm's npx and Bun can be .cmd shims on Windows; Node cannot exec those
-// directly. All arguments below are fixed build inputs, not caller shell text.
-const launch = { shell: process.platform === 'win32', windowsHide: true };
-function failed(result, fallback) {
-  if (result.error) process.stderr.write(`${result.error.stack ?? result.error}\n`);
-  process.stderr.write(result.stderr || result.stdout || `${fallback}\n`);
-  process.exit(result.status ?? 1);
-}
 
 if (!existsSync(resolve(packageRoot, 'src/cli.ts'))) {
   console.log('ztrack ships prebuilt artifacts in the npm package; clone the repository to rebuild from source.');
@@ -24,11 +24,11 @@ rmSync(resolve(packageRoot, 'dist/src'), { recursive: true, force: true });
 const lib = spawnSync('npx', ['tsc', '-p', 'tsconfig.build.json'], {
   cwd: packageRoot,
   encoding: 'utf8',
-  ...launch,
 });
 
 if (lib.status !== 0) {
-  failed(lib, 'tsc build failed');
+  process.stderr.write(lib.stderr || lib.stdout || 'tsc build failed\n');
+  process.exit(lib.status ?? 1);
 }
 
 function rewriteDeclarations(dir) {
@@ -47,7 +47,7 @@ function rewriteDeclarations(dir) {
 }
 rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 
-// twin (@volter/world-core, @volter/twin-github) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
+// twin (@volter/world-core, @volter/twin-github, @volter/twin-jira) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
 // ztrack` must not pull in its transitive tree (react/react-dom) or its stray
 // `volter-twin`/`world-github` bins. `sync.ts` only ever reaches it through a lazy `import()`
 // (twinRuntime.ts) — `--external` here keeps that import() a real, unresolved-until-runtime
@@ -58,15 +58,15 @@ rewriteDeclarations(resolve(packageRoot, 'dist/src'));
 // export condition, and micromark's development build runs debug calls and assertions on every
 // token of every parse.
 const production = { ...process.env, NODE_ENV: 'production' };
-const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/world-core', '--external=@volter/twin-github', '--outfile=dist/cli.js'], {
+const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--external=@volter/world-core', '--external=@volter/twin-github', '--external=@volter/twin-jira', '--outfile=dist/cli.js'], {
   cwd: packageRoot,
   encoding: 'utf8',
   env: production,
-  ...launch,
 });
 
 if (build.status !== 0) {
-  failed(build, 'bun build failed');
+  process.stderr.write(build.stderr || build.stdout || 'bun build failed\n');
+  process.exit(build.status ?? 1);
 }
 
 let text = readFileSync(outFile, 'utf8');
@@ -86,10 +86,11 @@ chmodSync(outFile, 0o755);
 const vizCore = spawnSync(
   'bun',
   ['build', 'visualizer/serverCore.ts', '--target=bun', '--outfile=visualizer/core.js'],
-  { cwd: packageRoot, encoding: 'utf8', ...launch },
+  { cwd: packageRoot, encoding: 'utf8' },
 );
 if (vizCore.status !== 0) {
-  failed(vizCore, 'visualizer core bundle failed');
+  process.stderr.write(vizCore.stderr || vizCore.stdout || 'visualizer core bundle failed\n');
+  process.exit(vizCore.status ?? 1);
 }
 
 // A self-contained CommonJS bundle of preset-kit. The installed preset is ESM
@@ -98,15 +99,19 @@ if (vizCore.status !== 0) {
 // (`"type": "module"`), so the `./preset-kit` export's `require` condition points here
 // rather than at a `require()` of an ES module. Bundling zod/mdast in keeps it free of
 // external ESM.
+// Bun's whitespace minifier also omits dependency source-marker comments. Their
+// paths depend on the installation layout (flat or pnpm), so keeping them would
+// give identical codec code different source-bound artifact contracts.
 const kitCjs = spawnSync(
   'bun',
-  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
-  { cwd: packageRoot, encoding: 'utf8', env: production, ...launch },
+  ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--minify-whitespace', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
+  { cwd: packageRoot, encoding: 'utf8', env: production },
 );
 if (kitCjs.status !== 0) {
-  failed(kitCjs, 'preset-kit CJS bundle failed');
+  process.stderr.write(kitCjs.stderr || kitCjs.stdout || 'preset-kit CJS bundle failed\n');
+  process.exit(kitCjs.status ?? 1);
 }
 
 // The board backing consumes the installed kanban grammar without a TypeScript loader.
-const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production, ...launch });
-if (kanban.status !== 0) failed(kanban, 'kanban preset bundle failed');
+const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
+if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout); process.exit(kanban.status ?? 1); }
