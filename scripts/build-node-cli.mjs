@@ -6,6 +6,14 @@ import { spawnSync } from 'node:child_process';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = resolve(packageRoot, 'dist/cli.js');
+// npm's npx and Bun can be .cmd shims on Windows; Node cannot exec those
+// directly. All arguments below are fixed build inputs, not caller shell text.
+const launch = { shell: process.platform === 'win32', windowsHide: true };
+function failed(result, fallback) {
+  if (result.error) process.stderr.write(`${result.error.stack ?? result.error}\n`);
+  process.stderr.write(result.stderr || result.stdout || `${fallback}\n`);
+  process.exit(result.status ?? 1);
+}
 
 if (!existsSync(resolve(packageRoot, 'src/cli.ts'))) {
   console.log('ztrack ships prebuilt artifacts in the npm package; clone the repository to rebuild from source.');
@@ -16,11 +24,11 @@ rmSync(resolve(packageRoot, 'dist/src'), { recursive: true, force: true });
 const lib = spawnSync('npx', ['tsc', '-p', 'tsconfig.build.json'], {
   cwd: packageRoot,
   encoding: 'utf8',
+  ...launch,
 });
 
 if (lib.status !== 0) {
-  process.stderr.write(lib.stderr || lib.stdout || 'tsc build failed\n');
-  process.exit(lib.status ?? 1);
+  failed(lib, 'tsc build failed');
 }
 
 function rewriteDeclarations(dir) {
@@ -54,11 +62,11 @@ const build = spawnSync('bun', ['build', 'src/cli.ts', '--target=node', '--exter
   cwd: packageRoot,
   encoding: 'utf8',
   env: production,
+  ...launch,
 });
 
 if (build.status !== 0) {
-  process.stderr.write(build.stderr || build.stdout || 'bun build failed\n');
-  process.exit(build.status ?? 1);
+  failed(build, 'bun build failed');
 }
 
 let text = readFileSync(outFile, 'utf8');
@@ -78,11 +86,10 @@ chmodSync(outFile, 0o755);
 const vizCore = spawnSync(
   'bun',
   ['build', 'visualizer/serverCore.ts', '--target=bun', '--outfile=visualizer/core.js'],
-  { cwd: packageRoot, encoding: 'utf8' },
+  { cwd: packageRoot, encoding: 'utf8', ...launch },
 );
 if (vizCore.status !== 0) {
-  process.stderr.write(vizCore.stderr || vizCore.stdout || 'visualizer core bundle failed\n');
-  process.exit(vizCore.status ?? 1);
+  failed(vizCore, 'visualizer core bundle failed');
 }
 
 // A self-contained CommonJS bundle of preset-kit. The installed preset is ESM
@@ -94,13 +101,12 @@ if (vizCore.status !== 0) {
 const kitCjs = spawnSync(
   'bun',
   ['build', 'src/presetKit.ts', '--target=node', '--format=cjs', '--external=@volter/world-core', '--outfile=dist/preset-kit.cjs'],
-  { cwd: packageRoot, encoding: 'utf8', env: production },
+  { cwd: packageRoot, encoding: 'utf8', env: production, ...launch },
 );
 if (kitCjs.status !== 0) {
-  process.stderr.write(kitCjs.stderr || kitCjs.stdout || 'preset-kit CJS bundle failed\n');
-  process.exit(kitCjs.status ?? 1);
+  failed(kitCjs, 'preset-kit CJS bundle failed');
 }
 
 // The board backing consumes the installed kanban grammar without a TypeScript loader.
-const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production });
-if (kanban.status !== 0) { process.stderr.write(kanban.stderr || kanban.stdout); process.exit(kanban.status ?? 1); }
+const kanban = spawnSync('bun', ['build', 'boilerplates/presets/kanban.ts', '--target=node', '--format=cjs', '--external=@volter/ztrack/preset-kit', '--outfile=dist/kanban-preset.cjs'], { cwd: packageRoot, encoding: 'utf8', env: production, ...launch });
+if (kanban.status !== 0) failed(kanban, 'kanban preset bundle failed');

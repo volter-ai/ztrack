@@ -25,6 +25,11 @@ produced by `npm run build` and, for npm publish, by the `prepack` script. Run t
 CLI from source with `bun run src/cli.ts …`; build only when you need the bundled
 `dist/cli.js` (e.g. to test the packaged artifact).
 
+The Node build script invokes the installed `npx` compiler and Bun commands with
+the same arguments on each platform. On Windows those tools may be `.cmd` shims,
+so the build launches them through the Windows command shell in a hidden window.
+Launch failures retain the child-process error alongside compiler/bundler output.
+
 ## PRs
 - Keep them focused and small.
 - Add/adjust tests; `check` regressions are caught in CI (including the test that
