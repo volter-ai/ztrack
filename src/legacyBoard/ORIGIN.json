@@ -1,0 +1,11 @@
+{
+  "commit": "be866b90b7b36ebf36ff998b510291a167a3ff2e",
+  "version": "2.4.23",
+  "sourceSha256": {
+    "src/boardDocument.ts": "063fbe1848245bdcc861cdbe3336d83525f970219f0fd229667277628e926987",
+    "src/documentParser.ts": "b72ef217a6efd9981b0c0527dca5c89bbb191e69599f98d6d2ba8489b594ae6a",
+    "src/documentWriteBack.ts": "4ea5e9c83da8956da97a606e186cd69efbe5cdb4287c7b06ca5c61d7ad94feb2",
+    "src/markdownDocument.ts": "29a4da50fcc2ba61079482e266f02340ac7c08052f63203b47c6ea93f7cf9fb1",
+    "boilerplates/presets/kanban.ts": "ce7d79a292f44620f81f08e55ec7579ca2aa364f379bee4d7009e1b5f9358ab1"
+  }
+}

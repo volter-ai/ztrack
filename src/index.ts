@@ -1,0 +1,24 @@
+export { createTrackerClient } from './sdk.ts';
+export { serveTrackerApi } from './server.ts';
+export { checkTracker, checkTrackerRoot } from './check.ts';
+export type { TrackerCheckOptions, TrackerCheckResult } from './check.ts';
+export { exportTrackerRoot } from './export.ts';
+export type { TrackerExportOptions } from './export.ts';
+export { check, checkRoot } from './core/engine.ts';
+export type { CheckResult, Context, CoreRoot, Finding, Preset, Rule, ValidationInput } from './core/engine.ts';
+export { parseRawIssueMarkdown, renderPresetCanonicalIssueMarkdown } from './rawIssueMarkdown.ts';
+export type { RawIssueMarkdown, RawIssueSection, RawIssueCheckboxRow } from './rawIssueMarkdown.ts';
+export { loadTrackerConfig, projectRootFrom, stateDirName, trackerConfigPath, trackerDatabasePath } from './config.ts';
+export { resolveProjectIdentity, resolveWorkTarget } from './projectWork.ts';
+export type { ZtrackProjectIdentity, WorkTargetResolution, WorkTargetSignal } from './projectWork.ts';
+export {
+  PROJECT_HOOK_EVENT,
+  PROJECT_HOOKS_SCHEMA,
+  projectHookRegistryPath,
+  readProjectHooks,
+  registerProjectHook,
+  removeProjectHook,
+  runProjectHooks,
+} from './projectHooks.ts';
+export type { ProjectHook, ProjectHookRegistry, ProjectHookRunResult } from './projectHooks.ts';
+export type { TrackerClient, TrackerConfig, TrackerBackend, TrackerBackendName } from './types.ts';

@@ -1,0 +1,5 @@
+{
+  "description": "Lean dev lifecycle (draft→ready→in-progress→in-review→done) — done = every AC passed with commit+proof evidence (image optional). PR-free; runs locally with no remote.",
+  "aliases": ["default"],
+  "recommended": true
+}

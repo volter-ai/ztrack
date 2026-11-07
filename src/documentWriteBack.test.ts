@@ -1,0 +1,306 @@
+// ZTB-4 dev/09: unit tests for the grammar-free splice primitives (documentWriteBack.ts). Pins
+// the identity documentSource.ts's write path is built on: decomposeSection(raw) reassembles
+// byte-for-byte, and shiftHeadings is a true inverse of itself for a matched +/-delta pair.
+import { describe, expect, test } from 'bun:test';
+import {
+  decomposeSection,
+  HeadingShiftError,
+  NoAssigneeInsertionPointError,
+  NoStatusHeaderError,
+  shiftHeadings,
+  spliceAssigneeLine,
+  spliceSectionText,
+  spliceStatusLine,
+} from './documentWriteBack.ts';
+
+describe('shiftHeadings', () => {
+  test('shifts every ATX heading down (deeper) by delta', () => {
+    const text = '## Alpha\n\ntext\n\n### Beta\n\nmore text\n';
+    expect(shiftHeadings(text, 1)).toBe('### Alpha\n\ntext\n\n#### Beta\n\nmore text\n');
+  });
+
+  test('shifts every ATX heading up (shallower) by delta, the inverse of the above', () => {
+    const text = '### Alpha\n\ntext\n\n#### Beta\n\nmore text\n';
+    expect(shiftHeadings(text, -1)).toBe('## Alpha\n\ntext\n\n### Beta\n\nmore text\n');
+  });
+
+  test('is a true round-trip inverse for a matched +delta/-delta pair', () => {
+    const text = '## Acceptance Criteria\n\n- [ ] AC-1 v1 First.\n  - status: pending\n\n### Sub-note\n\nmore.\n';
+    const shifted = shiftHeadings(text, 1);
+    expect(shiftHeadings(shifted, -1)).toBe(text);
+  });
+
+  test('delta 0 is a no-op (still returns the input unchanged when no setext heading is present)', () => {
+    const text = '## Alpha\n\ntext\n';
+    expect(shiftHeadings(text, 0)).toBe(text);
+  });
+
+  test('a `#` inside a fenced code block is untouched (not a real heading) — shifting deeper', () => {
+    const text = '## Alpha\n\n```md\n## fake heading, do not touch\n```\n\n### Beta\n';
+    const out = shiftHeadings(text, 1);
+    expect(out).toContain('```md\n## fake heading, do not touch\n```');
+    expect(out).toContain('### Alpha');
+    expect(out).toContain('#### Beta');
+  });
+
+  test('a `#` inside a fenced code block is untouched (not a real heading) — shifting shallower', () => {
+    const text = '### Alpha\n\n```md\n## fake heading, do not touch\n```\n\n#### Beta\n';
+    const out = shiftHeadings(text, -1);
+    expect(out).toContain('```md\n## fake heading, do not touch\n```');
+    expect(out).toContain('## Alpha');
+    expect(out).toContain('### Beta');
+  });
+
+  test('shifting a level-6 heading deeper throws (would leave [1,6])', () => {
+    const text = '###### Deepest\n\ntext\n';
+    expect(() => shiftHeadings(text, 1)).toThrow(HeadingShiftError);
+  });
+
+  test('shifting a level-1 heading shallower throws (would leave [1,6])', () => {
+    const text = '# Top\n\ntext\n';
+    expect(() => shiftHeadings(text, -1)).toThrow(HeadingShiftError);
+  });
+
+  test('a setext heading (Title\\n===) throws rather than being silently left un-shifted', () => {
+    const text = '## Alpha\n\nSub Title\n=========\n\ntext\n';
+    expect(() => shiftHeadings(text, 1)).toThrow(HeadingShiftError);
+  });
+
+  test('a setext heading is still detected (and throws) even at delta 0', () => {
+    const text = '## Alpha\n\nSub Title\n---------\n\ntext\n';
+    expect(() => shiftHeadings(text, 0)).toThrow(HeadingShiftError);
+  });
+});
+
+describe('decomposeSection: prefixRaw + middle + suffixBlanks reproduces `raw` byte-for-byte', () => {
+  function assertIdentity(raw: string): void {
+    const d = decomposeSection(raw);
+    expect(d.prefixRaw + d.middle + d.suffixBlanks).toBe(raw);
+    expect(d.prefixRaw.startsWith(d.headingLineRaw)).toBe(true);
+  }
+
+  test('no header block, no trailing blank run', () => {
+    const raw = '## DOC-1 — Alpha item\n\nPlain body text.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull();
+    expect(d.middle).toBe('Plain body text.\n');
+  });
+
+  test('a header block (status + assignee) is captured, and consumed out of `middle`', () => {
+    const raw = '## DOC-1 — Alpha item\n\nstatus: in-progress\nassignee: kim\n\nAlpha body text.\n\n### Acceptance Criteria\n\n- [ ] AC-1 v1 x.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toEqual({ status: 'in-progress', assignee: 'kim' });
+    expect(d.middle.startsWith('Alpha body text.')).toBe(true);
+    expect(d.middle).not.toContain('status:');
+    expect(d.middle).not.toContain('assignee:');
+  });
+
+  test('a header block with only `status:` (no `assignee:`)', () => {
+    const raw = '## DOC-2 — Beta item\n\nstatus: ready\n\nBeta body.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toEqual({ status: 'ready' });
+  });
+
+  test('weird blank-line runs: multiple blanks after the heading, and multiple blanks after the header block', () => {
+    const raw = '## DOC-3 — Gamma item\n\n\n\nstatus: draft\n\n\n\nGamma body.\n\n\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toEqual({ status: 'draft' });
+    expect(d.middle).toBe('Gamma body.\n');
+    expect(d.suffixBlanks).toBe('\n\n');
+  });
+
+  test('an aborted header block (a `status:` line then a `title:` line) consumes NOTHING — both lines land in `middle`', () => {
+    const raw = '## DOC-4 — Delta item\nstatus: pending\ntitle: not allowed here\n\nDelta body.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull();
+    expect(d.prefixRaw).toBe('## DOC-4 — Delta item\n');
+    expect(d.middle).toBe('status: pending\ntitle: not allowed here\n\nDelta body.\n');
+    // ZTB-23 dev/04: a field (status:) WAS matched before the abort — distinguishable from "no
+    // header block at all" (the next test) via `discardedHeaderLine`, so a caller can diagnose it.
+    expect(d.discardedHeaderLine).toBe('title: not allowed here');
+  });
+
+  test('an aborted header block (a non-header-shaped line right after the heading) consumes nothing', () => {
+    const raw = '## DOC-5 — Epsilon item\nJust a sentence, not a header line.\n\nMore body.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull();
+    expect(d.middle).toBe('Just a sentence, not a header line.\n\nMore body.\n');
+    // nothing was ever matched — not a "discarded" header, just never one to begin with.
+    expect(d.discardedHeaderLine).toBeUndefined();
+  });
+
+  test('ZTB-23 dev/04: `assignee: me` immediately followed by prose (no blank-line terminator) is discarded — reported via discardedHeaderLine', () => {
+    const raw = '## DOC-9 — Zeta item\nassignee: me\nProse starts right away, no blank line first.\n\nMore body.\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull(); // the assignee is lost from `header` — silently, absent this diagnostic
+    expect(d.discardedHeaderLine).toBe('Prose starts right away, no blank line first.');
+    expect(d.middle).toContain('assignee: me');
+  });
+
+  test('a section with heading only, nothing else (no trailing newline)', () => {
+    const raw = '## DOC-6 — Just a heading';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull();
+    expect(d.middle).toBe('');
+    expect(d.suffixBlanks).toBe('');
+  });
+
+  test('a section whose body is nothing but blank lines (no header, no content)', () => {
+    const raw = '## DOC-7 — Empty item\n\n\n';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toBeNull();
+    expect(d.middle).toBe('');
+  });
+
+  test('header block running to end of file with no terminating blank line', () => {
+    const raw = '## DOC-8 — Trailing header\nstatus: draft\nassignee: sam';
+    assertIdentity(raw);
+    const d = decomposeSection(raw);
+    expect(d.header).toEqual({ status: 'draft', assignee: 'sam' });
+    expect(d.middle).toBe('');
+  });
+});
+
+describe('spliceSectionText: the write-side inverse of decomposeSection + shiftHeadings', () => {
+  const RAW = '## DOC-1 — Alpha item\n\nstatus: in-progress\nassignee: kim\n\n### Context\n\nSome note.\n\n### Acceptance Criteria\n\n- [ ] AC-1 v1 First.\n  - status: pending\n\n';
+
+  test('splicing back the UNMODIFIED presented body reproduces `raw` byte-for-byte', () => {
+    const level = 2;
+    const d = decomposeSection(RAW);
+    const presentedBody = shiftHeadings(d.middle, 1 - level);
+    const storedTitle = 'Alpha item';
+    const spliced = spliceSectionText(RAW, level, storedTitle, storedTitle, presentedBody);
+    expect(spliced).toBe(RAW);
+  });
+
+  test('an edited body (new AC status) lands only in the AC block; header/context untouched', () => {
+    const level = 2;
+    const d = decomposeSection(RAW);
+    const presentedBody = shiftHeadings(d.middle, 1 - level);
+    const editedBody = presentedBody.replace('- [ ] AC-1 v1 First.\n  - status: pending', '- [x] AC-1 v1 First.\n  - status: passed');
+    const spliced = spliceSectionText(RAW, level, 'Alpha item', 'Alpha item', editedBody);
+    expect(spliced).toContain('- [x] AC-1 v1 First.\n  - status: passed');
+    expect(spliced).toContain('status: in-progress\nassignee: kim'); // header block untouched
+    expect(spliced).toContain('### Context\n\nSome note.'); // context untouched, still at its original level
+  });
+
+  test('a title rename replaces exactly the title suffix of the heading line, everything else untouched', () => {
+    const level = 2;
+    const d = decomposeSection(RAW);
+    const presentedBody = shiftHeadings(d.middle, 1 - level);
+    const spliced = spliceSectionText(RAW, level, 'Alpha item', 'Renamed item', presentedBody);
+    expect(spliced.split('\n')[0]).toBe('## DOC-1 — Renamed item');
+    expect(spliced.slice(spliced.indexOf('\n'))).toBe(RAW.slice(RAW.indexOf('\n')));
+  });
+
+  test('a stored title that is not a suffix of the heading line throws (pathological spacing)', () => {
+    expect(() => spliceSectionText('## DOC-1 — Alpha item\n\nbody\n', 2, 'wrong title', 'New title', 'body\n')).toThrow();
+  });
+});
+
+// ZTB-16 dev/03: `issue edit --state` on a document-source issue used to fail closed
+// unconditionally ("splicing a status change is not implemented"). spliceStatusLine is the
+// analogous splice to spliceSectionText, scoped to the `status:` header line's VALUE only.
+describe('spliceStatusLine: rewrites ONLY the `status:` header line\'s value', () => {
+  const RAW = '## DOC-1 — Alpha item\n\nstatus: in-progress\nassignee: kim\n\n### Context\n\nSome note.\n\n### Acceptance Criteria\n\n- [ ] AC-1 v1 First.\n  - status: pending\n\n';
+
+  test('the status value changes; every other byte (including the assignee line) is untouched', () => {
+    const spliced = spliceStatusLine(RAW, 'done');
+    expect(spliced).toBe('## DOC-1 — Alpha item\n\nstatus: done\nassignee: kim\n\n### Context\n\nSome note.\n\n### Acceptance Criteria\n\n- [ ] AC-1 v1 First.\n  - status: pending\n\n');
+    // byte-diff: every line except the status line itself is identical
+    const before = RAW.split('\n');
+    const after = spliced.split('\n');
+    expect(after.length).toBe(before.length);
+    for (let i = 0; i < before.length; i++) {
+      if (i === 2) { expect(after[i]).toBe('status: done'); continue; } // the status line
+      expect(after[i]).toBe(before[i]);
+    }
+  });
+
+  test('preserves the original line\'s casing/leading spacing/trailing whitespace around the value', () => {
+    const raw = '## DOC-2 — Beta item\n\nStatus:   in-progress   \nassignee: sam\n\nBeta body.\n';
+    const spliced = spliceStatusLine(raw, 'done');
+    // "Status" casing, the 3 leading spaces, and the 3 trailing spaces are all preserved verbatim
+    // — only the value token itself ("in-progress" -> "done") changes.
+    expect(spliced).toBe('## DOC-2 — Beta item\n\nStatus:   done   \nassignee: sam\n\nBeta body.\n');
+  });
+
+  test('a section with no header block at all fails closed (no position is invented)', () => {
+    const raw = '## DOC-3 — Gamma item\n\nGamma body, no header block.\n';
+    expect(() => spliceStatusLine(raw, 'done')).toThrow(NoStatusHeaderError);
+    expect(() => spliceStatusLine(raw, 'done')).toThrow(/no `status:` header line/);
+  });
+
+  test('a header block with only `assignee:` (no `status:`) fails closed', () => {
+    const raw = '## DOC-4 — Delta item\n\nassignee: sam\n\nDelta body.\n';
+    expect(() => spliceStatusLine(raw, 'done')).toThrow(NoStatusHeaderError);
+  });
+
+  test('no trailing newline on the section is preserved (round-trips the trailing-newline shape)', () => {
+    const raw = '## DOC-5 — Epsilon item\nstatus: draft\nassignee: sam';
+    const spliced = spliceStatusLine(raw, 'ready');
+    expect(spliced).toBe('## DOC-5 — Epsilon item\nstatus: ready\nassignee: sam');
+  });
+
+  test('composes with spliceSectionText: pre-splicing the status, then splicing the body, changes BOTH and nothing else', () => {
+    const level = 2;
+    const d = decomposeSection(RAW);
+    const presentedBody = shiftHeadings(d.middle, 1 - level);
+    const withNewStatusHeader = spliceStatusLine(RAW, 'done');
+    const spliced = spliceSectionText(withNewStatusHeader, level, 'Alpha item', 'Alpha item', presentedBody);
+    expect(spliced).toContain('status: done\nassignee: kim');
+    expect(spliced).toContain('### Context\n\nSome note.');
+    expect(spliced).toContain('- [ ] AC-1 v1 First.\n  - status: pending');
+  });
+});
+
+describe('spliceAssigneeLine: rewrites, inserts, and removes only assignee metadata', () => {
+  test('rewrites an existing value while preserving casing and whitespace', () => {
+    const raw = '## DOC-1 — Alpha\n\nstatus: ready\nAssignee:   kim   \n\nBody.\n';
+    expect(spliceAssigneeLine(raw, 'alex')).toBe(
+      '## DOC-1 — Alpha\n\nstatus: ready\nAssignee:   alex   \n\nBody.\n',
+    );
+  });
+
+  test('inserts after an existing status line when the registered document item is unassigned', () => {
+    const raw = '## DOC-2 — Beta\n\nStatus: draft\n\nBody.\n';
+    expect(spliceAssigneeLine(raw, 'alex')).toBe(
+      '## DOC-2 — Beta\n\nStatus: draft\nassignee: alex\n\nBody.\n',
+    );
+  });
+
+  test('removes an existing line without changing any other byte', () => {
+    const raw = '## DOC-3 — Gamma\n\nstatus: ready\nassignee: alex\n\nBody.\n';
+    expect(spliceAssigneeLine(raw, null)).toBe('## DOC-3 — Gamma\n\nstatus: ready\n\nBody.\n');
+  });
+
+  test('clearing an already-unassigned item is a byte-identical no-op', () => {
+    const raw = '## DOC-4 — Delta\n\nstatus: draft\n\nBody.\n';
+    expect(spliceAssigneeLine(raw, null)).toBe(raw);
+  });
+
+  test('adding to a prose-only section creates a clean one-field header at the content boundary', () => {
+    const raw = '## DOC-5 — Epsilon\n\nBody only.\n';
+    expect(spliceAssigneeLine(raw, 'alex')).toBe('## DOC-5 — Epsilon\n\nassignee: alex\n\nBody only.\n');
+  });
+
+  test('a partially recognized malformed header still fails closed', () => {
+    const raw = '## DOC-5A — Epsilon\n\nstatus: draft\nBody without a terminating header blank.\n';
+    expect(() => spliceAssigneeLine(raw, 'alex')).toThrow(NoAssigneeInsertionPointError);
+  });
+
+  test('rejects multiline or padded values instead of creating ambiguous metadata', () => {
+    const raw = '## DOC-6 — Zeta\n\nstatus: draft\n\nBody.\n';
+    expect(() => spliceAssigneeLine(raw, ' alex')).toThrow(/single-line/);
+    expect(() => spliceAssigneeLine(raw, 'alex\nstatus: done')).toThrow(/single-line/);
+  });
+});

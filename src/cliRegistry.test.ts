@@ -1,0 +1,320 @@
+// ZTB-24 dev/04: the registry<->help drift test — makes help-vs-parser drift impossible in either
+// direction, and a source-level meta-scan that catches a parsed flag nobody registered. Unit only
+// (no spawning): everything below calls exported, side-effect-free (or config-free) functions
+// directly and captures their stdout.
+import { describe, expect, test } from 'bun:test';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { REGISTRY, allRegisteredFlagTokens, flagTokensForTest, positionalArgs, rejectUnknownFlags } from './cliRegistry.ts';
+import { printIssueActionHelp, printResourceHelp } from './cliHelp.ts';
+import { handleCheckCommand } from './cliCheck.ts';
+import { handleImportCommand } from './cliImport.ts';
+import { handleWaiverCommand } from './cliWaiver.ts';
+import { handleCompletionsCommand } from './cliCompletions.ts';
+
+function captured(fn: () => unknown): string {
+  const orig = process.stdout.write.bind(process.stdout);
+  let out = '';
+  process.stdout.write = ((chunk: unknown) => { out += String(chunk); return true; }) as typeof process.stdout.write;
+  try { fn(); } finally { process.stdout.write = orig; }
+  return out;
+}
+async function capturedAsync(fn: () => Promise<unknown>): Promise<string> {
+  const orig = process.stdout.write.bind(process.stdout);
+  let out = '';
+  process.stdout.write = ((chunk: unknown) => { out += String(chunk); return true; }) as typeof process.stdout.write;
+  try { await fn(); } finally { process.stdout.write = orig; }
+  return out;
+}
+
+// One "help group": every registry path in `paths` renders (all of, or is covered by) `text()`.
+// Most groups are a single command with its own dedicated usage line; a few share ONE resource-
+// level help block across several sibling subcommands (loop start/stop/status, tx plan/apply, the
+// four evidence subcommands, the two api subcommands, the four waiver actions, the two completions
+// shells) — for those, the check is over the UNION of the group's registered flags, not any single
+// sibling, since that's genuinely how the help is organized today.
+type Group = {
+  paths: string[][];
+  text: () => string | Promise<string>;
+  // Flags of OTHER commands legitimately mentioned in this group's help prose (cross-references,
+  // e.g. init's onboarding narrative naming `import --register`/`loop start --until`/`issue list
+  // --actionable`, or sync's `init --sync` back-reference) — real flags, just not this command's
+  // own, so direction-B (every --token in the text is THIS command's) must not flag them.
+  crossRef?: string[];
+};
+const GROUPS: Group[] = [
+  {
+    paths: [['check']],
+    text: () => capturedAsync(() => handleCheckCommand(['check', '--help'])),
+    // The `<file.md>` target's document-grammar note names `import --register` — the registration
+    // command check OFFERS (never runs) when the target file is not a registered source.
+    crossRef: ['--register'],
+  },
+  { paths: [['export']], text: () => capturedAsync(() => handleCheckCommand(['export', '--help'])) },
+  { paths: [['issue', 'scaffold']], text: () => captured(() => printIssueActionHelp('scaffold')) },
+  { paths: [['issue', 'list']], text: () => captured(() => printIssueActionHelp('list')) },
+  { paths: [['issue', 'view']], text: () => captured(() => printIssueActionHelp('view')) },
+  { paths: [['issue', 'get']], text: () => captured(() => printIssueActionHelp('get')) },
+  { paths: [['issue', 'create']], text: () => captured(() => printIssueActionHelp('create')) },
+  { paths: [['issue', 'edit']], text: () => captured(() => printIssueActionHelp('edit')) },
+  { paths: [['issue', 'comment']], text: () => captured(() => printIssueActionHelp('comment')) },
+  { paths: [['issue', 'close']], text: () => captured(() => printIssueActionHelp('close')) },
+  { paths: [['issue', 'patch']], text: () => captured(() => printIssueActionHelp('patch')) },
+  // `issue delete` has zero flags — nothing to check bidirectionally, but exercised anyway so a
+  // future flag added to either side without the other trips the test.
+  { paths: [['issue', 'delete']], text: () => captured(() => printIssueActionHelp('delete')) },
+  { paths: [['ac', 'patch']], text: () => captured(() => printResourceHelp('ac')) },
+  { paths: [['project', 'list']], text: () => captured(() => printResourceHelp('project')) },
+  {
+    paths: [['init']],
+    text: () => captured(() => printResourceHelp('init')),
+    // init's onboarding narrative names the very next commands an operator would run —
+    // `import --register`, `loop start --until`, `issue list --actionable`, and `--source` (the
+    // "declare more sources" paragraph) — all real flags of OTHER commands, not init's own.
+    crossRef: ['--register', '--until', '--actionable', '--source'],
+  },
+  { paths: [['migrate-local']], text: () => captured(() => printResourceHelp('migrate-local')) },
+  { paths: [['loop', 'start'], ['loop', 'stop'], ['loop', 'status']], text: () => captured(() => printResourceHelp('loop')) },
+  { paths: [['import']], text: () => capturedAsync(() => handleImportCommand(['import', '--help'])) },
+  { paths: [['fmt']], text: () => captured(() => printResourceHelp('fmt')) },
+  { paths: [['lint']], text: () => captured(() => printResourceHelp('lint')) },
+  { paths: [['tx', 'plan'], ['tx', 'apply']], text: () => captured(() => printResourceHelp('tx')) },
+  {
+    paths: [['sync', 'github']],
+    text: () => captured(() => printResourceHelp('sync')),
+    // "--repo/--policy default to the `init --sync` link" — a real back-reference to init's flag.
+    crossRef: ['--sync'],
+  },
+  { paths: [['evidence', 'add'], ['evidence', 'keygen'], ['evidence', 'verify'], ['evidence', 'export']], text: () => captured(() => printResourceHelp('evidence')) },
+  { paths: [['api', 'query'], ['api', 'serve']], text: () => captured(() => printResourceHelp('api')) },
+  { paths: [['mcp', 'serve']], text: () => captured(() => printResourceHelp('mcp')) },
+  { paths: [['visualizer']], text: () => captured(() => printResourceHelp('visualizer')) },
+  { paths: [['viz']], text: () => captured(() => printResourceHelp('viz')) },
+  { paths: [['waiver', 'sign'], ['waiver', 'clear'], ['waiver', 'status'], ['waiver', 'migrate']], text: () => capturedAsync(() => handleWaiverCommand(['waiver', '--help'])) },
+  { paths: [['completions', 'bash'], ['completions', 'zsh']], text: () => captured(() => handleCompletionsCommand(['completions', '--help'], 'ztrack')) },
+  // No exported, side-effect-free help renderer exists for these two (both zero-flag commands —
+  // `snapshot` has no dedicated help at all; `preset upgrade`'s usage is printed inline in cli.ts's
+  // main(), not through an importable function) — nothing to check bidirectionally either way.
+];
+
+function specFor(path: string[]) {
+  const spec = REGISTRY.find((s) => s.path.length === path.length && s.path.every((t, i) => t === path[i]));
+  if (!spec) throw new Error(`no registry entry for ${path.join(' ')}`);
+  return spec;
+}
+
+describe('cliRegistry <-> help drift (ZTB-24 dev/04)', () => {
+  for (const group of GROUPS) {
+    const label = group.paths.map((p) => p.join(' ')).join(' / ');
+    test(`${label}: every non-hidden registered flag appears in its help text`, async () => {
+      const text = await group.text();
+      const specs = group.paths.map(specFor);
+      const nonHidden = new Set(specs.flatMap((s) => flagTokensForTest(s, false)));
+      const missing = [...nonHidden].filter((f) => !text.includes(f));
+      expect(missing).toEqual([]);
+    });
+
+    test(`${label}: every --flag token in its help text is a registered flag (or a documented cross-reference)`, async () => {
+      const text = await group.text();
+      const specs = group.paths.map(specFor);
+      const registered = new Set(specs.flatMap((s) => flagTokensForTest(s, true)));
+      const found = new Set(text.match(/--[a-z][a-z-]*/g) ?? []);
+      const unregistered = [...found].filter((f) => !registered.has(f) && !(group.crossRef ?? []).includes(f));
+      expect(unregistered).toEqual([]);
+    });
+  }
+});
+
+describe('cliRegistry meta-scan: every parsed flag literal is registered (ZTB-24 dev/04)', () => {
+  // Non-parse false positives found in prose/comments — each justified. Empty today; kept as the
+  // documented escape hatch the spec calls for if a future addition needs it.
+  const ALLOW: string[] = [];
+
+  function walk(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of readdirSync(dir)) {
+      const p = join(dir, entry);
+      const st = statSync(p);
+      if (st.isDirectory()) { out.push(...walk(p)); continue; }
+      if (entry.endsWith('.test.ts')) continue; // test files intentionally use unregistered/bogus flags
+      if (entry.endsWith('.ts')) out.push(p);
+    }
+    return out;
+  }
+
+  test('optionValue/flagVal/flagAll/.includes parse-site literals are all registered somewhere', () => {
+    const repoSrc = join(import.meta.dir);
+    const files = walk(repoSrc);
+    const registered = allRegisteredFlagTokens();
+    const found = new Set<string>();
+    for (const file of files) {
+      const text = readFileSync(file, 'utf8');
+      for (const m of text.matchAll(/optionValue\([^,]+,\s*'(--[a-z][a-z-]*)'/g)) found.add(m[1]!);
+      for (const m of text.matchAll(/flagVal\([^,]+,\s*'([a-z][a-z-]*)'/g)) found.add(`--${m[1]!}`);
+      for (const m of text.matchAll(/flagAll\([^,]+,\s*'([a-z][a-z-]*)'/g)) found.add(`--${m[1]!}`);
+      for (const m of text.matchAll(/\.includes\('(--[a-z][a-z-]*)'\)/g)) found.add(m[1]!);
+    }
+    const unregistered = [...found].filter((f) => !registered.has(f) && !ALLOW.includes(f));
+    expect(unregistered).toEqual([]);
+  });
+});
+
+describe('cliRegistry hygiene (ZTB-24 dev/04)', () => {
+  test('no duplicate flag names (or aliases) within one command', () => {
+    const dupes: string[] = [];
+    for (const spec of REGISTRY) {
+      const seen = new Set<string>();
+      for (const f of spec.flags) {
+        for (const token of [f.name, ...(f.aliases ?? [])]) {
+          const key = `${spec.path.join(' ')}: ${token}`;
+          if (seen.has(token)) dupes.push(key);
+          seen.add(token);
+        }
+      }
+    }
+    expect(dupes).toEqual([]);
+  });
+
+  test('every registered path is unique', () => {
+    const seen = new Set<string>();
+    const dupes: string[] = [];
+    for (const spec of REGISTRY) {
+      const key = spec.path.join(' ');
+      if (seen.has(key)) dupes.push(key);
+      seen.add(key);
+    }
+    expect(dupes).toEqual([]);
+  });
+});
+
+// ZTB-39: `positionalArgs` reuses this same registry walk (`rejectUnknownFlags`'s, factored) so
+// `evidence add`'s positional-file fallback can never disagree with the flag validator about which
+// token is a value-taking flag's value vs. a genuine positional.
+describe('cliRegistry.positionalArgs (ZTB-39)', () => {
+  test('a value-taking flag in space form (before the file) does not swallow the file', () => {
+    expect(positionalArgs(['evidence', 'add', '--name', 'n.png', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('the file before the flag (today\'s working order) is unaffected', () => {
+    expect(positionalArgs(['evidence', 'add', 'real.png', '--name', 'n.png'])).toEqual(['real.png']);
+  });
+
+  test('`--name=n.png` (`=` form) consumes nothing, so the file is still found', () => {
+    expect(positionalArgs(['evidence', 'add', '--name=n.png', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('a value-taking flag with no positional after it: no positionals at all', () => {
+    expect(positionalArgs(['evidence', 'add', '--name', 'n.png'])).toEqual([]);
+  });
+
+  test('an unregistered command path: []', () => {
+    expect(positionalArgs(['not', 'a', 'real', 'command'])).toEqual([]);
+  });
+
+  test('a bool flag (--attach) consumes nothing — a positional right after it is still found', () => {
+    expect(positionalArgs(['evidence', 'add', '--attach', 'real.png'])).toEqual(['real.png']);
+  });
+});
+
+// ZTB-41: `walkArgs` (shared by `rejectUnknownFlags` and `positionalArgs`) must not consume a
+// `--`-leading token as a known value-taking flag's space-form value — the same guard
+// `optionValue` (cliArgs.ts) has always had. Unit-level pins on the two exported entry points,
+// no process spawn.
+describe('cliRegistry walkArgs `--`-guard on consume-next (ZTB-41)', () => {
+  test('positionalArgs: a `--`-leading token right after an omitted-value flag is NOT swallowed as its value — it is classified as a flag, so nothing is positional', () => {
+    expect(positionalArgs(['evidence', 'add', '--name', '--typo', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('rejectUnknownFlags: the same shape now throws, naming the swallowed-in-0.50.0 typo', () => {
+    expect(() => rejectUnknownFlags(['evidence', 'add', '--name', '--typo', 'real.png'])).toThrow(/--typo/);
+  });
+
+  test('rejectUnknownFlags: a `--`-leading token after an omitted-value flag that happens to be a KNOWN flag name still passes (nothing unknown) — registry classification differs from 0.50.0 but the validator does not reject', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--state', '--json', 'identifier'])).not.toThrow();
+  });
+
+  test('rejectUnknownFlags: a single-dash value (`-5`) is still consumed as the value, not classified as a flag', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--limit', '-5'])).not.toThrow();
+  });
+
+  test('positionalArgs: single-dash value after a value flag is still consumed, so it is not returned as a positional', () => {
+    expect(positionalArgs(['issue', 'list', '--limit', '-5', 'ZT-1'])).toEqual(['ZT-1']);
+  });
+
+  test('rejectUnknownFlags: the `=` form is unaffected — `--name=--typo` is one token, consumes nothing, no rejection', () => {
+    expect(() => rejectUnknownFlags(['evidence', 'add', '--name=--typo', 'real.png'])).not.toThrow();
+  });
+
+  test('positionalArgs: the `=` form is unaffected — the file is still found', () => {
+    expect(positionalArgs(['evidence', 'add', '--name=--typo', 'real.png'])).toEqual(['real.png']);
+  });
+
+  test('rejectUnknownFlags: a typo NOT preceded by an omitted-value flag rejects exactly as before (byte-identical shape)', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--stat', 'open'])).toThrow(/--stat/);
+  });
+});
+
+// ZTB-42: a non-repeatable value-taking flag given more than once used to silently keep only the
+// FIRST occurrence (every handler reads it via `optionValue`) — now the registry rejects it loud,
+// the same way an unknown flag does. Registry-declared repeatables (`--source`, `--label`,
+// `--add-label`, `--remove-label`) are exempt and keep their ZTB-40 union grammar. Bool repeats
+// are out of scope entirely (idempotent).
+describe('cliRegistry: repeated non-repeatable value flags reject loud (ZTB-42)', () => {
+  test('space form: --issues given twice rejects, naming the flag and the count', () => {
+    expect(() => rejectUnknownFlags(['check', '--issues', 'ZT-1', '--issues', 'ZT-2']))
+      .toThrow(/--issues given 2 times/);
+  });
+
+  test('`=` form: --input given twice (both `=`) rejects', () => {
+    expect(() => rejectUnknownFlags(['check', '--input=a.json', '--input=b.json']))
+      .toThrow(/--input given 2 times/);
+  });
+
+  test('mixed space + `=` form counts both occurrences toward the same flag', () => {
+    expect(() => rejectUnknownFlags(['check', '--input', 'a.json', '--input=b.json']))
+      .toThrow(/--input given 2 times/);
+  });
+
+  test('three occurrences reports the real count, not just ">1"', () => {
+    expect(() => rejectUnknownFlags(['issue', 'list', '--state', 'open', '--state', 'done', '--state', 'closed']))
+      .toThrow(/--state given 3 times/);
+  });
+
+  test('a single occurrence of a non-repeatable value flag is unaffected', () => {
+    expect(() => rejectUnknownFlags(['check', '--issues', 'ZT-1'])).not.toThrow();
+  });
+
+  test('registry-declared repeatable exemption: --source given twice still unions, no throw (ZTB-40 unchanged)', () => {
+    expect(() => rejectUnknownFlags(['check', '--source', 'a', '--source', 'b'])).not.toThrow();
+    expect(() => rejectUnknownFlags(['issue', 'list', '--source', 'a', '--source', 'b'])).not.toThrow();
+  });
+
+  test('registry-declared repeatable exemption: --add-label / --remove-label repeats still work', () => {
+    expect(() => rejectUnknownFlags(['issue', 'edit', 'ZT-1', '--add-label', 'x', '--add-label', 'y'])).not.toThrow();
+    expect(() => rejectUnknownFlags(['issue', 'edit', 'ZT-1', '--remove-label', 'x', '--remove-label', 'y'])).not.toThrow();
+  });
+
+  test('bool flags repeated are still accepted (out of scope — idempotent)', () => {
+    expect(() => rejectUnknownFlags(['check', '--json', '--json'])).not.toThrow();
+    expect(() => rejectUnknownFlags(['check', '--fail-on-warning', '--fail-on-warning'])).not.toThrow();
+  });
+
+  // Part 1: `--case` no longer aliases `--issues` — alias-less, it is simply unknown.
+  test('`--case` is REMOVED as an alias of --issues: unknown flag, naming --case', () => {
+    expect(() => rejectUnknownFlags(['check', '--case', 'ZT-1'])).toThrow(/unknown flag.*--case/s);
+  });
+
+  // ZTB-41 compound shape: `--issues --issues` (the second one lands in the first's value slot,
+  // so the ZTB-41 `--`-guard classifies it as its own flag occurrence, not a swallowed value) —
+  // now caught by repeat enforcement (2 occurrences of --issues), loud either way.
+  test('ZTB-41 x ZTB-42 compound shape: `--issues --issues` rejects (2 occurrences, not a swallowed value)', () => {
+    expect(() => rejectUnknownFlags(['check', '--issues', '--issues'])).toThrow(/--issues given 2 times/);
+  });
+
+  // check/export/import: the registry fires before the legacy KNOWN_FLAGS scan (ZTB-41 precedent,
+  // 41g) — a repeated flag there gets the REGISTRY's message, not the handler's own.
+  test('check\'s own KNOWN_FLAGS scan never gets a chance to run: registry throws first, same message shape', () => {
+    expect(() => rejectUnknownFlags(['check', '--categories', 'visual=1', '--categories', 'visual=2']))
+      .toThrow(/ztrack check: --categories given 2 times/);
+  });
+});

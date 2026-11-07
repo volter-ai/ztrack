@@ -1,0 +1,41 @@
+{
+  "displayBounds": {
+    "bottom": 1080,
+    "height": 1080,
+    "left": 0,
+    "right": 1920,
+    "top": 0,
+    "width": 1920
+  },
+  "nextWindowId": 4,
+  "terminalThemeProfile": "termfleet-dark",
+  "windows": [
+    {
+      "bounds": {
+        "bottom": 475,
+        "height": 425,
+        "left": 40,
+        "right": 844,
+        "top": 50,
+        "width": 804
+      },
+      "id": 1,
+      "kind": "terminal",
+      "session": "oasd-1"
+    },
+    {
+      "bounds": {
+        "bottom": 925,
+        "height": 425,
+        "left": 40,
+        "right": 844,
+        "top": 500,
+        "width": 804
+      },
+      "id": 3,
+      "kind": "terminal",
+      "name": "developer",
+      "session": "oasd-3"
+    }
+  ]
+}
