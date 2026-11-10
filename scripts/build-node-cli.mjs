@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { chmodSync, existsSync, readdirSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, readdirSync, rmSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -48,6 +48,14 @@ function rewriteDeclarations(dir) {
   }
 }
 rewriteDeclarations(resolve(packageRoot, 'dist/src'));
+
+// tsc emits compiled modules only, one directory deeper than their sources (dist/src for src), so a module that reaches
+// its presets by a path relative to itself (presetCatalog.ts's `../boilerplates/presets`) reads dist/boilerplates/presets
+// once compiled: the presets are placed there, as the package's own boilerplates/presets serves src and dist/cli.js.
+rmSync(resolve(packageRoot, 'dist/boilerplates'), { recursive: true, force: true });
+cpSync(resolve(packageRoot, 'boilerplates/presets'), resolve(packageRoot, 'dist/boilerplates/presets'), {
+  recursive: true, filter: (source) => !source.endsWith('.test.ts'),
+});
 
 // twin (@volter/world-core, @volter/twin-github, @volter/twin-jira) is an OPTIONAL peer dependency (issue #13): a plain `npm i -D
 // ztrack` must not pull in its transitive tree (react/react-dom) or its stray
