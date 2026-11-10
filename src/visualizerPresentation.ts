@@ -30,7 +30,7 @@ function packageRoot(): string {
   for (let depth = 0; depth < 4; depth += 1) {
     const candidate = join(cursor, 'package.json');
     if (existsSync(candidate)) {
-      try { if (JSON.parse(readFileSync(candidate, 'utf8')).name === 'ztrack') return cursor; } catch { /* continue */ }
+      try { if (JSON.parse(readFileSync(candidate, 'utf8')).name === '@volter/ztrack') return cursor; } catch { /* continue */ }
     }
     cursor = dirname(cursor);
   }
