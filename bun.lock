@@ -23,14 +23,12 @@
         "typescript": "^5.9.0",
       },
       "peerDependencies": {
-        "@volter/supercode-client": "^0.3.60",
         "@volter/twin-github": "^2.0.5",
         "@volter/twin-jira": "^2.0.37",
         "@volter/world-core": "^2.0.5",
         "react": "^18.3.1 || ^19.0.0",
       },
       "optionalPeers": [
-        "@volter/supercode-client",
         "@volter/twin-github",
         "@volter/twin-jira",
         "@volter/world-core",

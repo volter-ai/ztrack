@@ -1,6 +1,6 @@
-// Browser-safe contract for the optional ztrack/Supercode integration. This module owns only
+// Browser-safe contract for the optional ztrack/Agent integration. This module owns only
 // cross-product references and observational activity. It deliberately imports neither the
-// Supercode client nor ztrack's Node/git/tracker runtime, so either product can consume the
+// Agent client nor ztrack's Node/git/tracker runtime, so either product can consume the
 // contract without activating the other.
 import { z } from 'zod';
 import type { Payload, CoreIssue } from './visualizerModel.ts';
