@@ -251,6 +251,14 @@ Berry + PnP), and bun with no build step.
 
 ---
 
+### Coding-product integration
+
+`src/supercode.ts` owns browser-safe structural references and observations consumed
+by the Agent coding product. It imports neither product's runtime and requires no
+client peer dependency. The public `@volter/ztrack/supercode` entry and stored
+provider identifiers remain stable. Fleet board and mailbox integration continue
+through `supercode workflow` and `supercode message`.
+
 ## 5. World integration (optional)
 
 ztrack can use a **mirrored world** of the SaaS systems your code talks to
