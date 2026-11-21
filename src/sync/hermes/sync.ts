@@ -26,6 +26,7 @@ import { DocumentSource } from '../../backends/documentSource.ts';
 import { shiftHeadings } from '../../documentWriteBack.ts';
 import { parseMarkdownDocument } from '../../markdownDocument.ts';
 import { syncStateDir } from '../../config.ts';
+import { acquireLock } from '../../processLock.ts';
 import { boardWriter, readBoard, type BoardCard, type BoardExec } from './board.ts';
 
 export interface HermesSyncOpts {
@@ -321,23 +322,17 @@ function toFileCard(c: BoardCard, s: Snap, unparsed?: string[], sources?: Map<st
 
 // ── one sync at a time per board file: a manual `sync hermes` and `--watch` never interleave ──
 const lockPath = (projectRoot: string, file: string) => join(syncStateDir(projectRoot), `hermes-sync.${file.replace(/[^A-Za-z0-9._-]+/g, '_')}.lock`);
-function alive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
-}
 async function withSyncLock<T>(p: string, fn: () => Promise<T>): Promise<T> {
   mkdirSync(dirname(p), { recursive: true });
   const deadline = Date.now() + 120_000;
   for (;;) {
-    try { writeFileSync(p, String(process.pid), { flag: 'wx' }); break; } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      let holder = 0;
-      try { holder = Number(readFileSync(p, 'utf8')); } catch { continue; } // released between the two calls
-      if (holder && !alive(holder)) { rmSync(p, { force: true }); continue; } // a dead sync's lock
-      if (Date.now() > deadline) throw new Error(`ztrack sync hermes: another sync (pid ${holder || '?'}) has held this board file for two minutes (${p}).`);
-      await new Promise((r) => setTimeout(r, 200));
+    const taken = acquireLock(p);
+    if ('release' in taken) {
+      try { return await fn(); } finally { taken.release(); }
     }
+    if (Date.now() > deadline) throw new Error(`ztrack sync hermes: another sync (pid ${taken.holder}) has held this board file for two minutes (${p}).`);
+    await new Promise((r) => setTimeout(r, 200));
   }
-  try { return await fn(); } finally { rmSync(p, { force: true }); }
 }
 
 /** Sync one board file with its board. */
